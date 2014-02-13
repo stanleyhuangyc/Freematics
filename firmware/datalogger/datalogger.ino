@@ -6,9 +6,7 @@
 *************************************************************************/
 
 #include <Arduino.h>
-#include <Wire.h>
 #include <OBD.h>
-#include <SPI.h>
 #include <SD.h>
 #include <MPU6050.h>
 #include "config.h"
@@ -25,9 +23,6 @@
 #define STATE_ACC_READY 0x10
 #define STATE_SLEEPING 0x20
 
-#define MODE_LOGGER 0
-#define MODE_TIMER 1
-
 #define SerialInfo Serial
 
 static uint32_t lastFileSize = 0;
@@ -37,8 +32,6 @@ static int speed = 0;
 static uint32_t distance = 0;
 static uint16_t fileIndex = 0;
 static uint32_t startTime = 0;
-
-static byte mode = MODE_DEFAULT;
 
 static byte pollPattern[]= {
     PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_RPM, PID_SPEED, PID_THROTTLE
@@ -289,19 +282,18 @@ private:
     void showStates()
     {
 #if VERBOSE
-        SerialInfo.print('[');
-        SerialInfo.print(millis());
-        SerialInfo.print("] OBD:");
+        SerialInfo.print("OBD:");
         SerialInfo.print((state & STATE_OBD_READY) ? "Yes" : "No");
         SerialInfo.print(" ACC:");
-        SerialInfo.print((state & STATE_ACC_READY) ? "Yes" : "No");
+        SerialInfo.println((state & STATE_ACC_READY) ? "Yes" : "No");
 #endif
     }
     void showLoggerData(byte pid, int value)
     {
 #if VERBOSE
+        SerialInfo.print('[');
         SerialInfo.print(millis());
-        SerialInfo.print(' ');
+        SerialInfo.print("] ");
         switch (pid) {
         case PID_RPM:
             Serial.print("RPM");
