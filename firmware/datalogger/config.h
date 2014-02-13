@@ -28,6 +28,6 @@
 **************************************/
 #define USE_MPU6050 1
 //#define OBD_MIN_INTERVAL 50 /* ms */
-#define VERBOSE 0
+#define VERBOSE 1
 
 #endif // CONFIG_H_INCLUDED
