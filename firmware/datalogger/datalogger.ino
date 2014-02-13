@@ -289,11 +289,12 @@ private:
     void showStates()
     {
 #if VERBOSE
+        SerialInfo.print('[');
         SerialInfo.print(millis());
-        SerialInfo.print(" OBD:");
-        SerialInfo.print((state & STATE_OBD_READY) ? 'Y' : 'N');
+        SerialInfo.print("] OBD:");
+        SerialInfo.print((state & STATE_OBD_READY) ? "Yes" : "No");
         SerialInfo.print(" ACC:");
-        SerialInfo.print((state & STATE_ACC_READY) ? 'Y' : 'N');
+        SerialInfo.print((state & STATE_ACC_READY) ? "Yes" : "No");
 #endif
     }
     void showLoggerData(byte pid, int value)
@@ -303,19 +304,13 @@ private:
         SerialInfo.print(' ');
         switch (pid) {
         case PID_RPM:
-            Serial.print("RPM")
+            Serial.print("RPM");
             break;
         case PID_SPEED:
-            Serial.print("Speed")
-            if (lastSpeed != value) {
-                lcd.setCursor(0, 0);
-                lcd.setFont(FONT_SIZE_XLARGE);
-                lcd.printInt((unsigned int)value % 1000, 3);
-                lastSpeed = value;
-            }
+            Serial.print("Speed");
             break;
         case PID_THROTTLE:
-            Serial.print("Throttle")
+            Serial.print("Throttle");
             break;
         default:
             SerialInfo.print('[');
@@ -334,6 +329,7 @@ void setup()
 {
 #if VERBOSE
     SerialInfo.begin(115200);
+    while (!SerialInfo);
     SerialInfo.println("Freematics OBD-II Adapter");
 #endif
 

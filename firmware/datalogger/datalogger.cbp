@@ -2,7 +2,7 @@
 <CodeBlocks_project_file>
 	<FileVersion major="1" minor="6" />
 	<Project>
-		<Option title="obdlogger" />
+		<Option title="datalogger" />
 		<Option pch_mode="2" />
 		<Option compiler="avrgcc" />
 		<Build>
@@ -582,13 +582,17 @@
 		<Compiler>
 			<Add directory="." />
 		</Compiler>
+		<Unit filename="MPU6050.cpp" />
+		<Unit filename="MPU6050.h" />
+		<Unit filename="OBD.cpp" />
+		<Unit filename="OBD.h" />
 		<Unit filename="config.h" />
 		<Unit filename="datalogger.h" />
-		<Unit filename="images.h" />
-		<Unit filename="obdlogger.ino">
+		<Unit filename="datalogger.ino">
 			<Option compile="1" />
 			<Option link="1" />
 		</Unit>
+		<Unit filename="images.h" />
 		<Extensions>
 			<code_completion />
 			<debugger />
