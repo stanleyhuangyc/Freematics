@@ -102,7 +102,7 @@ typedef struct {
 #elif defined(__AVR_ATmega644P__)
     SoftwareSerial SerialBLE(9, 10); /* for Microduino */
 #else
-    SoftwareSerial SerialBLE(A2, A3); /* for BLE Shield on UNO*/
+    SoftwareSerial SerialBLE(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #endif
 
 #else
@@ -172,10 +172,18 @@ public:
 #endif
     void logData(uint16_t pid, int value)
     {
+#if LOG_FORMAT == FORMAT_BIN || STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
+#endif
 #if ENABLE_DATA_OUT
+#if LOG_FORMAT == FORMAT_BIN
         SerialBLE.write((uint8_t*)&ld, 12);
+#else
+        SerialBLE.print(pid, HEX);
+        SerialBLE.write(',');
+        SerialBLE.println(value);
+#endif
 #endif
 #if ENABLE_DATA_LOG
 #if LOG_FORMAT == FORMAT_BIN
@@ -186,18 +194,25 @@ public:
         dataSize += sdfile.write(',');
         dataSize += sdfile.print(pid, HEX);
         dataSize += sdfile.write(',');
-        dataSize += sdfile.print(value);
-        dataSize += sdfile.write('\n');
+        dataSize += sdfile.println(value);
         m_lastDataTime = dataTime;
 #endif
 #endif
     }
     void logData(uint16_t pid, float value)
     {
+#if LOG_FORMAT == FORMAT_BIN || STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
+#endif
 #if ENABLE_DATA_OUT
+#if LOG_FORMAT == FORMAT_BIN
         SerialBLE.write((uint8_t*)&ld, 12);
+#else
+        SerialBLE.print(pid, HEX);
+        SerialBLE.write(',');
+        SerialBLE.println(value);
+#endif
 #endif
 #if ENABLE_DATA_LOG
 #if LOG_FORMAT == FORMAT_BIN
@@ -208,18 +223,27 @@ public:
         dataSize += sdfile.write(',');
         dataSize += sdfile.print(pid, HEX);
         dataSize += sdfile.write(',');
-        dataSize += sdfile.print(value);
-        dataSize += sdfile.write('\n');
+        dataSize += sdfile.println(value);
         m_lastDataTime = dataTime;
 #endif
 #endif
     }
     void logData(uint16_t pid, float value1, float value2)
     {
+#if LOG_FORMAT == FORMAT_BIN || STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 2, 0, {value1, value2}};
         ld.checksum = getChecksum((char*)&ld, 16);
+#endif
 #if ENABLE_DATA_OUT
+#if LOG_FORMAT == FORMAT_BIN
         SerialBLE.write((uint8_t*)&ld, 16);
+#else
+        SerialBLE.print(pid, HEX);
+        SerialBLE.write(',');
+        SerialBLE.print(value1, 6);
+        SerialBLE.write(',');
+        SerialBLE.println(value2, 6);
+#endif
 #endif
 #if ENABLE_DATA_LOG
 #if LOG_FORMAT == FORMAT_BIN
@@ -232,18 +256,27 @@ public:
         dataSize += sdfile.write(',');
         dataSize += sdfile.print(value1, 6);
         dataSize += sdfile.write(',');
-        dataSize += sdfile.print(value2, 6);
-        dataSize += sdfile.write('\n');
+        dataSize += sdfile.println(value2, 6);
         m_lastDataTime = dataTime;
 #endif
 #endif
     }
     void logData(uint16_t pid, uint32_t value1, uint32_t value2)
     {
+#if LOG_FORMAT == FORMAT_BIN || STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 2, 0, {value1, value2}};
         ld.checksum = getChecksum((char*)&ld, 16);
+#endif
 #if ENABLE_DATA_OUT
+#if LOG_FORMAT == FORMAT_BIN
         SerialBLE.write((uint8_t*)&ld, 16);
+#else
+        SerialBLE.print(pid, HEX);
+        SerialBLE.write(',');
+        SerialBLE.print(value1);
+        SerialBLE.write(',');
+        SerialBLE.println(value2);
+#endif
 #endif
 #if ENABLE_DATA_LOG
 #if LOG_FORMAT == FORMAT_BIN
@@ -256,18 +289,29 @@ public:
         dataSize += sdfile.write(',');
         dataSize += sdfile.print(value1);
         dataSize += sdfile.write(',');
-        dataSize += sdfile.print(value2);
-        dataSize += sdfile.write('\n');
+        dataSize += sdfile.println(value2);
         m_lastDataTime = dataTime;
 #endif
 #endif
     }
     void logData(uint16_t pid, int value1, int value2, int value3)
     {
+#if LOG_FORMAT == FORMAT_BIN || STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 3, 0, {value1, value2, value3}};
         ld.checksum = getChecksum((char*)&ld, 20);
+#endif
 #if ENABLE_DATA_OUT
+#if LOG_FORMAT == FORMAT_BIN
         SerialBLE.write((uint8_t*)&ld, 20);
+#else
+        SerialBLE.print(pid, HEX);
+        SerialBLE.write(',');
+        SerialBLE.print(value1);
+        SerialBLE.write(',');
+        SerialBLE.print(value2);
+        SerialBLE.write(',');
+        SerialBLE.println(value3);
+#endif
 #endif
 #if ENABLE_DATA_LOG
 #if LOG_FORMAT == FORMAT_BIN
@@ -282,8 +326,7 @@ public:
         dataSize += sdfile.write(',');
         dataSize += sdfile.print(value2);
         dataSize += sdfile.write(',');
-        dataSize += sdfile.print(value3);
-        dataSize += sdfile.write('\n');
+        dataSize += sdfile.println(value3);
         m_lastDataTime = dataTime;
 #endif
 #endif
