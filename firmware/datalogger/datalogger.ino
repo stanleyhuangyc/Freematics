@@ -91,7 +91,7 @@ public:
             }
         }
 #endif
-        showECUCap();
+        //showECUCap();
     }
     void loop()
     {
@@ -268,7 +268,7 @@ private:
         //digitalWrite(SD_CS_PIN, LOW);
         for (int i = 1; !init(); i++) {
 #if VERBOSE
-            SerialInfo.print("Reconnecting #");
+            SerialInfo.print("Retry#");
             SerialInfo.print(i);
 #endif
         }
@@ -294,22 +294,9 @@ private:
         SerialInfo.print('[');
         SerialInfo.print(millis());
         SerialInfo.print("] ");
-        switch (pid) {
-        case PID_RPM:
-            Serial.print("RPM");
-            break;
-        case PID_SPEED:
-            Serial.print("Speed");
-            break;
-        case PID_THROTTLE:
-            Serial.print("Throttle");
-            break;
-        default:
-            SerialInfo.print('[');
-            SerialInfo.print(pid, HEX);
-            SerialInfo.print(']');
-        }
-        SerialInfo.print('=');
+        SerialInfo.print("[PID ");
+        SerialInfo.print(pid, HEX);
+        SerialInfo.print("]=");
         SerialInfo.println(value);
 #endif
     }
@@ -330,8 +317,6 @@ void setup()
 
 #if ENABLE_DATA_LOG
     logger.checkSD();
-#else
-    lcd.clear();
 #endif
     logger.setup();
 }
