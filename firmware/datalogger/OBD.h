@@ -1,5 +1,5 @@
 /*************************************************************************
-* Arduino Library for OBD-II UART/I2C Adapter
+* Arduino Library for OBD-II UART Adapter
 * Distributed under GPL v2.0
 * Visit http://freematics.com for more information
 * (C)2012-2014 Stanley Huang <stanleyhuangyc@gmail.com>
@@ -57,11 +57,12 @@ class COBD
 public:
 	COBD():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	virtual void begin();
-	virtual bool init(bool passive = false);
-	virtual bool read(byte pid, int& result, bool passive = false);
+	virtual bool init();
+	virtual bool read(byte pid, int& result);
 	virtual void sleep(int seconds);
 	// Query and GetResponse for advanced usage only
 	virtual void sendQuery(byte pid);
+	virtual bool getResult(byte& pid, int& result);
 	bool isValidPID(byte pid);
 	byte getState() { return m_state; }
 	byte dataMode;
@@ -70,13 +71,13 @@ public:
 	byte vin[17];
 protected:
 	virtual char* getResponse(byte& pid, char* buffer);
-	virtual bool getResponseParsed(byte& pid, int& result);
-	virtual byte receive(char* buffer);
+	virtual byte receive(char* buffer, int timeout = OBD_TIMEOUT_SHORT);
 	virtual bool available();
 	virtual char read();
 	virtual void write(char* s);
 	virtual void write(char c);
 	virtual void dataIdleLoop() {}
+    void recover();
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
 	byte m_state;
