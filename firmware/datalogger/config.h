@@ -4,11 +4,12 @@
 /**************************************
 * Data logging/streaming out
 **************************************/
-#define ENABLE_DATA_OUT 0
+#define ENABLE_DATA_OUT 1
 #define ENABLE_DATA_LOG 1
 #define USE_SOFTSERIAL 0
 //this defines the format of log file
 #define LOG_FORMAT FORMAT_CSV
+#define STREAM_FORMAT FORMAT_CSV
 
 /**************************************
 * Default working mode
@@ -28,6 +29,6 @@
 **************************************/
 #define USE_MPU6050 1
 //#define OBD_MIN_INTERVAL 50 /* ms */
-#define VERBOSE 1
+#define VERBOSE 0
 
 #endif // CONFIG_H_INCLUDED
