@@ -75,7 +75,7 @@ public:
 	byte vin[17];
 protected:
 	virtual char* getResponse(byte& pid, char* buffer);
-	virtual byte receive(char* buffer, int timeout = OBD_TIMEOUT_SHORT);
+	virtual byte receive(char* buffer = 0, int timeout = OBD_TIMEOUT_SHORT);
 	virtual bool available();
 	virtual char read();
 	virtual void write(const char* s);

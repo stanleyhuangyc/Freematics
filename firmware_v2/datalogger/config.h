@@ -4,13 +4,13 @@
 /**************************************
 * Data logging/streaming out
 **************************************/
-#define ENABLE_DATA_OUT 0
-#define ENABLE_DATA_LOG 1
+#define ENABLE_DATA_OUT 1
+#define ENABLE_DATA_LOG 0
 #define USE_SOFTSERIAL 1
 //this defines the format of log file
 #define LOG_FORMAT FORMAT_CSV
 #define STREAM_FORMAT FORMAT_CSV
-#define VERBOSE 1
+#define VERBOSE 0
 
 /**************************************
 * Choose SD pin here
