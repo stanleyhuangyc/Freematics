@@ -45,8 +45,8 @@ static uint32_t startTime = 0;
 static uint16_t elapsed = 0;
 
 static byte pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
-static byte pidTier2[] = {PID_INTAKE_MAP, PID_TIMING_ADVANCE};
-static byte pidTier3[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, PID_FUEL_LEVEL, PID_DISTANCE};
+static byte pidTier2[] = {PID_TIMING_ADVANCE};
+static byte pidTier3[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, PID_FUEL_LEVEL, PID_BAROMETRIC, PID_DISTANCE, PID_RUNTIME};
 
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
@@ -73,17 +73,15 @@ public:
         } while (!init());
 
         // setting GPS baudrate
-        write("ATBR2 115200\r");
+        write("ATBR2 38400\r");
         receive();
 
         state |= STATE_OBD_READY;
 
         showStates();
 
-        uint16_t flags = FLAG_CAR | FLAG_OBD;
-        if (state & STATE_ACC_READY) flags |= FLAG_ACC;
 #if ENABLE_DATA_LOG
-        uint16_t index = openFile(LOG_TYPE_DEFAULT, flags);
+        uint16_t index = openFile();
 
 #if VERBOSE
         if (index) {
@@ -123,7 +121,7 @@ public:
             }
         }
 
-#if 1
+#if VERBOSE
         char buf[OBD_RECV_BUF_SIZE];
         write("ATGPS\r");
         if (receive(buf) > 0) {
