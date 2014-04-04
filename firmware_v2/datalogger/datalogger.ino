@@ -72,6 +72,10 @@ public:
             showStates();
         } while (!init());
 
+        // setting GPS baudrate
+        write("ATBR2 115200\r");
+        receive();
+
         state |= STATE_OBD_READY;
 
         showStates();
@@ -119,7 +123,7 @@ public:
             }
         }
 
-#if 0
+#if 1
         char buf[OBD_RECV_BUF_SIZE];
         write("ATGPS\r");
         if (receive(buf) > 0) {
@@ -340,20 +344,16 @@ void loop()
 {
     logger.loop();
 
+#if 0
     if (SerialInfo.available()) {
         for (;;) {
             if (SerialInfo.available()) {
-                char c = SerialInfo.read();
-                SerialInfo.write(c);
-                Serial.write(c);
-                if (c == '\r') {
-                    delay(100);
-                    while (Serial.available()) {
-                        SerialInfo.write(Serial.read());
-                    }
-                    break;
-                }
+                Serial.write(SerialInfo.read());
+            }
+            if (Serial.available()) {
+                SerialInfo.write(Serial.read());
             }
         }
     }
+#endif
 }

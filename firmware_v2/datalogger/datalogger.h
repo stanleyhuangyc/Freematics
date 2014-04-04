@@ -1,19 +1,3 @@
-typedef enum {
-    LOG_TYPE_DEFAULT = 0,
-    LOG_TYPE_0_60,
-    LOG_TYPE_0_100,
-    LOG_TYPE_100_200,
-    LOG_TYPE_400M,
-    LOG_TYPE_LAPS,
-    LOG_TYPE_ROUTE,
-} LOG_TYPES;
-
-#define FLAG_CAR 0x1
-#define FLAG_CYCLING 0x2
-#define FLAG_OBD 0x10
-#define FLAG_GPS 0x20
-#define FLAG_ACC 0x40
-
 #define FORMAT_BIN 0
 #define FORMAT_CSV 1
 
@@ -105,9 +89,12 @@ typedef struct {
     SoftwareSerial SerialBLE(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #endif
 
+#define OUTPUT_BAUDRATE 9600
+
 #else
 
 #define SerialBLE Serial
+#define OUTPUT_BAUDRATE 115200
 
 #endif
 
@@ -121,7 +108,7 @@ public:
     void initSender()
     {
 #if ENABLE_DATA_OUT
-        SerialBLE.begin(9600);
+        SerialBLE.begin(OUTPUT_BAUDRATE);
 #endif
 #if ENABLE_DATA_LOG && LOG_FORMAT == FORMAT_CSV
         m_lastDataTime = 0;
@@ -168,6 +155,7 @@ public:
         if (getChecksum((char*)&msg, sizeof(msg)) != msg.checksum) {
             return false;
         }
+        return true;
     }
 #endif
     void logData(uint16_t pid, int value)
@@ -182,7 +170,8 @@ public:
 #else
         SerialBLE.print(pid, HEX);
         SerialBLE.write(',');
-        SerialBLE.println(value);
+        SerialBLE.print(value);
+        SerialBLE.write('\n');
 #endif
 #endif
 #if ENABLE_DATA_LOG
@@ -191,10 +180,12 @@ public:
         dataSize += 12;
 #else
         dataSize += sdfile.print(dataTime - m_lastDataTime);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(pid, HEX);
-        dataSize += sdfile.write(',');
-        dataSize += sdfile.println(value);
+        sdfile.write(',');
+        dataSize += sdfile.print(value);
+        sdfile.write('\n');
+        dataSize += 3;
         m_lastDataTime = dataTime;
 #endif
 #endif
@@ -211,7 +202,8 @@ public:
 #else
         SerialBLE.print(pid, HEX);
         SerialBLE.write(',');
-        SerialBLE.println(value);
+        SerialBLE.print(value);
+        SerialBLE.write('\n');
 #endif
 #endif
 #if ENABLE_DATA_LOG
@@ -220,10 +212,12 @@ public:
         dataSize += 12;
 #else
         dataSize += sdfile.print(dataTime - m_lastDataTime);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(pid, HEX);
-        dataSize += sdfile.write(',');
-        dataSize += sdfile.println(value);
+        sdfile.write(',');
+        dataSize += sdfile.print(value);
+        sdfile.write('\n');
+        dataSize += 3;
         m_lastDataTime = dataTime;
 #endif
 #endif
@@ -242,7 +236,8 @@ public:
         SerialBLE.write(',');
         SerialBLE.print(value1, 6);
         SerialBLE.write(',');
-        SerialBLE.println(value2, 6);
+        SerialBLE.print(value2, 6);
+        SerialBLE.write('\n');
 #endif
 #endif
 #if ENABLE_DATA_LOG
@@ -251,12 +246,14 @@ public:
         dataSize += 16;
 #else
         dataSize += sdfile.print(dataTime - m_lastDataTime);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(pid, HEX);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(value1, 6);
-        dataSize += sdfile.write(',');
-        dataSize += sdfile.println(value2, 6);
+        sdfile.write(',');
+        dataSize += sdfile.print(value2, 6);
+        sdfile.write('\n');
+        dataSize += 4;
         m_lastDataTime = dataTime;
 #endif
 #endif
@@ -275,7 +272,8 @@ public:
         SerialBLE.write(',');
         SerialBLE.print(value1);
         SerialBLE.write(',');
-        SerialBLE.println(value2);
+        SerialBLE.print(value2);
+        SerialBLE.write('\n');
 #endif
 #endif
 #if ENABLE_DATA_LOG
@@ -284,12 +282,14 @@ public:
         dataSize += 16;
 #else
         dataSize += sdfile.print(dataTime - m_lastDataTime);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(pid, HEX);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(value1);
-        dataSize += sdfile.write(',');
-        dataSize += sdfile.println(value2);
+        sdfile.write(',');
+        dataSize += sdfile.print(value2);
+        sdfile.write('\n');
+        dataSize += 4;
         m_lastDataTime = dataTime;
 #endif
 #endif
@@ -310,7 +310,8 @@ public:
         SerialBLE.write(',');
         SerialBLE.print(value2);
         SerialBLE.write(',');
-        SerialBLE.println(value3);
+        SerialBLE.print(value3);
+        SerialBLE.write('\n');
 #endif
 #endif
 #if ENABLE_DATA_LOG
@@ -319,20 +320,22 @@ public:
         dataSize += 20;
 #else
         dataSize += sdfile.print(dataTime - m_lastDataTime);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(pid, HEX);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(value1);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.print(value2);
-        dataSize += sdfile.write(',');
-        dataSize += sdfile.println(value3);
+        sdfile.write(',');
+        dataSize += sdfile.print(value3);
+        sdfile.write('\n');
+        dataSize += 5;
         m_lastDataTime = dataTime;
 #endif
 #endif
     }
 #if ENABLE_DATA_LOG
-    uint16_t openFile(LOG_TYPES logType, uint16_t logFlags = 0, uint32_t dateTime = 0)
+    uint16_t openFile(uint16_t logFlags = 0, uint32_t dateTime = 0)
     {
         uint16_t fileIndex;
         char filename[24] = "/FRMATICS";
@@ -358,7 +361,7 @@ public:
         }
 
 #if LOG_FORMAT == FORMAT_BIN
-        HEADER hdr = {'UDUS', HEADER_LEN, 1, logType, logFlags, dateTime};
+        HEADER hdr = {'UDUS', HEADER_LEN, 1, 0, logFlags, dateTime};
         sdfile.write((uint8_t*)&hdr, sizeof(hdr));
         for (byte i = 0; i < HEADER_LEN - sizeof(hdr); i++)
             sdfile.write((uint8_t)0);
