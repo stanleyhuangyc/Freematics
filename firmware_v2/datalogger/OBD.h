@@ -5,10 +5,12 @@
 * (C)2012-2014 Stanley Huang <stanleyhuangyc@gmail.com>
 *************************************************************************/
 
+#include <Arduino.h>
+
 #define OBD_TIMEOUT_SHORT 2000 /* ms */
 #define OBD_TIMEOUT_LONG 7000 /* ms */
 #define OBD_SERIAL_BAUDRATE 38400
-#define OBD_RECV_BUF_SIZE 80
+#define OBD_RECV_BUF_SIZE 128
 
 #ifndef OBDUART
 #if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega644P__)
@@ -57,9 +59,11 @@ class COBD
 public:
 	COBD():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	virtual void begin();
-	virtual bool init();
+	virtual bool init(byte protocol = 0);
 	virtual bool read(byte pid, int& result);
-	virtual void sleep(int seconds);
+	virtual void sleep();
+	virtual void wakeup();
+	virtual void setProtocol(byte h = -1);
 	// Query and GetResponse for advanced usage only
 	virtual void sendQuery(byte pid);
 	virtual bool getResult(byte& pid, int& result);
@@ -74,7 +78,7 @@ protected:
 	virtual byte receive(char* buffer, int timeout = OBD_TIMEOUT_SHORT);
 	virtual bool available();
 	virtual char read();
-	virtual void write(char* s);
+	virtual void write(const char* s);
 	virtual void write(char c);
 	virtual void dataIdleLoop() {}
     void recover();
