@@ -76,6 +76,11 @@ public:
         write("ATBR2 38400\r");
         receive();
 
+        /*
+        write("ATSGC $PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r");
+        receive();
+        */
+
         state |= STATE_OBD_READY;
 
         showStates();
@@ -121,9 +126,12 @@ public:
             }
         }
 
-#if VERBOSE
+#if 0
         char buf[OBD_RECV_BUF_SIZE];
         write("ATGPS\r");
+        SerialInfo.print('[');
+        SerialInfo.print(millis());
+        SerialInfo.print("] ");
         if (receive(buf) > 0) {
             SerialInfo.print(buf);
         }
@@ -214,7 +222,7 @@ private:
         // log x/y/z of gyro meter
         logData(PID_GYRO, data.value.x_gyro, data.value.y_gyro, data.value.z_gyro);
 
-#if VERBOSE
+#if 0 //VERBOSE
         SerialInfo.print('[');
         SerialInfo.print(dataTime);
         SerialInfo.print("] X:");
