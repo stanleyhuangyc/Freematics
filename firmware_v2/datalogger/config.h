@@ -5,7 +5,7 @@
 * Data logging/streaming out
 **************************************/
 #define ENABLE_DATA_OUT 1
-#define ENABLE_DATA_LOG 0
+#define ENABLE_DATA_LOG 1
 #define USE_SOFTSERIAL 1
 //this defines the format of log file
 #define LOG_FORMAT FORMAT_CSV
