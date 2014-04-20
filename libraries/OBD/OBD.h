@@ -85,7 +85,7 @@ protected:
 	virtual void write(const char* s);
 	virtual void write(char c);
 	virtual void dataIdleLoop() {}
-    void recover();
+	void recover();
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
 	byte m_state;
@@ -106,4 +106,63 @@ private:
 	{
 		return (int)hex2uint8(data) - 40;
 	}
+};
+
+#define I2C_ADDR 0x62
+
+#define MAX_PAYLOAD_SIZE 32
+#define MAX_PIDS 8
+
+#define CMD_QUERY_STATUS 0x10
+#define CMD_SEND_AT_COMMAND 0x11
+#define CMD_APPLY_OBD_PIDS 0x12
+#define CMD_LOAD_OBD_DATA 0x13
+#define CMD_GPS_SETUP 0x20
+#define CMD_GPS_QUERY 0x22
+
+typedef struct {
+    uint16_t age;
+    uint16_t value;
+} PID_INFO;
+
+typedef struct {
+    uint16_t time;
+    uint8_t message;
+    uint8_t data;
+} COMMAND_BLOCK;
+
+typedef struct {
+    uint32_t time;
+    uint32_t date;
+    float lat;
+    float lon;
+    float speed;
+    float alt;
+    uint8_t sat;
+    uint8_t state;
+    uint16_t age;
+    uint8_t reserved[4];
+} GPS_DATA;
+
+class COBDI2C : public COBD {
+public:
+    void begin(byte addr = I2C_ADDR);
+    bool init(byte protocol = 0);
+    bool read(byte pid, int& result);
+    void write(const char* s);
+    void setProtocol(bool auto, byte h);
+    // Asynchronized access API
+    void setPID(byte pid);
+    void applyPIDs();
+    void loadData();
+    uint16_t getData(byte pid, int& result);
+    // GPS API
+    bool gpsQuery(GPS_DATA* gpsdata);
+    void gpsSetup(uint32_t baudrate, const char* cmds = 0);
+protected:
+    bool sendCommand(byte cmd, uint8_t data = 0, byte* payload = 0, byte payloadBytes = 0);
+    byte receive(char* buffer, int timeout = OBD_TIMEOUT_SHORT);
+    byte m_addr;
+    PID_INFO obdInfo[MAX_PIDS];
+    byte obdPid[MAX_PIDS];
 };
