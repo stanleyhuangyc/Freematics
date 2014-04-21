@@ -582,10 +582,6 @@
 		<Compiler>
 			<Add directory="." />
 		</Compiler>
-		<Unit filename="MPU6050.cpp" />
-		<Unit filename="MPU6050.h" />
-		<Unit filename="OBD.cpp" />
-		<Unit filename="OBD.h" />
 		<Unit filename="config.h" />
 		<Unit filename="datalogger.h" />
 		<Unit filename="datalogger.ino">
