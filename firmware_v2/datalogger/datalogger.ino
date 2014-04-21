@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <OBD.h>
 #include <SD.h>
+#include <Wire.h>
 #include <MPU6050.h>
 #include "config.h"
 #if USE_SOFTSERIAL
@@ -43,6 +44,7 @@ static uint32_t distance = 0;
 static uint16_t fileIndex = 0;
 static uint32_t startTime = 0;
 static uint16_t elapsed = 0;
+static accel_t_gyro_union accData = {0};
 
 static byte pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
 static byte pidTier2[] = {PID_TIMING_ADVANCE};
@@ -72,6 +74,7 @@ public:
             showStates();
         } while (!init());
 
+#if USE_GPS
         // setting GPS baudrate
         write("ATBR2 38400\r");
         receive();
@@ -80,6 +83,7 @@ public:
         write("ATSGC $PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r");
         receive();
         */
+#endif
 
         state |= STATE_OBD_READY;
 
@@ -125,24 +129,30 @@ public:
                 logOBDData(pidTier2[index2++]);
             }
         }
-
-#if 0
+#if USE_MPU6050
+        if (state & STATE_ACC_READY) {
+            dataTime = millis();
+#if VERBOSE
+            SerialInfo.print("X:");
+            SerialInfo.print(accData.value.x_accel);
+            SerialInfo.print(" Y:");
+            SerialInfo.print(accData.value.y_accel);
+            SerialInfo.print(" Z:");
+            SerialInfo.println(accData.value.z_accel);
+#endif
+            // log x/y/z of accelerometer
+            logData(PID_ACC, accData.value.x_accel, accData.value.y_accel, accData.value.z_accel);
+            // log x/y/z of gyro meter
+            logData(PID_GYRO, accData.value.x_gyro, accData.value.y_gyro, accData.value.z_gyro);
+        }
+#endif
+#if VERBOSE && USE_GPS
         char buf[OBD_RECV_BUF_SIZE];
-        write("ATGPS\r");
-        SerialInfo.print('[');
-        SerialInfo.print(millis());
-        SerialInfo.print("] ");
+        write("ATGRR\r");
         if (receive(buf) > 0) {
             SerialInfo.print(buf);
         }
 #endif
-
-#if USE_MPU6050
-        if (state & STATE_ACC_READY) {
-            processAccelerometer();
-        }
-#endif
-
         if (errors >= 5) {
             reconnect();
         }
@@ -210,30 +220,6 @@ public:
     }
 #endif
 private:
-#if USE_MPU6050
-    void processAccelerometer()
-    {
-        accel_t_gyro_union data;
-        MPU6050_readout(&data);
-        dataTime = millis();
-        // log x/y/z of accelerometer
-        logData(PID_ACC, data.value.x_accel, data.value.y_accel, data.value.z_accel);
-        //showGForce(data.value.y_accel);
-        // log x/y/z of gyro meter
-        logData(PID_GYRO, data.value.x_gyro, data.value.y_gyro, data.value.z_gyro);
-
-#if 0 //VERBOSE
-        SerialInfo.print('[');
-        SerialInfo.print(dataTime);
-        SerialInfo.print("] X:");
-        SerialInfo.print(data.value.x_accel);
-        SerialInfo.print(" Y:");
-        SerialInfo.print(data.value.y_accel);
-        SerialInfo.print(" Z:");
-        SerialInfo.println(data.value.z_accel);
-#endif
-    }
-#endif
     void logOBDData(byte pid)
     {
         int value;
@@ -241,7 +227,12 @@ private:
 
         // send a query command
         sendQuery(pid);
-        // wait for reponse
+        // do something else while waiting for reponse
+#ifdef USE_MPU6050
+        if (state & STATE_ACC_READY) {
+            MPU6050_readout(&accData);
+        }
+#endif
         pid = 0; // this lets PID also get from response
         // receive and parse the response
         if (getResult(pid, value)) {
@@ -349,6 +340,7 @@ void setup()
 void loop()
 {
     logger.loop();
+    //delay(100);
 
 #if 0
     if (SerialInfo.available()) {

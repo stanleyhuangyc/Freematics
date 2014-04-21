@@ -9,7 +9,7 @@
 #define USE_SOFTSERIAL 1
 //this defines the format of log file
 #define LOG_FORMAT FORMAT_CSV
-#define STREAM_FORMAT FORMAT_CSV
+#define STREAM_FORMAT FORMAT_BIN
 #define VERBOSE 0
 
 /**************************************
@@ -24,5 +24,6 @@
 * Other options
 **************************************/
 #define USE_MPU6050 1
+#define USE_GPS 0
 
 #endif // CONFIG_H_INCLUDED
