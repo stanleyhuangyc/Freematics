@@ -89,12 +89,9 @@ typedef struct {
     SoftwareSerial SerialBLE(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #endif
 
-#define OUTPUT_BAUDRATE 9600
-
 #else
 
 #define SerialBLE Serial
-#define OUTPUT_BAUDRATE 115200
 
 #endif
 
@@ -108,7 +105,7 @@ public:
     void initSender()
     {
 #if ENABLE_DATA_OUT
-        SerialBLE.begin(OUTPUT_BAUDRATE);
+        SerialBLE.begin(STREAM_BAUDRATE);
 #endif
 #if ENABLE_DATA_LOG && LOG_FORMAT == FORMAT_CSV
         m_lastDataTime = 0;
