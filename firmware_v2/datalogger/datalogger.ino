@@ -9,6 +9,7 @@
 #include <OBD.h>
 #include <SD.h>
 #include <Wire.h>
+#include <SPI.h>
 #include <MPU6050.h>
 #include "config.h"
 #if USE_SOFTSERIAL
@@ -77,9 +78,17 @@ public:
         }
 #endif
 
-        do {
+        for (byte n = 0; n < 3; n++) {
+            if (init()) {
+              int value;
+              if (read(PID_RPM, value)) {
+                state |= STATE_OBD_READY;
+                showStates();
+                break;
+              }        
+            }
             showStates();
-        } while (!init());
+        }
 
 #if USE_GPS
         // setting GPS baudrate
@@ -91,10 +100,6 @@ public:
         receive();
         */
 #endif
-
-        state |= STATE_OBD_READY;
-
-        showStates();
 
 #if ENABLE_DATA_LOG
         uint16_t index = openFile();
@@ -121,6 +126,29 @@ public:
     }
     void loop()
     {
+        logACCData();
+        logGPSData();
+      
+        if (!(state & STATE_OBD_READY)) {
+#ifdef USE_MPU6050
+          if (state & STATE_ACC_READY) {
+              MPU6050_readout(&accData);
+          }
+#endif
+          dataIdleLoop();
+          
+          if (millis() - startTime > 10000) {
+            // try reconnecting OBD-II
+            int value;
+            if (init() && read(PID_RPM, value)) {
+                state |= STATE_OBD_READY;
+                showStates();                 
+            }
+            startTime = millis();
+          }
+          return;
+        }
+      
         static byte index = 0;
         static byte index2 = 0;
         static byte index3 = 0;
@@ -136,11 +164,6 @@ public:
                 logOBDData(pidTier2[index2++]);
             }
         }
-
-        logACCData();
-
-        logGPSData();
-
         if (errors >= 5) {
             reconnect();
         }
@@ -242,13 +265,13 @@ private:
         for (uint32_t t = millis();;) {
             if (available()) {
                 char c = read();
-#if VERBOSE
-                SerialInfo.write(c);
-#endif
                 if (c == '>') {
                     // prompt char received
                     break;
                 } else {
+#if VERBOSE
+                    SerialInfo.write(c);
+#endif
                     gps.encode(c);
                 }
             } else if (millis() - t > 100) {
@@ -377,18 +400,4 @@ void setup()
 void loop()
 {
     logger.loop();
-    //delay(100);
-
-#if 0
-    if (SerialInfo.available()) {
-        for (;;) {
-            if (SerialInfo.available()) {
-                Serial.write(SerialInfo.read());
-            }
-            if (Serial.available()) {
-                SerialInfo.write(Serial.read());
-            }
-        }
-    }
-#endif
 }
