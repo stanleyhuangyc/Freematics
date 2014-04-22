@@ -229,30 +229,23 @@ void COBD::begin(unsigned long baudrate)
 
 byte COBD::receive(char* buffer, int timeout)
 {
-	unsigned long startTime = millis();
 	unsigned char n = 0;
-	bool prompted = false;
-
-	for (;;) {
+	for (unsigned long startTime = millis();;) {
 	    if (available()) {
 	        char c = read();
 	        if (n > 2 && c == '>') {
 	            // prompt char received
-	            prompted = true;
+	            break;
+	        } else if (!buffer) {
+                n++;
 	        } else if (n < OBD_RECV_BUF_SIZE - 1) {
-	            if (buffer) {
-                    if (c == '.' && n > 2 && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
-                        n = 0;
-                        timeout = OBD_TIMEOUT_LONG;
-                    } else {
-                        buffer[n++] = c;
-                    }
-	            } else {
-                    n++;
-	            }
+                if (c == '.' && n > 2 && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
+                    n = 0;
+                    timeout = OBD_TIMEOUT_LONG;
+                } else {
+                    buffer[n++] = c;
+                }
 	        }
-	    } else if (prompted) {
-	        break;
 	    } else {
 	        if (millis() - startTime > timeout) {
 	            // timeout
@@ -467,7 +460,7 @@ uint16_t COBDI2C::getData(byte pid, int& result)
 	for (n = 0; n < MAX_PIDS && obdPid[n] != pid; n++);
 	if (n == MAX_PIDS)
 		return -1;
-	
+
 	PID_INFO* pi = obdInfo + n;
 	switch (pid) {
 	case PID_RPM:
