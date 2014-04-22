@@ -14,6 +14,9 @@
 #if USE_SOFTSERIAL
 #include <SoftwareSerial.h>
 #endif
+#if USE_GPS
+#include <TinyGPSPlus.h>
+#endif
 #include "datalogger.h"
 
 // logger states
@@ -34,6 +37,10 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #endif
 #else
 #define SerialInfo Serial
+#endif
+
+#if USE_GPS
+TinyGPSPlus gps;
 #endif
 
 static uint32_t lastFileSize = 0;
@@ -129,30 +136,11 @@ public:
                 logOBDData(pidTier2[index2++]);
             }
         }
-#if USE_MPU6050
-        if (state & STATE_ACC_READY) {
-            dataTime = millis();
-#if VERBOSE
-            SerialInfo.print("X:");
-            SerialInfo.print(accData.value.x_accel);
-            SerialInfo.print(" Y:");
-            SerialInfo.print(accData.value.y_accel);
-            SerialInfo.print(" Z:");
-            SerialInfo.println(accData.value.z_accel);
-#endif
-            // log x/y/z of accelerometer
-            logData(PID_ACC, accData.value.x_accel, accData.value.y_accel, accData.value.z_accel);
-            // log x/y/z of gyro meter
-            logData(PID_GYRO, accData.value.x_gyro, accData.value.y_gyro, accData.value.z_gyro);
-        }
-#endif
-#if VERBOSE && USE_GPS
-        char buf[OBD_RECV_BUF_SIZE];
-        write("ATGRR\r");
-        if (receive(buf) > 0) {
-            SerialInfo.print(buf);
-        }
-#endif
+
+        logACCData();
+
+        logGPSData();
+
         if (errors >= 5) {
             reconnect();
         }
@@ -246,6 +234,57 @@ private:
             return;
         }
     }
+    void logGPSData()
+    {
+#if USE_GPS
+        write("ATGRR\r");
+
+        for (uint32_t t = millis();;) {
+            if (available()) {
+                char c = read();
+#if VERBOSE
+                SerialInfo.write(c);
+#endif
+                if (c == '>') {
+                    // prompt char received
+                    break;
+                } else {
+                    gps.encode(c);
+                }
+            } else if (millis() - t > 100) {
+                // timeout
+                break;
+            }
+        }
+
+        if (gps.location.isUpdated()) {
+            logData(PID_GPS_TIME, gps.date.value(), gps.time.value());
+            logData(PID_GPS_COORDINATES, (float)gps.location.lat(), (float)gps.location.lng());
+            logData(PID_GPS_ALTITUDE, (int)gps.altitude.meters());
+            logData(PID_GPS_SPEED, (float)gps.speed.kmph());
+        }
+#endif
+    }
+    void logACCData()
+    {
+#if USE_MPU6050
+        if (state & STATE_ACC_READY) {
+            dataTime = millis();
+#if VERBOSE
+            SerialInfo.print("X:");
+            SerialInfo.print(accData.value.x_accel);
+            SerialInfo.print(" Y:");
+            SerialInfo.print(accData.value.y_accel);
+            SerialInfo.print(" Z:");
+            SerialInfo.println(accData.value.z_accel);
+#endif
+            // log x/y/z of accelerometer
+            logData(PID_ACC, accData.value.x_accel, accData.value.y_accel, accData.value.z_accel);
+            // log x/y/z of gyro meter
+            //logData(PID_GYRO, accData.value.x_gyro, accData.value.y_gyro, accData.value.z_gyro);
+        }
+#endif
+    }
     void showECUCap()
     {
 #if VERBOSE
@@ -323,9 +362,7 @@ static COBDLogger logger;
 void setup()
 {
 #if VERBOSE
-    SerialInfo.begin(9600);
-    //while (!SerialInfo);
-    //SerialInfo.println("Freematics OBD-II Adapter");
+    SerialInfo.begin(STREAM_BAUDRATE);
 #endif
 
     logger.begin();
