@@ -45,5 +45,6 @@
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 0
+#define PARSE_GPS_DATA 0
 
 #endif // CONFIG_H_INCLUDED
