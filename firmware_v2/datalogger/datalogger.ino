@@ -15,7 +15,7 @@
 #if USE_SOFTSERIAL
 #include <SoftwareSerial.h>
 #endif
-#if USE_GPS
+#if USE_GPS && PARSE_GPS_DATA
 #include <TinyGPSPlus.h>
 #endif
 #include "datalogger.h"
@@ -40,19 +40,18 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #define SerialInfo Serial
 #endif
 
-#if USE_GPS
+#define PMTK_SET_NMEA_UPDATE_1HZ  "$PMTK220,1000*1F\r"
+#define PMTK_SET_NMEA_UPDATE_5HZ  "$PMTK220,200*2C\r"
+#define PMTK_SET_NMEA_UPDATE_10HZ "$PMTK220,100*2F\r"
+
+#if USE_GPS && PARSE_GPS_DATA
 TinyGPSPlus gps;
 #endif
 
-static uint32_t lastFileSize = 0;
-static int lastSpeed = -1;
-static uint32_t lastSpeedTime = 0;
-static int speed = 0;
-static uint32_t distance = 0;
+static uint16_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
 static uint32_t startTime = 0;
 static uint16_t elapsed = 0;
-static accel_t_gyro_union accData = {0};
 
 static byte pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
 static byte pidTier2[] = {PID_TIMING_ADVANCE};
@@ -80,12 +79,9 @@ public:
 
         for (byte n = 0; n < 3; n++) {
             if (init()) {
-              int value;
-              if (read(PID_RPM, value)) {
                 state |= STATE_OBD_READY;
                 showStates();
                 break;
-              }        
             }
             showStates();
         }
@@ -96,7 +92,7 @@ public:
         receive();
 
         /*
-        write("ATSGC $PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r");
+        write(PMTK_SET_NMEA_UPDATE_10HZ);
         receive();
         */
 #endif
@@ -126,29 +122,21 @@ public:
     }
     void loop()
     {
-        logACCData();
         logGPSData();
-      
+
         if (!(state & STATE_OBD_READY)) {
-#ifdef USE_MPU6050
-          if (state & STATE_ACC_READY) {
-              MPU6050_readout(&accData);
-          }
-#endif
-          dataIdleLoop();
-          
-          if (millis() - startTime > 10000) {
+            logACCData();
+            if (millis() - startTime > 10000) {
             // try reconnecting OBD-II
-            int value;
-            if (init() && read(PID_RPM, value)) {
+            if (init()) {
                 state |= STATE_OBD_READY;
-                showStates();                 
+                showStates();
             }
             startTime = millis();
-          }
-          return;
+            }
+            return;
         }
-      
+
         static byte index = 0;
         static byte index2 = 0;
         static byte index3 = 0;
@@ -176,6 +164,7 @@ public:
         state &= ~STATE_SD_READY;
         pinMode(SS, OUTPUT);
         if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
+#if VERBOSE
             const char* type;
 
             switch(card.type()) {
@@ -192,7 +181,6 @@ public:
                 type = "SDx";
             }
 
-#if VERBOSE
             SerialInfo.print("SD type: ");
             SerialInfo.println(type);
 #endif
@@ -234,16 +222,13 @@ private:
     void logOBDData(byte pid)
     {
         int value;
-        // send a query to OBD adapter for specified OBD-II pid
 
         // send a query command
         sendQuery(pid);
+
         // do something else while waiting for reponse
-#ifdef USE_MPU6050
-        if (state & STATE_ACC_READY) {
-            MPU6050_readout(&accData);
-        }
-#endif
+        logACCData();
+
         pid = 0; // this lets PID also get from response
         // receive and parse the response
         if (getResult(pid, value)) {
@@ -272,7 +257,11 @@ private:
 #if VERBOSE
                     SerialInfo.write(c);
 #endif
+#if PARSE_GPS_DATA
                     gps.encode(c);
+#else
+                    logData(c);
+#endif
                 }
             } else if (millis() - t > 100) {
                 // timeout
@@ -280,6 +269,7 @@ private:
             }
         }
 
+#if PARSE_GPS_DATA
         if (gps.location.isUpdated()) {
             logData(PID_GPS_TIME, gps.date.value(), gps.time.value());
             logData(PID_GPS_COORDINATES, (float)gps.location.lat(), (float)gps.location.lng());
@@ -287,11 +277,14 @@ private:
             logData(PID_GPS_SPEED, (float)gps.speed.kmph());
         }
 #endif
+#endif
     }
     void logACCData()
     {
 #if USE_MPU6050
         if (state & STATE_ACC_READY) {
+            accel_t_gyro_union accData;
+            MPU6050_readout(&accData);
             dataTime = millis();
 #if VERBOSE
             SerialInfo.print("X:");
@@ -366,12 +359,12 @@ private:
     {
 #if ENABLE_DATA_LOG
         // flush SD data every 1KB
-        if (dataSize - lastFileSize >= 1024) {
+        if ((uint16_t)dataSize - lastFileSize >= 1024) {
             flushFile();
-            lastFileSize = dataSize;
+            lastFileSize = (uint16_t)dataSize;
 #if VERBOSE
             // display logged data size
-            SerialInfo.print("Log size: ");
+            SerialInfo.print("Log: ");
             SerialInfo.print((int)(dataSize >> 10));
             SerialInfo.println("KB");
 #endif
