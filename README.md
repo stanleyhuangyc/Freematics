@@ -1,11 +1,13 @@
 Freematics OBD-II Adapter Firmwares
 ===================================
 
-(C)2013-2014 Stanley Huang
+Freematics OBD-II Adapter (http://arduinodev.com/hardware/freematics-obd/) is a Arduino compatible device with OBD-II access and many useful peripherals, including 6-axis motion sensor, microSD storage and BLE wireless module, all accessible with Arduino libraries.
 
 Directory Descriptions
 ----------------------
-firmwares - containing firmwares for Freematics OBD-II Adapter for different purposes
+firmware - firmware (Arduino sketch) for Freematics OBD-II Adapter (discontinued)
+firmware_v2 - firmware (Arduino sketch) for Freematics OBD-II Adapter V2
+libraries - Arduino libraries used in firmware
 
 How to view logged data
 -----------------------
