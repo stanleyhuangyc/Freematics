@@ -14,11 +14,9 @@
 // uses software(1)/hardware(0) serial for data streaming
 #define USE_SOFTSERIAL 1
 
-// this defines the format of log file
-#define LOG_FORMAT FORMAT_CSV
-
 // this defines the format of data streaming
-#define STREAM_FORMAT FORMAT_BIN
+// FORMAT_BIN is required by Freematics OBD iOS App
+#define STREAM_FORMAT FORMAT_CSV
 
 /* Default streaming baudrates:
    9600bps for BLE
@@ -40,11 +38,15 @@
 /**************************************
 * Other options
 **************************************/
-// enable(1)/disable(0) MPU6050 (I2C accelerometer/gyro)
-#define USE_MPU6050 1
+// minimum time for a loop (set in case OBD-II polling is too fast)
+#define LOOP_INTERVAL 100 /* ms */
+
+// enable(1)/disable(0) accelerometer/gyro
+#define USE_ACCEL 1
 
 // enable(1)/disable(0) GPS module
-#define USE_GPS 0
-#define PARSE_GPS_DATA 0
+#define USE_GPS 1
+#define LOG_GPS_NMEA_DATA 1
+#define LOG_GPS_PARSED_DATA 0
 
 #endif // CONFIG_H_INCLUDED
