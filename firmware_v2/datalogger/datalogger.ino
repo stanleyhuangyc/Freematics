@@ -15,8 +15,8 @@
 #if USE_SOFTSERIAL
 #include <SoftwareSerial.h>
 #endif
-#if USE_GPS && PARSE_GPS_DATA
-#include <TinyGPSPlus.h>
+#if USE_GPS && LOG_GPS_PARSED_DATA
+#include <TinyGPS.h>
 #endif
 #include "datalogger.h"
 
@@ -44,22 +44,18 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #define PMTK_SET_NMEA_UPDATE_5HZ  "$PMTK220,200*2C\r"
 #define PMTK_SET_NMEA_UPDATE_10HZ "$PMTK220,100*2F\r"
 
-#if USE_GPS && PARSE_GPS_DATA
-TinyGPSPlus gps;
+#if USE_GPS && LOG_GPS_PARSED_DATA
+TinyGPS gps;
 #endif
 
 static uint16_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
-static uint32_t startTime = 0;
-static uint16_t elapsed = 0;
 
 static byte pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
-static byte pidTier2[] = {PID_TIMING_ADVANCE};
-static byte pidTier3[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, PID_FUEL_LEVEL, PID_BAROMETRIC, PID_DISTANCE, PID_RUNTIME};
+static byte pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, PID_FUEL_LEVEL, PID_BAROMETRIC, PID_DISTANCE, PID_RUNTIME};
 
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
-#define TIER_NUM3 sizeof(pidTier3)
 
 class COBDLogger : public COBD, public CDataLogger
 {
@@ -67,106 +63,135 @@ public:
     COBDLogger():state(0) {}
     void setup()
     {
-        showStates();
-
-#if USE_MPU6050
+        state = 0;
+#if USE_ACCEL
         Wire.begin();
         if (MPU6050_init() == 0) {
             state |= STATE_ACC_READY;
-            showStates();
         }
 #endif
 
-        for (byte n = 0; n < 3; n++) {
+        for (;;) {
             if (init()) {
                 state |= STATE_OBD_READY;
-                showStates();
                 break;
             }
-            showStates();
         }
 
 #if USE_GPS
-        // setting GPS baudrate
-        write("ATBR2 38400\r");
-        receive();
-
-        /*
-        write(PMTK_SET_NMEA_UPDATE_10HZ);
-        receive();
-        */
-#endif
-
-#if ENABLE_DATA_LOG
-        uint16_t index = openFile();
-
-#if VERBOSE
-        if (index) {
-            SerialInfo.print("File ID: ");
-            SerialInfo.println(index);
-        } else {
-            SerialInfo.println("No log file");
+        if (initGPS()) {
+            state |= STATE_GPS_FOUND;
         }
 #endif
 
-        // open file for logging
-        if (!(state & STATE_SD_READY)) {
-            if (checkSD()) {
-                state |= STATE_SD_READY;
-                showStates();
-            }
-        }
-#endif
+        showStates();
         //showECUCap();
-        startTime = millis();
     }
-    void loop()
+#if USE_GPS
+    void logGPSData()
     {
-        logGPSData();
+#if LOG_GPS_PARSED_DATA
+        bool isUpdated = false;
+#endif
+        char lastChar;
+        // issue the command to get NMEA data (one line per request)
+        write("ATGRR\r");
+        dataTime = millis();
+        logTimeElapsed();
+        for (;;) {
+            if (available()) {
+                char c = read();
+                if (c == '>') {
+                    // prompt char received
+                    break;
+                } else {
+#if VERBOSE
+                    SerialInfo.write(c);
+#endif
+#if LOG_GPS_PARSED_DATA
+                    if (gps.encode(c)) {
+                        isUpdated = true;
+                        state |= STATE_GPS_READY;
+                    }
+#elif LOG_GPS_NMEA_DATA
+                    logData(c);
+                    lastChar = c;
+#endif
 
-        if (!(state & STATE_OBD_READY)) {
-            logACCData();
-            if (millis() - startTime > 10000) {
-            // try reconnecting OBD-II
-            if (init()) {
-                state |= STATE_OBD_READY;
-                showStates();
+                }
+            } else if (millis() - dataTime > 100) {
+                // timeout
+                break;
             }
-            startTime = millis();
-            }
-            return;
+        }
+#if LOG_GPS_PARSED_DATA
+        if (isUpdated) {
+            uint32_t date, time;
+            gps.get_datetime(&date, &time, 0);
+            logData(PID_GPS_TIME, (int32_t)time);
+            int32_t lat, lon;
+            gps.get_position(&lat, &lon, 0);
+            logData(PID_GPS_LATITUDE, lat);
+            logData(PID_GPS_LONGITUDE, lon);
+            logData(PID_GPS_ALTITUDE, (int)(gps.altitude() / 100));
+            float kph = gps.speed() * 1852 / 100000;
+            logData(PID_GPS_SPEED, kph);
+        }
+#elif LOG_GPS_NMEA_DATA
+        if (lastChar != '\r') {
+            logData('\r');
         }
 
-        static byte index = 0;
+#endif
+    }
+#endif
+#if USE_ACCEL
+    void logACCData()
+    {
+        if ((state & STATE_ACC_READY)) {
+            accel_t_gyro_union accData;
+            MPU6050_readout(&accData);
+            dataTime = millis();
+#if VERBOSE
+            SerialInfo.print("ACC:");
+            SerialInfo.print(accData.reg.x_accel_h);
+            SerialInfo.print('/');
+            SerialInfo.print(accData.reg.y_accel_h);
+            SerialInfo.print('/');
+            SerialInfo.println(accData.reg.z_accel_h);
+#endif
+            // log x/y/z of accelerometer
+            logData(PID_ACC, accData.value.x_accel >> 4, accData.value.y_accel >> 4, accData.value.z_accel >> 4);
+            // log x/y/z of gyro meter
+            //logData(PID_GYRO, accData.value.x_gyro, accData.value.y_gyro, accData.value.z_gyro);
+        }
+    }
+#endif
+    void logOBDData()
+    {
+        static byte index1 = 0;
         static byte index2 = 0;
-        static byte index3 = 0;
 
-        logOBDData(pidTier1[index++]);
-        if (index == TIER_NUM1) {
-            index = 0;
-            if (index2 == TIER_NUM2) {
-                index2 = 0;
-                logOBDData(pidTier3[index3]);
-                index3 = (index3 + 1) % TIER_NUM3;
-            } else {
-                logOBDData(pidTier2[index2++]);
-            }
+        if (index1 == TIER_NUM1) {
+            index1 = 0;
+            queryOBDData(pidTier2[index2]);
+            index2 = (index2 + 1) % TIER_NUM2;
+        } else {
+            queryOBDData(pidTier1[index1++]);
         }
         if (errors >= 5) {
             reconnect();
         }
     }
 #if ENABLE_DATA_LOG
-    bool checkSD()
+    bool initSD()
     {
-        Sd2Card card;
-        SdVolume volume;
         state &= ~STATE_SD_READY;
         pinMode(SS, OUTPUT);
-        if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
+        Sd2Card card;
+        if (card.init(SPI_FULL_SPEED, SD_CS_PIN)) {
 #if VERBOSE
             const char* type;
-
             switch(card.type()) {
             case SD_CARD_TYPE_SD1:
                 type = "SD1";
@@ -183,11 +208,10 @@ public:
 
             SerialInfo.print("SD type: ");
             SerialInfo.println(type);
-#endif
+
+            SdVolume volume;
             if (!volume.init(card)) {
-#if VERBOSE
                 SerialInfo.println("No FAT!");
-#endif
                 return false;
             }
 
@@ -195,41 +219,71 @@ public:
             volumesize >>= 1; // 512 bytes per block
             volumesize *= volume.clusterCount();
             volumesize >>= 10;
-#if VERBOSE
             SerialInfo.print("SD size: ");
             SerialInfo.print((int)((volumesize + 511) / 1000));
             SerialInfo.println("GB");
 #endif
-        } else {
-#if VERBOSE
-            SerialInfo.println("No SD detected");
-#endif
-            return false;
         }
 
         if (!SD.begin(SD_CS_PIN)) {
-#if VERBOSE
-            SerialInfo.print("Bad SD");
-#endif
             return false;
         }
 
-        state |= STATE_SD_READY;
+        uint16_t index = openFile();
+        if (index) {
+#if VERBOSE
+            SerialInfo.print("File ID: ");
+            SerialInfo.println(index);
+#endif
+            state |= STATE_SD_READY;
+        } else {
+#if VERBOSE
+            SerialInfo.println("File error");
+#endif
+        }
         return true;
     }
+    void flushData()
+    {
+        // flush SD data every 1KB
+        if ((state & STATE_SD_READY) && (uint16_t)dataSize - lastFileSize >= 1024) {
+            flushFile();
+            lastFileSize = (uint16_t)dataSize;
+#if VERBOSE
+            // display logged data size
+            SerialInfo.print("Logged KB:");
+            SerialInfo.println((int)(dataSize >> 10));
 #endif
+        }
+    }
+#endif
+#if USE_GPS
+    bool initGPS()
+    {
+        char buf[OBD_RECV_BUF_SIZE];
+        // setting GPS baudrate
+        write("ATBR2 38400\r");
+        if (receive(buf) && strstr(buf, "OK")) {
+            /*
+            write("ATSGC ");
+            write(PMTK_SET_NMEA_UPDATE_10HZ);
+            receive();
+            */
+            return true;
+        } else {
+            return false;
+        }
+    }
+#endif
+    byte state;
 private:
-    void logOBDData(byte pid)
+    void queryOBDData(byte pid)
     {
         int value;
 
         // send a query command
         sendQuery(pid);
-
-        // do something else while waiting for reponse
-        logACCData();
-
-        pid = 0; // this lets PID also get from response
+        pid = 0; // this lets PID also obtained and filled from response
         // receive and parse the response
         if (getResult(pid, value)) {
             dataTime = millis();
@@ -239,67 +293,7 @@ private:
             errors = 0;
         } else {
             errors++;
-            return;
         }
-    }
-    void logGPSData()
-    {
-#if USE_GPS
-        write("ATGRR\r");
-
-        for (uint32_t t = millis();;) {
-            if (available()) {
-                char c = read();
-                if (c == '>') {
-                    // prompt char received
-                    break;
-                } else {
-#if VERBOSE
-                    SerialInfo.write(c);
-#endif
-#if PARSE_GPS_DATA
-                    gps.encode(c);
-#else
-                    logData(c);
-#endif
-                }
-            } else if (millis() - t > 100) {
-                // timeout
-                break;
-            }
-        }
-
-#if PARSE_GPS_DATA
-        if (gps.location.isUpdated()) {
-            logData(PID_GPS_TIME, gps.date.value(), gps.time.value());
-            logData(PID_GPS_COORDINATES, (float)gps.location.lat(), (float)gps.location.lng());
-            logData(PID_GPS_ALTITUDE, (int)gps.altitude.meters());
-            logData(PID_GPS_SPEED, (float)gps.speed.kmph());
-        }
-#endif
-#endif
-    }
-    void logACCData()
-    {
-#if USE_MPU6050
-        if (state & STATE_ACC_READY) {
-            accel_t_gyro_union accData;
-            MPU6050_readout(&accData);
-            dataTime = millis();
-#if VERBOSE
-            SerialInfo.print("X:");
-            SerialInfo.print(accData.value.x_accel);
-            SerialInfo.print(" Y:");
-            SerialInfo.print(accData.value.y_accel);
-            SerialInfo.print(" Z:");
-            SerialInfo.println(accData.value.z_accel);
-#endif
-            // log x/y/z of accelerometer
-            logData(PID_ACC, accData.value.x_accel, accData.value.y_accel, accData.value.z_accel);
-            // log x/y/z of gyro meter
-            //logData(PID_GYRO, accData.value.x_gyro, accData.value.y_gyro, accData.value.z_gyro);
-        }
-#endif
     }
     void showECUCap()
     {
@@ -318,22 +312,24 @@ private:
 #if ENABLE_DATA_LOG
         closeFile();
 #endif
-        startTime = millis();
-        state &= ~(STATE_OBD_READY | STATE_ACC_READY);
+        state &= ~STATE_OBD_READY;
         state |= STATE_SLEEPING;
         //digitalWrite(SD_CS_PIN, LOW);
-        for (int i = 1; !init(); i++) {
 #if VERBOSE
-            SerialInfo.print("Reconnect #");
-            SerialInfo.println(i);
+        SerialInfo.print("Reconnecting ");
+#endif
+        while (!init()) {
+#if VERBOSE
+            SerialInfo.write('.');
 #endif
         }
         state &= ~STATE_SLEEPING;
-        fileIndex++;
-        setup();
+#if ENABLE_DATA_LOG
+        if (!openFile()) {
+            state &= ~STATE_SD_READY;
+        }
+#endif
     }
-    byte state;
-
     // screen layout related stuff
     void showStates()
     {
@@ -341,7 +337,10 @@ private:
         SerialInfo.print("OBD:");
         SerialInfo.print((state & STATE_OBD_READY) ? "Yes" : "No");
         SerialInfo.print(" ACC:");
-        SerialInfo.println((state & STATE_ACC_READY) ? "Yes" : "No");
+        SerialInfo.print((state & STATE_ACC_READY) ? "Yes" : "No");
+        SerialInfo.print(" GPS:");
+        SerialInfo.println((state & STATE_GPS_FOUND) ? "Yes" : "No");
+        delay(1000);
 #endif
     }
     void showData(byte pid, int value)
@@ -353,22 +352,6 @@ private:
         SerialInfo.print(pid, HEX);
         SerialInfo.print("]=");
         SerialInfo.println(value);
-#endif
-    }
-    void dataIdleLoop()
-    {
-#if ENABLE_DATA_LOG
-        // flush SD data every 1KB
-        if ((uint16_t)dataSize - lastFileSize >= 1024) {
-            flushFile();
-            lastFileSize = (uint16_t)dataSize;
-#if VERBOSE
-            // display logged data size
-            SerialInfo.print("Log: ");
-            SerialInfo.print((int)(dataSize >> 10));
-            SerialInfo.println("KB");
-#endif
-        }
 #endif
     }
 };
@@ -383,14 +366,35 @@ void setup()
 
     logger.begin();
     logger.initSender();
+    logger.setup();
 
 #if ENABLE_DATA_LOG
-    logger.checkSD();
+    logger.initSD();
 #endif
-    logger.setup();
 }
 
 void loop()
 {
-    logger.loop();
+    uint32_t t = millis();
+
+    logger.logOBDData();
+#if USE_ACCEL
+    logger.logACCData();
+#endif
+#if USE_GPS
+    if (logger.state & STATE_GPS_FOUND) {
+        logger.logGPSData();
+    }
+#endif
+#if ENABLE_DATA_LOG
+    logger.flushData();
+#endif
+
+#if LOOP_INTERVAL
+    // get time elapsed
+    t = millis() - t;
+    if (t < LOOP_INTERVAL) {
+        delay(LOOP_INTERVAL - t);
+    }
+#endif
 }
