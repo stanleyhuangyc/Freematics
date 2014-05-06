@@ -69,6 +69,7 @@ public:
         dataSize += sdfile.print(dataTime - m_lastDataTime);
         sdfile.write(',');
         dataSize++;
+        m_lastDataTime = dataTime;
 #endif
     }
     void logData(char c)
