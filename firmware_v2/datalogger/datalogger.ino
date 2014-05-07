@@ -134,7 +134,7 @@ public:
             logData(PID_GPS_LATITUDE, lat);
             logData(PID_GPS_LONGITUDE, lon);
             logData(PID_GPS_ALTITUDE, (int)(gps.altitude() / 100));
-            float kph = gps.speed() * 1852 / 100000;
+            int kph = gps.speed() * 1852 / 100000;
             logData(PID_GPS_SPEED, kph);
         }
 #elif LOG_GPS_NMEA_DATA
@@ -189,7 +189,7 @@ public:
         state &= ~STATE_SD_READY;
         pinMode(SS, OUTPUT);
         Sd2Card card;
-        if (card.init(SPI_FULL_SPEED, SD_CS_PIN)) {
+        if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
 #if VERBOSE
             const char* type;
             switch(card.type()) {
