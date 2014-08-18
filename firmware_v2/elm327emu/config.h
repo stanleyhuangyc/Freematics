@@ -29,9 +29,6 @@
 /**************************************
 * Choose SD pin here
 **************************************/
-//#define SD_CS_PIN SS // generic
-//#define SD_CS_PIN 4 // ethernet shield
-//#define SD_CS_PIN 7 // microduino
-#define SD_CS_PIN 10 // SD breakout
+#define SD_CS_PIN 10
 
 #endif // CONFIG_H_INCLUDED
