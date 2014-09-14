@@ -28,17 +28,22 @@
 #define STATE_ACC_READY 0x10
 #define STATE_SLEEPING 0x20
 
+#if VERBOSE
+
+#if ENABLE_DATA_OUT
+#define SerialInfo SerialBLE
+#else
 #if USE_SOFTSERIAL
-#if VERBOSE && !ENABLE_DATA_OUT
 #if defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1280__)
 SoftwareSerial SerialInfo(A8, A9); /* for BLE Shield on MEGA*/
 #else
 SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #endif
-#endif
 #else
 #define SerialInfo Serial
-#endif
+#endif // USE_SOFTSERIAL
+#endif // ENABLE_DATA_OUT
+#endif // VERBOSE
 
 #define PMTK_SET_NMEA_UPDATE_1HZ  "$PMTK220,1000*1F\r"
 #define PMTK_SET_NMEA_UPDATE_5HZ  "$PMTK220,200*2C\r"
@@ -222,6 +227,7 @@ public:
             SerialInfo.print("SD size: ");
             SerialInfo.print((int)((volumesize + 511) / 1000));
             SerialInfo.println("GB");
+            delay(1000);
 #endif
         }
 
@@ -396,5 +402,10 @@ void loop()
     if (t < LOOP_INTERVAL) {
         delay(LOOP_INTERVAL - t);
     }
+#endif
+
+#if VERBOSE
+    if (SerialBLE.available())
+        SerialBLE.write(SerialBLE.read());
 #endif
 }
