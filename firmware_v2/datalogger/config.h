@@ -6,7 +6,7 @@
 **************************************/
 
 // enable(1)/disable(0) data logging (if SD card is present)
-#define ENABLE_DATA_LOG 1
+#define ENABLE_DATA_LOG 0
 
 // enable(1)/disable(0) data streaming
 #define ENABLE_DATA_OUT 1
@@ -15,7 +15,8 @@
 #define USE_SOFTSERIAL 1
 
 // this defines the format of data streaming
-// FORMAT_BIN is required by Freematics OBD iOS App
+// FORMAT_BIN - framed binary data used by Freematics OBD iOS App
+// FORMAT_CSV - text based data
 #define STREAM_FORMAT FORMAT_CSV
 
 /* Default streaming baudrates:
@@ -30,23 +31,20 @@
 /**************************************
 * Choose SD pin here
 **************************************/
-//#define SD_CS_PIN SS // generic
-//#define SD_CS_PIN 4 // ethernet shield
-//#define SD_CS_PIN 7 // microduino
-#define SD_CS_PIN 10 // SD breakout
+#define SD_CS_PIN 10
 
 /**************************************
 * Other options
 **************************************/
 // minimum time for a loop (set in case OBD-II polling is too fast)
-#define LOOP_INTERVAL 100 /* ms */
+#define LOOP_INTERVAL 50 /* ms */
 
 // enable(1)/disable(0) accelerometer/gyro
 #define USE_ACCEL 1
 
 // enable(1)/disable(0) GPS module
-#define USE_GPS 1
-#define LOG_GPS_NMEA_DATA 1
-#define LOG_GPS_PARSED_DATA 0
+#define USE_GPS 0
+#define LOG_GPS_NMEA_DATA 0
+#define LOG_GPS_PARSED_DATA 1
 
 #endif // CONFIG_H_INCLUDED
