@@ -7,6 +7,12 @@ void setup()
 {
   Serial.begin(38400);
   SerialBT.begin(STREAM_BAUDRATE);
+  Serial.write("ATZ\r");
+  delay(500);
+  while (Serial.available()) Serial.read();
+  Serial.write("ATE0\r");
+  delay(100);
+  while (Serial.available()) Serial.read();
 }
 
 char cmd[32];
@@ -27,17 +33,20 @@ void loop()
   }
 
   if (SerialBT.available()) {
-    if (cmdlen < sizeof(cmd)) {
-      char c = SerialBT.read();
-      if (c == '\r' || c == '\n') {
-        if (cmdlen > 0) {
-          Serial.write(cmd, cmdlen);
-          Serial.write('\r');
-          cmdlen = 0;
+    char c = SerialBT.read();
+    if (c == '\r' || c == '\n') {
+      if (cmdlen > 0) {
+        Serial.write(cmd, cmdlen);
+        Serial.write('\r');
+        if (cmdlen == 3 && !memcmp(cmd, "ATZ", 3)) {
+          delay(1000);
+          while (Serial.available()) Serial.read();
+          Serial.println("ELM327 v1.4b");
         }
-      } else {
-        cmd[cmdlen++] = SerialBT.read();
+        cmdlen = 0;
       }
+    } else if (cmdlen < sizeof(cmd)) {
+      cmd[cmdlen++] = SerialBT.read();
     }
   }
 }
