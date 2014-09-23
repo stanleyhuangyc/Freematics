@@ -86,10 +86,8 @@ public:
         SerialBLE.write(c);
 #endif
 #if ENABLE_DATA_LOG
-        if (c >= ' ') {
-            sdfile.write(c);
-            dataSize++;
-        }
+        sdfile.write(c);
+        dataSize++;
 #endif
     }
     void logData(uint16_t pid, int value)
@@ -117,6 +115,7 @@ public:
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
+        if (pid < 0x100) ld.pid |= 0xF000;
         ld.checksum = getChecksum((char*)&ld, 12);
         SerialBLE.write((uint8_t*)&ld, 12);
 #else
@@ -135,6 +134,7 @@ public:
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 3, 0, {value1, value2, value3}};
+        if (pid < 0x100) ld.pid |= 0xF000;
         ld.checksum = getChecksum((char*)&ld, 20);
         SerialBLE.write((uint8_t*)&ld, 20);
 #else
@@ -151,7 +151,7 @@ public:
     {
         uint16_t fileIndex;
         char filename[24] = "/FRMATICS";
-        
+
         dataSize = 0;
         if (SD.exists(filename)) {
             for (fileIndex = 1; fileIndex; fileIndex++) {
