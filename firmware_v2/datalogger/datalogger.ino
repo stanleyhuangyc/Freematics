@@ -98,7 +98,6 @@ public:
 #if LOG_GPS_PARSED_DATA
         bool isUpdated = false;
 #endif
-        char lastChar;
         // issue the command to get NMEA data (one line per request)
         write("ATGRR\r");
         dataTime = millis();
@@ -120,7 +119,6 @@ public:
                     }
 #elif LOG_GPS_NMEA_DATA
                     logData(c);
-                    lastChar = c;
 #endif
 
                 }
@@ -142,11 +140,6 @@ public:
             int kph = gps.speed() * 1852 / 100000;
             logData(PID_GPS_SPEED, kph);
         }
-#elif LOG_GPS_NMEA_DATA
-        if (lastChar != '\r') {
-            logData('\r');
-        }
-
 #endif
     }
 #endif
