@@ -16,9 +16,6 @@
 #if USE_SOFTSERIAL
 #include <SoftwareSerial.h>
 #endif
-#if USE_GPS && LOG_GPS_PARSED_DATA
-#include <TinyGPS.h>
-#endif
 #include "datalogger.h"
 
 // logger states
@@ -95,14 +92,8 @@ public:
 #if USE_GPS
     void logGPSData()
     {
-#if LOG_GPS_PARSED_DATA
-        bool isUpdated = false;
-#endif
-        char lastChar;
         // issue the command to get NMEA data (one line per request)
-        write("ATGPS\r");
-        dataTime = millis();
-        logTimeElapsed();
+        write("ATGRR\r");
         for (;;) {
             if (available()) {
                 char c = read();
@@ -113,15 +104,7 @@ public:
 #if VERBOSE
                     SerialInfo.write(c);
 #endif
-#if LOG_GPS_PARSED_DATA
-                    if (gps.encode(c)) {
-                        isUpdated = true;
-                        state |= STATE_GPS_READY;
-                    }
-#elif LOG_GPS_NMEA_DATA
                     logData(c);
-                    lastChar = c;
-#endif
 
                 }
             } else if (millis() - dataTime > 100) {
@@ -129,25 +112,62 @@ public:
                 break;
             }
         }
-#if LOG_GPS_PARSED_DATA
-        if (isUpdated) {
-            uint32_t date, time;
-            gps.get_datetime(&date, &time, 0);
-            logData(PID_GPS_TIME, (int32_t)time);
-            int32_t lat, lon;
-            gps.get_position(&lat, &lon, 0);
-            logData(PID_GPS_LATITUDE, lat);
-            logData(PID_GPS_LONGITUDE, lon);
-            logData(PID_GPS_ALTITUDE, (int)(gps.altitude() / 100));
-            int kph = gps.speed() * 1852 / 100000;
-            logData(PID_GPS_SPEED, kph);
-        }
-#elif LOG_GPS_NMEA_DATA
-        if (lastChar != '\r') {
-            logData('\r');
-        }
-
+        // issue the command to get parsed data
+        write("ATGPS\r");
+        dataTime = millis();
+        logTimeElapsed();
+        char buf[16] = {0};
+        byte n = 0;
+        for (;;) {
+            if (available()) {
+                char c = read();
+                if (c == '>') {
+                    // prompt char received
+                    break;
+                } else {
+#if VERBOSE
+                    SerialInfo.write(c);
 #endif
+                    if (c == ',' || c <= 0x0D) {
+                        buf[n] = 0;
+                        char *p = strchr(buf, '=');
+                        if (!p) continue;
+                        switch (*(p - 1)) {
+                        case 'D':
+                            logData(PID_GPS_DATE, atol(p + 1));
+                            break;
+                        case 'T':
+                            logData(PID_GPS_TIME, atol(p + 1));
+                            break;
+                        case 'A':
+                            logData(PID_GPS_ALTITUDE, atoi(p + 1));
+                            break;
+                        case 'V':
+                            logData(PID_GPS_SPEED, atoi(p + 1));
+                            break;
+                        case 'C':
+                            logData(PID_GPS_HEADING, atoi(p + 1));
+                            break;
+                        case 'S':
+                            logData(PID_GPS_SAT_COUNT, atoi(p + 1));
+                            break;
+                        default:
+                            if (!memcmp(p - 3, "LAT", 3)) {
+                                logData(PID_GPS_LATITUDE, (int32_t)(strtof(p + 1) * 100000));
+                            } else if (!memcmp(p - 3, "LON", 3)) {
+                                logData(PID_GPS_LONGITUDE, (int32_t)(strtof(p + 1) * 100000));
+                            }
+                        }
+                    } else if (n < sizeof(buf) - 1) {
+                        buf[n++] = c;
+                    }
+
+                }
+            } else if (millis() - dataTime > 100) {
+                // timeout
+                break;
+            }
+        }
     }
 #endif
 #if USE_ACCEL
