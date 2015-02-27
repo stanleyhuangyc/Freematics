@@ -9,7 +9,7 @@
 #define ENABLE_DATA_LOG 1
 
 // enable(1)/disable(0) data streaming
-#define ENABLE_DATA_OUT 1
+#define ENABLE_DATA_OUT 0
 
 // uses software(1)/hardware(0) serial for data streaming
 #define USE_SOFTSERIAL 1
@@ -25,28 +25,24 @@
 #define STREAM_BAUDRATE 9600
 
 // outputs debug information
-#define VERBOSE 1
+#define VERBOSE 0
 
 /**************************************
 * Choose SD pin here
 **************************************/
-//#define SD_CS_PIN SS // generic
-//#define SD_CS_PIN 4 // ethernet shield
-//#define SD_CS_PIN 7 // microduino
+
 #define SD_CS_PIN 10 // SD breakout
 
 /**************************************
 * Other options
 **************************************/
-// minimum time for a loop (set in case OBD-II polling is too fast)
-#define LOOP_INTERVAL 100 /* ms */
 
 // enable(1)/disable(0) accelerometer/gyro
-#define USE_ACCEL 1
+#define USE_MEMS 1
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 0
-#define LOG_GPS_NMEA_DATA 1
-#define LOG_GPS_PARSED_DATA 0
+#define LOG_GPS_NMEA_DATA 0
+#define LOG_GPS_PARSED_DATA 1
 
 #endif // CONFIG_H_INCLUDED
