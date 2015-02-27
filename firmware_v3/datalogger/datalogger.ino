@@ -23,7 +23,7 @@
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_FOUND 0x4
 #define STATE_GPS_READY 0x8
-#define STATE_ACC_READY 0x10
+#define STATE_MEMS_READY 0x10
 #define STATE_SLEEPING 0x20
 
 #if USE_SOFTSERIAL
@@ -44,10 +44,6 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #define PMTK_SET_NMEA_UPDATE_5HZ  "$PMTK220,200*2C\r"
 #define PMTK_SET_NMEA_UPDATE_10HZ "$PMTK220,100*2F\r"
 
-#if USE_GPS && LOG_GPS_PARSED_DATA
-TinyGPS gps;
-#endif
-
 static uint16_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
 
@@ -57,7 +53,7 @@ static byte pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, P
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
 
-#if USE_ACCEL
+#if USE_MEMS
 MPU6050 accelgyro;
 #endif
 
@@ -68,10 +64,10 @@ public:
     void setup()
     {
         state = 0;
-#if USE_ACCEL
+#if USE_MEMS
         Wire.begin();
         accelgyro.initialize();
-        state |= STATE_ACC_READY;
+        state |= STATE_MEMS_READY;
 #endif
 
         for (;;) {
@@ -86,8 +82,6 @@ public:
             state |= STATE_GPS_FOUND;
         }
 #endif
-
-        showStates();
     }
 #if USE_GPS
     void logGPSData()
@@ -153,9 +147,9 @@ public:
                             break;
                         default:
                             if (!memcmp(p - 3, "LAT", 3)) {
-                                logData(PID_GPS_LATITUDE, (int32_t)(strtof(p + 1) * 100000));
+                                logData(PID_GPS_LATITUDE, (int32_t)((float)atof(p + 1) * 100000));
                             } else if (!memcmp(p - 3, "LON", 3)) {
-                                logData(PID_GPS_LONGITUDE, (int32_t)(strtof(p + 1) * 100000));
+                                logData(PID_GPS_LONGITUDE, (int32_t)((float)atof(p + 1) * 100000));
                             }
                         }
                     } else if (n < sizeof(buf) - 1) {
@@ -170,10 +164,10 @@ public:
         }
     }
 #endif
-#if USE_ACCEL
-    void logACCData()
+#if USE_MEMS
+    void logMEMSData()
     {
-        if (!(state & STATE_ACC_READY))
+        if (!(state & STATE_MEMS_READY))
             return;
 
         int16_t ax, ay, az;
@@ -206,7 +200,9 @@ public:
         // log x/y/z of accelerometer
         logData(PID_ACC, ax >> 4, ay >> 4, az >> 4);
         // log x/y/z of gyro meter
-        //logData(PID_GYRO, accData.value.x_gyro, accData.value.y_gyro, accData.value.z_gyro);
+        logData(PID_GYRO, gx, gy, gz);
+        // log x/y/z of gyro meter
+        logData(PID_MAG, mx, my, mz);
     }
 #endif
     void logOBDData()
@@ -366,21 +362,6 @@ private:
         }
 #endif
     }
-    // screen layout related stuff
-    void showStates()
-    {
-#if VERBOSE
-        /*
-        SerialInfo.print("OBD:");
-        SerialInfo.print((state & STATE_OBD_READY) ? "Yes" : "No");
-        SerialInfo.print(" ACC:");
-        SerialInfo.print((state & STATE_ACC_READY) ? "Yes" : "No");
-        SerialInfo.print(" GPS:");
-        SerialInfo.println((state & STATE_GPS_FOUND) ? "Yes" : "No");
-        delay(1000);
-        */
-#endif
-    }
     void showData(byte pid, int value)
     {
 #if VERBOSE
@@ -416,8 +397,8 @@ void loop()
     uint32_t t = millis();
 
     logger.logOBDData();
-#if USE_ACCEL
-    logger.logACCData();
+#if USE_MEMS
+    logger.logMEMSData();
 #endif
 #if USE_GPS
     if (logger.state & STATE_GPS_FOUND) {
@@ -426,13 +407,5 @@ void loop()
 #endif
 #if ENABLE_DATA_LOG
     logger.flushData();
-#endif
-
-#if LOOP_INTERVAL
-    // get time elapsed
-    t = millis() - t;
-    if (t < LOOP_INTERVAL) {
-        delay(LOOP_INTERVAL - t);
-    }
 #endif
 }

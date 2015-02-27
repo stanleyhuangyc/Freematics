@@ -22,6 +22,7 @@ typedef struct {
 
 #define PID_ACC 0x20
 #define PID_GYRO 0x21
+#define PID_MAG 0x22
 
 #define FILE_NAME_FORMAT "/DAT%05d.CSV"
 
