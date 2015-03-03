@@ -7,7 +7,9 @@ Directory Descriptions
 ----------------------
 firmware - firmware (Arduino sketch) for Freematics OBD-II Adapter (discontinued)
 
-firmware_v2 - firmware (Arduino sketch) for Freematics OBD-II Adapter V2
+firmware_v2 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V2
+
+firmware_v3 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V3
 
 libraries - Arduino libraries used in firmware
 
