@@ -140,16 +140,16 @@ public:
 protected:
 	virtual char* getResponse(byte& pid, char* buffer);
 	virtual void dataIdleLoop() {}
-	virtual bool available();
-	virtual char read();
-	virtual void write(const char* s);
-	virtual void write(char c);
-	virtual byte receive(char* buffer = 0, int timeout = OBD_TIMEOUT_SHORT);
 	void recover();
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
 	OBD_STATES m_state;
 private:
+	virtual byte receive(char* buffer = 0, int timeout = OBD_TIMEOUT_SHORT);
+	virtual bool available();
+	virtual char read();
+	virtual void write(const char* s);
+	virtual void write(char c);
 	virtual uint8_t getPercentageValue(char* data)
 	{
 		return (uint16_t)hex2uint8(data) * 100 / 255;
