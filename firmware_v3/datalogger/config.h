@@ -9,14 +9,16 @@
 #define ENABLE_DATA_LOG 1
 
 // enable(1)/disable(0) data streaming
-#define ENABLE_DATA_OUT 0
+#define ENABLE_DATA_OUT 1
 
 // uses software(1)/hardware(0) serial for data streaming
 #define USE_SOFTSERIAL 1
 
 // this defines the format of data streaming
 // FORMAT_BIN is required by Freematics OBD iOS App
-#define STREAM_FORMAT FORMAT_CSV
+#define STREAM_FORMAT FORMAT_BIN
+// FORMAT_CSV is for text output
+//#define STREAM_FORMAT FORMAT_CSV
 
 /* Default streaming baudrates:
    9600bps for BLE
