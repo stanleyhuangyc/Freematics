@@ -1,7 +1,7 @@
 /*************************************************************************
 * Arduino OBD-II/G-Force Data Logger and Transmitter
 * Distributed under GPL v2.0
-* Copyright (c) 2013-14 Stanley Huang <stanleyhuangyc@gmail.com>
+* Copyright (c) 2013-15 Stanley Huang <stanleyhuangyc@gmail.com>
 * All rights reserved.
 *************************************************************************/
 
@@ -87,6 +87,7 @@ public:
     void logGPSData()
     {
         // issue the command to get NMEA data (one line per request)
+#if LOG_GPS_NMEA_DATA
         write("ATGRR\r");
         for (;;) {
             if (available()) {
@@ -106,6 +107,8 @@ public:
                 break;
             }
         }
+#endif
+#if LOG_GPS_PARSED_DATA
         // issue the command to get parsed data
         write("ATGPS\r");
         dataTime = millis();
@@ -162,6 +165,7 @@ public:
                 break;
             }
         }
+#endif
     }
 #endif
 #if USE_MEMS
