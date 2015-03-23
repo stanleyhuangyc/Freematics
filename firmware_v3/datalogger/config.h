@@ -39,11 +39,11 @@
 * Other options
 **************************************/
 
-// enable(1)/disable(0) accelerometer/gyro
+// enable(1)/disable(0) MEMS sensor
 #define USE_MEMS 1
 
 // enable(1)/disable(0) GPS module
-#define USE_GPS 0
+#define USE_GPS 1
 #define LOG_GPS_NMEA_DATA 0
 #define LOG_GPS_PARSED_DATA 1
 
