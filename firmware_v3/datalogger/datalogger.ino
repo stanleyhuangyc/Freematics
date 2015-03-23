@@ -67,15 +67,8 @@ public:
 #if USE_MEMS
         Wire.begin();
         accelgyro.initialize();
-        state |= STATE_MEMS_READY;
+        if (accelgyro.testConnection()) state |= STATE_MEMS_READY;
 #endif
-
-        for (;;) {
-            if (init()) {
-                state |= STATE_OBD_READY;
-                break;
-            }
-        }
 
 #if USE_GPS
         if (initGPS()) {
@@ -115,50 +108,56 @@ public:
         logTimeElapsed();
         char buf[16] = {0};
         byte n = 0;
+        byte tokens;
+        bool valid = false;
         for (;;) {
             if (available()) {
                 char c = read();
                 if (c == '>') {
                     // prompt char received
                     break;
-                } else {
+                }
 #if VERBOSE
-                    SerialInfo.write(c);
+                SerialInfo.write(c);
 #endif
-                    if (c == ',' || c <= 0x0D) {
-                        buf[n] = 0;
-                        char *p = strchr(buf, '=');
-                        if (!p) continue;
-                        switch (*(p - 1)) {
-                        case 'D':
-                            logData(PID_GPS_DATE, atol(p + 1));
+                if (c == ',' || c <= 0x0D) {
+                    buf[n] = 0;
+                    if (!valid) {
+                        // check header
+                        valid = strcmp(buf + n - 4, "$GPS") == 0;
+                        tokens = 0;
+                    } else {
+                        switch (tokens) {
+                        case 0:
+                            logData(PID_GPS_DATE, atol(buf));
                             break;
-                        case 'T':
-                            logData(PID_GPS_TIME, atol(p + 1));
+                        case 1:
+                            logData(PID_GPS_TIME, atol(buf));
                             break;
-                        case 'A':
-                            logData(PID_GPS_ALTITUDE, atoi(p + 1));
+                        case 2:
+                            logData(PID_GPS_LATITUDE, atol(buf));
                             break;
-                        case 'V':
-                            logData(PID_GPS_SPEED, atoi(p + 1));
+                        case 3:
+                            logData(PID_GPS_LONGITUDE, atol(buf));
                             break;
-                        case 'C':
-                            logData(PID_GPS_HEADING, atoi(p + 1));
+                        case 4:
+                            logData(PID_GPS_ALTITUDE, atoi(buf));
                             break;
-                        case 'S':
-                            logData(PID_GPS_SAT_COUNT, atoi(p + 1));
+                        case 5:
+                            logData(PID_GPS_SPEED, atoi(buf));
                             break;
-                        default:
-                            if (!memcmp(p - 3, "LAT", 3)) {
-                                logData(PID_GPS_LATITUDE, (int32_t)((float)atof(p + 1) * 100000));
-                            } else if (!memcmp(p - 3, "LON", 3)) {
-                                logData(PID_GPS_LONGITUDE, (int32_t)((float)atof(p + 1) * 100000));
-                            }
+                        case 6:
+                            logData(PID_GPS_HEADING, atoi(buf));
+                            break;
+                        case 7:
+                            logData(PID_GPS_SAT_COUNT, atoi(buf));
+                            break;
                         }
-                    } else if (n < sizeof(buf) - 1) {
-                        buf[n++] = c;
+                        tokens++;
+                        n = 0;
                     }
-
+                } else if (n < sizeof(buf) - 1) {
+                    buf[n++] = c;
                 }
             } else if (millis() - dataTime > 100) {
                 // timeout
@@ -204,9 +203,9 @@ public:
         // log x/y/z of accelerometer
         logData(PID_ACC, ax >> 4, ay >> 4, az >> 4);
         // log x/y/z of gyro meter
-        logData(PID_GYRO, gx, gy, gz);
+        logData(PID_GYRO, gx >> 4, gy >> 4, gz >> 4);
         // log x/y/z of gyro meter
-        logData(PID_MAG, mx, my, mz);
+        logData(PID_COMPASS, mx >> 4, my >> 4, mz >> 4);
     }
 #endif
     void logOBDData()
@@ -385,6 +384,7 @@ void setup()
 {
 #if VERBOSE
     SerialInfo.begin(STREAM_BAUDRATE);
+    SerialInfo.println("Freematics");
 #endif
 
     logger.begin();
@@ -398,17 +398,29 @@ void setup()
 
 void loop()
 {
-    uint32_t t = millis();
+    if (logger.state & STATE_OBD_READY) {
+        logger.logOBDData();
+    } else {
+        if (logger.init()) {
+            logger.state |= STATE_OBD_READY;
+        }
+    }
 
-    logger.logOBDData();
 #if USE_MEMS
     logger.logMEMSData();
 #endif
+
 #if USE_GPS
     if (logger.state & STATE_GPS_FOUND) {
         logger.logGPSData();
     }
 #endif
+
+    /*
+    int v = logger.getVoltage();
+    logger.logData(PID_VOLTAGE, v);
+    */
+
 #if ENABLE_DATA_LOG
     logger.flushData();
 #endif
