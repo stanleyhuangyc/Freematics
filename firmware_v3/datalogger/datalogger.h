@@ -159,7 +159,7 @@ public:
         }
 
         dataSize = sdfile.print(idstr);
-        m_lastDataTime = 0;
+        m_lastDataTime = dateTime;
         return fileIndex;
     }
     void closeFile()
