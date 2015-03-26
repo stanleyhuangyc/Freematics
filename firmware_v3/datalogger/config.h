@@ -47,7 +47,7 @@
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
-#define LOG_GPS_NMEA_DATA 1
+#define LOG_GPS_NMEA_DATA 0
 #define LOG_GPS_PARSED_DATA 1
 
 #endif // CONFIG_H_INCLUDED

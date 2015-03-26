@@ -125,7 +125,7 @@ public:
                                 int speed = atoi(buf);
                                 logData(PID_GPS_SPEED, speed);
                                 if (!(state & STATE_OBD_READY)) {
-                                    logData(PID_SPEED, speed);
+                                    logData(0x100 | PID_SPEED, speed);
                                 }
                             }
                             break;
