@@ -16,9 +16,9 @@
 
 // this defines the format of data streaming
 // FORMAT_BIN is required by Freematics OBD iOS App
-#define STREAM_FORMAT FORMAT_BIN
+//#define STREAM_FORMAT FORMAT_BIN
 // FORMAT_CSV is for text output
-//#define STREAM_FORMAT FORMAT_CSV
+#define STREAM_FORMAT FORMAT_BIN
 
 /* Default streaming baudrates:
    9600bps for BLE
@@ -29,22 +29,25 @@
 // outputs debug information
 #define VERBOSE 0
 
-/**************************************
-* Choose SD pin here
-**************************************/
-
-#define SD_CS_PIN 10 // SD breakout
+// minimum loop time
+#define MIN_LOOP_TIME 50
 
 /**************************************
-* Other options
+* Hardware setup
 **************************************/
+
+// number of attempts of connecting OBD-II (0 for always)
+#define OBD_ATTEMPTS 3
+
+// SD pin
+#define SD_CS_PIN 10
 
 // enable(1)/disable(0) MEMS sensor
 #define USE_MEMS 1
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
-#define LOG_GPS_NMEA_DATA 0
+#define LOG_GPS_NMEA_DATA 1
 #define LOG_GPS_PARSED_DATA 1
 
 #endif // CONFIG_H_INCLUDED

@@ -9,8 +9,6 @@ typedef struct {
     float value[3];
 } LOG_DATA_COMM;
 
-#define HEADER_LEN 128 /* bytes */
-
 #define PID_GPS_LATITUDE 0xA
 #define PID_GPS_LONGITUDE 0xB
 #define PID_GPS_ALTITUDE 0xC
@@ -31,19 +29,9 @@ typedef struct {
 #if ENABLE_DATA_OUT
 
 #if USE_SOFTSERIAL
-
-#if defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1280__)
-    SoftwareSerial SerialBLE(A8, A9); /* for BLE Shield on MEGA*/
-#elif defined(__AVR_ATmega644P__)
-    SoftwareSerial SerialBLE(9, 10); /* for Microduino */
+SoftwareSerial SerialRF(A2, A3);
 #else
-    SoftwareSerial SerialBLE(A2, A3); /* for BLE Shield on UNO/leonardo*/
-#endif
-
-#else
-
-#define SerialBLE Serial
-
+#define SerialRF Serial
 #endif
 
 #endif
@@ -52,94 +40,97 @@ typedef struct {
 static File sdfile;
 #endif
 
-static const char* idstr = "FREEMATICS\r";
+static const char* idstr = "FREEMATICS_V3\r";
 
 class CDataLogger {
 public:
     void initSender()
     {
 #if ENABLE_DATA_OUT
-        SerialBLE.begin(STREAM_BAUDRATE);
-        SerialBLE.print(idstr);
-#endif
-#if ENABLE_DATA_LOG
-        m_lastDataTime = 0;
+        SerialRF.begin(STREAM_BAUDRATE);
+        SerialRF.print(idstr);
 #endif
     }
-    void logTimeElapsed()
+    void recordData(const char* buf)
     {
 #if ENABLE_DATA_LOG
         dataSize += sdfile.print(dataTime - m_lastDataTime);
         sdfile.write(',');
-        dataSize++;
+        dataSize += sdfile.print(buf);
+        dataSize ++;
         m_lastDataTime = dataTime;
 #endif
     }
     void logData(char c)
     {
-#if ENABLE_DATA_OUT && STREAM_FORMAT == FORMAT_CSV
-        SerialBLE.write(c);
-#endif
 #if ENABLE_DATA_LOG
         if (c >= ' ') {
             sdfile.write(c);
             dataSize++;
         }
+#elif STREAM_FORMAT == FORMAT_CSV
+        SerialRF.write(c);
 #endif
     }
     void logData(uint16_t pid, int value)
     {
         char buf[16];
-        byte n = sprintf(buf, "%X,%d\r", pid, value);
+        sprintf(buf, "%X,%d\r", pid, value);
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
-        SerialBLE.write((uint8_t*)&ld, 12);
+        SerialRF.write((uint8_t*)&ld, 12);
 #else
-        SerialBLE.write((uint8_t*)buf, n);
+        SerialRF.print(buf);
 #endif
 #endif
-#if ENABLE_DATA_LOG
-        logTimeElapsed();
-        dataSize += sdfile.write((uint8_t*)buf, n);
-#endif
+        recordData(buf);
     }
     void logData(uint16_t pid, int32_t value)
     {
         char buf[20];
-        byte n = sprintf(buf, "%X,%ld\r", pid, value);
+        sprintf(buf, "%X,%ld\r", pid, value);
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
-        SerialBLE.write((uint8_t*)&ld, 12);
+        SerialRF.write((uint8_t*)&ld, 12);
 #else
-        SerialBLE.write((uint8_t*)buf, n);
+        SerialRF.print(buf);
 #endif
 #endif
-#if ENABLE_DATA_LOG
-        logTimeElapsed();
-        dataSize += sdfile.write((uint8_t*)buf, n);
+        recordData(buf);
+    }
+    void logData(uint16_t pid, uint32_t value)
+    {
+        char buf[20];
+        sprintf(buf, "%X,%lu\r", pid, value);
+#if ENABLE_DATA_OUT
+#if STREAM_FORMAT == FORMAT_BIN
+        LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
+        ld.checksum = getChecksum((char*)&ld, 12);
+        SerialRF.write((uint8_t*)&ld, 12);
+#else
+        SerialRF.print(buf);
 #endif
+#endif
+        recordData(buf);
     }
     void logData(uint16_t pid, int value1, int value2, int value3)
     {
         char buf[24];
-        byte n = sprintf(buf, "%X,%d,%d,%d\r", pid, value1, value2, value3);
+        sprintf(buf, "%X,%d,%d,%d\r", pid, value1, value2, value3);
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 3, 0, {value1, value2, value3}};
         ld.checksum = getChecksum((char*)&ld, 20);
-        SerialBLE.write((uint8_t*)&ld, 20);
+        SerialRF.write((uint8_t*)&ld, 20);
 #else
-        SerialBLE.write((uint8_t*)buf, n);
+        SerialRF.print(buf);
 #endif
 #endif
-#if ENABLE_DATA_LOG
-        logTimeElapsed();
-        dataSize += sdfile.write((uint8_t*)buf, n);
-#endif
+        recordData(buf);
     }
 #if ENABLE_DATA_LOG
     uint16_t openFile(uint16_t logFlags = 0, uint32_t dateTime = 0)
@@ -168,6 +159,7 @@ public:
         }
 
         dataSize = sdfile.print(idstr);
+        m_lastDataTime = 0;
         return fileIndex;
     }
     void closeFile()

@@ -34,7 +34,7 @@ SoftwareSerial SerialInfo(A8, A9); /* for BLE Shield on MEGA*/
 SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #endif
 #else
-#define SerialInfo SerialBLE
+#define SerialInfo SerialRF
 #endif
 #else
 #define SerialInfo Serial
@@ -46,6 +46,7 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 
 static uint16_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
+static uint8_t attempts = 0;
 
 static byte pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
 static byte pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, PID_FUEL_LEVEL, PID_BAROMETRIC, PID_DISTANCE, PID_RUNTIME};
@@ -57,10 +58,10 @@ static byte pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, P
 MPU6050 accelgyro;
 #endif
 
-class COBDLogger : public COBD, public CDataLogger
+class CLogger : public COBD, public CDataLogger
 {
 public:
-    COBDLogger():state(0) {}
+    CLogger():state(0) {}
     void setup()
     {
         state = 0;
@@ -80,6 +81,78 @@ public:
     void logGPSData()
     {
         // issue the command to get NMEA data (one line per request)
+#if LOG_GPS_PARSED_DATA
+        // issue the command to get parsed data
+        // the return data is in following format:
+        // $GPS,date,time,lat,lon,altitude,speed,course,sat
+        write("ATGPS\r");
+        dataTime = millis();
+        byte n = 0;
+        byte tokens;
+        bool valid = false;
+        char buf[16];
+        for (;;) {
+            if (available()) {
+                char c = read();
+#if VERBOSE
+                SerialInfo.write(c);
+#endif
+                if (c == ',' || c == '>' || c <= 0x0d) {
+                    buf[n] = 0;
+                    if (!valid) {
+                        // check header
+                        valid = strcmp(buf + n - 4, "$GPS") == 0;
+                        tokens = 0;
+                    } else {
+                        switch (tokens) {
+                        case 0:
+                            logData(PID_GPS_DATE, (uint32_t)atol(buf));
+                            break;
+                        case 1:
+                            logData(PID_GPS_TIME, (uint32_t)atol(buf));
+                            break;
+                        case 2:
+                            logData(PID_GPS_LATITUDE, atol(buf));
+                            break;
+                        case 3:
+                            logData(PID_GPS_LONGITUDE, atol(buf));
+                            break;
+                        case 4:
+                            logData(PID_GPS_ALTITUDE, atoi(buf));
+                            break;
+                        case 5:
+                            {
+                                int speed = atoi(buf);
+                                logData(PID_GPS_SPEED, speed);
+                                if (!(state & STATE_OBD_READY)) {
+                                    logData(PID_SPEED, speed);
+                                }
+                            }
+                            break;
+                        case 6:
+                            logData(PID_GPS_HEADING, atoi(buf));
+                            break;
+                        case 7:
+                            logData(PID_GPS_SAT_COUNT, atoi(buf));
+                            break;
+                        }
+                        tokens++;
+                    }
+                    n = 0;
+                    if (c == '>') {
+                        // prompt char received, discard following data
+                        while (available()) read();
+                        break;
+                    }
+                } else if (n < sizeof(buf) - 1) {
+                    buf[n++] = c;
+                }
+            } else if (millis() - dataTime > 100) {
+                // timeout
+                break;
+            }
+        }
+#endif
 #if LOG_GPS_NMEA_DATA
         write("ATGRR\r");
         for (;;) {
@@ -94,70 +167,6 @@ public:
 #endif
                     logData(c);
 
-                }
-            } else if (millis() - dataTime > 100) {
-                // timeout
-                break;
-            }
-        }
-#endif
-#if LOG_GPS_PARSED_DATA
-        // issue the command to get parsed data
-        write("ATGPS\r");
-        dataTime = millis();
-        logTimeElapsed();
-        char buf[16] = {0};
-        byte n = 0;
-        byte tokens;
-        bool valid = false;
-        for (;;) {
-            if (available()) {
-                char c = read();
-                if (c == '>') {
-                    // prompt char received
-                    break;
-                }
-#if VERBOSE
-                SerialInfo.write(c);
-#endif
-                if (c == ',' || c <= 0x0D) {
-                    buf[n] = 0;
-                    if (!valid) {
-                        // check header
-                        valid = strcmp(buf + n - 4, "$GPS") == 0;
-                        tokens = 0;
-                    } else {
-                        switch (tokens) {
-                        case 0:
-                            logData(PID_GPS_DATE, atol(buf));
-                            break;
-                        case 1:
-                            logData(PID_GPS_TIME, atol(buf));
-                            break;
-                        case 2:
-                            logData(PID_GPS_LATITUDE, atol(buf));
-                            break;
-                        case 3:
-                            logData(PID_GPS_LONGITUDE, atol(buf));
-                            break;
-                        case 4:
-                            logData(PID_GPS_ALTITUDE, atoi(buf));
-                            break;
-                        case 5:
-                            logData(PID_GPS_SPEED, atoi(buf));
-                            break;
-                        case 6:
-                            logData(PID_GPS_HEADING, atoi(buf));
-                            break;
-                        case 7:
-                            logData(PID_GPS_SAT_COUNT, atoi(buf));
-                            break;
-                        }
-                        tokens++;
-                        n = 0;
-                    }
-                } else if (n < sizeof(buf) - 1) {
-                    buf[n++] = c;
                 }
             } else if (millis() - dataTime > 100) {
                 // timeout
@@ -378,7 +387,7 @@ private:
     }
 };
 
-static COBDLogger logger;
+static CLogger logger;
 
 void setup()
 {
@@ -398,12 +407,15 @@ void setup()
 
 void loop()
 {
+    uint32_t t = millis();
+
     if (logger.state & STATE_OBD_READY) {
         logger.logOBDData();
-    } else {
+    } else if (attempts <= OBD_ATTEMPTS - 1) {
         if (logger.init()) {
             logger.state |= STATE_OBD_READY;
         }
+        attempts++;
     }
 
 #if USE_MEMS
@@ -424,4 +436,6 @@ void loop()
 #if ENABLE_DATA_LOG
     logger.flushData();
 #endif
+
+    while (millis() - t < MIN_LOOP_TIME);
 }
