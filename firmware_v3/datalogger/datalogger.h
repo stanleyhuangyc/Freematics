@@ -81,6 +81,7 @@ public:
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
         SerialRF.write((uint8_t*)&ld, 12);
+        delay(10);
 #else
         SerialRF.print(buf);
 #endif
@@ -96,6 +97,7 @@ public:
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
         SerialRF.write((uint8_t*)&ld, 12);
+        delay(10);
 #else
         SerialRF.print(buf);
 #endif
@@ -111,6 +113,7 @@ public:
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
         SerialRF.write((uint8_t*)&ld, 12);
+        delay(10);
 #else
         SerialRF.print(buf);
 #endif
@@ -126,6 +129,7 @@ public:
         LOG_DATA_COMM ld = {dataTime, pid, 3, 0, {value1, value2, value3}};
         ld.checksum = getChecksum((char*)&ld, 20);
         SerialRF.write((uint8_t*)&ld, 20);
+        delay(10);
 #else
         SerialRF.print(buf);
 #endif
