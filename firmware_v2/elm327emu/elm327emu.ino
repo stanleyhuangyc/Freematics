@@ -46,7 +46,7 @@ void loop()
         cmdlen = 0;
       }
     } else if (cmdlen < sizeof(cmd)) {
-      cmd[cmdlen++] = SerialBT.read();
+      cmd[cmdlen++] = c;
     }
   }
 }
