@@ -280,6 +280,10 @@ public:
         }
 
         uint16_t index = openFile();
+        if (!index) {
+            delay(1000);
+            index = openFile();
+        }
         if (index) {
 #if VERBOSE
             SerialInfo.print("File ID: ");
@@ -396,6 +400,7 @@ void setup()
     SerialInfo.println("Freematics");
 #endif
 
+    delay(500);
     logger.begin();
     logger.initSender();
     logger.setup();
@@ -411,7 +416,7 @@ void loop()
 
     if (logger.state & STATE_OBD_READY) {
         logger.logOBDData();
-    } else if (attempts <= OBD_ATTEMPTS - 1) {
+    } else if (!OBD_ATTEMPTS || attempts <= OBD_ATTEMPTS - 1) {
         if (logger.init()) {
             logger.state |= STATE_OBD_READY;
         }
@@ -428,10 +433,8 @@ void loop()
     }
 #endif
 
-    /*
     int v = logger.getVoltage();
-    logger.logData(PID_VOLTAGE, v);
-    */
+    logger.logData(PID_BATTERY_VOLTAGE, v);
 
 #if ENABLE_DATA_LOG
     logger.flushData();
