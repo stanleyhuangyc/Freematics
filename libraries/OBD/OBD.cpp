@@ -8,7 +8,14 @@
 #include <Arduino.h>
 #include "OBD.h"
 
-//#define DEBUG Serial
+#ifdef DEBUG_SERIAL
+	#define DEBUG Serial
+#endif
+#ifdef DEBUG_SOFTWARE
+    #include <SoftwareSerial.h>
+    SoftwareSerial SoftSerial(A2, A3);
+    #define DEBUG SoftSerial
+#endif
 
 uint16_t hex2uint16(const char *p)
 {
@@ -281,7 +288,8 @@ void COBD::begin()
 {
 	OBDUART.begin(OBD_SERIAL_BAUDRATE);
 #ifdef DEBUG
-    DEBUG.begin(115200);
+    DEBUG.begin(DEBUG_SERIAL_BAUDRATE);
+    debugOutput("Freematics OBD Debug\r");
 #endif
 }
 
@@ -411,7 +419,8 @@ void COBDI2C::begin()
 	memset(obdPid, 0, sizeof(obdPid));
 	memset(obdInfo, 0, sizeof(obdInfo));
 #ifdef DEBUG
-    DEBUG.begin(115200);
+    DEBUG.begin(DEBUG_SERIAL_BAUDRATE);
+    debugOutput("Freematics OBD Debug\r");
 #endif
 }
 

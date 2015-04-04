@@ -7,6 +7,16 @@
 
 #include <Arduino.h>
 
+//debug option - hard or soft serial, choose one or none
+//#define DEBUG_SERIAL
+//#define DEBUG_SOFTWARE
+
+//debug option - speed
+//   9600bps for BLE
+//   38400bps for BT 2.1
+//   115200 for IDE
+#define DEBUG_SERIAL_BAUDRATE 38400
+
 #define OBD_MODEL_UART 0
 #define OBD_MODEL_I2C 1
 
