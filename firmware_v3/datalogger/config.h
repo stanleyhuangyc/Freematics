@@ -14,11 +14,13 @@
 // uses software(1)/hardware(0) serial for data streaming
 #define USE_SOFTSERIAL 1
 
-// this defines the format of data streaming
+// followings define the format of data streaming, enable one of them only
 // FORMAT_BIN is required by Freematics OBD iOS App
 //#define STREAM_FORMAT FORMAT_BIN
-// FORMAT_CSV is for text output
-#define STREAM_FORMAT FORMAT_BIN
+// FORMAT_CSV is for CSV based text output
+//#define STREAM_FORMAT FORMAT_CSV
+// FORMAT_LINE is for readable text output
+#define STREAM_FORMAT FORMAT_TEXT
 
 /* Default streaming baudrates:
    9600bps for BLE
@@ -26,11 +28,17 @@
 */
 #define STREAM_BAUDRATE 9600
 
-// outputs debug information
-#define VERBOSE 0
+// logging interval for slowly changing data
+#define LONG_INTERVAL 10 /* seconds */
 
 // minimum loop time
-#define MIN_LOOP_TIME 50
+#define MIN_LOOP_TIME 100 /* ms */
+
+// delay time after sending
+#define DELAY_AFTER_SENDING 10 /* ms */
+
+// outputs debug information
+#define VERBOSE 0
 
 /**************************************
 * Hardware setup
