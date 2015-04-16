@@ -78,6 +78,16 @@ public:
 #endif
     }
 #if USE_GPS
+    bool isDataChanged(byte index, byte value)
+    {
+        static byte prevData[8] = {0};
+        if (prevData[index] != value) {
+            prevData[index] = value;
+            return true;
+        } else {
+            return false;
+        }
+    }
     void logGPSData()
     {
         // issue the command to get NMEA data (one line per request)
@@ -85,12 +95,12 @@ public:
         // issue the command to get parsed data
         // the return data is in following format:
         // $GPS,date,time,lat,lon,altitude,speed,course,sat
-        write("ATGPS\r");
-        dataTime = millis();
         byte n = 0;
-        byte tokens;
+        byte index;
         bool valid = false;
         char buf[16];
+        write("ATGPS\r");
+        dataTime = millis();
         for (;;) {
             if (available()) {
                 char c = read();
@@ -102,41 +112,56 @@ public:
                     if (!valid) {
                         // check header
                         valid = strcmp(buf + n - 4, "$GPS") == 0;
-                        tokens = 0;
+                        index = 0;
                     } else {
-                        switch (tokens) {
+                        switch (index) {
                         case 0:
-                            logData(PID_GPS_DATE, (uint32_t)atol(buf));
-                            break;
                         case 1:
-                            logData(PID_GPS_TIME, (uint32_t)atol(buf));
-                            break;
-                        case 2:
-                            logData(PID_GPS_LATITUDE, atol(buf));
-                            break;
-                        case 3:
-                            logData(PID_GPS_LONGITUDE, atol(buf));
-                            break;
-                        case 4:
-                            logData(PID_GPS_ALTITUDE, atoi(buf));
-                            break;
-                        case 5:
                             {
-                                int speed = atoi(buf);
-                                logData(PID_GPS_SPEED, speed);
-                                if (!(state & STATE_OBD_READY)) {
-                                    logData(0x100 | PID_SPEED, speed);
+                                uint32_t value = (uint32_t)atol(buf);
+                                if (isDataChanged(index, value)) {
+                                    logData(index == 0 ? PID_GPS_DATE : PID_GPS_TIME, value);
                                 }
                             }
                             break;
-                        case 6:
-                            logData(PID_GPS_HEADING, atoi(buf));
+                        case 2:
+                        case 3:
+                            {
+                                int32_t value = atol(buf);
+                                if (isDataChanged(index, value)) {
+                                    logData(index == 2 ? PID_GPS_LATITUDE : PID_GPS_LONGITUDE, value);
+                                }
+                            }
                             break;
+                        case 4:
+                        case 5:
+                        case 6:
                         case 7:
-                            logData(PID_GPS_SAT_COUNT, atoi(buf));
+                            {
+                                int value = atoi(buf);
+                                if (isDataChanged(index, value)) {
+                                    switch (index) {
+                                    case 4:
+                                        logData(PID_GPS_ALTITUDE, value);
+                                        break;
+                                    case 5:
+                                        logData(PID_GPS_SPEED, value);
+                                        if (!(state & STATE_OBD_READY)) {
+                                            logData(0x100 | PID_SPEED, value);
+                                        }
+                                        break;
+                                    case 6:
+                                        logData(PID_GPS_HEADING, value);
+                                        break;
+                                    case 7:
+                                        logData(PID_GPS_SAT_COUNT, value);
+                                        break;
+                                    }
+                                }
+                            }
                             break;
                         }
-                        tokens++;
+                        index++;
                     }
                     n = 0;
                     if (c == '>') {
@@ -412,6 +437,7 @@ void setup()
 
 void loop()
 {
+    static uint32_t lastTime = 0;
     uint32_t t = millis();
 
     if (logger.state & STATE_OBD_READY) {
@@ -433,12 +459,19 @@ void loop()
     }
 #endif
 
-    int v = logger.getVoltage();
-    logger.logData(PID_BATTERY_VOLTAGE, v);
+    if (millis() - lastTime > LONG_INTERVAL * 1000) {
+        // log slowly changing data
+        int v = logger.getVoltage();
+        logger.logData(PID_BATTERY_VOLTAGE, v);
+        logger.logData(PID_DATA_SIZE, logger.dataSize);
+        lastTime = millis();
+    }
 
 #if ENABLE_DATA_LOG
     logger.flushData();
 #endif
 
+#if MIN_LOOP_TIME
     while (millis() - t < MIN_LOOP_TIME);
+#endif
 }
