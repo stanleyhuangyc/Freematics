@@ -138,12 +138,12 @@ public:
 	// bit map of supported PIDs
 	byte pidmap[4 * 4];
 protected:
+	virtual char* getResponse(byte& pid, char* buffer);
 	virtual byte receive(char* buffer = 0, int timeout = OBD_TIMEOUT_SHORT);
 	virtual bool available();
 	virtual char read();
 	virtual void write(const char* s);
 	virtual void write(char c);
-	virtual char* getResponse(byte& pid, char* buffer);
 	virtual void dataIdleLoop() {}
 	void recover();
 	void debugOutput(const char* s);
@@ -208,7 +208,6 @@ class COBDI2C : public COBD {
 public:
     void begin();
 	void end();
-    bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
     bool read(byte pid, int& result);
     void write(const char* s);
     // Asynchronized access API
@@ -216,12 +215,9 @@ public:
     void applyPIDs();
     void loadData();
     uint16_t getData(byte pid, int& result);
-    // GPS API
-    bool gpsQuery(GPS_DATA* gpsdata);
-    void gpsSetup(uint32_t baudrate, const char* cmds = 0);
 protected:
     bool sendCommand(byte cmd, uint8_t data = 0, byte* payload = 0, byte payloadBytes = 0);
-    byte receive(char* buffer, int timeout = OBD_TIMEOUT_SHORT);
+    byte receive(char* buffer, int timeout = OBD_TIMEOUT_LONG);
     byte m_addr;
     PID_INFO obdInfo[MAX_PIDS];
     byte obdPid[MAX_PIDS];
