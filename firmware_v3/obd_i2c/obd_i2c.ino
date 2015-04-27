@@ -10,10 +10,14 @@
 SoftwareSerial debug(A2, A3);
 #endif
 
+enum {
+    STATE_IDLE = 0,
+    STATE_PROCESS_COMMAND,
+};
+
 uint32_t dataTime = 0;
-uint8_t lastCmdCount = 0;
-uint8_t cmdCount = 0;
 uint16_t pidRequested = 0;
+uint8_t state = STATE_IDLE;
 
 typedef union {
     byte data[2];
@@ -32,6 +36,7 @@ uint8_t bytesToSend = 0;
 void applyBuffer(char* buffer, byte bytes)
 {
     if (bytesToSend) {
+        // allow some time for buffer to be sent
         uint32_t t = millis();
         while (bytesToSend && millis() - t < 1000);
         bytesToSend = 0;
@@ -72,10 +77,6 @@ public:
 #ifdef DEBUG
                 debug.println("CMD_QUERY_STATUS");
 #endif
-
-                if (getState() != OBD_CONNECTED || errors != 0)
-                    connect();
-
                 char dataBuf[MAX_PAYLOAD_SIZE];
                 strcpy(dataBuf, "OBD ");
                 switch (getState()) {
@@ -159,6 +160,10 @@ public:
             obdData[idx].data[0] = hex2uint8(data + 3);
         }
     }
+    void cleanup()
+    {
+        while (available()) read();
+    }
     COMMAND_BLOCK cmd;
     bool obdReady;
 private:
@@ -179,12 +184,13 @@ COBDAgent agent;
 void I2CRecv(int numBytes)
 {
     if (numBytes >= sizeof(COMMAND_BLOCK)) {
-        Wire.readBytes((char*)&agent.cmd, sizeof(COMMAND_BLOCK));
+        COMMAND_BLOCK cmd;
+        Wire.readBytes((char*)&cmd, sizeof(COMMAND_BLOCK));
         recvBytes = numBytes - sizeof(COMMAND_BLOCK);
         if (recvBytes > 0) {
             Wire.readBytes(recvBuf, recvBytes);
         }
-        switch (agent.cmd.message) {
+        switch (cmd.message) {
         case CMD_LOAD_OBD_DATA: {
             PID_INFO* pi = (PID_INFO*)sendBuf;
             memset(sendBuf, 0, sizeof(sendBuf));
@@ -201,7 +207,10 @@ void I2CRecv(int numBytes)
             memset(obdData, 0, sizeof(obdData));
             break;
         default:
-            cmdCount++;
+            if (state != STATE_PROCESS_COMMAND) {
+                memcpy(&agent.cmd, &cmd, sizeof(COMMAND_BLOCK));
+                state = STATE_PROCESS_COMMAND;
+            }
         }
     } else {
         // unload the data
@@ -216,7 +225,7 @@ void I2CRecv(int numBytes)
 
 void I2CRequest()
 {
-    if (!bytesToSend) {
+    if (bytesToSend == 0) {
         for (byte n = MAX_PAYLOAD_SIZE; n; n--)
             Wire.write((byte)0);
         return;
@@ -224,8 +233,8 @@ void I2CRequest()
 
     Wire.write((byte*)sendBuf, MAX_PAYLOAD_SIZE);
     if (bytesToSend > MAX_PAYLOAD_SIZE) {
-        memmove(sendBuf, sendBuf + MAX_PAYLOAD_SIZE, bytesToSend - MAX_PAYLOAD_SIZE);
         bytesToSend -= MAX_PAYLOAD_SIZE;
+        memmove(sendBuf, sendBuf + MAX_PAYLOAD_SIZE, bytesToSend);
     } else {
         bytesToSend = 0;
     }
@@ -236,8 +245,6 @@ void setup()
 #ifdef DEBUG
     debug.begin(9600);
 #endif
-    delay(500);
-
     agent.begin();
 
     Wire.onReceive(I2CRecv);
@@ -248,13 +255,10 @@ void setup()
 void loop()
 {
     static byte idx = 0;
-    if (agent.getState() != OBD_CONNECTED) {
-        agent.connect();
-    }
-    if (cmdCount != lastCmdCount) {
+    if (state == STATE_PROCESS_COMMAND) {
         agent.processCommand();
-        lastCmdCount = cmdCount;
-    } else if (obdPid[0] && agent.getState() == OBD_CONNECTED) {
+        state = STATE_IDLE;
+    } else if (state == STATE_IDLE && obdPid[0] && agent.getState() == OBD_CONNECTED) {
         if (obdPid[idx] == 0 || idx == MAX_PIDS)
             idx = 0;
 
@@ -262,5 +266,7 @@ void loop()
             agent.processOBD(idx);
         }
         idx++;
+    } else {
+        agent.cleanup();
     }
 }
