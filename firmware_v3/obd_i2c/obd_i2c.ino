@@ -1,3 +1,11 @@
+/*************************************************************************
+* OBD-II UART to I2C Adapter
+* Distributed under GPL v2.0
+* Copyright (c) 2013-2015 Stanley Huang <stanleyhuangyc@gmail.com>
+* All rights reserved.
+* Visit http://freematics.com for more information
+*************************************************************************/
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <OBD.h>
@@ -246,6 +254,7 @@ void setup()
     debug.begin(9600);
 #endif
     agent.begin();
+    agent.setBaudRate(115200);
 
     Wire.onReceive(I2CRecv);
     Wire.onRequest(I2CRequest);
