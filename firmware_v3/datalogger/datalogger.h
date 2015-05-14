@@ -64,15 +64,17 @@ const PID_NAME pidNames[] PROGMEM = {
 {PID_DATA_SIZE, {'D','A','T'}},
 };
 
-static const char* idstr = "FREEMATICS_V3\r";
-
 class CDataLogger {
 public:
     void initSender()
     {
 #if ENABLE_DATA_OUT
         SerialRF.begin(STREAM_BAUDRATE);
-        SerialRF.print(idstr);
+        /*
+        delay(100);
+        SerialRF.print("AT+NAMEFreematics");
+        while (SerialRF.available()) SerialRF.read();
+        */
 #endif
 #if ENABLE_DATA_LOG
     m_lastDataTime = 0;
@@ -82,9 +84,8 @@ public:
     {
 #if ENABLE_DATA_LOG
         dataSize += sdfile.print(dataTime - m_lastDataTime);
-        sdfile.write(',');
-        dataSize += sdfile.print(buf);
-        dataSize ++;
+        dataSize += sdfile.write(",");
+        dataSize += sdfile.write(buf);
         m_lastDataTime = dataTime;
 #endif
     }
@@ -95,8 +96,6 @@ public:
             sdfile.write(c);
             dataSize++;
         }
-#else
-        SerialRF.write(c);
 #endif
     }
     void logData(uint16_t pid, int value)
@@ -200,12 +199,11 @@ public:
             sprintf(filename + 9, FILE_NAME_FORMAT, 1);
         }
 
+        dataSize = 0;
         sdfile = SD.open(filename, FILE_WRITE);
         if (!sdfile) {
             return 0;
         }
-
-        dataSize = sdfile.print(idstr);
         m_lastDataTime = dateTime;
         return fileIndex;
     }

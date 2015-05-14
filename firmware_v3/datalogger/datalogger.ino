@@ -40,21 +40,17 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #define SerialInfo Serial
 #endif
 
-#define PMTK_SET_NMEA_UPDATE_1HZ  "$PMTK220,1000*1F\r"
-#define PMTK_SET_NMEA_UPDATE_5HZ  "$PMTK220,200*2C\r"
-#define PMTK_SET_NMEA_UPDATE_10HZ "$PMTK220,100*2F\r"
-
-static uint16_t lastFileSize = 0;
+static uint32_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
 static uint8_t attempts = 0;
 
-static byte pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
-static byte pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, PID_FUEL_LEVEL, PID_BAROMETRIC, PID_DISTANCE, PID_RUNTIME};
+static const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
+static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_FUEL_LEVEL, PID_DISTANCE};
 
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
 
-#if USE_MEMS
+#if USE_MPU6050 || USE_MPU9150
 MPU6050 accelgyro;
 #endif
 
@@ -65,15 +61,24 @@ public:
     void setup()
     {
         state = 0;
-#if USE_MEMS
+#if USE_MPU6050 || USE_MPU9150
         Wire.begin();
         accelgyro.initialize();
         if (accelgyro.testConnection()) state |= STATE_MEMS_READY;
 #endif
 
+        if (init()) {
+            state |= STATE_OBD_READY;
+        }
+
 #if USE_GPS
         if (initGPS()) {
             state |= STATE_GPS_FOUND;
+        } else {
+#if VERBOSE
+            SerialInfo.println("No GPS");
+            delay(3000);
+#endif
         }
 #endif
     }
@@ -98,15 +103,12 @@ public:
         byte n = 0;
         byte index;
         bool valid = false;
-        char buf[16];
+        char buf[128];
         write("ATGPS\r");
         dataTime = millis();
         for (;;) {
             if (available()) {
                 char c = read();
-#if VERBOSE
-                SerialInfo.write(c);
-#endif
                 if (c == ',' || c == '>' || c <= 0x0d) {
                     buf[n] = 0;
                     if (!valid) {
@@ -180,28 +182,30 @@ public:
 #endif
 #if LOG_GPS_NMEA_DATA
         write("ATGRR\r");
+        n = 0;
         for (;;) {
             if (available()) {
                 char c = read();
                 if (c == '>') {
                     // prompt char received
                     break;
-                } else {
+                } else if (n < sizeof(buf)) {
+                    buf[n++] = c;
 #if VERBOSE
                     SerialInfo.write(c);
 #endif
-                    logData(c);
-
                 }
             } else if (millis() - dataTime > 100) {
                 // timeout
                 break;
             }
         }
+        buf[n] = 0;
+        recordData(buf);
 #endif
     }
 #endif
-#if USE_MEMS
+#if USE_MPU6050 || USE_MPU9150
     void logMEMSData()
     {
         if (!(state & STATE_MEMS_READY))
@@ -209,9 +213,13 @@ public:
 
         int16_t ax, ay, az;
         int16_t gx, gy, gz;
+#if USE_MPU9150
         int16_t mx, my, mz;
-
         accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+#else
+        accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+#endif
+
 
         dataTime = millis();
 #if VERBOSE
@@ -227,38 +235,44 @@ public:
         SerialInfo.print(gy);
         SerialInfo.print('/');
         SerialInfo.print(gz);
+#if USE_MPU9150
         SerialInfo.print(" M:");
         SerialInfo.print(mx);
         SerialInfo.print('/');
         SerialInfo.print(my);
         SerialInfo.print('/');
         SerialInfo.println(mz);
+#else
+        SerialInfo.println();
+#endif
 #endif
         // log x/y/z of accelerometer
         logData(PID_ACC, ax >> 4, ay >> 4, az >> 4);
         // log x/y/z of gyro meter
         logData(PID_GYRO, gx >> 4, gy >> 4, gz >> 4);
+#if USE_MPU9150
         // log x/y/z of gyro meter
         logData(PID_COMPASS, mx >> 4, my >> 4, mz >> 4);
+#endif
     }
 #endif
-    void logOBDData()
-    {
-        static byte index1 = 0;
-        static byte index2 = 0;
-
-        if (index1 == TIER_NUM1) {
-            index1 = 0;
-            queryOBDData(pidTier2[index2]);
-            index2 = (index2 + 1) % TIER_NUM2;
-        } else {
-            queryOBDData(pidTier1[index1++]);
-        }
-        if (errors >= 5) {
-            reconnect();
-        }
-    }
 #if ENABLE_DATA_LOG
+    int openLogFile()
+    {
+        uint16_t index = openFile();
+        if (!index) {
+            delay(1000);
+            index = openFile();
+        }
+        if (index) {
+            if (sdfile.print("#FREEMATICS\r") > 0) {
+              state |= STATE_SD_READY;
+            } else {
+              index = 0; 
+            }
+        }
+        return index;
+    }
     bool initSD()
     {
         state &= ~STATE_SD_READY;
@@ -297,37 +311,18 @@ public:
             SerialInfo.print(" SD size: ");
             SerialInfo.print((int)((volumesize + 511) / 1000));
             SerialInfo.println("GB");
+            delay(3000);
 #endif
         }
 
-        if (!SD.begin(SD_CS_PIN)) {
-            return false;
-        }
-
-        uint16_t index = openFile();
-        if (!index) {
-            delay(1000);
-            index = openFile();
-        }
-        if (index) {
-#if VERBOSE
-            SerialInfo.print("File ID: ");
-            SerialInfo.println(index);
-#endif
-            state |= STATE_SD_READY;
-        } else {
-#if VERBOSE
-            SerialInfo.println("File error");
-#endif
-        }
-        return true;
+        return SD.begin(SD_CS_PIN);
     }
     void flushData()
     {
         // flush SD data every 1KB
-        if ((state & STATE_SD_READY) && (uint16_t)dataSize - lastFileSize >= 1024) {
+        if ((state & STATE_SD_READY) && dataSize - lastFileSize >= 1024) {
             flushFile();
-            lastFileSize = (uint16_t)dataSize;
+            lastFileSize = dataSize;
 #if VERBOSE
             // display logged data size
             SerialInfo.print((int)(dataSize >> 10));
@@ -336,27 +331,30 @@ public:
         }
     }
 #endif
-#if USE_GPS
-    bool initGPS()
+    void reconnect()
     {
-        char buf[OBD_RECV_BUF_SIZE];
-        // setting GPS baudrate
-        write("ATBR2 38400\r");
-        if (receive(buf) && strstr(buf, "OK")) {
-            /*
-            write("ATSGC ");
-            write(PMTK_SET_NMEA_UPDATE_10HZ);
-            receive();
-            */
-            return true;
-        } else {
-            return false;
-        }
-    }
+#if ENABLE_DATA_LOG
+        closeFile();
 #endif
-    byte state;
-private:
-    void queryOBDData(byte pid)
+        state &= ~STATE_OBD_READY;
+        state |= STATE_SLEEPING;
+        //digitalWrite(SD_CS_PIN, LOW);
+#if VERBOSE
+        SerialInfo.print("Retry");
+#endif
+        while (!init()) {
+#if VERBOSE
+            SerialInfo.write('.');
+#endif
+        }
+        state &= ~STATE_SLEEPING;
+#if ENABLE_DATA_LOG
+        if (openLogFile() == 0) {
+            state &= ~STATE_SD_READY;
+        }
+#endif
+    }
+    bool logOBDData(byte pid)
     {
         int value;
 
@@ -370,6 +368,7 @@ private:
         if (!data) {
             recover();
             errors++;
+            return false;
         }
 #if VERBOSE
         SerialInfo.println(data);
@@ -379,41 +378,20 @@ private:
         // log data to SD card
         logData(0x100 | pid, value);
         errors = 0;
-    }
-    void reconnect()
-    {
-#if ENABLE_DATA_LOG
-        closeFile();
-#endif
-        state &= ~STATE_OBD_READY;
-        state |= STATE_SLEEPING;
-        //digitalWrite(SD_CS_PIN, LOW);
-#if VERBOSE
-        SerialInfo.print("Reconnecting ");
-#endif
-        while (!init()) {
-#if VERBOSE
-            SerialInfo.write('.');
-#endif
-        }
-        state &= ~STATE_SLEEPING;
-#if ENABLE_DATA_LOG
-        if (!openFile()) {
-            state &= ~STATE_SD_READY;
-        }
-#endif
+        return true;
     }
     void showData(byte pid, int value)
     {
 #if VERBOSE
         SerialInfo.print('[');
         SerialInfo.print(millis());
-        SerialInfo.print("] [");
+        SerialInfo.print("][");
         SerialInfo.print(pid, HEX);
         SerialInfo.print("]=");
         SerialInfo.println(value);
 #endif
     }
+    byte state;
 };
 
 static CLogger logger;
@@ -423,16 +401,25 @@ void setup()
 #if VERBOSE
     SerialInfo.begin(STREAM_BAUDRATE);
     SerialInfo.println("Freematics");
+    delay(3000);
 #endif
 
-    delay(500);
     logger.begin();
     logger.initSender();
-    logger.setup();
-
 #if ENABLE_DATA_LOG
+    delay(500);
     logger.initSD();
+#if VERBOSE
+    int index = logger.openLogFile();
+    SerialInfo.print("File ID: ");
+    SerialInfo.println(index);
+    delay(3000);
+#else
+    logger.openLogFile();
 #endif
+#endif
+
+    logger.setup();
 }
 
 void loop()
@@ -441,7 +428,19 @@ void loop()
     uint32_t t = millis();
 
     if (logger.state & STATE_OBD_READY) {
-        logger.logOBDData();
+        static byte index1 = 0;
+        static byte index2 = 0;
+        byte pid = pgm_read_byte(pidTier1 + index1++);
+        logger.logOBDData(pid);
+        if (index1 == TIER_NUM1) {
+            index1 = 0;
+            pid = pgm_read_byte(pidTier2 + index2);
+            logger.logOBDData(pid);
+            index2 = (index2 + 1) % TIER_NUM2;
+        }
+        if (logger.errors >= 3) {
+            logger.reconnect();
+        }
     } else if (!OBD_ATTEMPTS || attempts <= OBD_ATTEMPTS - 1) {
         if (logger.init()) {
             logger.state |= STATE_OBD_READY;
@@ -449,7 +448,7 @@ void loop()
         attempts++;
     }
 
-#if USE_MEMS
+#if USE_MPU6050 || USE_MPU9150
     logger.logMEMSData();
 #endif
 

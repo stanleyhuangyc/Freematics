@@ -23,7 +23,7 @@
 #define STREAM_FORMAT FORMAT_TEXT
 
 /* Default streaming baudrates:
-   9600bps for BLE
+   9600bps for BLE and DUO
    38400bps for BT 2.1
 */
 #define STREAM_BAUDRATE 9600
@@ -51,11 +51,12 @@
 #define SD_CS_PIN 10
 
 // enable(1)/disable(0) MEMS sensor
-#define USE_MEMS 1
+//#define USE_MPU6050 1
+#define USE_MPU9150 1
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
-#define LOG_GPS_NMEA_DATA 0
-#define LOG_GPS_PARSED_DATA 1
+#define LOG_GPS_NMEA_DATA 1
+#define LOG_GPS_PARSED_DATA 0
 
 #endif // CONFIG_H_INCLUDED
