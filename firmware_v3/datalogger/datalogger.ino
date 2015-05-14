@@ -95,15 +95,14 @@ public:
     }
     void logGPSData()
     {
-        // issue the command to get NMEA data (one line per request)
+        char buf[128];
+        byte n = 0;
 #if LOG_GPS_PARSED_DATA
         // issue the command to get parsed data
         // the return data is in following format:
         // $GPS,date,time,lat,lon,altitude,speed,course,sat
-        byte n = 0;
         byte index;
         bool valid = false;
-        char buf[128];
         write("ATGPS\r");
         dataTime = millis();
         for (;;) {
@@ -181,6 +180,7 @@ public:
         }
 #endif
 #if LOG_GPS_NMEA_DATA
+        // issue the command to get NMEA data (one line per request)
         write("ATGRR\r");
         n = 0;
         for (;;) {
