@@ -84,7 +84,7 @@ public:
     {
 #if ENABLE_DATA_LOG
         dataSize += sdfile.print(dataTime - m_lastDataTime);
-        dataSize += sdfile.write(",");
+        dataSize += sdfile.write(',');
         dataSize += sdfile.write(buf);
         m_lastDataTime = dataTime;
 #endif
@@ -184,6 +184,7 @@ public:
         uint16_t fileIndex;
         char filename[24] = "/FRMATICS";
 
+        dataSize = 0;
         if (SD.exists(filename)) {
             for (fileIndex = 1; fileIndex; fileIndex++) {
                 sprintf(filename + 9, FILE_NAME_FORMAT, fileIndex);
@@ -199,7 +200,6 @@ public:
             sprintf(filename + 9, FILE_NAME_FORMAT, 1);
         }
 
-        dataSize = 0;
         sdfile = SD.open(filename, FILE_WRITE);
         if (!sdfile) {
             return 0;
