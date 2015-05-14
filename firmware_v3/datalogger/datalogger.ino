@@ -108,6 +108,9 @@ public:
         for (;;) {
             if (available()) {
                 char c = read();
+#if VERBOSE
+                SerialInfo.write(c);
+#endif
                 if (c == ',' || c == '>' || c <= 0x0d) {
                     buf[n] = 0;
                     if (!valid) {
@@ -182,6 +185,7 @@ public:
 #if LOG_GPS_NMEA_DATA
         // issue the command to get NMEA data (one line per request)
         write("ATGRR\r");
+        dataTime = millis();
         n = 0;
         for (;;) {
             if (available()) {
@@ -189,7 +193,7 @@ public:
                 if (c == '>') {
                     // prompt char received
                     break;
-                } else if (n < sizeof(buf)) {
+                } else if (n < sizeof(buf) && c >= 32 && c <= 126) {
                     buf[n++] = c;
 #if VERBOSE
                     SerialInfo.write(c);
@@ -200,8 +204,12 @@ public:
                 break;
             }
         }
+        buf[n++] = '\r';
         buf[n] = 0;
         recordData(buf);
+#if VERBOSE
+        SerialInfo.println();
+#endif
 #endif
     }
 #endif
@@ -219,7 +227,6 @@ public:
 #else
         accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 #endif
-
 
         dataTime = millis();
 #if VERBOSE
@@ -271,6 +278,11 @@ public:
               index = 0; 
             }
         }
+#if VERBOSE
+        SerialInfo.print("File ID: ");
+        SerialInfo.println(index);
+        delay(3000);
+#endif
         return index;
     }
     bool initSD()
@@ -320,14 +332,23 @@ public:
     void flushData()
     {
         // flush SD data every 1KB
-        if ((state & STATE_SD_READY) && dataSize - lastFileSize >= 1024) {
-            flushFile();
-            lastFileSize = dataSize;
+        if (dataSize - lastFileSize >= 1024) {
 #if VERBOSE
             // display logged data size
-            SerialInfo.print((int)(dataSize >> 10));
-            SerialInfo.println("KB");
+            SerialInfo.print(dataSize);
+            SerialInfo.println(" bytes");
 #endif
+#if MAX_FILE_SIZE
+            if (dataSize >= 1024L * MAX_FILE_SIZE) {
+              closeFile();
+              if (openLogFile() == 0) {
+                  state &= ~STATE_SD_READY;
+              }
+            } else {
+              flushFile();
+            }
+#endif
+            lastFileSize = dataSize;
         }
     }
 #endif
@@ -409,14 +430,7 @@ void setup()
 #if ENABLE_DATA_LOG
     delay(500);
     logger.initSD();
-#if VERBOSE
-    int index = logger.openLogFile();
-    SerialInfo.print("File ID: ");
-    SerialInfo.println(index);
-    delay(3000);
-#else
     logger.openLogFile();
-#endif
 #endif
 
     logger.setup();
@@ -438,7 +452,7 @@ void loop()
             logger.logOBDData(pid);
             index2 = (index2 + 1) % TIER_NUM2;
         }
-        if (logger.errors >= 3) {
+        if (logger.errors >= 2) {
             logger.reconnect();
         }
     } else if (!OBD_ATTEMPTS || attempts <= OBD_ATTEMPTS - 1) {
