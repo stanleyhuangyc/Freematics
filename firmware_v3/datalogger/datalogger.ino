@@ -40,6 +40,8 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #define SerialInfo Serial
 #endif
 
+void(* resetFunc) (void) = 0; //declare reset function at address 0
+
 static uint32_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
 static uint8_t attempts = 0;
@@ -118,7 +120,7 @@ public:
         }
         showStatus(PART_GPS, success);
 #endif
-        delay(3000);
+        delay(5000);
     }
 #if USE_GPS
     bool isDataChanged(byte index, byte value)
@@ -232,8 +234,10 @@ public:
                 SerialInfo.write(c);
 #endif
                 if (c == '\n') {
-                    buf[n] = 0;
-                    if (n > 4) recordData(buf);
+                    if (n > 0) {
+                      buf[n] = 0;
+                      recordData(buf);
+                    }
                     n = 0;
                 } else if (c == '>') {
                     // prompt char received
@@ -248,7 +252,7 @@ public:
         }
         if (n > 0) {
             buf[n] = 0;
-            if (n > 4) recordData(buf);
+            recordData(buf);
         }
 #endif
     }
@@ -408,12 +412,7 @@ public:
             SerialInfo.write('.');
 #endif
         }
-        state &= ~STATE_SLEEPING;
-#if ENABLE_DATA_LOG
-        if (openLogFile() == 0) {
-            state &= ~STATE_SD_READY;
-        }
-#endif
+        resetFunc();
     }
     bool logOBDData(byte pid)
     {
