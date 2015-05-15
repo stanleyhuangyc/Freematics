@@ -70,11 +70,9 @@ public:
     {
 #if ENABLE_DATA_OUT
         SerialRF.begin(STREAM_BAUDRATE);
-        /*
         delay(100);
         SerialRF.print("AT+NAMEFreematics");
         while (SerialRF.available()) SerialRF.read();
-        */
 #endif
 #if ENABLE_DATA_LOG
     m_lastDataTime = 0;
