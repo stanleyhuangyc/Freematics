@@ -54,33 +54,71 @@ static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_F
 MPU6050 accelgyro;
 #endif
 
+static const byte PROGMEM parts[][4] = {
+  {'S','D'},
+  {'M','E','M','S'},
+  {'O','B','D'},
+  {'G','P','S'},
+};
+
+typedef enum {
+  PART_SD = 0,
+  PART_MEMS,
+  PART_OBD,
+  PART_GPS,
+} PART_ID;
+
 class CLogger : public COBD, public CDataLogger
 {
 public:
     CLogger():state(0) {}
+    void showStatus(byte partID, bool OK)
+    {
+#if ENABLE_DATA_OUT
+      char buf[5];
+      memcpy_P(buf, parts[partID], 4);
+      buf[4] = 0;
+      SerialRF.print(buf);
+      SerialRF.print(' ');
+      SerialRF.println(OK ? "OK" : "Fail");
+#endif
+    }
     void setup()
     {
+        bool success;
         state = 0;
+        
+#if ENABLE_DATA_LOG
+        success = initSD() && openLogFile();
+        showStatus(PART_SD, success);
+#endif
+
 #if USE_MPU6050 || USE_MPU9150
         Wire.begin();
         accelgyro.initialize();
-        if (accelgyro.testConnection()) state |= STATE_MEMS_READY;
+        success = accelgyro.testConnection();
+        if (success) {
+          state |= STATE_MEMS_READY;
+        }
+        showStatus(PART_MEMS, success);
 #endif
 
-        if (init()) {
+        setBaudRate(115200L);
+
+        success = init();
+        if (success) {
             state |= STATE_OBD_READY;
         }
+        showStatus(PART_OBD, success);
 
 #if USE_GPS
-        if (initGPS()) {
+        success = initGPS();
+        if (success) {
             state |= STATE_GPS_FOUND;
-        } else {
-#if VERBOSE
-            SerialInfo.println("No GPS");
-            delay(3000);
-#endif
         }
+        showStatus(PART_GPS, success);
 #endif
+        delay(3000);
     }
 #if USE_GPS
     bool isDataChanged(byte index, byte value)
@@ -190,26 +228,28 @@ public:
         for (;;) {
             if (available()) {
                 char c = read();
-                if (c == '>') {
+#if VERBOSE
+                SerialInfo.write(c);
+#endif
+                if (c == '\n') {
+                    buf[n] = 0;
+                    if (n > 4) recordData(buf);
+                    n = 0;
+                } else if (c == '>') {
                     // prompt char received
                     break;
-                } else if (n < sizeof(buf) && c >= 32 && c <= 126) {
+                } else if (n < sizeof(buf)) {
                     buf[n++] = c;
-#if VERBOSE
-                    SerialInfo.write(c);
-#endif
                 }
             } else if (millis() - dataTime > 100) {
                 // timeout
                 break;
             }
         }
-        buf[n++] = '\r';
-        buf[n] = 0;
-        recordData(buf);
-#if VERBOSE
-        SerialInfo.println();
-#endif
+        if (n > 0) {
+            buf[n] = 0;
+            if (n > 4) recordData(buf);
+        }
 #endif
     }
 #endif
@@ -275,7 +315,7 @@ public:
             if (sdfile.print("#FREEMATICS\r") > 0) {
               state |= STATE_SD_READY;
             } else {
-              index = 0; 
+              index = 0;
             }
         }
 #if VERBOSE
@@ -338,8 +378,8 @@ public:
             SerialInfo.print(dataSize);
             SerialInfo.println(" bytes");
 #endif
-#if MAX_FILE_SIZE
-            if (dataSize >= 1024L * MAX_FILE_SIZE) {
+#if MAX_LOG_FILE_SIZE
+            if (dataSize >= 1024L * MAX_LOG_FILE_SIZE) {
               closeFile();
               if (openLogFile() == 0) {
                   state &= ~STATE_SD_READY;
@@ -422,17 +462,10 @@ void setup()
 #if VERBOSE
     SerialInfo.begin(STREAM_BAUDRATE);
     SerialInfo.println("Freematics");
-    delay(3000);
 #endif
-
+    delay(1000);
     logger.begin();
     logger.initSender();
-#if ENABLE_DATA_LOG
-    delay(500);
-    logger.initSD();
-    logger.openLogFile();
-#endif
-
     logger.setup();
 }
 
