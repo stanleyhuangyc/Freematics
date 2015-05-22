@@ -1,8 +1,7 @@
 /*************************************************************************
 * OBD-II UART to I2C Adapter
 * Distributed under GPL v2.0
-* Copyright (c) 2013-2015 Stanley Huang <stanleyhuangyc@gmail.com>
-* All rights reserved.
+* Developed by Stanley Huang <stanleyhuangyc@gmail.com>
 * Visit http://freematics.com for more information
 *************************************************************************/
 
@@ -12,6 +11,8 @@
 
 #define I2C_ADDR 0x62
 //#define DEBUG 1
+
+#define DATA_SEND_TIMEOUT 1000
 
 #ifdef DEBUG
 #include <SoftwareSerial.h>
@@ -23,7 +24,6 @@ enum {
     STATE_PROCESS_COMMAND,
 };
 
-uint32_t dataTime = 0;
 uint16_t pidRequested = 0;
 uint8_t state = STATE_IDLE;
 
@@ -40,17 +40,18 @@ char recvBuf[MAX_PAYLOAD_SIZE];
 char sendBuf[OBD_RECV_BUF_SIZE];
 byte recvBytes = 0;
 uint8_t bytesToSend = 0;
+uint32_t dataTime = 0;
 
 void applyBuffer(char* buffer, byte bytes)
 {
     if (bytesToSend) {
-        // allow some time for buffer to be sent
-        uint32_t t = millis();
-        while (bytesToSend && millis() - t < 1000);
+        // allow some time for buffer to be sent (by interrupt)
+        while (millis() - dataTime < DATA_SEND_TIMEOUT);
         bytesToSend = 0;
     }
     memcpy(sendBuf, buffer, bytes);
     bytesToSend = bytes;
+    dataTime = millis();
 }
 
 class COBDAgent : public COBD
@@ -72,12 +73,11 @@ public:
                 debug.println("CMD_SEND_COMMAND");
 #endif
                 // send adapter command
-                for (byte n = 0; n < recvBytes; n++) {
-                    write(recvBuf[n]);
-                }
-                char dataBuf[OBD_RECV_BUF_SIZE] = {0};
-                byte recvbytes = receive(dataBuf) + 1;
-                applyBuffer(dataBuf, recvbytes);
+                while (OBDUART.available()) OBDUART.read();
+                OBDUART.write(recvBuf, recvBytes);
+                char dataBuf[OBD_RECV_BUF_SIZE];
+                byte bytes = receive(dataBuf) + 1;
+                applyBuffer(dataBuf, bytes);
             }
             break;
         case CMD_QUERY_STATUS:
@@ -101,6 +101,31 @@ public:
                 memcpy(dataBuf + 16, pidmap, 16);
                 applyBuffer(dataBuf, MAX_PAYLOAD_SIZE);
             }
+            break;
+        case CMD_GPS_QUERY:
+            {
+#ifdef DEBUG
+                debug.println("CMD_GPS_QUERY");
+#endif
+                GPS_DATA g = {-1};
+                getGPSData(&g);
+                applyBuffer((char*)&g, sizeof(GPS_DATA));
+            }
+            break;
+        default:
+            // raw text mode
+            while (OBDUART.available()) OBDUART.read();
+            for (byte i = 0; i < sizeof(cmd); i++) {
+              char c = *((char*)&cmd + i);
+              if (c == 0) break;
+              if (c >= 0xa & c < 0x80) OBDUART.write(c);
+            }
+            if (recvBytes > 0) {
+              OBDUART.write(recvBuf, recvBytes);
+            }
+            char dataBuf[OBD_RECV_BUF_SIZE];
+            byte bytes = receive(dataBuf) + 1;
+            applyBuffer(dataBuf, bytes);                       
             break;
         }
     }
@@ -173,7 +198,6 @@ public:
         while (available()) read();
     }
     COMMAND_BLOCK cmd;
-    bool obdReady;
 private:
     byte parseData(char* hexdata, byte* buffer, byte bufsize)
     {
@@ -214,6 +238,9 @@ void I2CRecv(int numBytes)
             memset(obdTime, 0, sizeof(obdTime));
             memset(obdData, 0, sizeof(obdData));
             break;
+        case CMD_GPS_SETUP:
+            agent.initGPS();
+            break;
         default:
             if (state != STATE_PROCESS_COMMAND) {
                 memcpy(&agent.cmd, &cmd, sizeof(COMMAND_BLOCK));
@@ -221,30 +248,27 @@ void I2CRecv(int numBytes)
             }
         }
     } else {
-        // unload the data
-        do {
-            if (Wire.available()) {
-                Wire.read();
-                numBytes--;
-            }
-        } while (numBytes > 0);
+        Wire.readBytes(recvBuf, recvBytes = numBytes);
+        if (state != STATE_PROCESS_COMMAND) {
+          agent.cmd.message = CMD_SEND_AT_COMMAND;
+          state = STATE_PROCESS_COMMAND;
+        }
     }
 }
 
 void I2CRequest()
 {
-    if (bytesToSend == 0) {
-        for (byte n = MAX_PAYLOAD_SIZE; n; n--)
-            Wire.write((byte)0);
-        return;
-    }
-
-    Wire.write((byte*)sendBuf, MAX_PAYLOAD_SIZE);
-    if (bytesToSend > MAX_PAYLOAD_SIZE) {
-        bytesToSend -= MAX_PAYLOAD_SIZE;
-        memmove(sendBuf, sendBuf + MAX_PAYLOAD_SIZE, bytesToSend);
-    } else {
-        bytesToSend = 0;
+    if (bytesToSend > 0) {
+      if (millis() - dataTime < DATA_SEND_TIMEOUT) {
+        int byteSent = Wire.write((byte*)sendBuf, min(MAX_PAYLOAD_SIZE, bytesToSend));
+        bytesToSend -= byteSent;
+        if (bytesToSend > 0) {
+          memmove(sendBuf, sendBuf + byteSent, bytesToSend);
+        }
+      } else {
+        // discard the unsent data
+        bytesToSend = 0; 
+      }
     }
 }
 
@@ -254,7 +278,7 @@ void setup()
     debug.begin(9600);
 #endif
     agent.begin();
-    agent.setBaudRate(115200);
+    agent.setBaudRate(115200L);
 
     Wire.onReceive(I2CRecv);
     Wire.onRequest(I2CRequest);
