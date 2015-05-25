@@ -50,10 +50,6 @@ void setup()
      con.print(ret);
      con.println("dB");
   }
-
-  gprs.sendCommand("AT+CMGF=1");    // sets the SMS mode to text
-  gprs.sendCommand("AT+CPMS=\"SM\",\"SM\",\"SM\""); // selects the memory
-
   for (;;) {
     if (gprs.httpInit()) break;
     con.println(gprs.buffer);

@@ -64,6 +64,9 @@ byte CGPRS_SIM800::setup(const char* apn)
   sendCommand("AT+SAPBR=1,1", 10000);
   sendCommand("AT+SAPBR=2,1", 10000);
 
+  sendCommand("AT+CMGF=1");    // sets the SMS mode to text
+  sendCommand("AT+CPMS=\"SM\",\"SM\",\"SM\""); // selects the memory
+
   if (!success)
     return 5;
 
