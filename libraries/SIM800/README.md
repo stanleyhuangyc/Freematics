@@ -49,7 +49,7 @@ Read data from HTTP connection
 
     void httpRead();
 
-Check if HTTP connection is established (returns 0 for in progress, -1 for error, number of http payload bytes on success)
+Check if HTTP connection is established (returns 0 for in progress, -1 for error, bytes of http payload on success)
 
     int httpIsRead();
 
@@ -66,10 +66,6 @@ Change SIM800_RESET_PIN to the pin connect with SIM800 reset pin
 
         #define SIM800_RESET_PIN 7
 
-Change simser definition to the serial UART which SIM800 is attached to
+Change SIM_SERIAL definition to the serial UART which SIM800 is attached to
 
-        #define simser Serial1
-
-Change con definition to the serial UART used for console
-
-        #define con Serial
+        #define SIM_SERIAL Serial1
