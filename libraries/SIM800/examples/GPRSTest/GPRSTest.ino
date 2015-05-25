@@ -8,6 +8,7 @@
 #include "SIM800.h"
 
 #define APN "connect"
+#define con Serial
 static const char* url = "http://arduinodev.com/datetime.php";
 
 CGPRS_SIM800 gprs;

@@ -11,13 +11,10 @@
 #define SIM800_RESET_PIN 7
 
 // change this to the serial UART which SIM800 is attached to
-#define simser Serial1
+#define SIM_SERIAL Serial1
 
-// change this to the serial UART used for console
-#define con Serial
-
-// change this to 1 to enable debug information output
-#define DEBUG 0
+// define DEBUG to one serial UART to enable debug information output
+//#define DEBUG Serial
 
 typedef enum {
     HTTP_DISABLED = 0,
@@ -41,15 +38,21 @@ typedef struct {
 class CGPRS_SIM800 {
 public:
     CGPRS_SIM800():httpState(HTTP_DISABLED) {}
+    // initialize the module
     bool init();
+    // setup network
     byte setup(const char* apn);
+    // get network operator name
     bool getOperatorName();
+    // check for incoming SMS
     bool checkSMS();
+    // get signal quality level (in dB)
     int getSignalQuality();
+    // get GSM location and network time
     bool getLocation(GSM_LOCATION* loc);
     // initialize HTTP connection
     bool httpInit();
-    // terminate  HTTP connection
+    // terminate HTTP connection
     void httpUninit();
     // connect to HTTP server
     bool httpConnect(const char* url, const char* args = 0);
@@ -73,7 +76,7 @@ public:
     // check if there is available serial data
     bool available()
     {
-      return simser.available(); 
+      return SIM_SERIAL.available(); 
     }
     char buffer[256];
     byte httpState;
