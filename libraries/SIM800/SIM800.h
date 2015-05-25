@@ -62,7 +62,7 @@ public:
     // read data from HTTP connection
     void httpRead();
     // check if HTTP connection is established
-    // return 0 for in progress, -1 for error, number of http payload bytes on success
+    // return 0 for in progress, -1 for error, bytes of http payload on success
     int httpIsRead();
     // send AT command and check for expected response
     byte sendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = 0);
