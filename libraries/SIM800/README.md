@@ -49,7 +49,7 @@ Read data from HTTP connection
 
     void httpRead();
 
-Check if HTTP connection is established (returns 0 for in progress, -1 for error, number of http payload bytes on success)
+Check if HTTP connection is established (returns 0 for in progress, -1 for error, bytes of http payload on success)
 
     int httpIsRead();
 
