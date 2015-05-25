@@ -69,7 +69,3 @@ Change SIM800_RESET_PIN to the pin connect with SIM800 reset pin
 Change simser definition to the serial UART which SIM800 is attached to
 
         #define simser Serial1
-
-Change con definition to the serial UART used for console
-
-        #define con Serial
