@@ -7,12 +7,14 @@
 
 #include <Arduino.h>
 #include <OBD.h>
-#include <SD.h>
 #include <Wire.h>
 #include <SPI.h>
 #include <I2Cdev.h>
 #include <MPU9150.h>
 #include "config.h"
+#if ENABLE_DATA_LOG
+#include <SD.h>
+#endif
 #if USE_SOFTSERIAL
 #include <SoftwareSerial.h>
 #endif
@@ -37,7 +39,7 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 #define SerialInfo SerialRF
 #endif
 #else
-#define SerialInfo Serial
+#define SerialInfo SerialRF
 #endif
 
 void(* resetFunc) (void) = 0; //declare reset function at address 0
@@ -460,9 +462,10 @@ void setup()
 {
 #if VERBOSE
     SerialInfo.begin(STREAM_BAUDRATE);
+    delay(500);
     SerialInfo.println("Freematics");
 #endif
-    delay(1000);
+    delay(500);
     logger.begin();
     logger.initSender();
     logger.setup();
