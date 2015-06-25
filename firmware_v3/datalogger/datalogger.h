@@ -70,13 +70,16 @@ public:
     {
 #if ENABLE_DATA_OUT
         SerialRF.begin(STREAM_BAUDRATE);
+        /*
         SerialRF.print("AT+NAMEFreematics");
         delay(10);
         while (SerialRF.available()) SerialRF.read();
         SerialRF.println();
+        */
+        m_lastSendTime = 0;
 #endif
 #if ENABLE_DATA_LOG
-    m_lastDataTime = 0;
+        m_lastDataTime = 0;
 #endif
     }
     void recordData(const char* buf)
@@ -86,6 +89,12 @@ public:
         dataSize += sdfile.write(',');
         dataSize += sdfile.write(buf);
         m_lastDataTime = dataTime;
+#endif
+#if MIN_DATA_INTERVAL
+        uint32_t t = millis();
+        uint32_t elapsed = t - m_lastSendTime;
+        if (elapsed < MIN_DATA_INTERVAL) delay(MIN_DATA_INTERVAL - elapsed);
+        m_lastSendTime = t;
 #endif
     }
     void logData(char c)
@@ -113,7 +122,6 @@ public:
 #else
         SerialRF.print(buf);
 #endif
-        delay(DELAY_AFTER_SENDING);
 #endif
         recordData(buf);
     }
@@ -133,7 +141,6 @@ public:
 #else
         SerialRF.print(buf);
 #endif
-        delay(DELAY_AFTER_SENDING);
 #endif
         recordData(buf);
     }
@@ -154,7 +161,6 @@ public:
         SerialRF.print(buf);
 #endif
 #endif
-        delay(DELAY_AFTER_SENDING);
         recordData(buf);
     }
     void logData(uint16_t pid, int value1, int value2, int value3)
@@ -173,7 +179,6 @@ public:
 #else
         SerialRF.print(buf);
 #endif
-        delay(DELAY_AFTER_SENDING);
 #endif
         recordData(buf);
     }
@@ -242,5 +247,8 @@ private:
 #endif
 #if ENABLE_DATA_LOG
     uint32_t m_lastDataTime;
+#endif
+#if ENABLE_DATA_OUT
+    uint32_t m_lastSendTime;
 #endif
 };

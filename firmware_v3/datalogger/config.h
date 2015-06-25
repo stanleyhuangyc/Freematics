@@ -32,15 +32,15 @@
 #define LONG_INTERVAL 10 /* seconds */
 
 // minimum loop time
-#define MIN_LOOP_TIME 100 /* ms */
+#define MIN_LOOP_TIME 0 /* ms */
 
-// delay time after sending
-#define DELAY_AFTER_SENDING 10 /* ms */
+// minimum data interval
+#define MIN_DATA_INTERVAL 50 /* ms */
 
 // maximum size per file, a new file will be created on reaching this size
 #define MAX_LOG_FILE_SIZE 256 /* KB */
 
-// outputs debug information
+// outputs more debug information
 #define VERBOSE 0
 
 /**************************************
@@ -59,7 +59,7 @@
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
-#define LOG_GPS_NMEA_DATA 1
+#define LOG_GPS_NMEA_DATA 0
 #define LOG_GPS_PARSED_DATA 1
 
 #endif // CONFIG_H_INCLUDED
