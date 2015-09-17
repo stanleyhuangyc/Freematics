@@ -238,7 +238,7 @@ public:
                 if (c == '\n') {
                     if (n > 0) {
                       buf[n] = 0;
-                      recordData(buf);
+                      recordData(buf, n);
                     }
                     n = 0;
                 } else if (c == '>') {
@@ -254,7 +254,7 @@ public:
         }
         if (n > 0) {
             buf[n] = 0;
-            recordData(buf);
+            recordData(buf, n);
         }
 #endif
     }
