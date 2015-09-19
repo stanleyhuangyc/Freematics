@@ -22,20 +22,14 @@
 // FORMAT_LINE is for readable text output
 #define STREAM_FORMAT FORMAT_TEXT
 
-/* Default streaming baudrates:
-   9600bps for BLE and DUO
-   38400bps for BT 2.1
-*/
+// serial baudrate for data out streaming
 #define STREAM_BAUDRATE 9600
 
 // logging interval for slowly changing data
 #define LONG_INTERVAL 10 /* seconds */
 
-// minimum loop time
-#define MIN_LOOP_TIME 0 /* ms */
-
-// minimum data interval
-#define MIN_DATA_INTERVAL 50 /* ms */
+// minimum data sending interval
+#define MIN_DATA_INTERVAL 100 /* ms */
 
 // maximum size per file, a new file will be created on reaching this size
 #define MAX_LOG_FILE_SIZE 256 /* KB */
@@ -61,5 +55,9 @@
 #define USE_GPS 1
 #define LOG_GPS_NMEA_DATA 0
 #define LOG_GPS_PARSED_DATA 1
+
+// GPS parameters
+#define GPS_SERIAL_BAUDRATE 38400
+#define GPS_DATA_TIMEOUT 200 /* ms */
 
 #endif // CONFIG_H_INCLUDED

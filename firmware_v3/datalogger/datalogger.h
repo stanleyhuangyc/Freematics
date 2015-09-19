@@ -99,6 +99,10 @@ public:
     void sendData(const char* buf, byte len)
     {
         SerialRF.write(buf, len);
+        delay(10);
+    }
+    void waitForDataSent()
+    {
 #if MIN_DATA_INTERVAL
         uint32_t t = millis();
         uint32_t elapsed = t - m_lastSendTime;
