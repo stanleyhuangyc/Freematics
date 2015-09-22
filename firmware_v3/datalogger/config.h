@@ -28,9 +28,6 @@
 // logging interval for slowly changing data
 #define LONG_INTERVAL 10 /* seconds */
 
-// minimum data sending interval
-#define MIN_DATA_INTERVAL 100 /* ms */
-
 // maximum size per file, a new file will be created on reaching this size
 #define MAX_LOG_FILE_SIZE 256 /* KB */
 
