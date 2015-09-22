@@ -11,6 +11,7 @@
 #include <SPI.h>
 #include <I2Cdev.h>
 #include <MPU9150.h>
+#include <Narcoleptic.h>
 #include "config.h"
 #if ENABLE_DATA_LOG
 #include <SD.h>
@@ -398,8 +399,6 @@ public:
         closeFile();
 #endif
         state &= ~STATE_OBD_READY;
-        state |= STATE_SLEEPING;
-        //digitalWrite(SD_CS_PIN, LOW);
 #if VERBOSE
         SerialInfo.print("Retry");
 #endif
@@ -407,6 +406,7 @@ public:
 #if VERBOSE
             SerialInfo.write('.');
 #endif
+            Narcoleptic.delay(3000);
         }
         resetFunc();
     }
@@ -468,7 +468,6 @@ void setup()
 void loop()
 {
     static uint32_t lastTime = 0;
-    uint32_t t = millis();
 
     if (logger.state & STATE_OBD_READY) {
         static byte index1 = 0;
@@ -480,7 +479,6 @@ void loop()
             pid = pgm_read_byte(pidTier2 + index2);
             logger.logOBDData(pid);
             index2 = (index2 + 1) % TIER_NUM2;
-            logger.waitForDataSent();
         }
         if (logger.errors >= 2) {
             logger.reconnect();
@@ -494,13 +492,11 @@ void loop()
 
 #if USE_MPU6050 || USE_MPU9150
     logger.logMEMSData();
-    logger.waitForDataSent();
 #endif
 
 #if USE_GPS
     if (logger.state & STATE_GPS_FOUND) {
         logger.logGPSData();
-        logger.waitForDataSent();
     }
 #endif
 
@@ -508,12 +504,11 @@ void loop()
         // log slowly changing data
         int v = logger.getVoltage();
         logger.logData(PID_BATTERY_VOLTAGE, v);
-        logger.logData(PID_DATA_SIZE, logger.dataSize);
         lastTime = millis();
-        logger.waitForDataSent();
     }
 
 #if ENABLE_DATA_LOG
     logger.flushData();
 #endif
+    delay(100);
 }

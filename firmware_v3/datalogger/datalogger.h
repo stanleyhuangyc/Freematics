@@ -81,7 +81,6 @@ public:
         delay(10);
         while (SerialRF.available()) SerialRF.read();
         SerialRF.println();
-        m_lastSendTime = 0;
 #endif
 #if ENABLE_DATA_LOG
         m_lastDataTime = 0;
@@ -99,16 +98,7 @@ public:
     void sendData(const char* buf, byte len)
     {
         SerialRF.write(buf, len);
-        delay(10);
-    }
-    void waitForDataSent()
-    {
-#if MIN_DATA_INTERVAL
-        uint32_t t = millis();
-        uint32_t elapsed = t - m_lastSendTime;
-        if (elapsed < MIN_DATA_INTERVAL) delay(MIN_DATA_INTERVAL - elapsed);
-        m_lastSendTime = t;
-#endif
+        delay(20);
     }
     void logData(char c)
     {
@@ -250,8 +240,5 @@ private:
 #endif
 #if ENABLE_DATA_LOG
     uint32_t m_lastDataTime;
-#endif
-#if ENABLE_DATA_OUT
-    uint32_t m_lastSendTime;
 #endif
 };
