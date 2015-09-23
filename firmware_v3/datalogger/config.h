@@ -17,9 +17,7 @@
 // followings define the format of data streaming, enable one of them only
 // FORMAT_BIN is required by Freematics OBD iOS App
 //#define STREAM_FORMAT FORMAT_BIN
-// FORMAT_CSV is for CSV based text output
-//#define STREAM_FORMAT FORMAT_CSV
-// FORMAT_LINE is for readable text output
+// FORMAT_TEXT is for readable text output
 #define STREAM_FORMAT FORMAT_TEXT
 
 // serial baudrate for data out streaming
