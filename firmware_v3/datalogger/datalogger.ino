@@ -59,9 +59,9 @@ static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_F
 MPU6050 accelgyro;
 #endif
 
-static const byte PROGMEM parts[][4] = {
+static const byte PROGMEM parts[][3] = {
   {'S','D'},
-  {'M','E','M','S'},
+  {'A','C','C'},
   {'O','B','D'},
   {'G','P','S'},
 };
@@ -85,7 +85,7 @@ public:
       buf[4] = 0;
       SerialRF.print(buf);
       SerialRF.print(' ');
-      SerialRF.println(OK ? "OK" : "Fail");
+      SerialRF.println(OK ? "OK" : "NO");
 #endif
     }
     void setup()
@@ -131,8 +131,7 @@ public:
 #if LOG_GPS_NMEA_DATA
         // issue the command to get NMEA data (one line per request)
         write("ATGRR\r");
-        dataTime = millis();
-        for (;;) {
+        for (uint32_t t = millis(); millis() - t < GPS_DATA_TIMEOUT; ) {
             if (available()) {
                 char c = read();
                 if (c == '>') {
@@ -140,9 +139,6 @@ public:
                     break;
                 }
                 logData(c);
-            } else if (millis() - dataTime > GPS_DATA_TIMEOUT) {
-                // timeout
-                break;
             }
         }
 #endif
@@ -153,101 +149,96 @@ public:
         static GPS_DATA gd = {0};
         byte mask = 0;
         byte index = -1;
-        write("ATGPS\r");
         char buf[12];
         byte n = 0;
-        for (;;) {
-            if (available()) {
-                char c = read();
+        write("ATGPS\r");
+        dataTime = millis();
+        for (uint32_t t = dataTime; millis() - t < GPS_DATA_TIMEOUT; ) {
+            if (!available()) continue;
+            char c = read();
 #if VERBOSE
-                logData(c);
+            logData(c);
 #endif
-                if (c == ',' || c == '>') {
-                    buf[n] = 0;
-                    if (index == -1) {
-                        // verify header
-                        if (strcmp(buf + n - 4, "$GPS") == 0) {
-                          dataTime = millis();
-                          index = 0;
-                        }
-                    } else {
-                        long v = atol(buf);
-                        switch (index) {
-                        case 0:
-                            if (gd.date != v) {
-                              gd.date = v;
-                              mask |= 0x1;
-                            }
-                            break;
-                        case 1:
-                            if (gd.time != v) {
-                              gd.time = v;
-                              mask |= 0x2;
-                            }                            
-                            break;
-                        case 2:
-                            if (gd.lat != v) {
-                              gd.lat = v;
-                              mask |= 0x4;
-                            }
-                            break;
-                        case 3:
-                            if (gd.lon != v) {
-                              gd.lon = v;
-                              mask |= 0x8;
-                            }
-                            break;
-                        case 4:
-                            if (gd.alt != (int)v) {
-                              gd.alt = (int)v;
-                              mask |= 0x10;
-                            }
-                            break;
-                        case 5:
-                            if (gd.speed != (byte)v) {
-                              gd.speed = (byte)v;
-                              mask |= 0x20;
-                            }
-                            break;
-                        case 6:
-                            if (gd.heading != (int)v) {
-                              gd.heading = (int)v;
-                              mask |= 0x40;
-                            }
-                            break;
-                        case 7:
-                            if (gd.sat != (byte)v) {
-                              gd.sat = (byte)v;
-                              mask |= 0x80;
-                            }
-                            break;
-                        }
-                        index++;
-                    }
-                    n = 0;
-                    if (c == '>') {
-                        // prompt char received, now process data
-                        if (mask) {
-                          // something has changed
-                          if (mask & 0x1) logData(PID_GPS_DATE, gd.date);
-                          if (mask & 0x2) logData(PID_GPS_TIME, gd.time);
-                          if (mask & 0x4) logData(PID_GPS_LATITUDE, gd.lat);
-                          if (mask & 0x8) logData(PID_GPS_LONGITUDE, gd.lon);
-                          if (mask & 0x10) logData(PID_GPS_ALTITUDE, gd.alt);
-                          if (mask & 0x20) logData(PID_GPS_SPEED, gd.speed);
-                          if (mask & 0x40) logData(PID_GPS_HEADING, gd.heading);
-                          if (mask & 0x80) logData(PID_GPS_SAT_COUNT, gd.sat);
-                        }                        
-                        // discard following data if any
-                        while (available()) read();
-                        break;
-                    }
-                } else if (n < sizeof(buf) - 1) {
-                    buf[n++] = c;
+            if (c != ',' && c != '>') {
+              if (n < sizeof(buf) - 1) buf[n++] = c;
+              continue;
+            }
+            buf[n] = 0;
+            if (index == -1) {
+                // need to verify header
+                if (strcmp(buf + n - 4, "$GPS") == 0) {
+                  index = 0;
                 }
-            } else if (millis() - dataTime > GPS_DATA_TIMEOUT) {
-                // timeout
-                sendData("NO GPS", 6);
+            } else {
+                long v = atol(buf);
+                switch (index) {
+                case 0:
+                    if (gd.date != v) {
+                      gd.date = v;
+                      mask |= 0x1;
+                    }
+                    break;
+                case 1:
+                    if (gd.time != v) {
+                      gd.time = v;
+                      mask |= 0x2;
+                    }                            
+                    break;
+                case 2:
+                    if (gd.lat != v) {
+                      gd.lat = v;
+                      mask |= 0x4;
+                    }
+                    break;
+                case 3:
+                    if (gd.lon != v) {
+                      gd.lon = v;
+                      mask |= 0x8;
+                    }
+                    break;
+                case 4:
+                    if (gd.alt != (int)v) {
+                      gd.alt = (int)v;
+                      mask |= 0x10;
+                    }
+                    break;
+                case 5:
+                    if (gd.speed != (byte)v) {
+                      gd.speed = (byte)v;
+                      mask |= 0x20;
+                    }
+                    break;
+                case 6:
+                    if (gd.heading != (int)v) {
+                      gd.heading = (int)v;
+                      mask |= 0x40;
+                    }
+                    break;
+                case 7:
+                    if (gd.sat != (byte)v) {
+                      gd.sat = (byte)v;
+                      mask |= 0x80;
+                    }
+                    break;
+                }
+                index++;
+            }
+            n = 0;
+            if (c == '>') {
+                // prompt char received, now process data
+                if (mask) {
+                  // something has changed
+                  if (mask & 0x1) logData(PID_GPS_DATE, gd.date);
+                  if (mask & 0x2) logData(PID_GPS_TIME, gd.time);
+                  if (mask & 0x4) logData(PID_GPS_LATITUDE, gd.lat);
+                  if (mask & 0x8) logData(PID_GPS_LONGITUDE, gd.lon);
+                  if (mask & 0x10) logData(PID_GPS_ALTITUDE, gd.alt);
+                  if (mask & 0x20) logData(PID_GPS_SPEED, gd.speed);
+                  if (mask & 0x40) logData(PID_GPS_HEADING, gd.heading);
+                  if (mask & 0x80) logData(PID_GPS_SAT_COUNT, gd.sat);
+                }                        
+                // discard following data if any
+                while (available()) read();
                 break;
             }
         }
@@ -260,47 +251,23 @@ public:
         if (!(state & STATE_MEMS_READY))
             return;
 
-        int16_t ax, ay, az;
-        int16_t gx, gy, gz;
 #if USE_MPU9150
+        int16_t mems[3][3] = {0};
         int16_t mx, my, mz;
-        accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
-#else
-        accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-#endif
-
+        accelgyro.getMotion9(&mems[0][0], &mems[0][1], &mems[0][2], &mems[1][0], &mems[1][1], &mems[1][2], &mems[2][0], &mems[2][1], &mems[2][2]);
         dataTime = millis();
-#if VERBOSE
-        SerialInfo.print("A:");
-        SerialInfo.print(ax);
-        SerialInfo.print('/');
-        SerialInfo.print(ay);
-        SerialInfo.print('/');
-        SerialInfo.print(az);
-        SerialInfo.print(" G:");
-        SerialInfo.print(gx);
-        SerialInfo.print('/');
-        SerialInfo.print(gy);
-        SerialInfo.print('/');
-        SerialInfo.print(gz);
-#if USE_MPU9150
-        SerialInfo.print(" M:");
-        SerialInfo.print(mx);
-        SerialInfo.print('/');
-        SerialInfo.print(my);
-        SerialInfo.print('/');
-        SerialInfo.println(mz);
+        // assume PID_GYRO = PID_AAC + 1, PID_MAG = PID_AAC + 2
+        for (byte n = 0; n < 3; n++) {
+          logData(PID_ACC + n, mems[n][0] >> 4, mems[n][1] >> 4, mems[n][2] >> 4);
+        }
+        
 #else
-        SerialInfo.println();
-#endif
-#endif
-        // log x/y/z of accelerometer
-        logData(PID_ACC, ax >> 4, ay >> 4, az >> 4);
-        // log x/y/z of gyro meter
-        logData(PID_GYRO, gx >> 4, gy >> 4, gz >> 4);
-#if USE_MPU9150
-        // log x/y/z of gyro meter
-        logData(PID_COMPASS, mx >> 4, my >> 4, mz >> 4);
+        int16_t mems[2][3] = {0};
+        accelgyro.getMotion6(&mems[0][0], &mems[0][1], &mems[0][2], &mems[1][0], &mems[1][1], &mems[1][2]);
+        dataTime = millis();
+        for (byte n = 0; n < 2; n++) {
+          logData(PID_ACC + n, mems[n][0] >> 4, mems[n][1] >> 4, mems[n][2] >> 4);
+        }
 #endif
     }
 #endif

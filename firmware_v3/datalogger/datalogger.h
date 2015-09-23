@@ -6,8 +6,7 @@
 *************************************************************************/
 
 #define FORMAT_BIN 0
-#define FORMAT_CSV 1
-#define FORMAT_TEXT 2
+#define FORMAT_TEXT 1
 
 typedef struct {
     uint32_t time;
@@ -98,7 +97,7 @@ public:
     void sendData(const char* buf, byte len)
     {
         SerialRF.write(buf, len);
-        delay(20);
+        delay(10);
     }
     void logData(char c)
     {
@@ -222,7 +221,6 @@ private:
         }
         return checksum;
     }
-#if STREAM_FORMAT == FORMAT_TEXT
     byte translatePIDName(uint16_t pid, char* text)
     {
 #if STREAM_FORMAT == FORMAT_TEXT
@@ -237,7 +235,6 @@ private:
 #endif
         return sprintf(text, "%X,", pid);
     }
-#endif
 #if ENABLE_DATA_LOG
     uint32_t m_lastDataTime;
 #endif
