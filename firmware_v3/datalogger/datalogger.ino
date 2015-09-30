@@ -136,6 +136,7 @@ public:
                 char c = read();
                 if (c == '>') {
                     // prompt char received
+                    logData('\r');
                     break;
                 }
                 logData(c);
@@ -174,8 +175,12 @@ public:
                 switch (index) {
                 case 0:
                     if (gd.date != v) {
-                      gd.date = v;
-                      mask |= 0x1;
+                      byte year = v % 100;
+                      // filter out invalid date
+                      if (v < 1000000 && v >= 10000 && year >= 15 && (gd.date == 0 || (int)year - (gd.date % 100) <= 1)) {
+                        gd.date = v;
+                        mask |= 0x1;
+                      }
                     }
                     break;
                 case 1:
