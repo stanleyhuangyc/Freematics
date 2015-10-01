@@ -43,8 +43,8 @@
 #define SD_CS_PIN 10
 
 // enable(1)/disable(0) MEMS sensor
-//#define USE_MPU6050 1
-#define USE_MPU9150 1
+#define USE_MPU6050 1
+//#define USE_MPU9150 1
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
