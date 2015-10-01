@@ -39,6 +39,8 @@ typedef struct {
 
 #if USE_SOFTSERIAL
 SoftwareSerial SerialRF(A2, A3);
+#elif defined(RF_SERIAL)
+#define SerialRF RF_SERIAL
 #else
 #define SerialRF Serial
 #endif
@@ -78,8 +80,6 @@ public:
         SerialRF.begin(STREAM_BAUDRATE);
         SerialRF.print("AT+NAMEFreematics");
         delay(10);
-        while (SerialRF.available()) SerialRF.read();
-        SerialRF.println();
 #endif
 #if ENABLE_DATA_LOG
         m_lastDataTime = 0;
