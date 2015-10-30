@@ -347,9 +347,14 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		debugOutput(initcmd[i]);
 #endif
 		write(initcmd[i]);
-		if (receive(buffer) == 0) {
-			m_state = OBD_DISCONNECTED;
-			return false;
+		if (receive(buffer, OBD_TIMEOUT_LONG) == 0) {
+			if (i == 0) {
+				// workaround for longer initialization time
+				delay(2000);
+			} else {
+				m_state = OBD_DISCONNECTED;
+				return false;
+			}
 		}
 		delay(50);
 	}
