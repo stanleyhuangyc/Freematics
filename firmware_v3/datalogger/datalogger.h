@@ -96,8 +96,10 @@ public:
     }
     void sendData(const char* buf, byte len)
     {
+#if ENABLE_DATA_OUT
         SerialRF.write(buf, len);
         delay(10);
+#endif
     }
     void logData(char c)
     {
@@ -117,7 +119,7 @@ public:
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
-        sendData((char*)&ld, 12);
+        sendData((const char*)&ld, 12);
 #else
         sendData(buf, len);
 #endif
@@ -133,7 +135,7 @@ public:
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
-        sendData((uint8_t*)&ld, 12);
+        sendData((const char*)&ld, 12);
 #else
         sendData(buf, len);
 #endif
@@ -149,7 +151,7 @@ public:
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
         ld.checksum = getChecksum((char*)&ld, 12);
-        sendData((uint8_t*)&ld, 12);
+        sendData((const char*)&ld, 12);
 #else
         sendData(buf, len);
 #endif
@@ -165,7 +167,7 @@ public:
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 3, 0, {value1, value2, value3}};
         ld.checksum = getChecksum((char*)&ld, 20);
-        SerialRF.write((uint8_t*)&ld, 20);
+        sendData((const char*)&ld, 20);
 #else
         sendData(buf, len);
 #endif
