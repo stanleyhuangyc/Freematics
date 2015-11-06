@@ -23,9 +23,6 @@
 // serial baudrate for data out streaming
 #define STREAM_BAUDRATE 9600
 
-// logging interval for slowly changing data
-#define LONG_INTERVAL 10 /* seconds */
-
 // maximum size per file, a new file will be created on reaching this size
 #define MAX_LOG_FILE_SIZE 256 /* KB */
 
@@ -36,8 +33,11 @@
 * Hardware setup
 **************************************/
 
-// number of attempts of connecting OBD-II (0 for always)
-#define OBD_ATTEMPTS 3
+// attempts for connecting OBD-II
+#define OBD_ATTEMPT_TIME 30 /* seconds */
+
+// OBD-II UART baudrate
+#define OBD_UART_BAUDRATE 115200L
 
 // SD pin
 #define SD_CS_PIN 10
@@ -48,7 +48,7 @@
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
-#define LOG_GPS_NMEA_DATA 0
+#define LOG_GPS_NMEA_DATA 1
 #define LOG_GPS_PARSED_DATA 1
 
 // GPS parameters

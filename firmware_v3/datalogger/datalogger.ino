@@ -29,15 +29,11 @@
 #define STATE_MEMS_READY 0x10
 #define STATE_SLEEPING 0x20
 
-#if USE_SOFTSERIAL
 #if VERBOSE && !ENABLE_DATA_OUT
-#if defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1280__)
-SoftwareSerial SerialInfo(A8, A9); /* for BLE Shield on MEGA*/
+#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168P__)
+SoftwareSerial SerialInfo(A2, A3);
 #else
-SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
-#endif
-#else
-#define SerialInfo SerialRF
+#define SerialInfo Serial
 #endif
 #else
 #define SerialInfo SerialRF
@@ -45,9 +41,8 @@ SoftwareSerial SerialInfo(A2, A3); /* for BLE Shield on UNO/leonardo*/
 
 void(* resetFunc) (void) = 0; //declare reset function at address 0
 
-static uint32_t lastFileSize = 0;
+static uint8_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
-static uint8_t attempts = 0;
 
 static const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
 static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_FUEL_LEVEL, PID_DISTANCE};
@@ -80,9 +75,9 @@ public:
     void showStatus(byte partID, bool OK)
     {
 #if ENABLE_DATA_OUT
-      char buf[5];
-      memcpy_P(buf, parts[partID], 4);
-      buf[4] = 0;
+      char buf[4];
+      memcpy_P(buf, parts[partID], 3);
+      buf[3] = 0;
       SerialRF.print(buf);
       SerialRF.print(' ');
       SerialRF.println(OK ? "OK" : "NO");
@@ -108,7 +103,9 @@ public:
         showStatus(PART_MEMS, success);
 #endif
 
-        setBaudRate(115200L);
+#if OBD_UART_BAUDRATE
+        setBaudRate(OBD_UART_BAUDRATE);
+#endif
 
         success = init();
         if (success) {
@@ -345,23 +342,23 @@ public:
     void flushData()
     {
         // flush SD data every 1KB
-        if (dataSize - lastFileSize >= 1024) {
+        byte dataSizeKB = dataSize >> 10;
+        if (dataSizeKB != lastFileSize) {
 #if VERBOSE
             // display logged data size
             SerialInfo.print(dataSize);
             SerialInfo.println(" bytes");
 #endif
+            flushFile();
+            lastFileSize = dataSizeKB;
 #if MAX_LOG_FILE_SIZE
             if (dataSize >= 1024L * MAX_LOG_FILE_SIZE) {
               closeFile();
               if (openLogFile() == 0) {
                   state &= ~STATE_SD_READY;
               }
-            } else {
-              flushFile();
             }
 #endif
-            lastFileSize = dataSize;
         }
     }
 #endif
@@ -455,11 +452,10 @@ void loop()
         if (logger.errors >= 2) {
             logger.reconnect();
         }
-    } else if (!OBD_ATTEMPTS || attempts <= OBD_ATTEMPTS - 1) {
+    } else if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
         if (logger.init()) {
             logger.state |= STATE_OBD_READY;
         }
-        attempts++;
     }
 
 #if USE_MPU6050 || USE_MPU9150
@@ -472,15 +468,8 @@ void loop()
     }
 #endif
 
-    if (millis() - lastTime > LONG_INTERVAL * 1000) {
-        // log slowly changing data
-        int v = logger.getVoltage();
-        logger.logData(PID_BATTERY_VOLTAGE, v);
-        lastTime = millis();
-    }
-
 #if ENABLE_DATA_LOG
     logger.flushData();
 #endif
-    delay(100);
+    delay(50);
 }
