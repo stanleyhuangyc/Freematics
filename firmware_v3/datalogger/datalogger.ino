@@ -436,8 +436,6 @@ void setup()
 
 void loop()
 {
-    static uint32_t lastTime = 0;
-
     if (logger.state & STATE_OBD_READY) {
         static byte index1 = 0;
         static byte index2 = 0;
@@ -449,7 +447,7 @@ void loop()
             logger.logOBDData(pid);
             index2 = (index2 + 1) % TIER_NUM2;
         }
-        if (logger.errors >= 2) {
+        if (logger.errors >= 3) {
             logger.reconnect();
         }
     } else if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
