@@ -45,7 +45,7 @@ static uint8_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
 
 static const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
-static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_FUEL_LEVEL, PID_DISTANCE};
+static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_DISTANCE};
 
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
@@ -107,12 +107,6 @@ public:
         setBaudRate(OBD_UART_BAUDRATE);
 #endif
 
-        success = init();
-        if (success) {
-            state |= STATE_OBD_READY;
-        }
-        showStatus(PART_OBD, success);
-
 #if USE_GPS
         success = initGPS(GPS_SERIAL_BAUDRATE);
         if (success) {
@@ -120,7 +114,12 @@ public:
         }
         showStatus(PART_GPS, success);
 #endif
-        delay(5000);
+
+        success = init();
+        if (success) {
+            state |= STATE_OBD_READY;
+        }
+        showStatus(PART_OBD, success);
     }
 #if USE_GPS
     void logGPSData()
@@ -371,34 +370,31 @@ public:
 #if VERBOSE
         SerialInfo.print("Retry");
 #endif
+        byte n = 0;
+        bool toReset = false;
         while (!init()) {
 #if VERBOSE
             SerialInfo.write('.');
 #endif
             Narcoleptic.delay(3000);
+            if (n >= 20) {
+              toReset = true;
+            } else {
+              n++; 
+            }
         }
-        resetFunc();
+        if (toReset) resetFunc();
     }
     bool logOBDData(byte pid)
     {
         int value;
-
-        // send a query command
-        sendQuery(pid);
-        pid = 0; // this lets PID also obtained and filled from response
-        // receive and parse the response
-        char buffer[OBD_RECV_BUF_SIZE];
-        char* data = getResponse(pid, buffer);
-        dataTime = millis();
-        if (!data) {
+        if (!read(pid, value)) {
             recover();
             errors++;
+            SerialRF.print("ERROR-");
+            SerialRF.println(pid, HEX);
             return false;
         }
-#if VERBOSE
-        SerialInfo.println(data);
-#endif
-        value = normalizeData(pid, data);
         showData(pid, value);
         // log data to SD card
         logData(0x100 | pid, value);
@@ -414,6 +410,13 @@ public:
         SerialInfo.print(pid, HEX);
         SerialInfo.print("]=");
         SerialInfo.println(value);
+#endif
+    }
+    void dataIdleLoop()
+    {
+      if (m_state != OBD_CONNECTED) return;
+#if ENABLE_DATA_LOG
+      flushData();
 #endif
     }
     byte state;
@@ -456,18 +459,15 @@ void loop()
         }
     }
 
-#if USE_MPU6050 || USE_MPU9150
-    logger.logMEMSData();
-#endif
-
 #if USE_GPS
     if (logger.state & STATE_GPS_FOUND) {
         logger.logGPSData();
     }
 #endif
 
-#if ENABLE_DATA_LOG
-    logger.flushData();
+#if USE_MPU6050 || USE_MPU9150
+      logger.logMEMSData();
 #endif
-    delay(50);
+
+    //delay(50);
 }
