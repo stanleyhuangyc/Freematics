@@ -89,9 +89,10 @@ public:
     {
 #if ENABLE_DATA_LOG
         dataSize += sdfile.print(dataTime - m_lastDataTime);
-        dataSize += sdfile.write(',');
+        sdfile.write(',');
         dataSize += sdfile.write(buf, len);
-        dataSize += sdfile.write('\r');
+        sdfile.write("\r\n");
+        dataSize += 3;
         m_lastDataTime = dataTime;
 #endif
     }
