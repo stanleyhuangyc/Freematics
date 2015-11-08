@@ -91,6 +91,7 @@ public:
         dataSize += sdfile.print(dataTime - m_lastDataTime);
         dataSize += sdfile.write(',');
         dataSize += sdfile.write(buf, len);
+        dataSize += sdfile.write('\r');
         m_lastDataTime = dataTime;
 #endif
     }
@@ -98,6 +99,7 @@ public:
     {
 #if ENABLE_DATA_OUT
         SerialRF.write(buf, len);
+        SerialRF.write('\r');
         delay(10);
 #endif
     }
@@ -110,11 +112,22 @@ public:
         }
 #endif
     }
+    void logData(uint16_t pid)
+    {
+        char buf[8];
+        byte len = translatePIDName(pid, buf);
+#if ENABLE_DATA_OUT
+#if STREAM_FORMAT != FORMAT_BIN
+        sendData(buf, len);
+#endif
+#endif
+        recordData(buf, len);
+    }
     void logData(uint16_t pid, int value)
     {
         char buf[16];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%d\r", value) + n;
+        byte len = sprintf(buf + n, "%d", value) + n;
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
@@ -130,7 +143,7 @@ public:
     {
         char buf[20];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%ld\r", value) + n;
+        byte len = sprintf(buf + n, "%ld", value) + n;
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
@@ -146,7 +159,7 @@ public:
     {
         char buf[20];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%lu\r", value) + n;
+        byte len = sprintf(buf + n, "%lu", value) + n;
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
@@ -162,7 +175,7 @@ public:
     {
         char buf[24];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%d,%d,%d\r", value1, value2, value3) + n;
+        byte len = sprintf(buf + n, "%d,%d,%d", value1, value2, value3) + n;
 #if ENABLE_DATA_OUT
 #if STREAM_FORMAT == FORMAT_BIN
         LOG_DATA_COMM ld = {dataTime, pid, 3, 0, {value1, value2, value3}};
