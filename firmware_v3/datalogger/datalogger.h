@@ -52,7 +52,7 @@ static File sdfile;
 #endif
 
 typedef struct {
-    uint16_t pid;
+    uint8_t pid;
     char name[3];
 } PID_NAME;
 
