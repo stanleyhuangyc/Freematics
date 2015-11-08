@@ -389,15 +389,14 @@ public:
     {
         int value;
         if (!read(pid, value)) {
+            // error occurred
+            logData((uint16_t)pid | 0x100);
             recover();
             errors++;
-            SerialRF.print("ERROR-");
-            SerialRF.println(pid, HEX);
             return false;
         }
         showData(pid, value);
-        // log data to SD card
-        logData(0x100 | pid, value);
+        logData((uint16_t)pid | 0x100, value);
         errors = 0;
         return true;
     }
@@ -442,15 +441,16 @@ void loop()
     if (logger.state & STATE_OBD_READY) {
         static byte index1 = 0;
         static byte index2 = 0;
-        byte pid = pgm_read_byte(pidTier1 + index1++);
-        logger.logOBDData(pid);
         if (index1 == TIER_NUM1) {
             index1 = 0;
-            pid = pgm_read_byte(pidTier2 + index2);
+            byte pid = pgm_read_byte(pidTier2 + index2);
             logger.logOBDData(pid);
             index2 = (index2 + 1) % TIER_NUM2;
+        } else {
+          byte pid = pgm_read_byte(pidTier1 + index1++);
+          logger.logOBDData(pid);
         }
-        if (logger.errors >= 3) {
+        if (logger.errors >= 10) {
             logger.reconnect();
         }
     } else if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
