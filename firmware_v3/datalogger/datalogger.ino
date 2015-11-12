@@ -466,8 +466,8 @@ void loop()
 #endif
 
 #if USE_MPU6050 || USE_MPU9150
-      logger.logMEMSData();
+    logger.logMEMSData();
 #endif
 
-    //delay(50);
+    delay(50);
 }
