@@ -1,5 +1,5 @@
 /*************************************************************************
-* Arduino Data Logger Class
+* Telematics Data Logger Class
 * Distributed under GPL v2.0
 * Written by Stanley Huang <stanleyhuangyc@gmail.com>
 * Visit http://freematics.com for more information
@@ -241,7 +241,7 @@ private:
     {
 #if STREAM_FORMAT == FORMAT_TEXT
         for (uint16_t n = 0; n < sizeof(pidNames) / sizeof(pidNames[0]); n++) {
-            uint16_t id = pgm_read_word(&pidNames[n].pid);
+            uint16_t id = pgm_read_byte(&pidNames[n].pid);
             if (pid == id) {
                 memcpy_P(text, pidNames[n].name, 3);
                 text[3] = ',';
