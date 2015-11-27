@@ -390,6 +390,7 @@ public:
         int value;
         if (!read(pid, value)) {
             // error occurred
+            dataTime = millis();
             logData((uint16_t)pid | 0x100);
             recover();
             errors++;
