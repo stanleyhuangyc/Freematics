@@ -281,7 +281,7 @@ public:
             index = openFile();
         }
         if (index) {
-            if (sdfile.print("#FREEMATICS\r") > 0) {
+            if (sdfile.print("#FREEMATICS\r\n") > 0) {
               state |= STATE_SD_READY;
             } else {
               index = 0;
