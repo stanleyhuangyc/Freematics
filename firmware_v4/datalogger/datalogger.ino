@@ -1,8 +1,8 @@
 /*************************************************************************
-* Arduino OBD-II/G-Force Data Logger and Transmitter
+* OBD-II/MEMS/GPS Data Logging Sketch for Freematics ONE
 * Distributed under GPL v2.0
-* Copyright (c) 2013-15 Stanley Huang <stanleyhuangyc@gmail.com>
-* All rights reserved.
+* Visit http://freematics.com for more information
+* Developed by Stanley Huang <stanleyhuangyc@gmail.com>
 *************************************************************************/
 
 #include <Arduino.h>
