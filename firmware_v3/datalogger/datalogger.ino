@@ -390,27 +390,14 @@ public:
         int value;
         if (!read(pid, value)) {
             // error occurred
-            dataTime = millis();
-            logData((uint16_t)pid | 0x100);
             recover();
             errors++;
             return false;
         }
-        showData(pid, value);
+        dataTime = millis();
         logData((uint16_t)pid | 0x100, value);
         errors = 0;
         return true;
-    }
-    void showData(byte pid, int value)
-    {
-#if VERBOSE
-        SerialInfo.print('[');
-        SerialInfo.print(millis());
-        SerialInfo.print("][");
-        SerialInfo.print(pid, HEX);
-        SerialInfo.print("]=");
-        SerialInfo.println(value);
-#endif
     }
     void dataIdleLoop()
     {
