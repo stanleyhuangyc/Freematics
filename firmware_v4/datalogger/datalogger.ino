@@ -83,13 +83,13 @@ public:
         
 #if ENABLE_DATA_LOG
         uint16_t volsize = initSD();
-        success = openLogFile() != 0;
-        showStatus(PART_SD, success);
         if (volsize) {
           SerialRF.print("SD ");
           SerialRF.print(volsize);
           SerialRF.println("MB");
+          success = openLogFile() != 0;
         }
+        showStatus(PART_SD, success);
 #endif
 
 #if USE_MPU6050 || USE_MPU9150
