@@ -208,7 +208,7 @@ bool COBD::getResult(byte& pid, int& result)
 
 bool COBD::setProtocol(OBD_PROTOCOLS h)
 {
-    char buf[32];
+	char buf[32];
 	if (h == PROTO_AUTO) {
 		write("ATSP00\r");
 	} else {
@@ -216,48 +216,44 @@ bool COBD::setProtocol(OBD_PROTOCOLS h)
 		write(buf);
 	}
 	if (receive(buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0 && strstr(buf, "OK"))
-        return true;
-    else
-        return false;
+		return true;
+	else
+		return false;
 }
 
 void COBD::sleep()
 {
-  	char buf[32];
-	write("ATLP\r");
-	receive(buf, sizeof(buf));
+	char buf[32];
+	sendCommand("ATLP\r", buf, sizeof(buf));
 }
 
 float COBD::getVoltage()
 {
-    char buf[32];
-    write("ATRV\r");
-    byte n = receive(buf, sizeof(buf));
-    if (n > 0) {
-        return atof(buf);
-    }
-    return 0;
+	char buf[32];
+	if (sendCommand("ATRV\r", buf, sizeof(buf)) > 0) {
+		return atof(buf);
+	}
+	return 0;
 }
 
 bool COBD::getVIN(char* buffer, byte bufsize)
 {
-    write("0902\r");
-    if (receive(buffer, bufsize, OBD_TIMEOUT_LONG)) {
-        char *p = strstr(buffer, "0: 49 02");
-        if (p) {
-            char *q = buffer;
-            p += 10;
-            do {
-                for (++p; *p == ' '; p += 3) {
-                    if (*q = hex2uint8(p + 1)) q++;
-                }
-                p = strchr(p, ':');
-            } while(p);
-            *q = 0;
-            return true;
-        }
-    }
-    return false;
+	if (sendCommand("0902\r", buffer, bufsize)) {
+	    char *p = strstr(buffer, "0: 49 02");
+	    if (p) {
+	        char *q = buffer;
+	        p += 10;
+	        do {
+	            for (++p; *p == ' '; p += 3) {
+	                if (*q = hex2uint8(p + 1)) q++;
+	            }
+	            p = strchr(p, ':');
+	        } while(p);
+	        *q = 0;
+	        return true;
+	    }
+	}
+	return false;
 }
 
 bool COBD::isValidPID(byte pid)
@@ -315,8 +311,7 @@ byte COBD::receive(char* buffer, byte bufsize, int timeout)
 void COBD::recover()
 {
 	char buf[16];
-	write("AT\r");
-	receive(buf, sizeof(buf));
+	sendCommand("AT\r", buf, sizeof(buf));
 }
 
 bool COBD::init(OBD_PROTOCOLS protocol)
@@ -325,7 +320,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 	char buffer[64];
 
 	m_state = OBD_CONNECTING;
-	//recover();
 
 	for (unsigned char i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 #ifdef DEBUG
@@ -343,7 +337,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		}
 		delay(50);
 	}
-	//while (available()) read();
 
 	if (protocol != PROTO_AUTO) {
 		setProtocol(protocol);
@@ -369,7 +362,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		}
 		delay(100);
 	}
-	//while (available()) read();
 
 	m_state = OBD_CONNECTED;
 	errors = 0;
@@ -384,70 +376,67 @@ void COBD::end()
 
 bool COBD::setBaudRate(unsigned long baudrate)
 {
-    OBDUART.print("ATBR1 ");
-    OBDUART.print(baudrate);
-    OBDUART.print('\r');
-    delay(50);
-    OBDUART.end();
-    OBDUART.begin(baudrate);
-    recover();
-    return true;
+	OBDUART.print("ATBR1 ");
+	OBDUART.print(baudrate);
+	OBDUART.print('\r');
+	delay(50);
+	OBDUART.end();
+	OBDUART.begin(baudrate);
+	recover();
+	return true;
 }
 
 bool COBD::initGPS(unsigned long baudrate)
 {
-    char buf[32];
-    sprintf(buf, "ATBR2 %lu\r", baudrate);
-    write(buf);
-    return (receive(buf, sizeof(buf)) && strstr(buf, "OK"));
+	char buf[32];
+	return (sendCommand(buf, buf, sizeof(buf)) && strstr(buf, "OK"));
 }
 
 bool COBD::getGPSData(GPS_DATA* gdata)
 {
-    char buf[128];
-    char *p;
-    write("ATGPS\r");
-    if (receive(buf, sizeof(buf)) == 0 || !(p = strstr(buf, "$GPS")))
-        return false;
+	char buf[128];
+	char *p;
+	if (sendCommand("ATGPS\r", buf, sizeof(buf)) == 0 || !(p = strstr(buf, "$GPS")))
+	    return false;
 
-    byte index = 0;
-    char *s = buf;
-    s = p + 5;
-    for (p = s; *p; p++) {
-        char c = *p;
-        if (c == ',' || c == '>' || c <= 0x0d) {
-            long value = atol(s);
-            switch (index) {
-            case 0:
-                gdata->date = (uint32_t)value;
-                break;
-            case 1:
-                gdata->time = (uint32_t)value;
-                break;
-            case 2:
-                gdata->lat = value;
-                break;
-            case 3:
-                gdata->lon = value;
-                break;
-            case 4:
-                gdata->alt = value;
-                break;
-            case 5:
-                gdata->speed = value;
-                break;
-            case 6:
-                gdata->heading = value;
-                break;
-            case 7:
-                gdata->sat = value;
-                break;
-            }
-            index++;
-            s = p + 1;
-        }
-    }
-    return index >= 4;
+	byte index = 0;
+	char *s = buf;
+	s = p + 5;
+	for (p = s; *p; p++) {
+		char c = *p;
+		if (c == ',' || c == '>' || c <= 0x0d) {
+			long value = atol(s);
+			switch (index) {
+			case 0:
+			    gdata->date = (uint32_t)value;
+			    break;
+			case 1:
+			    gdata->time = (uint32_t)value;
+			    break;
+			case 2:
+			    gdata->lat = value;
+			    break;
+			case 3:
+			    gdata->lon = value;
+			    break;
+			case 4:
+			    gdata->alt = value;
+			    break;
+			case 5:
+			    gdata->speed = value;
+			    break;
+			case 6:
+			    gdata->heading = value;
+			    break;
+			case 7:
+			    gdata->sat = value;
+			    break;
+			}
+			index++;
+			s = p + 1;
+		}
+	}
+	return index >= 4;
 }
 
 #ifdef DEBUG
@@ -476,10 +465,10 @@ void COBDSPI::begin(byte pinCS, byte pinReady)
 	pinMode(pinCS, OUTPUT);
 	digitalWrite(m_pinCS, HIGH);
 	SPI.begin();
-        delay(50);
-        SPI.end();
-        delay(50);
-        SPI.begin();
+	delay(50);
+	SPI.end();
+	delay(50);
+	SPI.begin();
 	SPI.setClockDivider(2);
 }
 
@@ -520,12 +509,14 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
 void COBDSPI::write(const char* s)
 {
 	digitalWrite(m_pinCS, LOW);
-	SPI.transfer('$');
-	for (byte i = 0; i < 3; i++) {
-	  SPI.transfer(pgm_read_byte(&targets[m_target][i]));
+	if (*s != '$') {
+		SPI.transfer('$');
+		for (byte i = 0; i < 3; i++) {
+			SPI.transfer(pgm_read_byte(&targets[m_target][i]));
+		}
 	}
 	for (; *s ;s++) {
-          SPI.transfer((byte)*s);
+		SPI.transfer((byte)*s);
 	}
 	digitalWrite(m_pinCS, HIGH);
 }
