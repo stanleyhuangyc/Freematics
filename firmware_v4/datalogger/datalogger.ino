@@ -82,15 +82,20 @@ public:
         state = 0;
         
 #if ENABLE_DATA_LOG
-        success = initSD() && openLogFile();
+        uint16_t volsize = initSD();
+        success = openLogFile() != 0;
         showStatus(PART_SD, success);
+        if (volsize) {
+          SerialRF.print("SD ");
+          SerialRF.print(volsize);
+          SerialRF.println("MB");
+        }
 #endif
 
 #if USE_MPU6050 || USE_MPU9150
         Wire.begin();
         accelgyro.initialize();
-        success = accelgyro.testConnection();
-        if (success) {
+        if (success = accelgyro.testConnection()) {
           state |= STATE_MEMS_READY;
         }
         showStatus(PART_MEMS, success);
@@ -101,18 +106,18 @@ public:
 #endif
 
 #if USE_GPS
-        success = initGPS(GPS_SERIAL_BAUDRATE);
-        if (success) {
+        if (success = initGPS(GPS_SERIAL_BAUDRATE)) {
             state |= STATE_GPS_FOUND;
         }
         showStatus(PART_GPS, success);
 #endif
 
-        success = init();
-        if (success) {
+        if (success = init()) {
             state |= STATE_OBD_READY;
         }
         showStatus(PART_OBD, success);
+        
+        delay(3000);
     }
 #if USE_GPS
     void logGPSData()
@@ -266,7 +271,7 @@ public:
             index = openFile();
         }
         if (index) {
-            if (sdfile.print("#FREEMATICS\r\n") > 0) {
+            if (sdfile.println(ID_STR) > 0) {
               state |= STATE_SD_READY;
             } else {
               index = 0;
@@ -279,11 +284,12 @@ public:
 #endif
         return index;
     }
-    bool initSD()
+    uint16_t initSD()
     {
         state &= ~STATE_SD_READY;
         pinMode(SS, OUTPUT);
         Sd2Card card;
+        uint32_t volumesize = 0;
         if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
 #if VERBOSE
             const char* type;
@@ -307,21 +313,32 @@ public:
             SdVolume volume;
             if (!volume.init(card)) {
                 SerialInfo.println(" No FAT!");
-                return false;
+                return 0;
             }
 
-            uint32_t volumesize = volume.blocksPerCluster();
+            volumesize = volume.blocksPerCluster();
             volumesize >>= 1; // 512 bytes per block
             volumesize *= volume.clusterCount();
-            volumesize >>= 10;
+            volumesize /= 1000;
             SerialInfo.print(" SD size: ");
             SerialInfo.print((int)((volumesize + 511) / 1000));
             SerialInfo.println("GB");
             delay(3000);
+#else
+            SdVolume volume;
+            if (volume.init(card)) {
+              volumesize = volume.blocksPerCluster();
+              volumesize >>= 1; // 512 bytes per block
+              volumesize *= volume.clusterCount();
+              volumesize /= 1000;
+            }
 #endif
         }
-
-        return SD.begin(SD_CS_PIN);
+        if (SD.begin(SD_CS_PIN)) {
+          return volumesize; 
+        } else {
+          return 0;
+        }
     }
     void flushData()
     {
@@ -403,17 +420,49 @@ void setup()
 {
 #if VERBOSE
     SerialInfo.begin(STREAM_BAUDRATE);
-    delay(500);
-    SerialInfo.println("Freematics");
 #endif
-    delay(500);
-    logger.begin();
     logger.initSender();
+    logger.begin();
     logger.setup();
+}
+
+void upgradeFirmware()
+{
+  Serial.setTimeout(30000);
+  for (;;) {
+    // read data into string until '\r' encountered
+    String s = Serial.readStringUntil('\r');
+    if (s.length() == 0) {
+      // no data received
+      Serial.println("TIMEOUT");
+      break;
+    } else if (s == "$UPD") {
+      // empty data chunk received
+      Serial.println("END");
+      delay(500);
+      // reset 328
+      resetFunc();
+      break; 
+    }
+    // send via SPI
+    logger.write(s.c_str());
+    s = "";
+    // receive from SPI and forward to serial
+    char buffer[64];
+    byte n = logger.receive(buffer, sizeof(buffer), 3000);
+    if (n) Serial.write(buffer, n);
+  }
 }
 
 void loop()
 {
+    // check serial inbound data
+    if (SerialRF.available()) {
+      if (Serial.read() == '#' && Serial.read() == '#') {
+        Serial.println("OK");
+        upgradeFirmware();
+      }      
+    }
     if (logger.state & STATE_OBD_READY) {
         static byte index2 = 0;
         for (byte n = 0; n < TIER_NUM1; n++) {

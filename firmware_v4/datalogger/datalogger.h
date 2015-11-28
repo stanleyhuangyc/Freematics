@@ -34,6 +34,7 @@ typedef struct {
 #define PID_DATA_SIZE 0x80
 
 #define FILE_NAME_FORMAT "/DAT%05d.CSV"
+#define ID_STR "#FREEMATICS"
 
 #if ENABLE_DATA_OUT
 
@@ -78,8 +79,7 @@ public:
     {
 #if ENABLE_DATA_OUT
         SerialRF.begin(STREAM_BAUDRATE);
-        SerialRF.print("AT+NAMEFreematics");
-        delay(10);
+        SerialRF.println(ID_STR);
 #endif
 #if ENABLE_DATA_LOG
         m_lastDataTime = 0;
@@ -88,11 +88,15 @@ public:
     void recordData(const char* buf, byte len)
     {
 #if ENABLE_DATA_LOG
+#if STREAM_FORMAT == FORMAT_BIN
+        dataSize += sdfile.write(buf, len);
+#else
         dataSize += sdfile.print(dataTime - m_lastDataTime);
         sdfile.write(',');
         dataSize += sdfile.write(buf, len);
-        sdfile.write("\r\n");
+        sdfile.println();
         dataSize += 3;
+#endif
         m_lastDataTime = dataTime;
 #endif
     }
@@ -100,8 +104,7 @@ public:
     {
 #if ENABLE_DATA_OUT
         SerialRF.write(buf, len);
-        SerialRF.write('\r');
-        delay(10);
+        SerialRF.println();
 #endif
     }
     void logData(char c)
