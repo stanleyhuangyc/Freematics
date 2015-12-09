@@ -56,11 +56,11 @@ byte hex2uint8(const char *p)
 * OBD-II UART Adapter
 *************************************************************************/
 
-byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize)
+byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 {
 	write(cmd);
 	dataIdleLoop();
-	return receive(buf, bufsize, OBD_TIMEOUT_LONG);
+	return receive(buf, bufsize, timeout);
 }
 
 void COBD::sendQuery(byte pid)
@@ -386,59 +386,6 @@ bool COBD::setBaudRate(unsigned long baudrate)
 	return true;
 }
 
-bool COBD::initGPS(unsigned long baudrate)
-{
-	char buf[32];
-	return (sendCommand(buf, buf, sizeof(buf)) && strstr(buf, "OK"));
-}
-
-bool COBD::getGPSData(GPS_DATA* gdata)
-{
-	char buf[128];
-	char *p;
-	if (sendCommand("ATGPS\r", buf, sizeof(buf)) == 0 || !(p = strstr(buf, "$GPS")))
-	    return false;
-
-	byte index = 0;
-	char *s = buf;
-	s = p + 5;
-	for (p = s; *p; p++) {
-		char c = *p;
-		if (c == ',' || c == '>' || c <= 0x0d) {
-			long value = atol(s);
-			switch (index) {
-			case 0:
-			    gdata->date = (uint32_t)value;
-			    break;
-			case 1:
-			    gdata->time = (uint32_t)value;
-			    break;
-			case 2:
-			    gdata->lat = value;
-			    break;
-			case 3:
-			    gdata->lon = value;
-			    break;
-			case 4:
-			    gdata->alt = value;
-			    break;
-			case 5:
-			    gdata->speed = value;
-			    break;
-			case 6:
-			    gdata->heading = value;
-			    break;
-			case 7:
-			    gdata->sat = value;
-			    break;
-			}
-			index++;
-			s = p + 1;
-		}
-	}
-	return index >= 4;
-}
-
 #ifdef DEBUG
 void COBD::debugOutput(const char *s)
 {
@@ -464,9 +411,6 @@ void COBDSPI::begin(byte pinCS, byte pinReady)
 	pinMode(pinReady, INPUT);
 	pinMode(pinCS, OUTPUT);
 	digitalWrite(m_pinCS, HIGH);
-	SPI.begin();
-	delay(50);
-	SPI.end();
 	delay(50);
 	SPI.begin();
 	SPI.setClockDivider(2);
@@ -509,15 +453,138 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
 void COBDSPI::write(const char* s)
 {
 	digitalWrite(m_pinCS, LOW);
+        delay(1);
 	if (*s != '$') {
+		delayMicroseconds(5);
 		SPI.transfer('$');
 		for (byte i = 0; i < 3; i++) {
+			delayMicroseconds(5);
 			SPI.transfer(pgm_read_byte(&targets[m_target][i]));
 		}
 	}
 	for (; *s ;s++) {
+		delayMicroseconds(5);
 		SPI.transfer((byte)*s);
 	}
 	digitalWrite(m_pinCS, HIGH);
 }
 
+byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
+{
+	uint32_t t = millis();  
+	byte n;
+	do {
+		write(cmd);
+		n = receive(buf, bufsize, timeout);
+		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
+			// data not ready
+			dataIdleLoop();
+		} else {
+	  		break;
+		}
+	} while (millis() - t < timeout);
+	return n;
+}
+
+bool COBDSPI::initGPS(unsigned long baudrate)
+{
+	bool success = false;
+	char buf[32];
+	m_target = TARGET_OBD;
+	if (baudrate) {
+		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
+			sprintf(buf, "ATBR2%lu\r", baudrate);
+			if (sendCommand(buf, buf, sizeof(buf))) {
+  				success = true;
+			}
+		}
+	} else {
+		if (sendCommand("ATGPSOFF\r", buf, sizeof(buf))) {
+			success = true;
+		}  
+	}
+	return success;
+}
+
+bool COBDSPI::getGPSData(GPS_DATA* gdata)
+{
+	char buf[128];
+	m_target = TARGET_OBD;
+	if (sendCommand("ATGPS\r", buf, sizeof(buf), OBD_TIMEOUT_GPS) == 0 && memcmp(buf, "$GPS,", 5)) {
+		return false;
+	}
+
+	byte index = 0;
+	char *s = buf + 5;
+	for (char* p = s; *p; p++) {
+		char c = *p;
+		if (c == ',' || c == '>' || c <= 0x0d) {
+			int32_t value = atol(s);
+			switch (index) {
+			case 0:
+                            {
+                              int year = value % 100;
+                              // filter out invalid date
+                              if (value < 1000000 && value >= 10000 && year >= 15 && (gdata->date == 0 || year - (gdata->date % 100) <= 1)) {
+                                gdata->date = (uint32_t)value;
+                              }
+                            }
+			    break;
+			case 1:
+			    gdata->time = (uint32_t)value;
+			    break;
+			case 2:
+			    gdata->lat = value;
+			    break;
+			case 3:
+			    gdata->lng = value;
+			    break;
+			case 4:
+			    gdata->alt = value;
+			    break;
+			case 5:
+			    gdata->speed = value;
+			    break;
+			case 6:
+			    gdata->heading = value;
+			    break;
+			case 7:
+			    gdata->sat = value;
+			    break;
+			}
+			index++;
+			s = p + 1;
+		}
+	}
+	return index >= 4;
+}
+
+byte COBDSPI::getGPSRawData(char* buf, byte bufsize)
+{
+	m_target = TARGET_OBD;
+	return sendCommand("ATGRR\r", buf, bufsize, OBD_TIMEOUT_GPS);
+}
+
+bool COBDSPI::upgradeFirmware()
+{
+  Serial.println("OK");
+  Serial.setTimeout(30000);
+  for (;;) {
+    // read data into string until '\r' encountered
+    String s = Serial.readStringUntil('\r');
+    if (s.length() == 0) {
+      // no data received
+      break;
+    } else if (s == "$UPD") {
+      // empty data chunk indicates end
+      break; 
+    }
+    // send via SPI
+    write(s.c_str());
+    s = "";
+    // receive from SPI and forward to serial
+    char buffer[64];
+    byte n = receive(buffer, sizeof(buffer), 3000);
+    if (n) Serial.write(buffer, n);
+  }
+}

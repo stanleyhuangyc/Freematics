@@ -92,7 +92,7 @@ typedef struct {
     uint32_t date;
     uint32_t time;
     int32_t lat;
-    int32_t lon;
+    int32_t lng;
     int16_t alt;
     uint8_t speed;
     uint8_t sat;
@@ -106,10 +106,6 @@ class COBD
 {
 public:
 	COBD():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
-	/*
-       Serial baudrate is only adjustable for Arduino OBD-II Adapters V2
-       Check out http://freematics.com/pages/products/arduino-obd-adapter
-	*/
 	virtual void begin();
 	// initialize OBD-II connection
 	virtual bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
@@ -126,7 +122,7 @@ public:
 	// set working protocol (default auto)
 	virtual bool setProtocol(OBD_PROTOCOLS h = PROTO_AUTO);
 	// send AT command and receive response
-	virtual byte sendCommand(const char* cmd, char* buf, byte bufsize);
+	virtual byte sendCommand(const char* cmd, char* buf, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
 	// clear diagnostic trouble code
 	virtual void clearDTC();
 	// get battery voltage (works without ECU)
@@ -139,10 +135,6 @@ public:
 	virtual bool getResult(byte& pid, int& result);
 	// determine if the PID is supported
 	virtual bool isValidPID(byte pid);
-	// init GPS module
-	virtual bool initGPS(unsigned long baudrate = 38400);
-	// parse GPS data
-	virtual bool getGPSData(GPS_DATA* gdata);
 	// set current PID mode
 	byte dataMode;
 	// occurrence of errors
@@ -185,10 +177,22 @@ class COBDSPI : public COBD {
 public:
 	void begin(byte pinCS = 7, byte pinReady = 6);
 	void end();
-	void write(const char* s);
-	bool setBaudRate(unsigned long baudrate) { return false; }
+	// set SPI data target
 	void setTarget(byte target) { m_target = target; }
+	// receive data from SPI bus
 	byte receive(char* buffer, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
+	// write data to SPI bus
+	void write(const char* s);
+	// send AT command and receive response
+	byte sendCommand(const char* cmd, char* buf, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
+	// initialize GPS (set baudrate to 0 to power off GPS)
+	bool initGPS(unsigned long baudrate = 115200L);
+	// get parsed GPS data
+	bool getGPSData(GPS_DATA* gdata);
+	// get GPS NMEA data
+	byte getGPSRawData(char* buf, byte bufsize);
+	// upgrade OBD-II firmware
+	bool upgradeFirmware();
 private:
 	byte m_pinReady;
 	byte m_pinCS;
