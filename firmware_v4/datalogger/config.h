@@ -11,6 +11,11 @@
 // enable(1)/disable(0) data streaming
 #define ENABLE_DATA_OUT 1
 
+#define ENABLE_DATA_CACHE 0
+#define MAX_CACHE_SIZE 256  /* bytes */
+
+#define USE_FRIENDLY_PID_NAME 1
+
 // followings define the format of data streaming, enable one of them only
 // FORMAT_BIN is required by Freematics OBD iOS App
 //#define STREAM_FORMAT FORMAT_BIN
@@ -45,11 +50,13 @@
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 0
-#define LOG_GPS_NMEA_DATA 1
-#define LOG_GPS_PARSED_DATA 0
+#define LOG_GPS_NMEA_DATA 0
+#define LOG_GPS_PARSED_DATA 1
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200
-#define GPS_DATA_TIMEOUT 200 /* ms */
+
+// misc
+#define ENABLE_FIRMWARE_UPGRADE 0
 
 #endif // CONFIG_H_INCLUDED

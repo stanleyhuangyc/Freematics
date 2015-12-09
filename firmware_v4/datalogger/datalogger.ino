@@ -18,7 +18,7 @@
 #include "Freematics.h"
 #include "datalogger.h"
 
-// logger states
+// states
 #define STATE_SD_READY 0x1
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_FOUND 0x4
@@ -36,6 +36,9 @@ void(* resetFunc) (void) = 0; //declare reset function at address 0
 
 static uint8_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
+
+static uint16_t lastUTC = 0;
+static uint8_t lastGPSDay = 0;
 
 static const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
 static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_DISTANCE};
@@ -61,10 +64,10 @@ typedef enum {
   PART_GPS,
 } PART_ID;
 
-class CLogger : public COBDSPI, public CDataLogger
+class ONE : public COBDSPI, public CDataLogger
 {
 public:
-    CLogger():state(0) {}
+    ONE():state(0) {}
     void showStatus(byte partID, bool OK)
     {
 #if ENABLE_DATA_OUT
@@ -92,6 +95,8 @@ public:
         showStatus(PART_SD, success);
 #endif
 
+        begin();
+
 #if USE_MPU6050 || USE_MPU9150
         Wire.begin();
         accelgyro.initialize();
@@ -99,10 +104,6 @@ public:
           state |= STATE_MEMS_READY;
         }
         showStatus(PART_MEMS, success);
-#endif
-
-#if OBD_UART_BAUDRATE
-        setBaudRate(OBD_UART_BAUDRATE);
 #endif
 
 #if USE_GPS
@@ -117,120 +118,38 @@ public:
         }
         showStatus(PART_OBD, success);
         
-        delay(3000);
+        delay(1000);
     }
 #if USE_GPS
     void logGPSData()
     {
 #if LOG_GPS_NMEA_DATA
         // issue the command to get NMEA data (one line per request)
-        char buf[128];
-        if (sendCommand("ATGRR\r", buf, sizeof(buf))) {
-            logData(buf + 4);
+        char buf[255];
+        byte n = getGPSRawData(buf, sizeof(buf));
+        if (n) {
+            dataTime = millis();
+            logData(buf, n);
         }
 #endif
 #if LOG_GPS_PARSED_DATA
         // issue the command to get parsed GPS data
-        // the return data is in following format:
-        // $GPS,date,time,lat,lon,altitude,speed,course,sat
-        static GPS_DATA gd = {0};
-        byte mask = 0;
-        byte index = -1;
-        char buf[12];
-        byte n = 0;
-        write("ATGPS\r");
-        dataTime = millis();
-        for (uint32_t t = dataTime; millis() - t < GPS_DATA_TIMEOUT; ) {
-            if (!available()) continue;
-            char c = read();
-#if VERBOSE
-            logData(c);
-#endif
-            if (c != ',' && c != '>') {
-              if (n < sizeof(buf) - 1) buf[n++] = c;
-              continue;
-            }
-            buf[n] = 0;
-            if (index == -1) {
-                // need to verify header
-                if (strcmp(buf + n - 4, "$GPS") == 0) {
-                  index = 0;
-                }
-            } else {
-                long v = atol(buf);
-                switch (index) {
-                case 0:
-                    if (gd.date != v) {
-                      int year = v % 100;
-                      // filter out invalid date
-                      if (v < 1000000 && v >= 10000 && year >= 15 && (gd.date == 0 || year - (gd.date % 100) <= 1)) {
-                        gd.date = v;
-                        mask |= 0x1;
-                      }
-                    }
-                    break;
-                case 1:
-                    if (gd.time != v) {
-                      gd.time = v;
-                      mask |= 0x2;
-                    }                            
-                    break;
-                case 2:
-                    if (gd.lat != v) {
-                      gd.lat = v;
-                      mask |= 0x4;
-                    }
-                    break;
-                case 3:
-                    if (gd.lon != v) {
-                      gd.lon = v;
-                      mask |= 0x8;
-                    }
-                    break;
-                case 4:
-                    if (gd.alt != (int)v) {
-                      gd.alt = (int)v;
-                      mask |= 0x10;
-                    }
-                    break;
-                case 5:
-                    if (gd.speed != (byte)v) {
-                      gd.speed = (byte)v;
-                      mask |= 0x20;
-                    }
-                    break;
-                case 6:
-                    if (gd.heading != (int)v) {
-                      gd.heading = (int)v;
-                      mask |= 0x40;
-                    }
-                    break;
-                case 7:
-                    if (gd.sat != (byte)v) {
-                      gd.sat = (byte)v;
-                      mask |= 0x80;
-                    }
-                    break;
-                }
-                index++;
-            }
-            n = 0;
-            if (c == '>') {
-                // prompt char received, now process data
-                if (mask) {
-                  // something has changed
-                  if (mask & 0x1) logData(PID_GPS_DATE, gd.date);
-                  if (mask & 0x2) logData(PID_GPS_TIME, gd.time);
-                  if (mask & 0x4) logData(PID_GPS_LATITUDE, gd.lat);
-                  if (mask & 0x8) logData(PID_GPS_LONGITUDE, gd.lon);
-                  if (mask & 0x10) logData(PID_GPS_ALTITUDE, gd.alt);
-                  if (mask & 0x20) logData(PID_GPS_SPEED, gd.speed);
-                  if (mask & 0x40) logData(PID_GPS_HEADING, gd.heading);
-                  if (mask & 0x80) logData(PID_GPS_SAT_COUNT, gd.sat);
-                }                        
-                // discard following data if any
-                while (available()) read();
-                break;
+        GPS_DATA gd = {0};
+        if (getGPSData(&gd)) {
+            if (lastUTC != (uint16_t)gd.time) {
+              dataTime = millis();
+              logData(PID_GPS_TIME, gd.time);
+              byte day = gd.date / 10000;
+              if (lastGPSDay != day) {
+                logData(PID_GPS_DATE, gd.date);
+                lastGPSDay = day;
+              }
+              logData(PID_GPS_LATITUDE, gd.lat);
+              logData(PID_GPS_LONGITUDE, gd.lng);
+              logData(PID_GPS_ALTITUDE, gd.alt);
+              logData(PID_GPS_SPEED, gd.speed);
+              logData(PID_GPS_SAT_COUNT, gd.sat);
+              lastUTC = (uint16_t)gd.time;
             }
         }
 #endif
@@ -392,6 +311,7 @@ public:
         int value;
         if (!read(pid, value)) {
             // error occurred
+            Serial.println("Error");
             recover();
             errors++;
             return false;
@@ -414,76 +334,52 @@ public:
     byte state;
 };
 
-static CLogger logger;
+static ONE one;
 
 void setup()
 {
 #if VERBOSE
     SerialInfo.begin(STREAM_BAUDRATE);
 #endif
-    logger.initSender();
-    logger.begin();
-    logger.setup();
-}
-
-void upgradeFirmware()
-{
-  Serial.setTimeout(30000);
-  for (;;) {
-    // read data into string until '\r' encountered
-    String s = Serial.readStringUntil('\r');
-    if (s.length() == 0) {
-      // no data received
-      Serial.println("TIMEOUT");
-      break;
-    } else if (s == "$UPD") {
-      // empty data chunk received
-      Serial.println("END");
-      delay(500);
-      // reset 328
-      resetFunc();
-      break; 
-    }
-    // send via SPI
-    logger.write(s.c_str());
-    s = "";
-    // receive from SPI and forward to serial
-    char buffer[64];
-    byte n = logger.receive(buffer, sizeof(buffer), 3000);
-    if (n) Serial.write(buffer, n);
-  }
+    one.initSender();
+    one.setup();
 }
 
 void loop()
 {
+#if ENABLE_FIRMWARE_UPGRADE
     // check serial inbound data
-    if (SerialRF.available()) {
+    if (Serial.available()) {
       if (Serial.read() == '#' && Serial.read() == '#') {
-        Serial.println("OK");
-        upgradeFirmware();
+        if (one.upgradeFirmware()) {
+          // reset after upgrade
+          resetFunc();
+         }
       }      
     }
-    if (logger.state & STATE_OBD_READY) {
+#endif
+#if 1
+    if (one.state & STATE_OBD_READY) {
         static byte index2 = 0;
         for (byte n = 0; n < TIER_NUM1; n++) {
           byte pid = pgm_read_byte(pidTier1 + n);
-          logger.logOBDData(pid);
+          one.logOBDData(pid);
         }
         byte pid = pgm_read_byte(pidTier2 + index2);
-        logger.logOBDData(pid);
+        one.logOBDData(pid);
         index2 = (index2 + 1) % TIER_NUM2;
-        if (logger.errors >= 10) {
-            logger.reconnect();
+        if (one.errors >= 10) {
+            one.reconnect();
         }
     } else if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
-        if (logger.init()) {
-            logger.state |= STATE_OBD_READY;
+        if (one.init()) {
+            one.state |= STATE_OBD_READY;
         }
     }
-
+#endif
 #if USE_GPS
-    if (logger.state & STATE_GPS_FOUND) {
-        logger.logGPSData();
+    if (one.state & STATE_GPS_FOUND) {
+        one.logGPSData();
     }
 #endif
 }
