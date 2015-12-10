@@ -210,40 +210,6 @@ public:
         Sd2Card card;
         uint32_t volumesize = 0;
         if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
-#if VERBOSE
-            const char* type;
-            switch(card.type()) {
-            case SD_CARD_TYPE_SD1:
-                type = "SD1";
-                break;
-            case SD_CARD_TYPE_SD2:
-                type = "SD2";
-                break;
-            case SD_CARD_TYPE_SDHC:
-                type = "SDHC";
-                break;
-            default:
-                type = "SDx";
-            }
-
-            SerialInfo.print("SD type: ");
-            SerialInfo.print(type);
-
-            SdVolume volume;
-            if (!volume.init(card)) {
-                SerialInfo.println(" No FAT!");
-                return 0;
-            }
-
-            volumesize = volume.blocksPerCluster();
-            volumesize >>= 1; // 512 bytes per block
-            volumesize *= volume.clusterCount();
-            volumesize /= 1000;
-            SerialInfo.print(" SD size: ");
-            SerialInfo.print((int)((volumesize + 511) / 1000));
-            SerialInfo.println("GB");
-            delay(3000);
-#else
             SdVolume volume;
             if (volume.init(card)) {
               volumesize = volume.blocksPerCluster();
@@ -251,7 +217,6 @@ public:
               volumesize *= volume.clusterCount();
               volumesize /= 1000;
             }
-#endif
         }
         if (SD.begin(SD_CS_PIN)) {
           return volumesize; 
