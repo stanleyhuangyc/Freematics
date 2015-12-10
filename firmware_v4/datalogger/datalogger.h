@@ -133,9 +133,9 @@ public:
           cache[cacheBytes] = 0;
         }
 #else
-        char tmp[12];
-        byte n = genTimestamp(tmp, dataTime >= m_lastDataTime + 100);
-        SerialRF.write(tmp, n);
+        //char tmp[12];
+        //byte n = genTimestamp(tmp, dataTime >= m_lastDataTime + 100);
+        //SerialRF.write(tmp, n);
 #endif
 #if ENABLE_DATA_OUT
         SerialRF.write(buf, len);
