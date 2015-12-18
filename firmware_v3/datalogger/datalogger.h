@@ -106,7 +106,7 @@ public:
 #if ENABLE_DATA_OUT
         SerialRF.write(buf, len);
         SerialRF.println();
-        delay(10);
+        delay(5);
 #endif
     }
     void logData(char c)

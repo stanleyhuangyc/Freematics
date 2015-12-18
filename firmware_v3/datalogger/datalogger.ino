@@ -128,11 +128,10 @@ public:
         // issue the command to get NMEA data (one line per request)
         write("ATGRR\r");
         for (uint32_t t = millis(); millis() - t < GPS_DATA_TIMEOUT; ) {
-            if (available()) {
-                char c = read();
+            if (OBDUART.available()) {
+                char c = OBDUART.read();
                 if (c == '>') {
                     // prompt char received
-                    logData('\r');
                     break;
                 }
                 logData(c);
@@ -151,8 +150,8 @@ public:
         write("ATGPS\r");
         dataTime = millis();
         for (uint32_t t = dataTime; millis() - t < GPS_DATA_TIMEOUT; ) {
-            if (!available()) continue;
-            char c = read();
+            if (!OBDUART.available()) continue;
+            char c = OBDUART.read();
 #if VERBOSE
             logData(c);
 #endif
@@ -239,7 +238,7 @@ public:
                   if (mask & 0x80) logData(PID_GPS_SAT_COUNT, gd.sat);
                 }                        
                 // discard following data if any
-                while (available()) read();
+                while (OBDUART.available()) OBDUART.read();
                 break;
             }
         }
@@ -457,5 +456,5 @@ void loop()
     logger.logMEMSData();
 #endif
 
-    delay(50);
+   //delay(50);
 }
