@@ -247,15 +247,14 @@ public:
         }
     }
 #endif
-    void reconnect()
+    void standby()
     {
 #if ENABLE_DATA_LOG
         closeFile();
 #endif
-        state &= ~STATE_OBD_READY;
-#if VERBOSE
-        SerialInfo.print("Retry");
-#endif
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GPS_FOUND);
+        // turn off GPS power
+        initGPS(0);
         byte n = 0;
         bool toReset = false;
         while (!init()) {
@@ -334,7 +333,7 @@ void loop()
         one.logOBDData(pid);
         index2 = (index2 + 1) % TIER_NUM2;
         if (one.errors >= 10) {
-            one.reconnect();
+            one.standby();
         }
     } else if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
         if (one.init()) {
