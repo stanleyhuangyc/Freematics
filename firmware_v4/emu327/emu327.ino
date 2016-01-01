@@ -8,7 +8,7 @@
 
 #include <SPI.h>
 
-#define SERIAL_BAUDRATE 38400
+#define SERIAL_BAUDRATE 115200
 #define SPI_TIMEOUT 5000
 #define PIN_CS 7
 #define PIN_READY 6
@@ -21,6 +21,7 @@ void setup() {
   digitalWrite(PIN_CS, HIGH);
   SPI.begin();
   SPI.setClockDivider(2);
+  Serial.println("Freematics ONE ELM327 Emulator");
 }
 
 byte receive(char* buffer)
