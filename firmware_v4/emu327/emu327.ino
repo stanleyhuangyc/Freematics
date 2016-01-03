@@ -50,19 +50,17 @@ byte receive(char* buffer)
 	return n;
 }
 
+static char prefix[5] = "$OBD";
+
 void sendData(char* data, unsigned int len)
 {
   digitalWrite(PIN_CS, LOW);
   delayMicroseconds(1000);
   if (data[0] != '$') {
-    SPI.transfer('$');
-    delayMicroseconds(5);
-    SPI.transfer('O');
-    delayMicroseconds(5);
-    SPI.transfer('B');
-    delayMicroseconds(5);
-    SPI.transfer('D');
-    delayMicroseconds(5);    
+    for (int i = 0; prefix[i]; i++) {
+      SPI.transfer((byte)prefix[i]);
+      delayMicroseconds(5);
+    }
   }
   for (int i = 0; i < len; i++) {
     SPI.transfer((byte)data[i]);
@@ -87,14 +85,25 @@ void loop() {
   {
     // a complete line is received
     buffer[bufbytes] = 0;
-    sendData(buffer,bufbytes);
+    if (buffer[0] == '$' && buffer[4] == '\r') {
+      memcpy(prefix, buffer, 4);
+      Serial.print("Prefix set to ");
+      Serial.println(prefix);
+    } else {
+      sendData(buffer,bufbytes);
+      if ((!memcmp(buffer, "$GSM", 4) && buffer[4]) || !memcmp(prefix, "$GSM", 4)) {
+        delay(500);
+        sendData("$OBDATGRD\r", 10);
+      }
+    }
+
     byte n = receive(buffer);
     if (n) {
       // strip $OBD header from response
       if (!memcmp(buffer, "$OBD", 4)) {
-        Serial.print(buffer + 4); 
+        Serial.write(buffer + 4, n - 4);
       } else {
-        Serial.print(buffer);
+        Serial.write(buffer, n);
       }
     }
     // buffer is now empty
