@@ -5,17 +5,15 @@
 * Data logging/streaming out
 **************************************/
 #define ENABLE_DATA_OUT 1
-#define USE_SOFTSERIAL 0
 
 #define STREAM_BAUDRATE 115200
 
 //this defines the format of log file
-#define LOG_FORMAT FORMAT_TEXT
 #define STREAM_FORMAT FORMAT_TEXT
 
 // change this to your own URL
-#define APN "CMNET"
-#define URL_PUSH "http://cn.freematics.com.au/push"
+#define APN "connect"
+#define URL_PUSH "http://live.freematics.com.au/push"
 
 /**************************************
 * Accelerometer & Gyro
@@ -31,11 +29,6 @@
 #define OBD_MIN_INTERVAL 100 /* ms */
 #define ACC_DATA_INTERVAL 200 /* ms */
 #define GPS_DATA_INTERVAL 200 /* ms */
-
-/**************************************
-* Choose SD pin here
-**************************************/
-#define SD_CS_PIN 10 // SD breakout
 
 /**************************************
 * Other options

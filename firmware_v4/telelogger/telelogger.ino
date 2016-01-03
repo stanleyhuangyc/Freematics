@@ -14,7 +14,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include "OBD_dev.h"
+#include "freematics.h"
 //#include <I2Cdev.h>
 //#include <MPU9150.h>
 #include <SPI.h>
@@ -90,36 +90,36 @@ public:
     bool initGSM()
     {
       // check GSM
-      uint32_t t = millis();
-      do {
-        setTarget(TARGET_OBD);
-        sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
-        if (sendGSMCommand("ATE1\r") != 0) {
-          return true;
+      sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
+      for (;;) {
+        if (sendGSMCommand("ATE0\r") != 0) {
+          break;
         }
         // try turning on GSM
+        Serial.print("Turn on GSM...");
         setTarget(TARGET_OBD);
-        if (sendCommand("ATGSMPWR\r", buffer, sizeof(buffer)) > 0) {
-          delay(3000);
+        if (sendCommand("ATGSMPWR\r", buffer, sizeof(buffer)) == 0) {
+         Serial.print("failed");
         }
-      } while (millis() - t < 30000);
-      return false;
+        Serial.println();
+        delay(5000);
+      }
     }
     bool setupGSM(const char* apn)
     {
-      Serial.print("REG...");
-      while (sendGSMCommand("AT+CREG?\r", 10000, "+CREG: 0,") == 0) {
+      while (sendGSMCommand("AT+CREG?\r", 5000, "+CREG: 0,") == 0) {
         Serial.print('.'); 
       }
       sendGSMCommand("AT+CGATT?\r");
-      Serial.println(buffer);
       sprintf(buffer, "AT+SAPBR=3,1,\"APN\",\"%s\"\r", apn);
-      sendGSMCommand(buffer, 10000);
-      Serial.println(buffer);
-      sendGSMCommand("AT+SAPBR=1,1\r", 5000);
-      Serial.println(buffer);
-      sendGSMCommand("AT+SAPBR=2,1\r", 5000);
-      Serial.println(buffer);
+      sendGSMCommand(buffer, 15000);
+      //Serial.println(buffer);
+      do {
+        sendGSMCommand("AT+SAPBR=1,1\r", 5000);
+        //Serial.println(buffer);
+        sendGSMCommand("AT+SAPBR=2,1\r", 5000);
+        Serial.println(buffer);
+      } while (strstr(buffer, "0.0.0.0"));
       sendGSMCommand("ATE0\r");
     }
     int getSignal()
@@ -166,9 +166,10 @@ public:
     }
     bool httpConnect(const char* cmd)
     {
-        if (sendGSMCommand(buffer))
+        if (sendGSMCommand(cmd))
         {
             // Starts GET action
+            setTarget(TARGET_GSM);
             write("AT+HTTPACTION=0\r");
             gprsState = GPRS_HTTP_CONNECTING;
             bytesRecv = 0;
@@ -178,11 +179,15 @@ public:
         }
         return false;
     }
-    byte httpIsConnected()
+    bool httpIsConnected()
     {
-        byte ret = checkbuffer(":0,200", ":0,6", 10000);
+        byte ret = checkbuffer("OK", 0, 10000);
         if (ret == 1) {
-            return 1;
+          if (strstr(buffer, ": 0,601")) {
+            gprsState = GPRS_HTTP_ERROR;
+          } else {
+            return strstr(buffer, ": 0,200") != 0;
+          }
         } else if (ret >= 2) {
             gprsState = GPRS_HTTP_ERROR;
         }
@@ -190,6 +195,7 @@ public:
     }
     void httpRead()
     {
+        setTarget(TARGET_GSM);
         write("AT+HTTPREAD\r");
         gprsState = GPRS_HTTP_READING;
         bytesRecv = 0;
@@ -197,16 +203,16 @@ public:
     }
     bool httpIsRead()
     {
-        byte ret = checkbuffer("+HTTPREAD:\r", "Error", 10000) == 1;
+        byte ret = checkbuffer("OK", "Error", 10000) == 1;
         if (ret == 1) {
             bytesRecv = 0;
-            sendGSMCommand(0);
-            byte n = atoi(buffer);
-            char *p = strchr(buffer, '\n');
-            if (p) memmove(buffer, p + 1, n);
-            buffer[n] = 0;
-            gprsState = GPRS_READY;
-            return 1;
+            char *p = strstr(buffer, "+HTTPREAD:");
+            if (!p) {
+              gprsState = GPRS_HTTP_ERROR;
+            } else {
+              gprsState = GPRS_READY;
+              return true;
+            }
         } else if (ret >= 2) {
             gprsState = GPRS_HTTP_ERROR;
         }
@@ -237,55 +243,56 @@ public:
       } while(0);
       return false;
     }
-    char buffer[256];
-    byte bytesRecv;
-    uint32_t checkTimer;
-    byte gprsState;
-private:
     byte checkbuffer(const char* expected1, const char* expected2 = 0, unsigned int timeout = 2000)
     {
         setTarget(TARGET_OBD);
         write("ATGRD\r");
         delay(10);
-        setTarget(TARGET_GSM);
-        byte n = receive(buffer + bytesRecv, timeout, sizeof(buffer) - bytesRecv);
+        byte n = receive(buffer + bytesRecv, sizeof(buffer) - bytesRecv, timeout);
         if (n > 0) {
-            bytesRecv += n;
-            if (bytesRecv >= sizeof(buffer) - 1) {
-                // buffer full, discard first half
-                bytesRecv = sizeof(buffer) / 2 - 1;
-                memcpy(buffer, buffer + sizeof(buffer) / 2, bytesRecv);
-            }
-            if (strstr(buffer, expected1)) {
-                return 1;
-            }
-            if (expected2 && strstr(buffer, expected2)) {
-                return 2;
+            if (memcmp(buffer + bytesRecv, "$GSMNO DATA", 11)) {
+              //Serial.print(buffer + bytesRecv);
+              bytesRecv += n;
+              if (bytesRecv >= sizeof(buffer) - 1) {
+                  // buffer full, discard first half
+                  bytesRecv = sizeof(buffer) / 2 - 1;
+                  memcpy(buffer, buffer + sizeof(buffer) / 2, bytesRecv);
+              }
+              if (strstr(buffer, expected1)) {
+                  return 1;
+              }
+              if (expected2 && strstr(buffer, expected2)) {
+                  return 2;
+              }
             }
         }
         return (millis() - checkTimer < timeout) ? 0 : 3;
     }
     byte sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = 0)
     {
-      uint32_t t = millis();
       if (cmd) {
         setTarget(TARGET_GSM);
         write(cmd);
-      }
-      do {
-        setTarget(TARGET_OBD);
-        write("ATGRD\r");
         delay(10);
-        setTarget(TARGET_GSM);
+      }
+      setTarget(TARGET_OBD);
+      uint32_t t = millis();
+      do {
+        write("ATGRD\r");
+        delay(50);
         byte n = receive(buffer, timeout);
         if (n > 0) {
-          if (strstr(buffer, expected ? expected : "\r\nOK\r\n")) {
+          if (strstr(buffer, expected ? expected : "OK")) {
             return n;
           }
         }
       } while (millis() - t < timeout);
       return 0;
     }
+    char buffer[256];
+    byte bytesRecv;
+    uint32_t checkTimer;
+    byte gprsState;
 };
 
 class CTeleLogger : public COBDGSM, public CDataLogger
@@ -294,21 +301,22 @@ public:
     CTeleLogger():state(0),connErrors(0),channel(0) {}
     void setup()
     {
+        delay(3000);
         begin(7, 6);
         SerialRF.begin(115200);
-        SerialRF.print("#GPRS...");
-        if (initGSM()) {
-            SerialRF.println("OK");
-        } else {
-            SerialRF.println(buffer);
-        }
-
         setTarget(TARGET_OBD);
         SerialRF.print("#OBD..");
         do {
             SerialRF.print('.');
         } while (!init());
         SerialRF.println("OK");
+
+        SerialRF.print("#GPRS...");
+        if (initGSM()) {
+            SerialRF.println("OK");
+        } else {
+            SerialRF.println(buffer);
+        }
 
         state |= STATE_OBD_READY;
 
@@ -330,6 +338,7 @@ public:
 #endif
 
         SerialRF.print("#Network...");
+        delay(500);
         if (setupGSM(APN)) {
             SerialRF.println("OK");
         } else {
@@ -354,29 +363,28 @@ public:
         }
         SerialRF.println("OK");
 
-        char *p = buffer;
-        byte n = sprintf(p, "AT+HTTPPARA=\"URL\",\"%s?CSQ=%d&VIN=", URL_PUSH, signal);
-        setTarget(TARGET_OBD);
-        getVIN(p, sizeof(buffer) - n);
-        strcat(p, "\"\r");
-        SerialRF.print('#');
-        SerialRF.println(buffer);
+        char vin[256];
+        getVIN(vin, sizeof(vin));
+        SerialRF.print("#VIN:");
+        SerialRF.println(vin);
+
+        sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s?VIN=%s&CSQ=%d\"\r", URL_PUSH, vin, signal);
         httpConnect(buffer);
         while (!httpIsConnected());
         httpRead();
         while (!httpIsRead());
-        SerialRF.println(buffer);
-        if (!memcmp(buffer, "OK", 2)) {
-          int m = atoi(buffer + 3);
+        char *p = strstr(buffer, "CH:");
+        if (p) {
+          int m = atoi(p + 3);
           if (m > 0) {
             channel = m;
             SerialRF.print("#CHANNEL:"); 
-            SerialRF.println(n);
+            SerialRF.println(m);
             state |= STATE_CONNECTED;
           }
         }
         connErrors = 0;
-        delay(1000);
+        delay(30000);
     }
     void loop()
     {
@@ -460,7 +468,7 @@ private:
     {
         switch (gprsState) {
         case GPRS_READY:
-            {
+            if (state & STATE_CONNECTED) {
                 GSM_LOCATION loc;
                 bool hasLoc = false; //gprs.getLocation(&loc);
               
@@ -494,16 +502,9 @@ private:
                     p += sprintf(p, "&GPS=%lu,%ld,%ld,%d,%d,%d", gd.time, gd.lat, gd.lon, gd.alt / 100, (int)gd.speed, gd.sat);
                     lastGPSTimeSent = gd.time;
                 }
-
-                char *q = strchr(gpsline, ',');
-                if (q) {
-                    char *s = strchr(q, '\r');
-                    if (s) *s = 0;
-                    strcat(p, q + 1);
-                }
 #endif
-                //SerialRF.print("PUSH:");
-                //SerialRF.println(gprs.buffer);
+                SerialRF.print("PUSH:");
+                SerialRF.println(buffer);
                 p += sprintf(p, "\"\r");
                 httpConnect(buffer);
             }

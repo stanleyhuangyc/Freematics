@@ -1,14 +1,13 @@
 /*************************************************************************
-* Arduino Library for OBD-II UART/I2C Adapter
+* Arduino Library for Freematics ONE
 * Distributed under GPL v2.0
 * Visit http://freematics.com for more information
 * (C)2012-2015 Stanley Huang <stanleyhuangyc@gmail.com>
 *************************************************************************/
 
 #include <Arduino.h>
-#include <Wire.h>
 #include <SPI.h>
-#include "OBD_dev.h"
+#include "freematics.h"
 
 //#define DEBUG Serial
 
@@ -57,11 +56,11 @@ byte hex2uint8(const char *p)
 * OBD-II UART Adapter
 *************************************************************************/
 
-byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize)
+byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 {
 	write(cmd);
 	dataIdleLoop();
-	return receive(buf, bufsize, OBD_TIMEOUT_LONG);
+	return receive(buf, bufsize, timeout);
 }
 
 void COBD::sendQuery(byte pid)
@@ -209,7 +208,7 @@ bool COBD::getResult(byte& pid, int& result)
 
 bool COBD::setProtocol(OBD_PROTOCOLS h)
 {
-    char buf[32];
+	char buf[32];
 	if (h == PROTO_AUTO) {
 		write("ATSP00\r");
 	} else {
@@ -217,48 +216,44 @@ bool COBD::setProtocol(OBD_PROTOCOLS h)
 		write(buf);
 	}
 	if (receive(buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0 && strstr(buf, "OK"))
-        return true;
-    else
-        return false;
+		return true;
+	else
+		return false;
 }
 
 void COBD::sleep()
 {
-  	char buf[32];
-	write("ATLP\r");
-	receive(buf, sizeof(buf));
+	char buf[32];
+	sendCommand("ATLP\r", buf, sizeof(buf));
 }
 
 float COBD::getVoltage()
 {
-    char buf[32];
-    write("ATRV\r");
-    byte n = receive(buf, sizeof(buf));
-    if (n > 0) {
-        return atof(buf);
-    }
-    return 0;
+	char buf[32];
+	if (sendCommand("ATRV\r", buf, sizeof(buf)) > 0) {
+		return atof(buf);
+	}
+	return 0;
 }
 
 bool COBD::getVIN(char* buffer, byte bufsize)
 {
-    write("0902\r");
-    if (receive(buffer, bufsize, OBD_TIMEOUT_LONG)) {
-        char *p = strstr(buffer, "0: 49 02");
-        if (p) {
-            char *q = buffer;
-            p += 10;
-            do {
-                for (++p; *p == ' '; p += 3) {
-                    if (*q = hex2uint8(p + 1)) q++;
-                }
-                p = strchr(p, ':');
-            } while(p);
-            *q = 0;
-            return true;
-        }
-    }
-    return false;
+	if (sendCommand("0902\r", buffer, bufsize)) {
+	    char *p = strstr(buffer, "0: 49 02");
+	    if (p) {
+	        char *q = buffer;
+	        p += 10;
+	        do {
+	            for (++p; *p == ' '; p += 3) {
+	                if (*q = hex2uint8(p + 1)) q++;
+	            }
+	            p = strchr(p, ':');
+	        } while(p);
+	        *q = 0;
+	        return true;
+	    }
+	}
+	return false;
 }
 
 bool COBD::isValidPID(byte pid)
@@ -316,8 +311,7 @@ byte COBD::receive(char* buffer, byte bufsize, int timeout)
 void COBD::recover()
 {
 	char buf[16];
-	write("AT\r");
-	receive(buf, sizeof(buf));
+	sendCommand("AT\r", buf, sizeof(buf));
 }
 
 bool COBD::init(OBD_PROTOCOLS protocol)
@@ -326,7 +320,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 	char buffer[64];
 
 	m_state = OBD_CONNECTING;
-	//recover();
 
 	for (unsigned char i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 #ifdef DEBUG
@@ -344,7 +337,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		}
 		delay(50);
 	}
-	//while (available()) read();
 
 	if (protocol != PROTO_AUTO) {
 		setProtocol(protocol);
@@ -370,7 +362,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		}
 		delay(100);
 	}
-	//while (available()) read();
 
 	m_state = OBD_CONNECTED;
 	errors = 0;
@@ -385,70 +376,14 @@ void COBD::end()
 
 bool COBD::setBaudRate(unsigned long baudrate)
 {
-    OBDUART.print("ATBR1 ");
-    OBDUART.print(baudrate);
-    OBDUART.print('\r');
-    delay(50);
-    OBDUART.end();
-    OBDUART.begin(baudrate);
-    recover();
-    return true;
-}
-
-bool COBD::initGPS(unsigned long baudrate)
-{
-    char buf[32];
-    sprintf(buf, "ATBR2 %lu\r", baudrate);
-    write(buf);
-    return (receive(buf, sizeof(buf)) && strstr(buf, "OK"));
-}
-
-bool COBD::getGPSData(GPS_DATA* gdata)
-{
-    char buf[128];
-    char *p;
-    write("ATGPS\r");
-    if (receive(buf, sizeof(buf)) == 0 || !(p = strstr(buf, "$GPS")))
-        return false;
-
-    byte index = 0;
-    char *s = buf;
-    s = p + 5;
-    for (p = s; *p; p++) {
-        char c = *p;
-        if (c == ',' || c == '>' || c <= 0x0d) {
-            long value = atol(s);
-            switch (index) {
-            case 0:
-                gdata->date = (uint32_t)value;
-                break;
-            case 1:
-                gdata->time = (uint32_t)value;
-                break;
-            case 2:
-                gdata->lat = value;
-                break;
-            case 3:
-                gdata->lon = value;
-                break;
-            case 4:
-                gdata->alt = value;
-                break;
-            case 5:
-                gdata->speed = value;
-                break;
-            case 6:
-                gdata->heading = value;
-                break;
-            case 7:
-                gdata->sat = value;
-                break;
-            }
-            index++;
-            s = p + 1;
-        }
-    }
-    return index >= 4;
+	OBDUART.print("ATBR1 ");
+	OBDUART.print(baudrate);
+	OBDUART.print('\r');
+	delay(50);
+	OBDUART.end();
+	OBDUART.begin(baudrate);
+	recover();
+	return true;
 }
 
 #ifdef DEBUG
@@ -461,112 +396,8 @@ void COBD::debugOutput(const char *s)
 }
 #endif
 
-/*************************************************************************
-* OBD-II I2C Adapter
-*************************************************************************/
 
-void COBDI2C::begin()
-{
-	Wire.begin();
-#ifdef DEBUG
-	DEBUG.begin(115200);
-#endif
-	recover();
-}
-
-void COBDI2C::end()
-{
-	m_state = OBD_DISCONNECTED;
-}
-
-bool COBDI2C::read(byte pid, int& result)
-{
-	sendQuery(pid);
-	dataIdleLoop();
-	return getResult(pid, result);
-}
-
-void COBDI2C::write(const char* s)
-{
-	COMMAND_BLOCK cmdblock = {millis(), CMD_SEND_AT_COMMAND};
-	Wire.beginTransmission(I2C_ADDR);
-	Wire.write((byte*)&cmdblock, sizeof(cmdblock));
-	Wire.write(s);
-	Wire.endTransmission();
-}
-
-bool COBDI2C::sendCommandBlock(byte cmd, uint8_t data, byte* payload, byte payloadBytes)
-{
-	COMMAND_BLOCK cmdblock = {millis(), cmd, data};
-	Wire.beginTransmission(I2C_ADDR);
-	bool success = Wire.write((byte*)&cmdblock, sizeof(COMMAND_BLOCK)) == sizeof(COMMAND_BLOCK);
-	if (payload) Wire.write(payload, payloadBytes);
-	Wire.endTransmission();
-	return success;
-}
-
-byte COBDI2C::receive(char* buffer, byte bufsize, int timeout)
-{
-	uint32_t start = millis();
-	byte offset = 0;
-	do {
-		Wire.requestFrom((byte)I2C_ADDR, (byte)MAX_PAYLOAD_SIZE, (byte)1);
-		int c = Wire.read();
-		if (offset == 0 && (c == 0 || c == -1)) {
-			 // data not ready
-			dataIdleLoop();
-			continue; 
-		}
-		if (buffer) buffer[offset++] = c;
-		for (byte i = 1; i < MAX_PAYLOAD_SIZE && Wire.available(); i++) {
-			char c = Wire.read();
-			if (c == '.' && offset > 2 && buffer[offset - 1] == '.' && buffer[offset - 2] == '.') {
-				// waiting signal
-				offset = 0;
-				timeout = OBD_TIMEOUT_LONG;
-			} else if (c == 0 || offset == bufsize - 1) {
-				// string terminator encountered or buffer full
-				if (buffer) buffer[offset] = 0;
-				// discard the remaining data
-				while (Wire.available()) Wire.read();
-				return offset;
-			} else {
-				if (buffer) buffer[offset++] = c;
-			}
-		}
-	} while(millis() - start < timeout);
-	return 0;
-}
-
-void COBDI2C::setPID(byte pid, byte obdPid[])
-{
-	byte n = 0;
-	for (; n < MAX_PIDS && obdPid[n]; n++) {
-		if (obdPid[n] == pid)
-			return;
-	}
-	if (n == MAX_PIDS) {
-		memmove(obdPid, obdPid + 1, sizeof(obdPid[0]) * (MAX_PIDS - 1));
-		n = MAX_PIDS - 1;
-	}
-	obdPid[n] = pid;
-}
-
-void COBDI2C::applyPIDs(byte obdPid[])
-{
-	sendCommandBlock(CMD_APPLY_OBD_PIDS, 0, (byte*)obdPid, sizeof(obdPid[0])* MAX_PIDS);
-	delay(200);
-}
-
-void COBDI2C::loadData(PID_INFO obdInfo[])
-{
-	sendCommandBlock(CMD_LOAD_OBD_DATA);
-	dataIdleLoop();
-	Wire.requestFrom((byte)I2C_ADDR, (byte)MAX_PAYLOAD_SIZE, (byte)0);
-	Wire.readBytes((char*)obdInfo, sizeof(obdInfo[0]) * MAX_PIDS);
-}
-
-static const char targets[][3] = {
+static const char PROGMEM targets[][3] = {
 	{'O','B','D'},
 	{'G','P','S'},
 	{'G','S','M'}
@@ -580,10 +411,9 @@ void COBDSPI::begin(byte pinCS, byte pinReady)
 	pinMode(pinReady, INPUT);
 	pinMode(pinCS, OUTPUT);
 	digitalWrite(m_pinCS, HIGH);
-	delay(200);
+	delay(50);
 	SPI.begin();
 	SPI.setClockDivider(2);
-	delay(200);
 }
 
 void COBDSPI::end()
@@ -597,47 +427,142 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
 	bool eof = false;
 	uint32_t t = millis();
 	do {
-		while (digitalRead(m_pinReady) == HIGH) {
-		   if (millis() - t > 10000) {
-		    Serial.println("DATA TIMEOUT!");
-		    return 0;
-		   }
-		}
+                dataIdleLoop();
+                while (digitalRead(m_pinReady) == HIGH) {
+  		   if (millis() - t > timeout) {
+  		    Serial.println("DATA TIMEOUT!");
+  		    return 0;
+ 		   }
+                }
 		digitalWrite(m_pinCS, LOW);
-		for (; !eof && digitalRead(m_pinReady) == LOW && n < bufsize - 1; n++) {
-		  buffer[n] = SPI.transfer(' ');
-		  eof = n > 2 && buffer[n] == '\t' && buffer[n - 1] =='>' && buffer[n - 2] == '\r';
+		while (!eof && digitalRead(m_pinReady) == LOW) {
+                  if (n == bufsize - 1) {
+                    n -= 8;
+                    memmove(buffer, buffer + 8, n); 
+                  }
+                  buffer[n] = SPI.transfer(' ');
+		  eof = n >= 2 && buffer[n] == '\t' && buffer[n - 1] =='>' && buffer[n - 2] == '\r';
+                  n++;
 		}
 		digitalWrite(m_pinCS, HIGH);
 	} while (!eof &&  millis() - t < timeout);
-	if (eof) {
-		n -= 3;
-        } else {
-		Serial.println("NO END CHAR");
-	}
-	if (n > 4 && !memcmp(buffer + 1, targets[m_target], 3)) {
-		n -= 4;
-		memmove(buffer, buffer + 4, n);
-	}
-	buffer[n + 1] = 0;
+        if (eof) n--;
+        buffer[n] = 0;
 	return n;
-
 }
 
 void COBDSPI::write(const char* s)
 {
 	digitalWrite(m_pinCS, LOW);
-	delay(5);
-
-	SPI.transfer('$');
-	for (byte i = 0; i < 3; i++) {
-          delay(1);
-	  SPI.transfer(targets[m_target][i]);
+        delay(1);
+	if (*s != '$') {
+		delayMicroseconds(5);
+		SPI.transfer('$');
+		for (byte i = 0; i < 3; i++) {
+			delayMicroseconds(5);
+			SPI.transfer(pgm_read_byte(&targets[m_target][i]));
+		}
 	}
 	for (; *s ;s++) {
-		delay(1);
+		delayMicroseconds(5);
 		SPI.transfer((byte)*s);
 	}
 	digitalWrite(m_pinCS, HIGH);
+}
+
+byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
+{
+	uint32_t t = millis();  
+	byte n;
+	do {
+		write(cmd);
+		n = receive(buf, bufsize, timeout);
+		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
+			// data not ready
+			dataIdleLoop();
+		} else {
+	  		break;
+		}
+	} while (millis() - t < timeout);
+	return n;
+}
+
+bool COBDSPI::initGPS(unsigned long baudrate)
+{
+	bool success = false;
+	char buf[32];
+	m_target = TARGET_OBD;
+	if (baudrate) {
+		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
+			sprintf(buf, "ATBR2%lu\r", baudrate);
+			if (sendCommand(buf, buf, sizeof(buf))) {
+  				success = true;
+			}
+		}
+	} else {
+		if (sendCommand("ATGPSOFF\r", buf, sizeof(buf))) {
+			success = true;
+		}  
+	}
+	return success;
+}
+
+bool COBDSPI::getGPSData(GPS_DATA* gdata)
+{
+	char buf[128];
+	m_target = TARGET_OBD;
+	if (sendCommand("ATGPS\r", buf, sizeof(buf), OBD_TIMEOUT_GPS) == 0 && memcmp(buf, "$GPS,", 5)) {
+		return false;
+	}
+
+	byte index = 0;
+	char *s = buf + 5;
+	for (char* p = s; *p; p++) {
+		char c = *p;
+		if (c == ',' || c == '>' || c <= 0x0d) {
+			int32_t value = atol(s);
+			switch (index) {
+			case 0:
+                            {
+                              int year = value % 100;
+                              // filter out invalid date
+                              if (value < 1000000 && value >= 10000 && year >= 15 && (gdata->date == 0 || year - (gdata->date % 100) <= 1)) {
+                                gdata->date = (uint32_t)value;
+                              }
+                            }
+			    break;
+			case 1:
+			    gdata->time = (uint32_t)value;
+			    break;
+			case 2:
+			    gdata->lat = value;
+			    break;
+			case 3:
+			    gdata->lng = value;
+			    break;
+			case 4:
+			    gdata->alt = value;
+			    break;
+			case 5:
+			    gdata->speed = value;
+			    break;
+			case 6:
+			    gdata->heading = value;
+			    break;
+			case 7:
+			    gdata->sat = value;
+			    break;
+			}
+			index++;
+			s = p + 1;
+		}
+	}
+	return index >= 4;
+}
+
+byte COBDSPI::getGPSRawData(char* buf, byte bufsize)
+{
+	m_target = TARGET_OBD;
+	return sendCommand("ATGRR\r", buf, bufsize, OBD_TIMEOUT_GPS);
 }
 
