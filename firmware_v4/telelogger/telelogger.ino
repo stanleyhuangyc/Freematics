@@ -15,8 +15,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "freematics.h"
-//#include <I2Cdev.h>
-//#include <MPU9150.h>
+#include <I2Cdev.h>
+#include <MPU9150.h>
 #include <SPI.h>
 #include "config.h"
 #include "datalogger.h"
@@ -30,11 +30,10 @@
 #define STATE_CONNECTED 0x40
 
 static uint32_t startTime = 0;
-#if 0
+static uint16_t lastUTC = 0;
 static uint32_t lastGPSAccess = 0;
-static uint32_t lastGPSTime = 0;
-static uint32_t lastGPSTimeSent = 0;
-#endif
+static uint8_t lastGPSDay = 0;
+
 static uint32_t dataCount = 0;
 
 const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
@@ -56,14 +55,12 @@ static int temp = 0;
 
 int signal;
 
-//static GPS_DATA gd = {0};
+static GPS_DATA gd = {0};
 
 #if USE_MPU6050
 MPU6050 accelgyro;
 static uint32_t lastMemsDataTime = 0;
 #endif
-
-//char gpsline[OBD_RECV_BUF_SIZE] = {0};
 
 typedef enum {
     GPRS_DISABLED = 0,
@@ -113,12 +110,10 @@ public:
       sendGSMCommand("AT+CGATT?\r");
       sprintf(buffer, "AT+SAPBR=3,1,\"APN\",\"%s\"\r", apn);
       sendGSMCommand(buffer, 15000);
-      //Serial.println(buffer);
       do {
         sendGSMCommand("AT+SAPBR=1,1\r", 5000);
-        //Serial.println(buffer);
         sendGSMCommand("AT+SAPBR=2,1\r", 5000);
-        Serial.println(buffer);
+        //Serial.println(buffer);
       } while (strstr(buffer, "0.0.0.0"));
       sendGSMCommand("ATE0\r");
     }
@@ -321,23 +316,26 @@ public:
         state |= STATE_OBD_READY;
 
 #if USE_MPU6050
+        SerialRF.print("#MEMS...");
         Wire.begin();
         accelgyro.initialize();
-        if (accelgyro.testConnection()) state |= STATE_MEMS_READY;
-#endif
-
-#if 0
-        SerialRF.print("#GPS...");
-        if (initGPS()) {
-            SerialRF.println("OK");
-            state |= STATE_GPS_READY;
-        } else {
-            SerialRF.println("N/A");
+        if (accelgyro.testConnection()) {
+          state |= STATE_MEMS_READY;
+          SerialRF.print("OK");
         }
-        delay(3000);
+        SerialRF.println();
 #endif
 
-        SerialRF.print("#Network...");
+#if USE_GPS
+        SerialRF.print("#GPS...");
+        if (initGPS(GPS_SERIAL_BAUDRATE)) {
+            state |= STATE_GPS_READY;
+            SerialRF.print("OK");
+        }
+        SerialRF.println();
+#endif
+
+        SerialRF.print("#NETWORK...");
         delay(500);
         if (setupGSM(APN)) {
             SerialRF.println("OK");
@@ -384,7 +382,7 @@ public:
           }
         }
         connErrors = 0;
-        delay(30000);
+        delay(3000);
     }
     void loop()
     {
@@ -430,11 +428,12 @@ public:
             }
         }
 
-#if 0
+#if USE_GPS
         if (state & STATE_GPS_READY) {
             if (millis() - lastGPSAccess > GPS_DATA_INTERVAL) {
-                logGPSData();
-                lastGPSAccess = millis();
+                if (processGPS()) {
+                  lastGPSAccess = millis();
+                }
             }
         }
 #endif
@@ -497,14 +496,12 @@ private:
                 if (hasLoc) {
                   p += sprintf(p, "&GPS=%02u%02u%02u,%ld,%ld", loc.hour, loc.minute, loc.second, loc.lat, loc.lon);
                 }
-#if 0
-                if (gd.time && gd.time != lastGPSTimeSent) {
-                    p += sprintf(p, "&GPS=%lu,%ld,%ld,%d,%d,%d", gd.time, gd.lat, gd.lon, gd.alt / 100, (int)gd.speed, gd.sat);
-                    lastGPSTimeSent = gd.time;
+#if USE_GPS
+                if (gd.time) {
+                    p += sprintf(p, "&GPS=%lu,%ld,%ld,%d,%d,%d", gd.time, gd.lat, gd.lng, gd.alt / 100, (int)gd.speed, gd.sat);
                 }
 #endif
-                SerialRF.print("PUSH:");
-                SerialRF.println(buffer);
+                //SerialRF.println(buffer);
                 p += sprintf(p, "\"\r");
                 httpConnect(buffer);
             }
@@ -558,20 +555,28 @@ private:
         lastMemsDataTime = dataTime;
     }
 #endif
-#if 0
-    bool logGPSData()
+    bool processGPS()
     {
-        if (getGPSData(&gd) && gd.lat && gd.lon && gd.time != lastGPSTime) {
-            logData(PID_GPS_TIME, gd.time);
-            logData(PID_GPS_ALTITUDE, gd.lat);
-            logData(PID_GPS_LONGITUDE, gd.lon);
-            logData(PID_GPS_ALTITUDE, gd.alt);
-            lastGPSTime = gd.time;
-            return true;
+        if (getGPSData(&gd)) {
+            if (lastUTC != (uint16_t)gd.time) {
+              dataTime = millis();
+              logData(PID_GPS_TIME, gd.time);
+              byte day = gd.date / 10000;
+              if (lastGPSDay != day) {
+                logData(PID_GPS_DATE, gd.date);
+                lastGPSDay = day;
+              }
+              logData(PID_GPS_LATITUDE, gd.lat);
+              logData(PID_GPS_LONGITUDE, gd.lng);
+              logData(PID_GPS_ALTITUDE, gd.alt);
+              logData(PID_GPS_SPEED, gd.speed);
+              logData(PID_GPS_SAT_COUNT, gd.sat);
+              lastUTC = (uint16_t)gd.time;
+              return true;
+            }
         }
         return false;
     }
-#endif
     void reconnect()
     {
         SerialRF.println("#Sleeping");
