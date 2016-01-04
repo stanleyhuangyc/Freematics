@@ -490,13 +490,15 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 bool COBDSPI::initGPS(unsigned long baudrate)
 {
 	bool success = false;
-	char buf[32];
+	char buf[128];
 	m_target = TARGET_OBD;
 	if (baudrate) {
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf(buf, "ATBR2%lu\r", baudrate);
 			if (sendCommand(buf, buf, sizeof(buf))) {
-  				success = true;
+				if (getGPSRawData(buf, sizeof(buf)) && strstr(buf, "S$GP")) {
+					success = true;
+				}
 			}
 		}
 	} else {

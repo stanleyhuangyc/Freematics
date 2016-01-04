@@ -191,8 +191,6 @@ public:
 	bool getGPSData(GPS_DATA* gdata);
 	// get GPS NMEA data
 	byte getGPSRawData(char* buf, byte bufsize);
-	// upgrade OBD-II firmware
-	bool upgradeFirmware();
 private:
 	byte m_pinReady;
 	byte m_pinCS;

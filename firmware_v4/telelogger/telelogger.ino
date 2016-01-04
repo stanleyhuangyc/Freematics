@@ -29,11 +29,14 @@
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
+#if !ENABLE_DATA_OUT
+#define SerialRF Serial
+#endif
+
 static uint32_t startTime = 0;
 static uint16_t lastUTC = 0;
-static uint32_t lastGPSAccess = 0;
 static uint8_t lastGPSDay = 0;
-
+static uint32_t nextConnTime = 0;
 static uint32_t dataCount = 0;
 
 const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
@@ -66,7 +69,6 @@ typedef enum {
     GPRS_DISABLED = 0,
     GPRS_READY,
     GPRS_HTTP_CONNECTING,
-    GPRS_HTTP_READING,
     GPRS_HTTP_ERROR,
 } GPRS_STATES;
 
@@ -84,23 +86,26 @@ typedef struct {
 class COBDGSM : public COBDSPI {
 public:
     COBDGSM():gprsState(GPRS_DISABLED) { buffer[0] = 0; }
+    void toggleGSM()
+    {
+        setTarget(TARGET_OBD);
+        sendCommand("ATGSMPWR\r", buffer, sizeof(buffer));
+    }
     bool initGSM()
     {
       // check GSM
+      setTarget(TARGET_OBD);
       sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
       for (;;) {
+        // try turning on GSM
+        //Serial.print("Turn on GSM...");
+        toggleGSM();
+        delay(5000);
         if (sendGSMCommand("ATE0\r") != 0) {
           break;
         }
-        // try turning on GSM
-        Serial.print("Turn on GSM...");
-        setTarget(TARGET_OBD);
-        if (sendCommand("ATGSMPWR\r", buffer, sizeof(buffer)) == 0) {
-         Serial.print("failed");
-        }
-        Serial.println();
-        delay(5000);
       }
+      //sendGSMCommand("ATE0\r");
     }
     bool setupGSM(const char* apn)
     {
@@ -113,9 +118,8 @@ public:
       do {
         sendGSMCommand("AT+SAPBR=1,1\r", 5000);
         sendGSMCommand("AT+SAPBR=2,1\r", 5000);
-        //Serial.println(buffer);
       } while (strstr(buffer, "0.0.0.0"));
-      sendGSMCommand("ATE0\r");
+      //Serial.println(buffer);
     }
     int getSignal()
     {
@@ -188,30 +192,15 @@ public:
         }
         return false;
     }
-    void httpRead()
+    bool httpRead()
     {
-        setTarget(TARGET_GSM);
-        write("AT+HTTPREAD\r");
-        gprsState = GPRS_HTTP_READING;
-        bytesRecv = 0;
-        checkTimer = millis();
-    }
-    bool httpIsRead()
-    {
-        byte ret = checkbuffer("OK", "Error", 10000) == 1;
-        if (ret == 1) {
-            bytesRecv = 0;
-            char *p = strstr(buffer, "+HTTPREAD:");
-            if (!p) {
-              gprsState = GPRS_HTTP_ERROR;
-            } else {
-              gprsState = GPRS_READY;
-              return true;
-            }
-        } else if (ret >= 2) {
-            gprsState = GPRS_HTTP_ERROR;
+        if (sendGSMCommand("AT+HTTPREAD\r", 5000) && strstr(buffer, "+HTTPREAD:")) {
+          gprsState = GPRS_READY;
+          return true;
+        } else {
+          gprsState = GPRS_HTTP_ERROR;
+          return false;
         }
-        return false;
     }
     bool getLocation(GSM_LOCATION* loc)
     {
@@ -296,7 +285,7 @@ public:
     CTeleLogger():state(0),connErrors(0),channel(0) {}
     void setup()
     {
-        delay(3000);
+        delay(1000);
         begin(7, 6);
         SerialRF.begin(115200);
         setTarget(TARGET_OBD);
@@ -327,12 +316,10 @@ public:
 #endif
 
 #if USE_GPS
-        SerialRF.print("#GPS...");
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
-            state |= STATE_GPS_READY;
-            SerialRF.print("OK");
+          state |= STATE_GPS_READY;
+          SerialRF.println("#GPS...OK");
         }
-        SerialRF.println();
 #endif
 
         SerialRF.print("#NETWORK...");
@@ -366,74 +353,64 @@ public:
         SerialRF.print("#VIN:");
         SerialRF.println(vin);
 
+        SerialRF.print("#CHANNEL:"); 
         sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s?VIN=%s&CSQ=%d\"\r", URL_PUSH, vin, signal);
         httpConnect(buffer);
         while (!httpIsConnected());
         httpRead();
-        while (!httpIsRead());
         char *p = strstr(buffer, "CH:");
         if (p) {
           int m = atoi(p + 3);
           if (m > 0) {
             channel = m;
-            SerialRF.print("#CHANNEL:"); 
-            SerialRF.println(m);
+            SerialRF.print(m);
             state |= STATE_CONNECTED;
           }
         }
+        SerialRF.println();
         connErrors = 0;
-        delay(3000);
+        delay(1000);
     }
     void loop()
     {
-        static byte index = 0;
         static byte index2 = 0;
-        uint32_t start = millis();
 
         // poll OBD-II PIDs
-        byte pid = pgm_read_byte(pidTier1 + index);
         int value = 0;
-        // send a query to OBD adapter for specified OBD-II pid
-        //SerialRF.print(pid, HEX);
-        //SerialRF.print('=');
         setTarget(TARGET_OBD);
-        if (read(pid, value)) {
-            dataTime = millis();
-            if (pidValueCount[index] == MAX_CACHED_ITEM) {
-               // cache full, free one slot
-               for (byte m = 0; m < MAX_CACHED_ITEM - 2; m++) {
-                 pidValue[index][m] = pidValue[index][m + 1];
-               }
-               pidValue[index][MAX_CACHED_ITEM - 1] = value;
-            } else {
-              pidValue[index][pidValueCount[index]++] = value;
-            }
-            //SerialRF.println(value);
-            // log data to SD card
-            logData(0x100 | pid, value);
-        } else {
-          //SerialRF.println("N/A"); 
+        for (byte index = 0; index < TIER_NUM1; index++) {
+          byte pid = pgm_read_byte(pidTier1 + index);
+          if (read(pid, value)) {
+              dataTime = millis();
+              if (pidValueCount[index] == MAX_CACHED_ITEM) {
+                 // cache full, free one slot
+                 for (byte m = 0; m < MAX_CACHED_ITEM - 2; m++) {
+                   pidValue[index][m] = pidValue[index][m + 1];
+                 }
+                 pidValue[index][MAX_CACHED_ITEM - 1] = value;
+              } else {
+                pidValue[index][pidValueCount[index]++] = value;
+              }
+              //SerialRF.println(value);
+              logData(0x100 | pid, value);
+          } else {
+            //SerialRF.println("N/A"); 
+          }
         }
-        
-        if (++index == TIER_NUM1) {
-            index = 0;
-            if (index2 == TIER_NUM2) {
-                index2 = 0;
-            } else {
-                pid = pgm_read_byte(pidTier2 + index2);
-                if (read(pid, value)) {
-                  pidValueTier2[index2] = value;
-                }
-                index2++;
+        if (index2 == TIER_NUM2) {
+            index2 = 0;
+        } else {
+            byte pid = pgm_read_byte(pidTier2 + index2);
+            if (read(pid, value)) {
+              pidValueTier2[index2] = value;
             }
+            index2++;
         }
 
 #if USE_GPS
         if (state & STATE_GPS_READY) {
-            if (millis() - lastGPSAccess > GPS_DATA_INTERVAL) {
-                if (processGPS()) {
-                  lastGPSAccess = millis();
-                }
+            if (processGPS()) {
+              Serial.println("#GPS:Updated"); 
             }
         }
 #endif
@@ -448,11 +425,14 @@ public:
             reconnect();
         }
         
-        processGPRS();
+        if (millis() > nextConnTime) {
+          processGPRS();
+        }
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
           SerialRF.print(connErrors);
           SerialRF.println("#Reset GPRS...");
+          initGSM();
           setupGSM(APN);
           if (httpInit()) {
             SerialRF.println("OK"); 
@@ -468,9 +448,6 @@ private:
         switch (gprsState) {
         case GPRS_READY:
             if (state & STATE_CONNECTED) {
-                GSM_LOCATION loc;
-                bool hasLoc = false; //gprs.getLocation(&loc);
-              
                 // generate URL
                 char *p = buffer;
                 p += sprintf(p, "AT+HTTPPARA=\"URL\",\"%s", URL_PUSH);
@@ -493,24 +470,33 @@ private:
                 //p += sprintf(p, "&T=%d", temp);
 #endif
                 
-                if (hasLoc) {
-                  p += sprintf(p, "&GPS=%02u%02u%02u,%ld,%ld", loc.hour, loc.minute, loc.second, loc.lat, loc.lon);
-                }
 #if USE_GPS
                 if (gd.time) {
                     p += sprintf(p, "&GPS=%lu,%ld,%ld,%d,%d,%d", gd.time, gd.lat, gd.lng, gd.alt / 100, (int)gd.speed, gd.sat);
                 }
+#else
+                GSM_LOCATION loc;
+                bool hasLoc = getLocation(&loc);
+                if (hasLoc) {
+                  p += sprintf(p, "&GPS=%02u%02u%02u,%ld,%ld", loc.hour, loc.minute, loc.second, loc.lat, loc.lon);
+                }
 #endif
-                //SerialRF.println(buffer);
+                SerialRF.println(buffer);
                 p += sprintf(p, "\"\r");
                 httpConnect(buffer);
+                nextConnTime = millis() + 2000;
             }
             break;
         case GPRS_HTTP_CONNECTING:
             if (httpIsConnected()) {
+                SerialRF.print("#HTTP:");
                 httpRead();
+                SerialRF.println(buffer);
+            } else {
+                nextConnTime = millis() + 200;
             }
             break;
+/*
         case GPRS_HTTP_READING:
             if (httpIsRead()) {
                 SerialRF.print("#HTTP:");
@@ -519,10 +505,14 @@ private:
                 // ready for next connection
             }
             break;
+*/
         case GPRS_HTTP_ERROR:
             SerialRF.println("#HTTP ERROR");
             connErrors++;
+            sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
+            httpInit();
             gprsState = GPRS_READY;
+            nextConnTime = millis() + 500;
             break;
         }
     }
@@ -582,8 +572,8 @@ private:
         SerialRF.println("#Sleeping");
         startTime = millis();
         state &= ~STATE_OBD_READY;
+        toggleGSM();
         state |= STATE_SLEEPING;
-        //digitalWrite(SD_CS_PIN, LOW);
         for (uint16_t i = 0; ; i++) {
             if (init()) {
                 int value;
@@ -593,7 +583,6 @@ private:
         }
         SerialRF.println("#Resuming");
         state &= ~STATE_SLEEPING;
-        recover();
         setup();
     }
     byte state;
