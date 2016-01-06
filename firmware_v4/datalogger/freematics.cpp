@@ -316,7 +316,7 @@ void COBD::recover()
 
 bool COBD::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r"};
+	const char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r","0100\r"};
 	char buffer[64];
 
 	m_state = OBD_CONNECTING;
@@ -340,11 +340,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 
 	if (protocol != PROTO_AUTO) {
 		setProtocol(protocol);
-	}
-        int value;
-	if (!read(PID_RPM, value)) {
-		m_state = OBD_DISCONNECTED;
-		return false;
 	}
 
 	// load pid map
@@ -446,6 +441,7 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
 		}
 		digitalWrite(m_pinCS, HIGH);
 	} while (!eof &&  millis() - t < timeout);
+        if (eof) n--;
         buffer[n] = 0;
 	return n;
 }
@@ -489,13 +485,15 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 bool COBDSPI::initGPS(unsigned long baudrate)
 {
 	bool success = false;
-	char buf[32];
+	char buf[128];
 	m_target = TARGET_OBD;
 	if (baudrate) {
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf(buf, "ATBR2%lu\r", baudrate);
 			if (sendCommand(buf, buf, sizeof(buf))) {
-  				success = true;
+				if (getGPSRawData(buf, sizeof(buf)) && strstr(buf, "S$GP")) {
+					success = true;
+				}
 			}
 		}
 	} else {
@@ -565,26 +563,3 @@ byte COBDSPI::getGPSRawData(char* buf, byte bufsize)
 	return sendCommand("ATGRR\r", buf, bufsize, OBD_TIMEOUT_GPS);
 }
 
-bool COBDSPI::upgradeFirmware()
-{
-  Serial.println("OK");
-  Serial.setTimeout(30000);
-  for (;;) {
-    // read data into string until '\r' encountered
-    String s = Serial.readStringUntil('\r');
-    if (s.length() == 0) {
-      // no data received
-      break;
-    } else if (s == "$UPD") {
-      // empty data chunk indicates end
-      break; 
-    }
-    // send via SPI
-    write(s.c_str());
-    s = "";
-    // receive from SPI and forward to serial
-    char buffer[64];
-    byte n = receive(buffer, sizeof(buffer), 3000);
-    if (n) Serial.write(buffer, n);
-  }
-}
