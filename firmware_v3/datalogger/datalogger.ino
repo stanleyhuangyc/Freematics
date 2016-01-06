@@ -68,6 +68,17 @@ typedef enum {
   PART_GPS,
 } PART_ID;
 
+typedef struct {
+    uint32_t date;
+    uint32_t time;
+    int32_t lat;
+    int32_t lon;
+    int16_t alt;
+    uint8_t speed;
+    uint8_t sat;
+    int16_t heading;
+} GPS_DATA;
+
 class CLogger : public COBD, public CDataLogger
 {
 public:
@@ -405,6 +416,59 @@ public:
       flushData();
 #endif
     }
+#if USE_GPS
+    bool initGPS(unsigned long baudrate)
+    {
+        char buf[32];
+    	return (sendCommand(buf, buf, sizeof(buf)) && strstr(buf, "OK"));
+    }
+    bool getGPSData(GPS_DATA* gdata)
+    {
+    	char buf[128];
+    	char *p;
+    	if (sendCommand("ATGPS\r", buf, sizeof(buf)) == 0 || !(p = strstr(buf, "$GPS")))
+    	    return false;
+    
+    	byte index = 0;
+    	char *s = buf;
+    	s = p + 5;
+    	for (p = s; *p; p++) {
+    		char c = *p;
+    		if (c == ',' || c == '>' || c <= 0x0d) {
+    			long value = atol(s);
+    			switch (index) {
+    			case 0:
+    			    gdata->date = (uint32_t)value;
+    			    break;
+    			case 1:
+    			    gdata->time = (uint32_t)value;
+    			    break;
+    			case 2:
+    			    gdata->lat = value;
+    			    break;
+    			case 3:
+    			    gdata->lon = value;
+    			    break;
+    			case 4:
+    			    gdata->alt = value;
+    			    break;
+    			case 5:
+    			    gdata->speed = value;
+    			    break;
+    			case 6:
+    			    gdata->heading = value;
+    			    break;
+    			case 7:
+    			    gdata->sat = value;
+    			    break;
+    			}
+    			index++;
+    			s = p + 1;
+    		}
+    	}
+    	return index >= 4;
+    }
+#endif
     byte state;
 };
 
