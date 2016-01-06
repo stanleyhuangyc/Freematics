@@ -316,7 +316,7 @@ void COBD::recover()
 
 bool COBD::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r"};
+	const char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r","0100\r"};
 	char buffer[64];
 
 	m_state = OBD_CONNECTING;
@@ -340,11 +340,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 
 	if (protocol != PROTO_AUTO) {
 		setProtocol(protocol);
-	}
-        int value;
-	if (!read(PID_RPM, value)) {
-		m_state = OBD_DISCONNECTED;
-		return false;
 	}
 
 	// load pid map
