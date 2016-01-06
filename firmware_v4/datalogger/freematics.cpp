@@ -239,7 +239,7 @@ float COBD::getVoltage()
 bool COBD::getVIN(char* buffer, byte bufsize)
 {
 	if (sendCommand("0902\r", buffer, bufsize)) {
-	    char *p = strstr(buffer, "0: 49 02");
+	    char *p = strstr(buffer, "49 02");
 	    if (p) {
 	        char *q = buffer;
 	        p += 10;
@@ -491,7 +491,7 @@ bool COBDSPI::initGPS(unsigned long baudrate)
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf(buf, "ATBR2%lu\r", baudrate);
 			if (sendCommand(buf, buf, sizeof(buf))) {
-				if (getGPSRawData(buf, sizeof(buf)) && strstr(buf, "S$GP")) {
+				if (getGPSRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
 					success = true;
 				}
 			}
