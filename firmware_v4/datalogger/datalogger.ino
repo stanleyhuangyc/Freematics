@@ -117,24 +117,7 @@ public:
             state |= STATE_OBD_READY;
         }
         showStatus(PART_OBD, success);
-
-/*
-        char buf[64];
-        setTarget(TARGET_OBD);
-        if (sendCommand("ATGSMPWR\r", buf, sizeof(buf))) {
-           Serial.println(buf); 
-        } else {
-           Serial.println("Can't power on"); 
-        }
-        xbSend("AT\r");
-        delay(20);
-        if (xbRecv(buf, sizeof(buf))) {
-          Serial.println(buf); 
-        } else {
-          Serial.println("ERROR!"); 
-        }
-*/
-        delay(5000);
+        delay(1000);
     }
 #if USE_GPS
     void logGPSData()
@@ -323,10 +306,7 @@ public:
       do {
         setTarget(TARGET_OBD);
         write("ATGRD\r");
-        setTarget(TARGET_GSM);
         byte n = receive(response, bufsize, timeout);
-        Serial.print("RECV:");
-        Serial.println(response);
         if (n > 0) {
           if (!expected || strstr(response, expected))
             return n;
