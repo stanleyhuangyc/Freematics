@@ -7,7 +7,7 @@
 
 #include <Arduino.h>
 #include <SPI.h>
-#include "freematics.h"
+#include "FreematicsONE.h"
 
 //#define DEBUG Serial
 

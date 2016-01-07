@@ -14,10 +14,10 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include "freematics.h"
 #include <I2Cdev.h>
 #include <MPU9150.h>
 #include <SPI.h>
+#include <FreematicsONE.h>
 #include "config.h"
 #include "datalogger.h"
 
@@ -38,6 +38,9 @@ static uint16_t lastUTC = 0;
 static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
 static uint32_t dataCount = 0;
+#if ENABLE_DATA_LOG
+static uint8_t lastFileSize = 0;
+#endif
 
 const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
 const byte PROGMEM pidTier2[] = {PID_INTAKE_MAP, PID_INTAKE_TEMP, PID_COOLANT_TEMP};
@@ -100,14 +103,14 @@ public:
         // try turning on GSM
         //Serial.print("Turn on GSM...");
         toggleGSM();
-        delay(5000);
+        delay(3000);
         if (sendGSMCommand("ATE0\r") != 0) {
           break;
         }
       }
       //sendGSMCommand("ATE0\r");
     }
-    bool setupGSM(const char* apn)
+    bool setupGPRS(const char* apn)
     {
       while (sendGSMCommand("AT+CREG?\r", 5000, "+CREG: 0,") == 0) {
         Serial.print('.'); 
@@ -286,6 +289,17 @@ public:
     void setup()
     {
         delay(1000);
+        
+#if ENABLE_DATA_LOG
+        uint16_t volsize = initSD();
+        if (volsize) {
+          SerialRF.print("#SD:");
+          SerialRF.print(volsize);
+          SerialRF.println("MB");
+          openLogFile();
+        }
+#endif
+
         begin(7, 6);
         SerialRF.begin(115200);
         setTarget(TARGET_OBD);
@@ -295,7 +309,7 @@ public:
         } while (!init());
         SerialRF.println("OK");
 
-        SerialRF.print("#GPRS...");
+        SerialRF.print("#GSM...");
         if (initGSM()) {
             SerialRF.println("OK");
         } else {
@@ -316,27 +330,19 @@ public:
 #endif
 
 #if USE_GPS
+        delay(100);
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_READY;
           SerialRF.println("#GPS...OK");
         }
 #endif
 
-        SerialRF.print("#NETWORK...");
+        SerialRF.print("#GPRS...");
         delay(500);
-        if (setupGSM(APN)) {
+        if (setupGPRS(APN)) {
             SerialRF.println("OK");
         } else {
             SerialRF.print(buffer);
-        }
-        
-        signal = getSignal();
-        SerialRF.print("#SIGNAL:");
-        SerialRF.println(signal);
-
-        if (getOperatorName()) {
-            SerialRF.print('#');
-            SerialRF.println(buffer);
         }
         
         // init HTTP
@@ -347,6 +353,10 @@ public:
           delay(1000);
         }
         SerialRF.println("OK");
+
+        signal = getSignal();
+        SerialRF.print("#SIGNAL:");
+        SerialRF.println(signal);
 
         char vin[256];
         getVIN(vin, sizeof(vin));
@@ -427,13 +437,17 @@ public:
         
         if (millis() > nextConnTime) {
           processGPRS();
+        } else {
+#if ENABLE_DATA_LOG
+          flushData();
+#endif
         }
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
           SerialRF.print(connErrors);
           SerialRF.println("#Reset GPRS...");
           initGSM();
-          setupGSM(APN);
+          setupGPRS(APN);
           if (httpInit()) {
             SerialRF.println("OK"); 
           } else {
@@ -472,7 +486,7 @@ private:
                 
 #if USE_GPS
                 if (gd.time) {
-                    p += sprintf(p, "&GPS=%lu,%ld,%ld,%d,%d,%d", gd.time, gd.lat, gd.lng, gd.alt / 100, (int)gd.speed, gd.sat);
+                    p += sprintf(p, "&GPS=%lu,%ld,%ld,%d,%d,%d", gd.time, gd.lat, gd.lng, gd.alt, (int)gd.speed, gd.sat);
                 }
 #else
                 GSM_LOCATION loc;
@@ -585,6 +599,72 @@ private:
         state &= ~STATE_SLEEPING;
         setup();
     }
+#if ENABLE_DATA_LOG
+    int openLogFile()
+    {
+        uint16_t index = openFile();
+        if (!index) {
+            delay(1000);
+            index = openFile();
+        }
+        if (index) {
+            if (sdfile.println(ID_STR) > 0) {
+              state |= STATE_SD_READY;
+            } else {
+              index = 0;
+            }
+        }
+#if VERBOSE
+        SerialInfo.print("File ID: ");
+        SerialInfo.println(index);
+        delay(3000);
+#endif
+        return index;
+    }
+    uint16_t initSD()
+    {
+        state &= ~STATE_SD_READY;
+        pinMode(SS, OUTPUT);
+        Sd2Card card;
+        uint32_t volumesize = 0;
+        if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
+            SdVolume volume;
+            if (volume.init(card)) {
+              volumesize = volume.blocksPerCluster();
+              volumesize >>= 1; // 512 bytes per block
+              volumesize *= volume.clusterCount();
+              volumesize /= 1000;
+            }
+        }
+        if (SD.begin(SD_CS_PIN)) {
+          return volumesize; 
+        } else {
+          return 0;
+        }
+    }
+    void flushData()
+    {
+        // flush SD data every 1KB
+        byte dataSizeKB = dataSize >> 10;
+        if (dataSizeKB != lastFileSize) {
+#if VERBOSE
+            // display logged data size
+            SerialInfo.print(dataSize);
+            SerialInfo.println(" bytes");
+#endif
+            flushFile();
+            lastFileSize = dataSizeKB;
+#if MAX_LOG_FILE_SIZE
+            if (dataSize >= 1024L * MAX_LOG_FILE_SIZE) {
+              closeFile();
+              if (openLogFile() == 0) {
+                  state &= ~STATE_SD_READY;
+              }
+            }
+#endif
+        }
+    }
+#endif
     byte state;
     byte channel;
     byte connErrors;

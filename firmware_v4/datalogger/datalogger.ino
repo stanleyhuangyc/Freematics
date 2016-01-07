@@ -11,11 +11,11 @@
 #include <I2Cdev.h>
 #include <MPU9150.h>
 #include <Narcoleptic.h>
+#include <FreematicsONE.h>
 #include "config.h"
 #if ENABLE_DATA_LOG
 #include <SD.h>
 #endif
-#include "Freematics.h"
 #include "datalogger.h"
 
 // states
@@ -117,8 +117,24 @@ public:
             state |= STATE_OBD_READY;
         }
         showStatus(PART_OBD, success);
-        
-        delay(1000);
+
+/*
+        char buf[64];
+        setTarget(TARGET_OBD);
+        if (sendCommand("ATGSMPWR\r", buf, sizeof(buf))) {
+           Serial.println(buf); 
+        } else {
+           Serial.println("Can't power on"); 
+        }
+        xbSend("AT\r");
+        delay(20);
+        if (xbRecv(buf, sizeof(buf))) {
+          Serial.println(buf); 
+        } else {
+          Serial.println("ERROR!"); 
+        }
+*/
+        delay(5000);
     }
 #if USE_GPS
     void logGPSData()
@@ -253,8 +269,9 @@ public:
         closeFile();
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GPS_FOUND);
-        // turn off GPS power
+        // cut off GPS power
         initGPS(0);
+        // check if OBD is accessible again
         byte n = 0;
         bool toReset = false;
         while (!init()) {
@@ -295,6 +312,28 @@ public:
       logMEMSData();
 #endif
     }
+    void xbSend(const char* cmd)
+    {
+      setTarget(TARGET_GSM);
+      write(cmd);
+    }
+  byte xbRecv(char* response, byte bufsize, int timeout = 1000, const char* expected = 0)
+  {
+      uint32_t t = millis();
+      do {
+        setTarget(TARGET_OBD);
+        write("ATGRD\r");
+        setTarget(TARGET_GSM);
+        byte n = receive(response, bufsize, timeout);
+        Serial.print("RECV:");
+        Serial.println(response);
+        if (n > 0) {
+          if (!expected || strstr(response, expected))
+            return n;
+        }
+      } while (millis() - t < timeout);
+      return 0;
+  }
     byte state;
 };
 
@@ -311,18 +350,6 @@ void setup()
 
 void loop()
 {
-#if ENABLE_FIRMWARE_UPGRADE
-    // check serial inbound data
-    if (Serial.available()) {
-      if (Serial.read() == '#' && Serial.read() == '#') {
-        if (one.upgradeFirmware()) {
-          // reset after upgrade
-          resetFunc();
-         }
-      }      
-    }
-#endif
-#if 1
     if (one.state & STATE_OBD_READY) {
         static byte index2 = 0;
         for (byte n = 0; n < TIER_NUM1; n++) {
@@ -340,7 +367,6 @@ void loop()
             one.state |= STATE_OBD_READY;
         }
     }
-#endif
 #if USE_GPS
     if (one.state & STATE_GPS_FOUND) {
         one.logGPSData();
