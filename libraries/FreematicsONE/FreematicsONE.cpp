@@ -53,7 +53,7 @@ byte hex2uint8(const char *p)
 }
 
 /*************************************************************************
-* OBD-II UART Adapter
+* OBD-II base class
 *************************************************************************/
 
 byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
@@ -425,7 +425,7 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
                 dataIdleLoop();
                 while (digitalRead(m_pinReady) == HIGH) {
   		   if (millis() - t > timeout) {
-  		    Serial.println("DATA TIMEOUT!");
+  		    Serial.println("TIMEOUT!");
   		    return 0;
  		   }
                 }
@@ -491,6 +491,7 @@ bool COBDSPI::initGPS(unsigned long baudrate)
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf(buf, "ATBR2%lu\r", baudrate);
 			if (sendCommand(buf, buf, sizeof(buf))) {
+				delay(200);
 				if (getGPSRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
 					success = true;
 				}
@@ -560,6 +561,11 @@ bool COBDSPI::getGPSData(GPS_DATA* gdata)
 byte COBDSPI::getGPSRawData(char* buf, byte bufsize)
 {
 	m_target = TARGET_OBD;
-	return sendCommand("ATGRR\r", buf, bufsize, OBD_TIMEOUT_GPS);
+	byte n = sendCommand("ATGRR\r", buf, bufsize, OBD_TIMEOUT_GPS);
+	if (n > 2) {
+		n -= 2;
+		buf[n] = 0;
+	}
+	return n;
 }
 
