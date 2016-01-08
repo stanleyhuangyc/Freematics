@@ -106,17 +106,17 @@ public:
         showStatus(PART_MEMS, success);
 #endif
 
+        if (success = init()) {
+            state |= STATE_OBD_READY;
+        }
+        showStatus(PART_OBD, success);
+
 #if USE_GPS
         if (success = initGPS(GPS_SERIAL_BAUDRATE)) {
             state |= STATE_GPS_FOUND;
         }
         showStatus(PART_GPS, success);
 #endif
-
-        if (success = init()) {
-            state |= STATE_OBD_READY;
-        }
-        showStatus(PART_OBD, success);
         delay(1000);
     }
 #if USE_GPS
@@ -128,7 +128,8 @@ public:
         byte n = getGPSRawData(buf, sizeof(buf));
         if (n) {
             dataTime = millis();
-            logData(buf, n);
+            // strip heading $GPS and ending \r\n
+            logData(buf + 4, n - 6);
         }
 #endif
 #if LOG_GPS_PARSED_DATA
