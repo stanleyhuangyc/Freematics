@@ -5,16 +5,15 @@
 COBDSPI one;
 TinyGPS gps;
 
-#define GPS_SERIAL_BAUDRATE 38400
+#define GPS_SERIAL_BAUDRATE 115200L
 
 bool ready = false;
 
 void setup() {
   // put your setup code here, to run once:
+  Serial.begin(115200);
   delay(500);
   one.begin();
-  Serial.begin(115200);
-
   if (one.initGPS(GPS_SERIAL_BAUDRATE)) {
     Serial.println("GPS OK");
     Serial.println("Waiting for signal");
@@ -36,12 +35,12 @@ void showGPS()
     int32_t lat, lon;
     gps.get_position(&lat, &lon, 0);
     Serial.print(" LAT:");
-    Serial.print((float)lat / 1000000, 6);
+    Serial.print((float)lat / 100000, 5);
     Serial.print(" LNG:");
-    Serial.print((float)lon / 1000000, 6);
+    Serial.print((float)lon / 100000, 5);
     
     Serial.print(" ALT:");
-    Serial.print(gps.altitude());
+    Serial.print(gps.altitude() / 100);
     Serial.print("m");
 
     Serial.print(" Speed:");
@@ -62,10 +61,10 @@ void loop() {
     bool updated = false;
     // need to skip heading ($GPS) and ending (>)
     for (byte m = 4; m < n - 1; m++) {
+      if (!ready) Serial.write(buf[m]);
       if (gps.encode(buf[m])) {
         updated = true;
       }
-      if (!ready) Serial.write(buf[m]);
     }
     if (updated) {
       ready = true;
