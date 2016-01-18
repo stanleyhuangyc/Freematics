@@ -34,7 +34,6 @@ typedef struct {
 #define PID_DATA_SIZE 0x80
 
 #define FILE_NAME_FORMAT "/DAT%05d.CSV"
-#define ID_STR "#FREEMATICS"
 
 #if ENABLE_DATA_OUT
 
@@ -86,24 +85,18 @@ public:
     {
 #if ENABLE_DATA_OUT
         SerialRF.begin(STREAM_BAUDRATE);
-        SerialRF.println(ID_STR);
 #endif
     }
     byte genTimestamp(char* buf, bool absolute)
     {
       byte n;
-      if (absolute || dataTime >= m_lastDataTime + 10000) {
+      if (absolute || dataTime >= m_lastDataTime + 60000) {
         // absolute timestamp
-        n = sprintf(buf, "%lu", dataTime);
+        n = sprintf(buf, "#%lu,", dataTime);
       } else {
         // incremental timestamp
-        buf[0] = '+';
-        n = 1;
-        if (dataTime > m_lastDataTime) {
-          n += sprintf(buf + 1, "%u", (unsigned int)(dataTime - m_lastDataTime));
-        }
+        n = sprintf(buf, "%u,", (unsigned int)(dataTime - m_lastDataTime));
       }
-      buf[n++] = ',';      
       return n;
     }
     void record(const char* buf, byte len)
@@ -133,9 +126,9 @@ public:
           cache[cacheBytes] = 0;
         }
 #else
-        //char tmp[12];
-        //byte n = genTimestamp(tmp, dataTime >= m_lastDataTime + 100);
-        //SerialRF.write(tmp, n);
+        char tmp[12];
+        genTimestamp(tmp, false);
+        SerialRF.print(tmp);
 #endif
 #if ENABLE_DATA_OUT
         SerialRF.write(buf, len);
