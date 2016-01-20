@@ -118,6 +118,7 @@ public:
         showStatus(PART_OBD, success);
 
 #if USE_GPS
+        delay(500);
         if (success = initGPS(GPS_SERIAL_BAUDRATE)) {
             state |= STATE_GPS_FOUND;
         }
