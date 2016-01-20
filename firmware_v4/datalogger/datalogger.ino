@@ -48,7 +48,13 @@ static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_D
 
 #if USE_MPU6050 || USE_MPU9150
 MPU6050 accelgyro;
+#if USE_MPU9150
+int16_t mems[3][3] = {0};
+#else
+int16_t mems[2][3] = {0};
 #endif
+#endif
+
 
 static const byte PROGMEM parts[][3] = {
   {'S','D'},
@@ -156,29 +162,15 @@ public:
     }
 #endif
 #if USE_MPU6050 || USE_MPU9150
-    void logMEMSData()
+    void loadMEMSData()
     {
-        if (!(state & STATE_MEMS_READY))
-            return;
-
+        if (state & STATE_MEMS_READY) {
 #if USE_MPU9150
-        int16_t mems[3][3] = {0};
-        int16_t mx, my, mz;
-        accelgyro.getMotion9(&mems[0][0], &mems[0][1], &mems[0][2], &mems[1][0], &mems[1][1], &mems[1][2], &mems[2][0], &mems[2][1], &mems[2][2]);
-        dataTime = millis();
-        // assume PID_GYRO = PID_AAC + 1, PID_MAG = PID_AAC + 2
-        for (byte n = 0; n < 3; n++) {
-          logData(PID_ACC + n, mems[n][0] >> 4, mems[n][1] >> 4, mems[n][2] >> 4);
-        }
-        
+          accelgyro.getMotion9(&mems[0][0], &mems[0][1], &mems[0][2], &mems[1][0], &mems[1][1], &mems[1][2], &mems[2][0], &mems[2][1], &mems[2][2]);
 #else
-        int16_t mems[2][3] = {0};
-        accelgyro.getMotion6(&mems[0][0], &mems[0][1], &mems[0][2], &mems[1][0], &mems[1][1], &mems[1][2]);
-        dataTime = millis();
-        for (byte n = 0; n < 2; n++) {
-          logData(PID_ACC + n, mems[n][0] >> 4, mems[n][1] >> 4, mems[n][2] >> 4);
-        }
+          accelgyro.getMotion6(&mems[0][0], &mems[0][1], &mems[0][2], &mems[1][0], &mems[1][1], &mems[1][2]);
 #endif
+        }
     }
 #endif
 #if ENABLE_DATA_LOG
@@ -189,6 +181,7 @@ public:
             delay(1000);
             index = openFile();
         }
+        /*
         if (index) {
             if (sdfile.println(ID_STR) > 0) {
               state |= STATE_SD_READY;
@@ -196,6 +189,7 @@ public:
               index = 0;
             }
         }
+        */
 #if VERBOSE
         SerialInfo.print("File ID: ");
         SerialInfo.println(index);
@@ -284,16 +278,32 @@ public:
         dataTime = millis();
         logData((uint16_t)pid | 0x100, value);
         errors = 0;
+        // log the loaded MEMS data
+#if USE_MPU9150
+        if (state & STATE_MEMS_READY) {
+          // assume PID_GYRO = PID_AAC + 1, PID_MAG = PID_AAC + 2
+          for (byte n = 0; n < 3; n++) {
+            logData(PID_ACC + n, mems[n][0] >> 4, mems[n][1] >> 4, mems[n][2] >> 4);
+          }
+        }
+#else
+        if (state & STATE_MEMS_READY) {
+          for (byte n = 0; n < 2; n++) {
+            logData(PID_ACC + n, mems[n][0] >> 4, mems[n][1] >> 4, mems[n][2] >> 4);
+          }
+        }
+#endif
         return true;
     }
     void dataIdleLoop()
     {
+      // do something while waiting for data on SPI
       if (m_state != OBD_CONNECTED) return;
 #if ENABLE_DATA_LOG
       flushData();
 #endif
 #if USE_MPU6050 || USE_MPU9150
-      logMEMSData();
+      loadMEMSData();
 #endif
     }
     void xbSend(const char* cmd)
