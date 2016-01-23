@@ -62,7 +62,7 @@ typedef enum {
     GPRS_DISABLED = 0,
     GPRS_READY,
     GPRS_HTTP_CONNECTING,
-    GPRS_HTTP_SENDING,
+    GPRS_HTTP_RECEIVING,
     GPRS_HTTP_ERROR,
 } GPRS_STATES;
 
@@ -158,31 +158,25 @@ public:
       gprsState = GPRS_READY;
       return true;
     }
-    bool httpConnect(const char* cmd)
+    void httpConnect()
     {
-        if (sendGSMCommand(cmd))
-        {
-            // Starts GET action
-            setTarget(TARGET_GSM);
-            write("AT+HTTPACTION=0\r");
-            gprsState = GPRS_HTTP_SENDING;
-            bytesRecv = 0;
-            checkTimer = millis();
-        } else {
-            gprsState = GPRS_HTTP_ERROR;
-        }
-        return false;
+        // Starts GET action
+        setTarget(TARGET_GSM);
+        write("AT+HTTPACTION=0\r");
+        gprsState = GPRS_HTTP_RECEIVING;
+        bytesRecv = 0;
+        checkTimer = millis();
     }
     bool httpIsConnected()
     {
-        byte ret = checkbuffer("OK", 0, 10000);
+        byte ret = checkbuffer("OK", 10000);
         if (ret == 1) {
           if (strstr(buffer, ": 0,6")) {
             gprsState = GPRS_HTTP_ERROR;
           } else {
             return strstr(buffer, ": 0,") != 0;
           }
-        } else if (ret == 3) {
+        } else if (ret == 2) {
           // timeout
           gprsState = GPRS_HTTP_ERROR;
         }
@@ -194,6 +188,7 @@ public:
           gprsState = GPRS_READY;
           return true;
         } else {
+          Serial.println("Read error");
           gprsState = GPRS_HTTP_ERROR;
           return false;
         }
@@ -223,7 +218,7 @@ public:
       } while(0);
       return false;
     }
-    byte checkbuffer(const char* expected1, const char* expected2 = 0, unsigned int timeout = 2000)
+    byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
         setTarget(TARGET_OBD);
         write("ATGRD\r");
@@ -238,15 +233,12 @@ public:
                   bytesRecv = sizeof(buffer) / 2 - 1;
                   memcpy(buffer, buffer + sizeof(buffer) / 2, bytesRecv);
               }
-              if (strstr(buffer, expected1)) {
+              if (strstr(buffer, expected)) {
                   return 1;
-              }
-              if (expected2 && strstr(buffer, expected2)) {
-                  return 2;
               }
             }
         }
-        return (millis() - checkTimer < timeout) ? 0 : 3;
+        return (millis() - checkTimer < timeout) ? 0 : 2;
     }
     byte sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = 0)
     {
@@ -361,10 +353,15 @@ public:
         SerialRF.println(vin);
 
         SerialRF.print("#CHANNEL:"); 
+        
         sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s?VIN=%s&CSQ=%d\"\r", URL_PUSH, vin, signal);
-        httpConnect(buffer);
+        sendGSMCommand(buffer);
+        delay(100);
+        httpConnect();
+        delay(500);
         while (!httpIsConnected());
         httpRead();
+        
         char *p = strstr(buffer, "CH:");
         if (p) {
           int m = atoi(p + 3);
@@ -461,6 +458,7 @@ private:
 #if USE_GPS
                 if (state & STATE_GPS_READY) {
                   p += processGPS(p);
+                  delay(10);
                 }
                 //if (gd.time) {
                 //}
@@ -474,22 +472,25 @@ private:
                 *(p - 1) = '\"';
                 SerialRF.println(buffer);
                 *p = '\r';
-                gprsState = GPRS_HTTP_CONNECTING;
-                nextConnTime = millis() + 50;
+                if (sendGSMCommand(buffer)) {
+                  gprsState = GPRS_HTTP_CONNECTING;
+                } else {
+                  nextConnTime = millis() + 500;
+                }
             }
             break;        
         case GPRS_HTTP_CONNECTING:
-            httpConnect(buffer);
+            httpConnect();
             nextConnTime = millis() + 2000;
             break;
-        case GPRS_HTTP_SENDING:
+        case GPRS_HTTP_RECEIVING:
             if (httpIsConnected()) {
                 SerialRF.print("#HTTP:");
                 SerialRF.println(++connCount);
                 httpRead();
                 SerialRF.println(buffer);
             } else {
-                nextConnTime = millis() + 50;
+                nextConnTime = millis() + 200;
             }
             break;
 /*
