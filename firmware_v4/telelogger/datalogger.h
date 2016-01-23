@@ -5,17 +5,6 @@
 * Visit http://freematics.com for more information
 *************************************************************************/
 
-#define FORMAT_BIN 0
-#define FORMAT_TEXT 1
-
-typedef struct {
-    uint32_t time;
-    uint16_t pid;
-    uint8_t flags;
-    uint8_t checksum;
-    float value[3];
-} LOG_DATA_COMM;
-
 #define PID_GPS_LATITUDE 0xA
 #define PID_GPS_LONGITUDE 0xB
 #define PID_GPS_ALTITUDE 0xC
@@ -38,9 +27,7 @@ typedef struct {
 
 #if ENABLE_DATA_OUT
 
-#if USE_SOFTSERIAL
-SoftwareSerial SerialRF(A2, A3);
-#elif defined(RF_SERIAL)
+#if defined(RF_SERIAL)
 #define SerialRF RF_SERIAL
 #else
 #define SerialRF Serial
@@ -92,16 +79,12 @@ public:
     byte genTimestamp(char* buf, bool absolute)
     {
       byte n;
-      if (absolute || dataTime >= m_lastDataTime + 10000) {
+      if (absolute || dataTime >= m_lastDataTime + 60000) {
         // absolute timestamp
-        n = sprintf(buf, "%lu", dataTime);
+        n = sprintf(buf, "#%lu", dataTime);
       } else {
-        // incremental timestamp
-        buf[0] = '+';
-        n = 1;
-        if (dataTime > m_lastDataTime) {
-          n += sprintf(buf + 1, "%u", (unsigned int)(dataTime - m_lastDataTime));
-        }
+        // relative timestamp
+        n += sprintf(buf, "%u", (unsigned int)(dataTime - m_lastDataTime));
       }
       buf[n++] = ',';      
       return n;
@@ -109,16 +92,12 @@ public:
     void record(const char* buf, byte len)
     {
 #if ENABLE_DATA_LOG
-#if STREAM_FORMAT == FORMAT_BIN
-        dataSize += sdfile.write(buf, len);
-#else
         char tmp[12];
         byte n = genTimestamp(tmp, dataSize == 0);
         dataSize += sdfile.write(tmp, n);
         dataSize += sdfile.write(buf, len);
         sdfile.println();
         dataSize += 3;
-#endif
 #endif
         m_lastDataTime = dataTime;
     }
@@ -129,7 +108,7 @@ public:
           cacheBytes += genTimestamp(cache + cacheBytes, cacheBytes == 0);
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
-          cache[cacheBytes++] = '\n';
+          cache[cacheBytes++] = ' ';
           cache[cacheBytes] = 0;
         }
 #else
@@ -144,22 +123,14 @@ public:
     }
     void logData(const char* buf, byte len)
     {
-#if ENABLE_DATA_OUT
-#if STREAM_FORMAT != FORMAT_BIN
         dispatch(buf, len);
-#endif
-#endif
         record(buf, len);
     }
     void logData(uint16_t pid)
     {
         char buf[8];
         byte len = translatePIDName(pid, buf);
-#if ENABLE_DATA_OUT
-#if STREAM_FORMAT != FORMAT_BIN
         dispatch(buf, len);
-#endif
-#endif
         record(buf, len);
     }
     void logData(uint16_t pid, int value)
@@ -167,13 +138,7 @@ public:
         char buf[16];
         byte n = translatePIDName(pid, buf);
         byte len = sprintf(buf + n, "%d", value) + n;
-#if STREAM_FORMAT == FORMAT_BIN
-        LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
-        ld.checksum = getChecksum((char*)&ld, 12);
-        dispatch((const char*)&ld, 12);
-#else
         dispatch(buf, len);
-#endif
         record(buf, len);
     }
     void logData(uint16_t pid, int32_t value)
@@ -181,15 +146,7 @@ public:
         char buf[20];
         byte n = translatePIDName(pid, buf);
         byte len = sprintf(buf + n, "%ld", value) + n;
-#if ENABLE_DATA_OUT
-#if STREAM_FORMAT == FORMAT_BIN
-        LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
-        ld.checksum = getChecksum((char*)&ld, 12);
-        dispatch((const char*)&ld, 12);
-#else
         dispatch(buf, len);
-#endif
-#endif
         record(buf, len);
     }
     void logData(uint16_t pid, uint32_t value)
@@ -197,13 +154,7 @@ public:
         char buf[20];
         byte n = translatePIDName(pid, buf);
         byte len = sprintf(buf + n, "%lu", value) + n;
-#if STREAM_FORMAT == FORMAT_BIN
-        LOG_DATA_COMM ld = {dataTime, pid, 1, 0, value};
-        ld.checksum = getChecksum((char*)&ld, 12);
-        dispatch((const char*)&ld, 12);
-#else
         dispatch(buf, len);
-#endif
         record(buf, len);
     }
     void logData(uint16_t pid, int value1, int value2, int value3)
@@ -211,13 +162,7 @@ public:
         char buf[24];
         byte n = translatePIDName(pid, buf);
         byte len = sprintf(buf + n, "%d,%d,%d", value1, value2, value3) + n;
-#if STREAM_FORMAT == FORMAT_BIN
-        LOG_DATA_COMM ld = {dataTime, pid, 3, 0, {value1, value2, value3}};
-        ld.checksum = getChecksum((char*)&ld, 20);
-        dispatch((const char*)&ld, 20);
-#else
         dispatch(buf, len);
-#endif
         record(buf, len);
     }
 #if ENABLE_DATA_LOG
@@ -265,17 +210,9 @@ public:
     int cacheBytes;
 #endif
 private:
-    byte getChecksum(char* buffer, byte len)
-    {
-        uint8_t checksum = 0;
-        for (byte i = 0; i < len; i++) {
-          checksum ^= buffer[i];
-        }
-        return checksum;
-    }
     byte translatePIDName(uint16_t pid, char* text)
     {
-#if STREAM_FORMAT == FORMAT_TEXT && USE_FRIENDLY_PID_NAME
+#if USE_FRIENDLY_PID_NAME
         for (uint16_t n = 0; n < sizeof(pidNames) / sizeof(pidNames[0]); n++) {
             uint16_t id = pgm_read_byte(&pidNames[n].pid);
             if (pid == id) {

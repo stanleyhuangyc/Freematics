@@ -11,9 +11,12 @@
 //this defines the format of log file
 #define STREAM_FORMAT FORMAT_TEXT
 
+#define ENABLE_DATA_CACHE 1
+#define MAX_CACHE_SIZE 256
+
 // change this to your own
 #define APN "connect"
-#define URL_PUSH "http://live.freematics.com.au/push"
+#define HOST_URL "http://live.freematics.com.au"
 
 /**************************************
 * Accelerometer & Gyro
@@ -42,5 +45,7 @@
 //#define DEBUG 1
 #define DEBUG_BAUDRATE 9600
 #define MAX_CONN_ERRORS 3
-#define MAX_CACHED_ITEM 2
+
+#define SD_CS_PIN 10
+
 #endif // CONFIG_H_INCLUDED

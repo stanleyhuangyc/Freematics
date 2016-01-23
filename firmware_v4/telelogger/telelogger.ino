@@ -107,6 +107,7 @@ public:
         Serial.print('.'); 
       }
       sendGSMCommand("AT+CGATT?\r");
+      sendGSMCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
       sprintf(buffer, "AT+SAPBR=3,1,\"APN\",\"%s\"\r", apn);
       sendGSMCommand(buffer, 15000);
       do {
@@ -151,7 +152,7 @@ public:
     }
     bool httpInit()
     {
-      if (!sendGSMCommand("AT+HTTPINIT\r", 10000) || !sendGSMCommand("AT+HTTPPARA=\"CID\",1\r", 5000)) {
+      if (!sendGSMCommand("AT+HTTPINIT\r", 3000) || !sendGSMCommand("AT+HTTPPARA=\"CID\",1\r", 3000)) {
         gprsState = GPRS_DISABLED;
         return false;
       }
@@ -162,7 +163,7 @@ public:
     {
         // Starts GET action
         setTarget(TARGET_GSM);
-        write("AT+HTTPACTION=0\r");
+        write("AT+HTTPACTION=1\r");
         gprsState = GPRS_HTTP_RECEIVING;
         bytesRecv = 0;
         checkTimer = millis();
@@ -171,10 +172,10 @@ public:
     {
         byte ret = checkbuffer("OK", 10000);
         if (ret == 1) {
-          if (strstr(buffer, ": 0,6")) {
+          if (strstr(buffer, ": 1,6")) {
             gprsState = GPRS_HTTP_ERROR;
           } else {
-            return strstr(buffer, ": 0,") != 0;
+            return strstr(buffer, ": 1,") != 0;
           }
         } else if (ret == 2) {
           // timeout
@@ -261,7 +262,7 @@ public:
       } while (millis() - t < timeout);
       return 0;
     }
-    char buffer[255];
+    char buffer[64];
     byte bytesRecv;
     uint32_t checkTimer;
     byte gprsState;
@@ -343,24 +344,53 @@ public:
         }
         SerialRF.println("OK");
 
-        int signal = getSignal();
-        SerialRF.print("#SIGNAL:");
-        SerialRF.println(signal);
-
-        char vin[256];
-        getVIN(vin, sizeof(vin));
-        SerialRF.print("#VIN:");
-        SerialRF.println(vin);
-
-        SerialRF.print("#CHANNEL:"); 
+        joinChannel();
         
-        sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s?VIN=%s&CSQ=%d\"\r", URL_PUSH, vin, signal);
-        sendGSMCommand(buffer);
-        delay(100);
-        httpConnect();
-        delay(500);
-        while (!httpIsConnected());
-        httpRead();
+        SerialRF.println();
+        connErrors = 0;
+        delay(1000);
+    }
+    void joinChannel()
+    {
+      char vin[256];
+      getVIN(vin, sizeof(vin));
+      SerialRF.print("#VIN:");
+      SerialRF.println(vin);
+
+      int signal = getSignal();
+      SerialRF.print("#SIGNAL:");
+      SerialRF.println(signal);
+
+      for (;;) {
+          SerialRF.print("#CHANNEL:"); 
+          sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push\"\r", HOST_URL);
+          if (!sendGSMCommand(buffer)) {
+            SerialRF.println(buffer);
+            continue;
+          }
+          if (!sendGSMCommand("AT+HTTPDATA=60,1000\r", 500, "DOWNLOAD")) {
+            SerialRF.println(buffer);
+            continue;
+          }
+          memset(buffer, ' ', 60);
+          buffer[60] = '\r';
+          buffer[61] = 0;
+          byte len = sprintf(buffer, "VIN=%s&CSQ=%d", vin, signal);
+          buffer[len] = ' ';
+          if (!sendGSMCommand(buffer, 1000)) {
+            SerialRF.println(buffer);
+            continue;
+          }
+
+          httpConnect();
+          do {
+            delay(500);
+            SerialRF.print('.');
+          } while (!httpIsConnected());
+          if (gprsState != GPRS_HTTP_ERROR && httpRead()) break;
+          SerialRF.println("Error");
+          SerialRF.println(buffer);
+        }
         
         char *p = strstr(buffer, "CH:");
         if (p) {
@@ -371,15 +401,17 @@ public:
             state |= STATE_CONNECTED;
           }
         }
-        SerialRF.println();
-        connErrors = 0;
-        delay(1000);
     }
     void loop()
     {
-        static byte index2 = 0;
+#if USE_GPS
+        if (state & STATE_GPS_READY) {
+          processGPS();
+        }
+#endif
 
         // poll OBD-II PIDs
+        static byte index2 = 0;
         int value = 0;
         setTarget(TARGET_OBD);
         for (byte index = 0; index < TIER_NUM1; index++) {
@@ -441,9 +473,25 @@ private:
         case GPRS_READY:
             if (state & STATE_CONNECTED) {
                 // generate URL
+                sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/post?id=%d\"\r", HOST_URL, channel);
+                if (!sendGSMCommand(buffer)) {
+                  break;
+                }
+                cache[cacheBytes] = '\r';
+                cache[cacheBytes + 1] = 0;
+                sprintf(buffer, "AT+HTTPDATA=%d,1000\r", cacheBytes);
+                if (!sendGSMCommand(buffer, 1000, "DOWNLOAD")) {
+                  nextConnTime = millis() + 500; 
+                  break;
+                }
+
+#if 0
                 char *p = buffer;
-                p += sprintf(p, "AT+HTTPPARA=\"URL\",\"%s", URL_PUSH);
-                p += sprintf(p, "?id=%u&", channel);
+                memset(buffer, ' ', 200);
+                buffer[200] = '\r';
+                buffer[201] = 0;
+                
+                p += sprintf(p, "id=%u&", channel);
                 for (byte n = 0; n < sizeof(pidTier1); n++) {
                     p += sprintf(p, "%x=%d&", pgm_read_byte(pidTier1 + n), pidValue[n]);
                 }
@@ -455,33 +503,23 @@ private:
                 //p += sprintf(p, "&T=%d", temp);
 #endif
                 
-#if USE_GPS
-                if (state & STATE_GPS_READY) {
-                  p += processGPS(p);
-                  delay(10);
-                }
-                //if (gd.time) {
-                //}
-#else
-                GSM_LOCATION loc;
-                bool hasLoc = getLocation(&loc);
-                if (hasLoc) {
-                  p += sprintf(p, "GPS=%02u%02u%02u,%ld,%ld&", loc.hour, loc.minute, loc.second, loc.lat, loc.lon);
-                }
-#endif
                 *(p - 1) = '\"';
                 SerialRF.println(buffer);
                 *p = '\r';
-                if (sendGSMCommand(buffer)) {
+#endif
+
+                if (sendGSMCommand(cache, 10000)) {
                   gprsState = GPRS_HTTP_CONNECTING;
+                  cacheBytes = 0;
                 } else {
-                  nextConnTime = millis() + 500;
+                  SerialRF.println("POST FAIL");
+                  SerialRF.println(buffer);
                 }
             }
             break;        
         case GPRS_HTTP_CONNECTING:
             httpConnect();
-            nextConnTime = millis() + 2000;
+            nextConnTime = millis() + 1000;
             break;
         case GPRS_HTTP_RECEIVING:
             if (httpIsConnected()) {
@@ -489,8 +527,6 @@ private:
                 SerialRF.println(++connCount);
                 httpRead();
                 SerialRF.println(buffer);
-            } else {
-                nextConnTime = millis() + 200;
             }
             break;
 /*
@@ -509,8 +545,8 @@ private:
             connErrors++;
             connCount = 0;
             //sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
-            sendGSMCommand("AT\r");
-            delay(200);
+            httpUninit();
+            delay(500);
             httpInit();
             gprsState = GPRS_READY;
             nextConnTime = millis() + 200;
@@ -546,30 +582,28 @@ private:
         lastMemsDataTime = dataTime;
     }
 #endif
-    byte processGPS(char* buf)
+    void processGPS()
     {
         GPS_DATA gd;
-        byte ret = 0;
         if (getGPSData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
-              Serial.println("#GPS:Updated"); 
               dataTime = millis();
-              logData(PID_GPS_TIME, gd.time);
               byte day = gd.date / 10000;
+              logData(PID_GPS_TIME, gd.time);
               if (lastGPSDay != day) {
                 logData(PID_GPS_DATE, gd.date);
                 lastGPSDay = day;
               }
               logData(PID_GPS_LATITUDE, gd.lat);
               logData(PID_GPS_LONGITUDE, gd.lng);
-              logData(PID_GPS_ALTITUDE, gd.alt);
+              logData(PID_GPS_ALTITUDE, gd.alt / 100);
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-              ret = sprintf(buf, "GPS=%lu,%ld,%ld,%d,%d,%d&", gd.time, gd.lat, gd.lng, gd.alt, (int)gd.speed, gd.sat);
+              Serial.print("#GPS:"); 
+              Serial.println(gd.time);
             }
         }
-        return ret;
     }
     void reconnect()
     {
