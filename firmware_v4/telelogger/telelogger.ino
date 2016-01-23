@@ -33,14 +33,10 @@
 #define SerialRF Serial
 #endif
 
-static uint32_t startTime = 0;
 static uint16_t lastUTC = 0;
 static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
-static uint32_t dataCount = 0;
-#if ENABLE_DATA_LOG
-static uint8_t lastFileSize = 0;
-#endif
+static uint16_t connCount = 0;
 
 const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
 const byte PROGMEM pidTier2[] = {PID_INTAKE_MAP, PID_INTAKE_TEMP, PID_COOLANT_TEMP};
@@ -48,9 +44,7 @@ const byte PROGMEM pidTier2[] = {PID_INTAKE_MAP, PID_INTAKE_TEMP, PID_COOLANT_TE
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
 
-int pidValue[TIER_NUM1][MAX_CACHED_ITEM] = {0};
-byte pidValueCount[TIER_NUM1] = {0};
-
+int pidValue[TIER_NUM1] = {0};
 int pidValueTier2[sizeof(pidTier2)] = {0};
 
 #if USE_MPU6050
@@ -58,10 +52,6 @@ static int16_t ax = 0, ay = 0, az = 0;
 static int16_t gx = 0, gy = 0, gz = 0;
 static int temp = 0;
 #endif
-
-int signal;
-
-static GPS_DATA gd = {0};
 
 #if USE_MPU6050
 MPU6050 accelgyro;
@@ -72,6 +62,7 @@ typedef enum {
     GPRS_DISABLED = 0,
     GPRS_READY,
     GPRS_HTTP_CONNECTING,
+    GPRS_HTTP_SENDING,
     GPRS_HTTP_ERROR,
 } GPRS_STATES;
 
@@ -123,6 +114,7 @@ public:
         sendGSMCommand("AT+SAPBR=2,1\r", 5000);
       } while (strstr(buffer, "0.0.0.0"));
       //Serial.println(buffer);
+      return true;
     }
     int getSignal()
     {
@@ -173,7 +165,7 @@ public:
             // Starts GET action
             setTarget(TARGET_GSM);
             write("AT+HTTPACTION=0\r");
-            gprsState = GPRS_HTTP_CONNECTING;
+            gprsState = GPRS_HTTP_SENDING;
             bytesRecv = 0;
             checkTimer = millis();
         } else {
@@ -185,13 +177,14 @@ public:
     {
         byte ret = checkbuffer("OK", 0, 10000);
         if (ret == 1) {
-          if (strstr(buffer, ": 0,601")) {
+          if (strstr(buffer, ": 0,6")) {
             gprsState = GPRS_HTTP_ERROR;
           } else {
-            return strstr(buffer, ": 0,200") != 0;
+            return strstr(buffer, ": 0,") != 0;
           }
-        } else if (ret >= 2) {
-            gprsState = GPRS_HTTP_ERROR;
+        } else if (ret == 3) {
+          // timeout
+          gprsState = GPRS_HTTP_ERROR;
         }
         return false;
     }
@@ -267,7 +260,7 @@ public:
       do {
         write("ATGRD\r");
         delay(50);
-        byte n = receive(buffer, timeout);
+        byte n = receive(buffer, sizeof(buffer), timeout);
         if (n > 0) {
           if (strstr(buffer, expected ? expected : "OK")) {
             return n;
@@ -276,7 +269,7 @@ public:
       } while (millis() - t < timeout);
       return 0;
     }
-    char buffer[256];
+    char buffer[255];
     byte bytesRecv;
     uint32_t checkTimer;
     byte gprsState;
@@ -290,19 +283,23 @@ public:
     {
         delay(1000);
         
-#if ENABLE_DATA_LOG
+        SerialRF.begin(115200);
+
+/*
+//#if ENABLE_DATA_LOG
         uint16_t volsize = initSD();
         if (volsize) {
           SerialRF.print("#SD:");
           SerialRF.print(volsize);
           SerialRF.println("MB");
-          openLogFile();
+          //openLogFile();
         }
-#endif
-
+//#endif
+*/
         begin(7, 6);
-        SerialRF.begin(115200);
         setTarget(TARGET_OBD);
+
+
         SerialRF.print("#OBD..");
         do {
             SerialRF.print('.');
@@ -338,11 +335,11 @@ public:
 #endif
 
         SerialRF.print("#GPRS...");
-        delay(500);
+        delay(100);
         if (setupGPRS(APN)) {
             SerialRF.println("OK");
         } else {
-            SerialRF.print(buffer);
+            SerialRF.println(buffer);
         }
         
         // init HTTP
@@ -354,7 +351,7 @@ public:
         }
         SerialRF.println("OK");
 
-        signal = getSignal();
+        int signal = getSignal();
         SerialRF.print("#SIGNAL:");
         SerialRF.println(signal);
 
@@ -392,15 +389,7 @@ public:
           byte pid = pgm_read_byte(pidTier1 + index);
           if (read(pid, value)) {
               dataTime = millis();
-              if (pidValueCount[index] == MAX_CACHED_ITEM) {
-                 // cache full, free one slot
-                 for (byte m = 0; m < MAX_CACHED_ITEM - 2; m++) {
-                   pidValue[index][m] = pidValue[index][m + 1];
-                 }
-                 pidValue[index][MAX_CACHED_ITEM - 1] = value;
-              } else {
-                pidValue[index][pidValueCount[index]++] = value;
-              }
+              pidValue[index] = value;
               //SerialRF.println(value);
               logData(0x100 | pid, value);
           } else {
@@ -417,17 +406,9 @@ public:
             index2++;
         }
 
-#if USE_GPS
-        if (state & STATE_GPS_READY) {
-            if (processGPS()) {
-              Serial.println("#GPS:Updated"); 
-            }
-        }
-#endif
-
 #if USE_MPU6050
         if (state & STATE_MEMS_READY) {
-            processMEMS();
+            processMEMS();  
         }
 #endif
 
@@ -465,49 +446,50 @@ private:
                 // generate URL
                 char *p = buffer;
                 p += sprintf(p, "AT+HTTPPARA=\"URL\",\"%s", URL_PUSH);
-                p += sprintf(p, "?id=%u&C=%lu&", channel, ++dataCount);
+                p += sprintf(p, "?id=%u&", channel);
                 for (byte n = 0; n < sizeof(pidTier1); n++) {
-                    if (pidValueCount[n] == 0) continue;
-                    p += sprintf(p, "%x=", pgm_read_byte(pidTier1 + n));
-                    for (byte m = pidValueCount[n] - 1; ;m--) {
-                      p += sprintf(p, "%d,", pidValue[n][m]);
-                      if (m == 0) break;
-                    }
-                    *(p - 1) = '&';
-                    pidValueCount[n] = 0;
+                    p += sprintf(p, "%x=%d&", pgm_read_byte(pidTier1 + n), pidValue[n]);
                 }
                 for (byte n = 0; n < sizeof(pidTier2); n++) {
                     p += sprintf(p, "%x=%d&", pgm_read_byte(pidTier2 + n), pidValueTier2[n]);
                 }
 #if USE_MPU6050
-                p += sprintf(p, "A=%d,%d,%d&G=%d,%d,%d", ax, ay, az, gx, gy, gz);
+                p += sprintf(p, "A=%d,%d,%d&G=%d,%d,%d&", ax, ay, az, gx, gy, gz);
                 //p += sprintf(p, "&T=%d", temp);
 #endif
                 
 #if USE_GPS
-                if (gd.time) {
-                    p += sprintf(p, "&GPS=%lu,%ld,%ld,%d,%d,%d", gd.time, gd.lat, gd.lng, gd.alt, (int)gd.speed, gd.sat);
+                if (state & STATE_GPS_READY) {
+                  p += processGPS(p);
                 }
+                //if (gd.time) {
+                //}
 #else
                 GSM_LOCATION loc;
                 bool hasLoc = getLocation(&loc);
                 if (hasLoc) {
-                  p += sprintf(p, "&GPS=%02u%02u%02u,%ld,%ld", loc.hour, loc.minute, loc.second, loc.lat, loc.lon);
+                  p += sprintf(p, "GPS=%02u%02u%02u,%ld,%ld&", loc.hour, loc.minute, loc.second, loc.lat, loc.lon);
                 }
 #endif
+                *(p - 1) = '\"';
                 SerialRF.println(buffer);
-                p += sprintf(p, "\"\r");
-                httpConnect(buffer);
-                nextConnTime = millis() + 2000;
+                *p = '\r';
+                gprsState = GPRS_HTTP_CONNECTING;
+                nextConnTime = millis() + 50;
             }
-            break;
+            break;        
         case GPRS_HTTP_CONNECTING:
+            httpConnect(buffer);
+            nextConnTime = millis() + 2000;
+            break;
+        case GPRS_HTTP_SENDING:
             if (httpIsConnected()) {
                 SerialRF.print("#HTTP:");
+                SerialRF.println(++connCount);
                 httpRead();
                 SerialRF.println(buffer);
             } else {
-                nextConnTime = millis() + 200;
+                nextConnTime = millis() + 50;
             }
             break;
 /*
@@ -522,11 +504,15 @@ private:
 */
         case GPRS_HTTP_ERROR:
             SerialRF.println("#HTTP ERROR");
+            SerialRF.println(buffer);
             connErrors++;
-            sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
+            connCount = 0;
+            //sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
+            sendGSMCommand("AT\r");
+            delay(200);
             httpInit();
             gprsState = GPRS_READY;
-            nextConnTime = millis() + 500;
+            nextConnTime = millis() + 200;
             break;
         }
     }
@@ -559,10 +545,13 @@ private:
         lastMemsDataTime = dataTime;
     }
 #endif
-    bool processGPS()
+    byte processGPS(char* buf)
     {
+        GPS_DATA gd;
+        byte ret = 0;
         if (getGPSData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
+              Serial.println("#GPS:Updated"); 
               dataTime = millis();
               logData(PID_GPS_TIME, gd.time);
               byte day = gd.date / 10000;
@@ -576,15 +565,14 @@ private:
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-              return true;
+              ret = sprintf(buf, "GPS=%lu,%ld,%ld,%d,%d,%d&", gd.time, gd.lat, gd.lng, gd.alt, (int)gd.speed, gd.sat);
             }
         }
-        return false;
+        return ret;
     }
     void reconnect()
     {
         SerialRF.println("#Sleeping");
-        startTime = millis();
         state &= ~STATE_OBD_READY;
         toggleGSM();
         state |= STATE_SLEEPING;
@@ -599,72 +587,6 @@ private:
         state &= ~STATE_SLEEPING;
         setup();
     }
-#if ENABLE_DATA_LOG
-    int openLogFile()
-    {
-        uint16_t index = openFile();
-        if (!index) {
-            delay(1000);
-            index = openFile();
-        }
-        if (index) {
-            if (sdfile.println(ID_STR) > 0) {
-              state |= STATE_SD_READY;
-            } else {
-              index = 0;
-            }
-        }
-#if VERBOSE
-        SerialInfo.print("File ID: ");
-        SerialInfo.println(index);
-        delay(3000);
-#endif
-        return index;
-    }
-    uint16_t initSD()
-    {
-        state &= ~STATE_SD_READY;
-        pinMode(SS, OUTPUT);
-        Sd2Card card;
-        uint32_t volumesize = 0;
-        if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
-            SdVolume volume;
-            if (volume.init(card)) {
-              volumesize = volume.blocksPerCluster();
-              volumesize >>= 1; // 512 bytes per block
-              volumesize *= volume.clusterCount();
-              volumesize /= 1000;
-            }
-        }
-        if (SD.begin(SD_CS_PIN)) {
-          return volumesize; 
-        } else {
-          return 0;
-        }
-    }
-    void flushData()
-    {
-        // flush SD data every 1KB
-        byte dataSizeKB = dataSize >> 10;
-        if (dataSizeKB != lastFileSize) {
-#if VERBOSE
-            // display logged data size
-            SerialInfo.print(dataSize);
-            SerialInfo.println(" bytes");
-#endif
-            flushFile();
-            lastFileSize = dataSizeKB;
-#if MAX_LOG_FILE_SIZE
-            if (dataSize >= 1024L * MAX_LOG_FILE_SIZE) {
-              closeFile();
-              if (openLogFile() == 0) {
-                  state &= ~STATE_SD_READY;
-              }
-            }
-#endif
-        }
-    }
-#endif
     byte state;
     byte channel;
     byte connErrors;
