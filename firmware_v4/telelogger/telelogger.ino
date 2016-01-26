@@ -162,7 +162,7 @@ public:
     void httpConnect()
     {
         // Starts GET action
-        setTarget(TARGET_GSM);
+        setTarget(TARGET_BEE);
         write("AT+HTTPACTION=1\r");
         gprsState = GPRS_HTTP_RECEIVING;
         bytesRecv = 0;
@@ -244,7 +244,7 @@ public:
     byte sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = 0)
     {
       if (cmd) {
-        setTarget(TARGET_GSM);
+        setTarget(TARGET_BEE);
         write(cmd);
         delay(10);
       }
@@ -508,25 +508,28 @@ private:
                 *p = '\r';
 #endif
 
-                if (sendGSMCommand(cache, 10000)) {
+                if (sendGSMCommand(cache, 1000)) {
                   gprsState = GPRS_HTTP_CONNECTING;
                   cacheBytes = 0;
                 } else {
                   SerialRF.println("POST FAIL");
                   SerialRF.println(buffer);
+                  nextConnTime = millis() + 1000; 
                 }
             }
             break;        
         case GPRS_HTTP_CONNECTING:
             httpConnect();
-            nextConnTime = millis() + 1000;
+            nextConnTime = millis() + 2000;
             break;
         case GPRS_HTTP_RECEIVING:
             if (httpIsConnected()) {
                 SerialRF.print("#HTTP:");
                 SerialRF.println(++connCount);
-                httpRead();
-                SerialRF.println(buffer);
+                if (httpRead()) {
+                  // success
+                  SerialRF.println(buffer);
+                }
             }
             break;
 /*
@@ -584,8 +587,9 @@ private:
 #endif
     void processGPS()
     {
-        GPS_DATA gd;
+        GPS_DATA gd = {0};
         if (getGPSData(&gd)) {
+            Serial.println("#GPS"); 
             if (lastUTC != (uint16_t)gd.time) {
               dataTime = millis();
               byte day = gd.date / 10000;
@@ -594,14 +598,14 @@ private:
                 logData(PID_GPS_DATE, gd.date);
                 lastGPSDay = day;
               }
-              logData(PID_GPS_LATITUDE, gd.lat);
-              logData(PID_GPS_LONGITUDE, gd.lng);
+              logCoordinate(PID_GPS_LATITUDE, gd.lat);
+              logCoordinate(PID_GPS_LONGITUDE, gd.lng);
               logData(PID_GPS_ALTITUDE, gd.alt / 100);
               logData(PID_GPS_SPEED, gd.speed);
-              logData(PID_GPS_SAT_COUNT, gd.sat);
+              //logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-              Serial.print("#GPS:"); 
-              Serial.println(gd.time);
+            } else {
+              delay(10);
             }
         }
     }
