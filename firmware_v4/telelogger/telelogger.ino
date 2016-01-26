@@ -79,7 +79,7 @@ typedef struct {
 
 class COBDGSM : public COBDSPI {
 public:
-    COBDGSM():gprsState(GPRS_DISABLED) { buffer[0] = 0; }
+    COBDGSM():gprsState(GPRS_DISABLED),connErrors(0) { buffer[0] = 0; }
     void toggleGSM()
     {
         setTarget(TARGET_OBD);
@@ -175,11 +175,15 @@ public:
           if (strstr(buffer, ": 1,6")) {
             gprsState = GPRS_HTTP_ERROR;
           } else {
-            return strstr(buffer, ": 1,") != 0;
+            if (strstr(buffer, ": 1,")) {
+              connErrors = 0;
+              return true;
+            }
           }
         } else if (ret == 2) {
           // timeout
           gprsState = GPRS_HTTP_ERROR;
+          connErrors++;
         }
         return false;
     }
@@ -262,16 +266,17 @@ public:
       } while (millis() - t < timeout);
       return 0;
     }
-    char buffer[64];
+    char buffer[96];
     byte bytesRecv;
     uint32_t checkTimer;
     byte gprsState;
+    byte connErrors;
 };
 
 class CTeleLogger : public COBDGSM, public CDataLogger
 {
 public:
-    CTeleLogger():state(0),connErrors(0),channel(0) {}
+    CTeleLogger():state(0),channel(0) {}
     void setup()
     {
         delay(1000);
@@ -344,10 +349,10 @@ public:
         }
         SerialRF.println("OK");
 
-        joinChannel();
+        //joinChannel();
+        state |= STATE_CONNECTED;
         
         SerialRF.println();
-        connErrors = 0;
         delay(1000);
     }
     void joinChannel()
@@ -447,6 +452,7 @@ public:
         
         if (millis() > nextConnTime) {
           processGPRS();
+          delay(5);
         } else {
 #if ENABLE_DATA_LOG
           flushData();
@@ -545,7 +551,6 @@ private:
         case GPRS_HTTP_ERROR:
             SerialRF.println("#HTTP ERROR");
             SerialRF.println(buffer);
-            connErrors++;
             connCount = 0;
             //sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
             httpUninit();
@@ -589,7 +594,6 @@ private:
     {
         GPS_DATA gd = {0};
         if (getGPSData(&gd)) {
-            Serial.println("#GPS"); 
             if (lastUTC != (uint16_t)gd.time) {
               dataTime = millis();
               byte day = gd.date / 10000;
@@ -604,8 +608,9 @@ private:
               logData(PID_GPS_SPEED, gd.speed);
               //logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-            } else {
-              delay(10);
+              Serial.print("#UTC:"); 
+              Serial.println(gd.time);
+              return;
             }
         }
     }
@@ -618,7 +623,7 @@ private:
         for (uint16_t i = 0; ; i++) {
             if (init()) {
                 int value;
-                if (read(PID_RPM, value) && value > 0)
+                if (read(PID_RPM, value))
                     break;
             }
         }
@@ -628,7 +633,6 @@ private:
     }
     byte state;
     byte channel;
-    byte connErrors;
 };
 
 CTeleLogger logger;
