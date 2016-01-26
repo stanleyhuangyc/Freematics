@@ -169,7 +169,7 @@ public:
     {
         char buf[24];
         byte len = translatePIDName(pid, buf);
-        len += sprintf(buf + len, "%d.%06u", (int)(value / 1000000), (uint32_t)value % 1000000);
+        len += sprintf(buf + len, "%d.%06lu", (int)(value / 1000000), abs(value) % 1000000);
         dispatch(buf, len);
         record(buf, len);
     }
