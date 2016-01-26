@@ -234,6 +234,8 @@ public:
 #if MAX_LOG_FILE_SIZE
             if (dataSize >= 1024L * MAX_LOG_FILE_SIZE) {
               closeFile();
+              lastUTC = 0;
+              lastGPSDay = 0;
               if (openLogFile() == 0) {
                   state &= ~STATE_SD_READY;
               }
@@ -307,25 +309,6 @@ public:
       loadMEMSData();
 #endif
     }
-    void xbSend(const char* cmd)
-    {
-      setTarget(TARGET_GSM);
-      write(cmd);
-    }
-  byte xbRecv(char* response, byte bufsize, int timeout = 1000, const char* expected = 0)
-  {
-      uint32_t t = millis();
-      do {
-        setTarget(TARGET_OBD);
-        write("ATGRD\r");
-        byte n = receive(response, bufsize, timeout);
-        if (n > 0) {
-          if (!expected || strstr(response, expected))
-            return n;
-        }
-      } while (millis() - t < timeout);
-      return 0;
-  }
     byte state;
 };
 
