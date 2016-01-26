@@ -171,7 +171,7 @@ private:
 
 #define TARGET_OBD 0
 #define TARGET_GPS 1
-#define TARGET_GSM 2
+#define TARGET_BEE 2
 
 class COBDSPI : public COBD {
 public:
@@ -191,6 +191,12 @@ public:
 	bool getGPSData(GPS_DATA* gdata);
 	// get GPS NMEA data
 	byte getGPSRawData(char* buf, byte bufsize);
+	// start xBee UART communication
+	bool xbBegin(unsigned long baudrate = 115200L);
+	// send data to xBee UART
+	void xbSend(const char* cmd);
+	// receive data from xBee UART
+	byte xbRecv(char* buffer, byte bufsize, int timeout = 1000, const char* expected = 0);	
 private:
 	byte m_pinReady;
 	byte m_pinCS;
