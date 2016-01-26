@@ -569,3 +569,32 @@ byte COBDSPI::getGPSRawData(char* buf, byte bufsize)
 	return n;
 }
 
+bool COBDSPI::xbBegin(unsigned long baudrate)
+{
+	char buf[16];
+	sprintf(buf, "ATBR1%lu\r", baudrate);
+	setTarget(TARGET_OBD);
+	return sendCommand(buf, buf, sizeof(buf)) != 0;
+}
+	
+void COBDSPI::xbSend(const char* cmd)
+{
+	setTarget(TARGET_BEE);
+	write(cmd);
+}
+
+byte COBDSPI::xbRecv(char* buffer, byte bufsize, int timeout, const char* expected)
+{
+	uint32_t t = millis();
+	do {
+		setTarget(TARGET_OBD);
+		write("ATGRD\r");
+		byte n = receive(buffer, bufsize, timeout);
+		if (n > 0) {
+			if (!expected || strstr(buffer, expected))
+				return n;
+		}
+	} while (millis() - t < timeout);
+	return 0;
+}
+
