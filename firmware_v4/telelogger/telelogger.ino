@@ -44,18 +44,8 @@ const byte PROGMEM pidTier2[] = {PID_INTAKE_MAP, PID_INTAKE_TEMP, PID_COOLANT_TE
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
 
-int pidValue[TIER_NUM1] = {0};
-int pidValueTier2[sizeof(pidTier2)] = {0};
-
-#if USE_MPU6050
-static int16_t ax = 0, ay = 0, az = 0;
-static int16_t gx = 0, gy = 0, gz = 0;
-static int temp = 0;
-#endif
-
 #if USE_MPU6050
 MPU6050 accelgyro;
-static uint32_t lastMemsDataTime = 0;
 #endif
 
 typedef enum {
@@ -170,16 +160,10 @@ public:
     }
     bool httpIsConnected()
     {
-        byte ret = checkbuffer("OK", 10000);
+        byte ret = checkbuffer("ACTION: 1,", 10000);
         if (ret == 1) {
-          if (strstr(buffer, ": 1,6")) {
-            gprsState = GPRS_HTTP_ERROR;
-          } else {
-            if (strstr(buffer, ": 1,")) {
-              connErrors = 0;
-              return true;
-            }
-          }
+          connErrors = 0;
+          return true;
         } else if (ret == 2) {
           // timeout
           gprsState = GPRS_HTTP_ERROR;
@@ -193,7 +177,7 @@ public:
           gprsState = GPRS_READY;
           return true;
         } else {
-          Serial.println("Read error");
+          Serial.println("READ ERROR");
           gprsState = GPRS_HTTP_ERROR;
           return false;
         }
@@ -227,19 +211,19 @@ public:
     {
         setTarget(TARGET_OBD);
         write("ATGRD\r");
-        delay(10);
+        dataIdleLoop();
         byte n = receive(buffer + bytesRecv, sizeof(buffer) - bytesRecv, timeout);
         if (n > 0) {
             if (memcmp(buffer + bytesRecv, "$GSMNO DATA", 11)) {
               //Serial.print(buffer + bytesRecv);
               bytesRecv += n;
+              if (strstr(buffer, expected)) {
+                  return 1;
+              }
               if (bytesRecv >= sizeof(buffer) - 1) {
                   // buffer full, discard first half
                   bytesRecv = sizeof(buffer) / 2 - 1;
                   memcpy(buffer, buffer + sizeof(buffer) / 2, bytesRecv);
-              }
-              if (strstr(buffer, expected)) {
-                  return 1;
               }
             }
         }
@@ -250,11 +234,11 @@ public:
       if (cmd) {
         setTarget(TARGET_BEE);
         write(cmd);
-        delay(10);
       }
       setTarget(TARGET_OBD);
       uint32_t t = millis();
       do {
+        delay(10);
         write("ATGRD\r");
         delay(50);
         byte n = receive(buffer, sizeof(buffer), timeout);
@@ -266,7 +250,7 @@ public:
       } while (millis() - t < timeout);
       return 0;
     }
-    char buffer[96];
+    char buffer[80];
     byte bytesRecv;
     uint32_t checkTimer;
     byte gprsState;
@@ -296,7 +280,6 @@ public:
 */
         begin(7, 6);
         setTarget(TARGET_OBD);
-
 
         SerialRF.print("#OBD..");
         do {
@@ -349,15 +332,15 @@ public:
         }
         SerialRF.println("OK");
 
-        //joinChannel();
-        state |= STATE_CONNECTED;
+        joinChannel();
+        //state |= STATE_CONNECTED;
         
         SerialRF.println();
         delay(1000);
     }
     void joinChannel()
     {
-      char vin[256];
+      char vin[240];
       getVIN(vin, sizeof(vin));
       SerialRF.print("#VIN:");
       SerialRF.println(vin);
@@ -409,36 +392,26 @@ public:
     }
     void loop()
     {
-#if USE_GPS
-        if (state & STATE_GPS_READY) {
-          processGPS();
-        }
-#endif
-
         // poll OBD-II PIDs
-        static byte index2 = 0;
         int value = 0;
         setTarget(TARGET_OBD);
         for (byte index = 0; index < TIER_NUM1; index++) {
           byte pid = pgm_read_byte(pidTier1 + index);
           if (read(pid, value)) {
               dataTime = millis();
-              pidValue[index] = value;
-              //SerialRF.println(value);
               logData(0x100 | pid, value);
-          } else {
-            //SerialRF.println("N/A"); 
           }
         }
-        if (index2 == TIER_NUM2) {
-            index2 = 0;
-        } else {
-            byte pid = pgm_read_byte(pidTier2 + index2);
-            if (read(pid, value)) {
-              pidValueTier2[index2] = value;
-            }
-            index2++;
+        if (errors >= 2) {
+            reconnect();
         }
+
+#if USE_GPS
+        if (state & STATE_GPS_READY) {
+          processGPS();
+          delay(10);
+        }
+#endif
 
 #if USE_MPU6050
         if (state & STATE_MEMS_READY) {
@@ -446,13 +419,15 @@ public:
         }
 #endif
 
-        if (errors >= 2) {
-            reconnect();
+        static byte index2 = 0;
+        byte pid = pgm_read_byte(pidTier2 + index2);
+        if (read(pid, value)) {
+          logData(0x100 | pid, value);
         }
-        
+        index2 = (index2 + 1) % TIER_NUM2;
+
         if (millis() > nextConnTime) {
           processGPRS();
-          delay(5);
         } else {
 #if ENABLE_DATA_LOG
           flushData();
@@ -483,40 +458,21 @@ private:
                 if (!sendGSMCommand(buffer)) {
                   break;
                 }
-                cache[cacheBytes] = '\r';
-                cache[cacheBytes + 1] = 0;
+                // set HTTP POST data
                 sprintf(buffer, "AT+HTTPDATA=%d,1000\r", cacheBytes);
                 if (!sendGSMCommand(buffer, 1000, "DOWNLOAD")) {
                   nextConnTime = millis() + 500; 
                   break;
                 }
-
-#if 0
-                char *p = buffer;
-                memset(buffer, ' ', 200);
-                buffer[200] = '\r';
-                buffer[201] = 0;
-                
-                p += sprintf(p, "id=%u&", channel);
-                for (byte n = 0; n < sizeof(pidTier1); n++) {
-                    p += sprintf(p, "%x=%d&", pgm_read_byte(pidTier1 + n), pidValue[n]);
-                }
-                for (byte n = 0; n < sizeof(pidTier2); n++) {
-                    p += sprintf(p, "%x=%d&", pgm_read_byte(pidTier2 + n), pidValueTier2[n]);
-                }
-#if USE_MPU6050
-                p += sprintf(p, "A=%d,%d,%d&G=%d,%d,%d&", ax, ay, az, gx, gy, gz);
-                //p += sprintf(p, "&T=%d", temp);
-#endif
-                
-                *(p - 1) = '\"';
-                SerialRF.println(buffer);
-                *p = '\r';
-#endif
-
+                // send cached data
+                cache[cacheBytes] = '\r';
+                cache[cacheBytes + 1] = 0;
                 if (sendGSMCommand(cache, 1000)) {
+                  Serial.print("#POST:");
+                  Serial.println(cacheBytes);
                   gprsState = GPRS_HTTP_CONNECTING;
                   cacheBytes = 0;
+                  delay(100);
                 } else {
                   SerialRF.println("POST FAIL");
                   SerialRF.println(buffer);
@@ -525,29 +481,24 @@ private:
             }
             break;        
         case GPRS_HTTP_CONNECTING:
+            SerialRF.print("#CONNECT:");
+            SerialRF.println(++connCount);
             httpConnect();
             nextConnTime = millis() + 2000;
             break;
         case GPRS_HTTP_RECEIVING:
             if (httpIsConnected()) {
-                SerialRF.print("#HTTP:");
-                SerialRF.println(++connCount);
                 if (httpRead()) {
                   // success
-                  SerialRF.println(buffer);
+                  SerialRF.println("#SUCCESS");
+                  //SerialRF.println(buffer);
+                } else {
+                  delay(100);  
                 }
+            } else {
+              nextConnTime = millis() + 200; 
             }
             break;
-/*
-        case GPRS_HTTP_READING:
-            if (httpIsRead()) {
-                SerialRF.print("#HTTP:");
-                SerialRF.println(buffer);
-                connErrors = 0;
-                // ready for next connection
-            }
-            break;
-*/
         case GPRS_HTTP_ERROR:
             SerialRF.println("#HTTP ERROR");
             SerialRF.println(buffer);
@@ -557,41 +508,33 @@ private:
             delay(500);
             httpInit();
             gprsState = GPRS_READY;
-            nextConnTime = millis() + 200;
+            nextConnTime = millis() + 500;
             break;
         }
     }
 #if USE_MPU6050
     void processMEMS()
     {
-        if (dataTime - lastMemsDataTime < ACC_DATA_INTERVAL) {
-            return;
+        if (state & STATE_MEMS_READY) {
+          int16_t ax = 0, ay = 0, az = 0;
+          int16_t gx = 0, gy = 0, gz = 0;
+          accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+          dataTime = millis();
+          // log x/y/z of accelerometer
+          logData(PID_ACC, ax / ACC_DATA_RATIO, ay / ACC_DATA_RATIO, az / ACC_DATA_RATIO);
+          // log x/y/z of gyro meter
+          logData(PID_GYRO, gx / GYRO_DATA_RATIO, gy / GYRO_DATA_RATIO, gz / GYRO_DATA_RATIO);
         }
-
-        accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-
-        dataTime = millis();
-
-        temp = accelgyro.getTemperature();
-
-        ax /= ACC_DATA_RATIO;
-        ay /= ACC_DATA_RATIO;
-        az /= ACC_DATA_RATIO;
-        gx /= GYRO_DATA_RATIO;
-        gy /= GYRO_DATA_RATIO;
-        gz /= GYRO_DATA_RATIO;
-
-        // log x/y/z of accelerometer
-        logData(PID_ACC, ax, ay, az);
-        // log x/y/z of gyro meter
-        logData(PID_GYRO, gx, gy, gz);
-        logData(PID_MEMS_TEMP, temp);
-
-        lastMemsDataTime = dataTime;
     }
 #endif
     void processGPS()
     {
+        /*
+        char buf[64];
+        if (getGPSRawData(buf, sizeof(buf)))
+          Serial.print(buf);
+        return;
+        */        
         GPS_DATA gd = {0};
         if (getGPSData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
@@ -608,10 +551,12 @@ private:
               logData(PID_GPS_SPEED, gd.speed);
               //logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-              Serial.print("#UTC:"); 
-              Serial.println(gd.time);
-              return;
             }
+            //Serial.print("#UTC:"); 
+            //Serial.println(gd.time);
+        } else {
+          Serial.println("GPS Error");
+          delay(1000);
         }
     }
     void reconnect()
@@ -631,6 +576,11 @@ private:
         state &= ~STATE_SLEEPING;
         setup();
     }
+    void dataIdleLoop()
+    {
+      delay(10);
+    }
+    
     byte state;
     byte channel;
 };
