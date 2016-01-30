@@ -165,6 +165,14 @@ public:
         dispatch(buf, len);
         record(buf, len);
     }
+    void logCoordinate(uint16_t pid, int32_t value)
+    {
+        char buf[24];
+        byte len = translatePIDName(pid, buf);
+        len += sprintf(buf + len, "%d.%06lu", (int)(value / 1000000), abs(value) % 1000000);
+        dispatch(buf, len);
+        record(buf, len);
+    }
 #if ENABLE_DATA_LOG
     uint16_t openFile(uint16_t logFlags = 0, uint32_t dateTime = 0)
     {
