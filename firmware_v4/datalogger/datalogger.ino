@@ -234,6 +234,8 @@ public:
 #if MAX_LOG_FILE_SIZE
             if (dataSize >= 1024L * MAX_LOG_FILE_SIZE) {
               closeFile();
+              lastUTC = 0;
+              lastGPSDay = 0;
               if (openLogFile() == 0) {
                   state &= ~STATE_SD_READY;
               }
