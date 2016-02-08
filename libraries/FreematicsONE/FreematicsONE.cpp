@@ -344,6 +344,7 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 
 	// load pid map
 	memset(pidmap, 0, sizeof(pidmap));
+	bool success = false;
 	for (byte i = 0; i < 4; i++) {
 		byte pid = i * 0x20;
 		sendQuery(pid);
@@ -355,12 +356,13 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 				break;
 			pidmap[i * 4 + n] = hex2uint8(data + n * 3 + 1);
 		}
-		delay(100);
+		success = true;
+		delay(50);
 	}
 
 	m_state = OBD_CONNECTED;
 	errors = 0;
-	return true;
+	return success;
 }
 
 void COBD::end()
@@ -425,7 +427,7 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
                 dataIdleLoop();
                 while (digitalRead(m_pinReady) == HIGH) {
   		   if (millis() - t > timeout) {
-  		    Serial.println("TIMEOUT!");
+  		    //Serial.println("TIMEOUT!");
   		    return 0;
  		   }
                 }
