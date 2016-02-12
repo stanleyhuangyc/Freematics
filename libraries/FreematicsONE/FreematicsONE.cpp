@@ -516,8 +516,9 @@ bool COBDSPI::getGPSData(GPS_DATA* gdata)
 	}
 
 	byte index = 0;
+	bool valid = true;
 	char *s = buf + 5;
-	for (char* p = s; *p; p++) {
+	for (char* p = s; *p && valid; p++) {
 		char c = *p;
 		if (c == ',' || c == '>' || c <= 0x0d) {
 			int32_t value = atol(s);
@@ -528,6 +529,8 @@ bool COBDSPI::getGPSData(GPS_DATA* gdata)
                               // filter out invalid date
                               if (value < 1000000 && value >= 10000 && year >= 15 && (gdata->date == 0 || year - (gdata->date % 100) <= 1)) {
                                 gdata->date = (uint32_t)value;
+                              } else {
+                                valid = false;
                               }
                             }
 			    break;
@@ -552,8 +555,11 @@ bool COBDSPI::getGPSData(GPS_DATA* gdata)
 			case 7:
 			    gdata->sat = value;
 			    break;
+			default:
+			    valid = false;
 			}
 			index++;
+			if (c != ',') break;
 			s = p + 1;
 		}
 	}
