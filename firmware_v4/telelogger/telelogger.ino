@@ -436,7 +436,7 @@ public:
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
           SerialRF.print(connErrors);
-          SerialRF.println("#Reset GPRS...");
+          SerialRF.println("Reset GPRS...");
           initGSM();
           setupGPRS(APN);
           if (httpInit()) {
@@ -468,7 +468,7 @@ private:
                 cache[cacheBytes] = '\r';
                 cache[cacheBytes + 1] = 0;
                 if (sendGSMCommand(cache, 1000)) {
-                  Serial.print("#POST:");
+                  Serial.print("POST:");
                   Serial.println(cacheBytes);
                   gprsState = GPRS_HTTP_CONNECTING;
                   cacheBytes = 0;
@@ -481,7 +481,7 @@ private:
             }
             break;        
         case GPRS_HTTP_CONNECTING:
-            SerialRF.print("#CONNECT:");
+            SerialRF.print("CONNECT#");
             SerialRF.println(++connCount);
             httpConnect();
             nextConnTime = millis() + 2000;
@@ -490,7 +490,7 @@ private:
             if (httpIsConnected()) {
                 if (httpRead()) {
                   // success
-                  SerialRF.println("#SUCCESS");
+                  SerialRF.println("SUCCESS");
                   //SerialRF.println(buffer);
                 } else {
                   delay(100);  
@@ -500,7 +500,7 @@ private:
             }
             break;
         case GPRS_HTTP_ERROR:
-            SerialRF.println("#HTTP ERROR");
+            SerialRF.println("HTTP ERROR");
             SerialRF.println(buffer);
             connCount = 0;
             //sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
@@ -529,12 +529,6 @@ private:
 #endif
     void processGPS()
     {
-        /*
-        char buf[64];
-        if (getGPSRawData(buf, sizeof(buf)))
-          Serial.print(buf);
-        return;
-        */        
         GPS_DATA gd = {0};
         if (getGPSData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
@@ -547,7 +541,7 @@ private:
               }
               logCoordinate(PID_GPS_LATITUDE, gd.lat);
               logCoordinate(PID_GPS_LONGITUDE, gd.lng);
-              logData(PID_GPS_ALTITUDE, gd.alt / 100);
+              logData(PID_GPS_ALTITUDE, gd.alt);
               logData(PID_GPS_SPEED, gd.speed);
               //logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
@@ -561,7 +555,7 @@ private:
     }
     void reconnect()
     {
-        SerialRF.println("#Sleeping");
+        SerialRF.println("Sleeping");
         state &= ~STATE_OBD_READY;
         toggleGSM();
         state |= STATE_SLEEPING;
@@ -572,7 +566,7 @@ private:
                     break;
             }
         }
-        SerialRF.println("#Resuming");
+        SerialRF.println("Resuming");
         state &= ~STATE_SLEEPING;
         setup();
     }
