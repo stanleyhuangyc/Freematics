@@ -557,7 +557,7 @@ bool COBDSPI::getGPSData(GPS_DATA* gdata)
 			s = p + 1;
 		}
 	}
-	return index >= 4;
+	return index > 7;
 }
 
 byte COBDSPI::getGPSRawData(char* buf, byte bufsize)
