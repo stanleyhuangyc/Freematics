@@ -538,13 +538,13 @@ bool COBDSPI::getGPSData(GPS_DATA* gdata)
 			    gdata->time = (uint32_t)value;
 			    break;
 			case 2:
-			    gdata->lat = value / 100;
+			    gdata->lat = value;
 			    break;
 			case 3:
 			    gdata->lng = value;
 			    break;
 			case 4:
-			    gdata->alt = value;
+			    gdata->alt = value / 100;
 			    break;
 			case 5:
 			    gdata->speed = value;
