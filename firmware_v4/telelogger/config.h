@@ -17,6 +17,7 @@
 // change this to your own
 #define APN "connect"
 #define HOST_URL "http://live.freematics.com.au"
+#define BUFFER_LEN sizeof(HOST_URL) + 36
 
 /**************************************
 * Accelerometer & Gyro
@@ -33,19 +34,15 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 
 /**************************************
-* Timeout/interval options
-**************************************/
-#define OBD_MIN_INTERVAL 100 /* ms */
-#define ACC_DATA_INTERVAL 200 /* ms */
-#define GPS_DATA_INTERVAL 200 /* ms */
-
-/**************************************
 * Other options
 **************************************/
 //#define DEBUG 1
 #define DEBUG_BAUDRATE 9600
 #define MAX_CONN_ERRORS 3
+#define MAX_CONN_TIME 10000 /* ms */
 
 #define SD_CS_PIN 10
+
+#define USE_FRIENDLY_PID_NAME 1
 
 #endif // CONFIG_H_INCLUDED
