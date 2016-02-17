@@ -104,7 +104,7 @@ public:
     void dispatch(const char* buf, byte len)
     {
 #if ENABLE_DATA_CACHE
-        if (cacheBytes + len < MAX_CACHE_SIZE - 10) {
+        if (cacheBytes + len < MAX_CACHE_SIZE - 13) {
           cacheBytes += genTimestamp(cache + cacheBytes, cacheBytes == 0);
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
