@@ -591,15 +591,26 @@ void COBDSPI::xbSend(const char* cmd)
 	write(cmd);
 }
 
+byte COBDSPI::xbRead(char* buffer, byte bufsize, int timeout)
+{
+	setTarget(TARGET_OBD);
+	write("ATGRD\r");
+	dataIdleLoop();
+	return receive(buffer, bufsize, timeout);
+}
+
 byte COBDSPI::xbRecv(char* buffer, byte bufsize, int timeout, const char* expected)
 {
 	uint32_t t = millis();
+	setTarget(TARGET_OBD);
 	do {
-		setTarget(TARGET_OBD);
 		write("ATGRD\r");
+		dataIdleLoop();
 		byte n = receive(buffer, bufsize, timeout);
 		if (n > 0) {
-			if (!expected || strstr(buffer, expected))
+			if (!strncmp(buffer, "$GSMNO DATA", 11))
+				delay(10);
+			else if (!expected || strstr(buffer, expected))
 				return n;
 		}
 	} while (millis() - t < timeout);
