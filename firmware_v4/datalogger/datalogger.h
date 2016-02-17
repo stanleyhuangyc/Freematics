@@ -22,7 +22,6 @@
 
 #define PID_DATA_SIZE 0x80
 
-#define FILE_NAME_FORMAT "/DAT%05d.CSV"
 #define ID_STR "#FREEMATICS"
 
 #if ENABLE_DATA_OUT
@@ -174,32 +173,38 @@ public:
         record(buf, len);
     }
 #if ENABLE_DATA_LOG
-    uint16_t openFile(uint16_t logFlags = 0, uint32_t dateTime = 0)
+    uint16_t openFile(uint32_t dateTime = 0)
     {
         uint16_t fileIndex;
-        char filename[24] = "/FRMATICS";
+        char path[20] = "/DATA";
 
         dataSize = 0;
-        if (SD.exists(filename)) {
-            for (fileIndex = 1; fileIndex; fileIndex++) {
-                sprintf(filename + 9, FILE_NAME_FORMAT, fileIndex);
-                if (!SD.exists(filename)) {
-                    break;
-                }
+        if (SD.exists(path)) {
+            if (dateTime) {
+               // using date and time as file name 
+               sprintf(path + 5, "/%08lu.CSV", dateTime);
+               fileIndex = 1;
+            } else {
+              // use index number as file name
+              for (fileIndex = 1; fileIndex; fileIndex++) {
+                  sprintf(path + 5, "/DAT%05u.CSV", fileIndex);
+                  if (!SD.exists(path)) {
+                      break;
+                  }
+              }
+              if (fileIndex == 0)
+                  return 0;
             }
-            if (fileIndex == 0)
-                return 0;
         } else {
-            SD.mkdir(filename);
+            SD.mkdir(path);
             fileIndex = 1;
-            sprintf(filename + 9, FILE_NAME_FORMAT, 1);
+            sprintf(path + 5, "/DAT%05u.CSV", 1);
         }
 
-        sdfile = SD.open(filename, FILE_WRITE);
+        sdfile = SD.open(path, FILE_WRITE);
         if (!sdfile) {
             return 0;
         }
-        m_lastDataTime = dateTime;
         return fileIndex;
     }
     void closeFile()
