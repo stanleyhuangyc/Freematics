@@ -37,8 +37,8 @@ void(* resetFunc) (void) = 0; //declare reset function at address 0
 static uint8_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
 
-static uint16_t lastUTC = 0;
-static uint8_t lastGPSDay = 0;
+uint16_t MMDD = 0;
+uint32_t UTC = 0;
 
 static const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
 static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_DISTANCE};
@@ -90,17 +90,6 @@ public:
         bool success;
         state = 0;
         
-#if ENABLE_DATA_LOG
-        uint16_t volsize = initSD();
-        if (volsize) {
-          SerialRF.print("SD ");
-          SerialRF.print(volsize);
-          SerialRF.println("MB");
-          success = openLogFile() != 0;
-        }
-        showStatus(PART_SD, success);
-#endif
-
         begin();
 
 #if USE_MPU6050 || USE_MPU9150
@@ -123,10 +112,46 @@ public:
             state |= STATE_GPS_FOUND;
         }
         showStatus(PART_GPS, success);
+        if (state && STATE_GPS_FOUND) {
+          SerialRF.print("Waiting GPS");
+          for (;;) {
+            GPS_DATA gd;
+            gd.date = 0;
+            if (getGPSData(&gd) && gd.date != 0 && gd.time != 0) {
+              saveDateTime(&gd);
+              SerialRF.print("UTC:");
+              SerialRF.print(MMDD);
+              SerialRF.print(' ');
+              SerialRF.println(UTC);
+              break;
+            }
+            SerialRF.print('.');
+            delay(1000);
+          }
+        }
+#endif
+
+#if ENABLE_DATA_LOG
+        uint16_t volsize = initSD();
+        success = false;
+        if (volsize) {
+          SerialRF.print("SD ");
+          SerialRF.print(volsize);
+          SerialRF.println("MB");
+          uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
+          success = openFile(dateTime) != 0;
+        }
+        showStatus(PART_SD, success);
 #endif
         delay(1000);
     }
 #if USE_GPS
+    void saveDateTime(GPS_DATA* gd)
+    {    
+      unsigned int DDMM = gd->date / 100;
+      UTC = gd->time;
+      MMDD = (DDMM % 100) * 100 + (DDMM / 100);
+    }
     void logGPSData()
     {
 #if LOG_GPS_NMEA_DATA
@@ -143,20 +168,19 @@ public:
         // issue the command to get parsed GPS data
         GPS_DATA gd = {0};
         if (getGPSData(&gd)) {
-            if (lastUTC != (uint16_t)gd.time) {
+            if (UTC != gd.time) {
               dataTime = millis();
-              logData(PID_GPS_TIME, gd.time);
               byte day = gd.date / 10000;
-              if (lastGPSDay != day) {
+              if (MMDD % 100 != day) {
                 logData(PID_GPS_DATE, gd.date);
-                lastGPSDay = day;
               }
+              logData(PID_GPS_TIME, gd.time);
               logData(PID_GPS_LATITUDE, gd.lat);
               logData(PID_GPS_LONGITUDE, gd.lng);
               logData(PID_GPS_ALTITUDE, gd.alt);
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
-              lastUTC = (uint16_t)gd.time;
+              saveDateTime(&gd);
             }
         }
 #endif
@@ -175,29 +199,6 @@ public:
     }
 #endif
 #if ENABLE_DATA_LOG
-    int openLogFile()
-    {
-        uint16_t index = openFile();
-        if (!index) {
-            delay(1000);
-            index = openFile();
-        }
-        /*
-        if (index) {
-            if (sdfile.println(ID_STR) > 0) {
-              state |= STATE_SD_READY;
-            } else {
-              index = 0;
-            }
-        }
-        */
-#if VERBOSE
-        SerialInfo.print("File ID: ");
-        SerialInfo.println(index);
-        delay(3000);
-#endif
-        return index;
-    }
     uint16_t initSD()
     {
         state &= ~STATE_SD_READY;
@@ -234,11 +235,12 @@ public:
 #if MAX_LOG_FILE_SIZE
             if (dataSize >= 1024L * MAX_LOG_FILE_SIZE) {
               closeFile();
-              lastUTC = 0;
-              lastGPSDay = 0;
-              if (openLogFile() == 0) {
+              uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
+              if (openFile(dateTime) == 0) {
                   state &= ~STATE_SD_READY;
               }
+              UTC = 0;
+              MMDD = 0;
             }
 #endif
         }
