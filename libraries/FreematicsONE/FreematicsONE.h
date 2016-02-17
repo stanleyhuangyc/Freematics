@@ -193,6 +193,8 @@ public:
 	byte getGPSRawData(char* buf, byte bufsize);
 	// start xBee UART communication
 	bool xbBegin(unsigned long baudrate = 115200L);
+	// read data to xBee UART
+	byte xbRead(char* buffer, byte bufsize, int timeout = 1000);
 	// send data to xBee UART
 	void xbSend(const char* cmd);
 	// receive data from xBee UART
