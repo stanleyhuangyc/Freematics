@@ -524,39 +524,31 @@ bool COBDSPI::getGPSData(GPS_DATA* gdata)
 			int32_t value = atol(s);
 			switch (index) {
 			case 0:
-                            {
-                              int year = value % 100;
-                              // filter out invalid date
-                              if (value < 1000000 && value >= 10000 && year >= 15 && (gdata->date == 0 || year - (gdata->date % 100) <= 1)) {
-                                gdata->date = (uint32_t)value;
-                              } else {
-                                valid = false;
-                              }
-                            }
-			    break;
+				gdata->date = (uint32_t)value;
+				break;
 			case 1:
-			    gdata->time = (uint32_t)value;
-			    break;
+				gdata->time = (uint32_t)value;
+				break;
 			case 2:
-			    gdata->lat = value;
-			    break;
+				gdata->lat = value;
+				break;
 			case 3:
-			    gdata->lng = value;
-			    break;
+				gdata->lng = value;
+				break;
 			case 4:
-			    gdata->alt = value / 100;
-			    break;
+				gdata->alt = value / 100;
+				break;
 			case 5:
-			    gdata->speed = value;
-			    break;
+				gdata->speed = value;
+				break;
 			case 6:
-			    gdata->heading = value;
-			    break;
+				gdata->heading = value;
+				break;
 			case 7:
-			    gdata->sat = value;
-			    break;
+				gdata->sat = value;
+				break;
 			default:
-			    valid = false;
+				valid = false;
 			}
 			index++;
 			if (c != ',') break;
