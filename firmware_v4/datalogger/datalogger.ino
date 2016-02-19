@@ -24,15 +24,14 @@
 #define STATE_GPS_FOUND 0x4
 #define STATE_GPS_READY 0x8
 #define STATE_MEMS_READY 0x10
-#define STATE_SLEEPING 0x20
+#define STATE_FILE_READY 0x20
+#define STATE_SLEEPING 0x40
 
 #if VERBOSE && !ENABLE_DATA_OUT
 #define SerialInfo Serial
 #else
 #define SerialInfo SerialRF
 #endif
-
-void(* resetFunc) (void) = 0; //declare reset function at address 0
 
 static uint8_t lastFileSize = 0;
 static uint16_t fileIndex = 0;
@@ -92,6 +91,17 @@ public:
         
         begin();
 
+#if ENABLE_DATA_LOG
+        uint16_t volsize = initSD();
+        if (volsize) {
+          SerialRF.print("SD ");
+          SerialRF.print(volsize);
+          SerialRF.println("MB");
+        } else {
+          showStatus(PART_SD, false);
+        }
+#endif
+
 #if USE_MPU6050 || USE_MPU9150
         Wire.begin();
         accelgyro.initialize();
@@ -112,46 +122,11 @@ public:
             state |= STATE_GPS_FOUND;
         }
         showStatus(PART_GPS, success);
-        if (state && STATE_GPS_FOUND) {
-          SerialRF.print("Waiting GPS");
-          for (;;) {
-            GPS_DATA gd;
-            gd.date = 0;
-            if (getGPSData(&gd) && gd.date != 0 && gd.time != 0) {
-              saveDateTime(&gd);
-              SerialRF.print("UTC:");
-              SerialRF.print(MMDD);
-              SerialRF.print(' ');
-              SerialRF.println(UTC);
-              break;
-            }
-            SerialRF.print('.');
-            delay(1000);
-          }
-        }
 #endif
 
-#if ENABLE_DATA_LOG
-        uint16_t volsize = initSD();
-        success = false;
-        if (volsize) {
-          SerialRF.print("SD ");
-          SerialRF.print(volsize);
-          SerialRF.println("MB");
-          uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
-          success = openFile(dateTime) != 0;
-        }
-        showStatus(PART_SD, success);
-#endif
         delay(1000);
     }
 #if USE_GPS
-    void saveDateTime(GPS_DATA* gd)
-    {    
-      unsigned int DDMM = gd->date / 100;
-      UTC = gd->time;
-      MMDD = (DDMM % 100) * 100 + (DDMM / 100);
-    }
     void logGPSData()
     {
 #if LOG_GPS_NMEA_DATA
@@ -168,8 +143,8 @@ public:
         // issue the command to get parsed GPS data
         GPS_DATA gd = {0};
         if (getGPSData(&gd)) {
-            if (UTC != gd.time) {
-              dataTime = millis();
+            dataTime = millis();
+            if (gd.time && gd.time != UTC) {
               byte day = gd.date / 10000;
               if (MMDD % 100 != day) {
                 logData(PID_GPS_DATE, gd.date);
@@ -180,7 +155,12 @@ public:
               logData(PID_GPS_ALTITUDE, gd.alt);
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
-              saveDateTime(&gd);
+              // save current date in MMDD format
+              unsigned int DDMM = gd.date / 100;
+              UTC = gd.time;
+              MMDD = (DDMM % 100) * 100 + (DDMM / 100);
+              // set GPS ready flag
+              state |= STATE_GPS_READY;
             }
         }
 #endif
@@ -215,6 +195,7 @@ public:
             }
         }
         if (SD.begin(SD_CS_PIN)) {
+          state |= STATE_SD_READY;
           return volumesize; 
         } else {
           return 0;
@@ -235,19 +216,19 @@ public:
 #if MAX_LOG_FILE_SIZE
             if (dataSize >= 1024L * MAX_LOG_FILE_SIZE) {
               closeFile();
-              uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
-              if (openFile(dateTime) == 0) {
-                  state &= ~STATE_SD_READY;
-              }
-              UTC = 0;
-              MMDD = 0;
+              state &= ~STATE_FILE_READY;
             }
 #endif
         }
     }
 #endif
-    void standby()
+    void reconnect()
     {
+        if (init()) {
+          // reconnected
+          return; 
+        }
+        SerialRF.println("Sleeping");
 #if ENABLE_DATA_LOG
         closeFile();
 #endif
@@ -255,19 +236,14 @@ public:
         // cut off GPS power
         initGPS(0);
         // check if OBD is accessible again
-        byte n = 0;
-        bool toReset = false;
-        while (!init()) {
-#if VERBOSE
-            SerialInfo.write('.');
-#endif
+        for (;;) {
+            int value;
+            if (read(PID_RPM, value))
+                break;
             Narcoleptic.delay(3000);
-            if (n >= 20) {
-              toReset = true;
-            } else {
-              n++; 
-            }
         }
+        // reset device
+        void(* resetFunc) (void) = 0; //declare reset function at address 0
         if (toReset) resetFunc();
     }
     bool logOBDData(byte pid)
@@ -304,9 +280,6 @@ public:
     {
       // do something while waiting for data on SPI
       if (m_state != OBD_CONNECTED) return;
-#if ENABLE_DATA_LOG
-      flushData();
-#endif
 #if USE_MPU6050 || USE_MPU9150
       loadMEMSData();
 #endif
@@ -327,6 +300,26 @@ void setup()
 
 void loop()
 {
+    if (!(one.state & STATE_FILE_READY) && (one.state & STATE_SD_READY)) {
+      if (one.state & STATE_GPS_FOUND) {
+        // GPS connected
+        if (one.state & STATE_GPS_READY) {
+          uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
+          if (one.openFile(dateTime) != 0) {
+            UTC = 0;
+            MMDD = 0;
+            one.state |= STATE_FILE_READY;
+          }
+        } else {
+          delay(3000); 
+        }
+      } else {
+        // no GPS connected 
+        if (one.openFile(0) != 0) {
+          one.state |= STATE_FILE_READY;
+        }
+      }
+    }
     if (one.state & STATE_OBD_READY) {
         static byte index2 = 0;
         for (byte n = 0; n < TIER_NUM1; n++) {
@@ -337,7 +330,7 @@ void loop()
         one.logOBDData(pid);
         index2 = (index2 + 1) % TIER_NUM2;
         if (one.errors >= 10) {
-            one.standby();
+            one.reconnect();
         }
     } else if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
         if (one.init()) {
@@ -348,5 +341,8 @@ void loop()
     if (one.state & STATE_GPS_FOUND) {
         one.logGPSData();
     }
+#endif
+#if ENABLE_DATA_LOG
+    one.flushData();
 #endif
 }
