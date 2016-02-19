@@ -17,6 +17,7 @@
 #include <I2Cdev.h>
 #include <MPU9150.h>
 #include <SPI.h>
+#include <Narcoleptic.h>
 #include <FreematicsONE.h>
 #include "config.h"
 #include "datalogger.h"
@@ -262,7 +263,7 @@ public:
         // send cached data
         return sendGSMCommand(payload, 1000);
     }
-    char buffer[80];
+    char buffer[128];
     byte bytesRecv;
     uint32_t checkTimer;
     byte gprsState;
@@ -275,29 +276,20 @@ public:
     CTeleLogger():state(0),channel(0) {}
     void setup()
     {
-        delay(1000);
+        delay(500);
         
         SerialRF.begin(115200);
 
-/*
-//#if ENABLE_DATA_LOG
-        uint16_t volsize = initSD();
-        if (volsize) {
-          SerialRF.print("#SD:");
-          SerialRF.print(volsize);
-          SerialRF.println("MB");
-          //openLogFile();
-        }
-//#endif
-*/
+        // this will init SPI communication
         begin(7, 6);
-        setTarget(TARGET_OBD);
 
         SerialRF.print("#OBD..");
+        setTarget(TARGET_OBD);
         do {
             SerialRF.print('.');
         } while (!init());
         SerialRF.println("OK");
+        state |= STATE_OBD_READY;
 
         SerialRF.print("#GSM...");
         if (initGSM()) {
@@ -305,8 +297,6 @@ public:
         } else {
             SerialRF.println(buffer);
         }
-
-        state |= STATE_OBD_READY;
 
 #if USE_MPU6050
         SerialRF.print("#MEMS...");
@@ -344,27 +334,41 @@ public:
         }
         SerialRF.println("OK");
 
-        joinChannel();
-        //state |= STATE_CONNECTED;
+        joinChannel(0);
+        state |= STATE_CONNECTED;
         
         SerialRF.println();
         delay(1000);
     }
-    void joinChannel()
+    void joinChannel(byte action)
     {
+      int signal;
+#if ENABLE_DATA_CACHE
+      char *vin = cache;
+#else
       char vin[240];
-      setTarget(TARGET_OBD);
-      getVIN(vin, sizeof(vin));
-      SerialRF.print("#VIN:");
-      SerialRF.println(vin);
-      
-      int signal = getSignal();
-      SerialRF.print("#SIGNAL:");
-      SerialRF.println(signal);
-
+#endif
+      if (action == 0) {
+        setTarget(TARGET_OBD);
+#if ENABLE_DATA_CACHE
+        getVIN(cache, MAX_CACHE_SIZE);
+#else
+        getVIN(vin, sizeof(vin));
+#endif
+        SerialRF.print("#VIN:");
+        SerialRF.println(vin);
+        SerialRF.print("#SIGNAL:");
+        signal = getSignal();
+        SerialRF.print(signal);
+      }
+      gprsState = GPRS_READY;
       for (;;) {
-          SerialRF.print("#CHANNEL:"); 
-          sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?CSQ=%d&VIN=%s\"\r", HOST_URL, signal, vin);
+          if (action == 0) {
+            SerialRF.print("#CHANNEL:"); 
+            sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?CSQ=%d&VIN=%s\"\r", HOST_URL, signal, vin);
+          } else {
+            sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?id=%d&OFF=1\"\r", HOST_URL, channel);
+          }
           if (!sendGSMCommand(buffer)) {
             SerialRF.println(buffer);
             continue;
@@ -374,6 +378,7 @@ public:
             delay(500);
             SerialRF.print('.');
           } while (!httpIsConnected());
+          if (action != 0) return;
           if (gprsState != GPRS_HTTP_ERROR && httpRead()) {
             char *p = strstr(buffer, "CH:");
             if (p) {
@@ -550,20 +555,28 @@ private:
     }
     void reconnect()
     {
-        SerialRF.println("Sleeping");
-        state &= ~STATE_OBD_READY;
-        toggleGSM();
-        state |= STATE_SLEEPING;
-        for (uint16_t i = 0; ; i++) {
-            if (init()) {
-                int value;
-                if (read(PID_RPM, value))
-                    break;
-            }
+        if (init()) {
+          // reconnected
+          return; 
         }
-        SerialRF.println("Resuming");
-        state &= ~STATE_SLEEPING;
-        setup();
+        SerialRF.print("Sleeping");
+        state &= ~STATE_OBD_READY;
+        joinChannel(1); // leave channel
+        toggleGSM(); // turn off GSM power
+#if USE_GPS
+        initGPS(0); // turn off GPS power
+#endif
+        SerialRF.println();
+        state |= STATE_SLEEPING;
+        for (;;) {
+            int value;
+            if (read(PID_RPM, value))
+                break;
+            Narcoleptic.delay(3000);
+        }
+        // reset device
+        void(* resetFunc) (void) = 0; //declare reset function at address 0
+        resetFunc();
     }
     void dataIdleLoop()
     {
