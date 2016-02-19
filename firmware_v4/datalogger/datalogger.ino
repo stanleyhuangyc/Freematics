@@ -244,7 +244,7 @@ public:
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
-        if (toReset) resetFunc();
+        resetFunc();
     }
     bool logOBDData(byte pid)
     {
