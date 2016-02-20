@@ -46,7 +46,9 @@
 
 // enable(1)/disable(0) MEMS sensor
 #define USE_MPU6050 1
-//#define USE_MPU9150 1
+#define ACC_DATA_RATIO 160
+#define GYRO_DATA_RATIO 256
+#define COMPASS_DATA_RATIO 8
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
