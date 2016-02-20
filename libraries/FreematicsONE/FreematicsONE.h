@@ -1,8 +1,8 @@
 /*************************************************************************
 * Arduino Library for Freematics ONE
 * Distributed under GPL v2.0
-* Visit http://freematics.com for more information
-* (C)2012-2015 Stanley Huang <stanleyhuangyc@gmail.com>
+* Visit http://freematics.com/products/freematics-one for more information
+* (C)2012-2016 Stanley Huang <stanleyhuangyc@gmail.com>
 *************************************************************************/
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
@@ -106,13 +106,10 @@ class COBD
 {
 public:
 	COBD():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
-	virtual void begin();
 	// initialize OBD-II connection
 	virtual bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
 	// un-initialize OBD-II connection
 	virtual void end();
-	// set serial baud rate
-	virtual bool setBaudRate(unsigned long baudrate);
 	// get connection state
 	virtual OBD_STATES getState() { return m_state; }
 	// read specified OBD-II PID value
@@ -143,10 +140,9 @@ public:
 	byte pidmap[4 * 4];
 protected:
 	virtual char* getResponse(byte& pid, char* buffer, byte bufsize);
-	virtual byte receive(char* buffer, byte bufsize, int timeout = OBD_TIMEOUT_SHORT);
-	virtual void write(const char* s);
+	virtual byte receive(char* buffer, byte bufsize, int timeout = OBD_TIMEOUT_SHORT) = 0;
+	virtual void write(const char* s) = 0;
 	virtual void dataIdleLoop() {}
-	void recover();
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
 	OBD_STATES m_state;
@@ -199,6 +195,8 @@ public:
 	void xbSend(const char* cmd);
 	// receive data from xBee UART
 	byte xbRecv(char* buffer, byte bufsize, int timeout = 1000, const char* expected = 0);	
+	// purge xBee UART buffer
+	void xbPurge();
 private:
 	byte m_pinReady;
 	byte m_pinCS;

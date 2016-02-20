@@ -1,8 +1,8 @@
 /*************************************************************************
 * Arduino Library for Freematics ONE
 * Distributed under GPL v2.0
-* Visit http://freematics.com for more information
-* (C)2012-2015 Stanley Huang <stanleyhuangyc@gmail.com>
+* Visit http://freematics.com/products/freematics-one for more information
+* (C)2012-2016 Stanley Huang <stanleyhuangyc@gmail.com>
 *************************************************************************/
 
 #include <Arduino.h>
@@ -86,11 +86,6 @@ void COBD::clearDTC()
 	char buffer[32];
 	write("04\r");
 	receive(buffer, sizeof(buffer));
-}
-
-void COBD::write(const char* s)
-{
-	OBDUART.write(s);
 }
 
 int COBD::normalizeData(byte pid, char* data)
@@ -198,7 +193,6 @@ bool COBD::getResult(byte& pid, int& result)
 	char buffer[64];
 	char* data = getResponse(pid, buffer, sizeof(buffer));
 	if (!data) {
-		recover();
 		errors++;
 		return false;
 	}
@@ -266,54 +260,6 @@ bool COBD::isValidPID(byte pid)
 	return pidmap[i] & b;
 }
 
-void COBD::begin()
-{
-	OBDUART.begin(OBD_SERIAL_BAUDRATE);
-#ifdef DEBUG
-	DEBUG.begin(115200);
-#endif
-	recover();
-}
-
-byte COBD::receive(char* buffer, byte bufsize, int timeout)
-{
-	unsigned char n = 0;
-	unsigned long startTime = millis();
-	for (;;) {
-		if (OBDUART.available()) {
-			char c = OBDUART.read();
-			if (n > 2 && c == '>') {
-				// prompt char received
-				break;
-			} else if (!buffer) {
-			       n++;
-			} else if (n < bufsize - 1) {
-				if (c == '.' && n > 2 && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
-					// waiting siginal
-					n = 0;
-					timeout = OBD_TIMEOUT_LONG;
-				} else {
-					buffer[n++] = c;
-				}
-			}
-		} else {
-			if (millis() - startTime > timeout) {
-			    // timeout
-			    break;
-			}
-			dataIdleLoop();
-		}
-	}
-	if (buffer) buffer[n] = 0;
-	return n;
-}
-
-void COBD::recover()
-{
-	char buf[16];
-	sendCommand("AT\r", buf, sizeof(buf));
-}
-
 bool COBD::init(OBD_PROTOCOLS protocol)
 {
 	const char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r","0100\r"};
@@ -369,18 +315,6 @@ void COBD::end()
 {
 	m_state = OBD_DISCONNECTED;
 	OBDUART.end();
-}
-
-bool COBD::setBaudRate(unsigned long baudrate)
-{
-	OBDUART.print("ATBR1 ");
-	OBDUART.print(baudrate);
-	OBDUART.print('\r');
-	delay(50);
-	OBDUART.end();
-	OBDUART.begin(baudrate);
-	recover();
-	return true;
 }
 
 #ifdef DEBUG
@@ -445,13 +379,17 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
 	} while (!eof &&  millis() - t < timeout);
         if (eof) n--;
         buffer[n] = 0;
+	if (m_target == TARGET_OBD && !memcmp(buffer, "$OBDTIMEOUT", 11)) {
+		// ECU not responding
+		return 0;
+	}
 	return n;
 }
 
 void COBDSPI::write(const char* s)
 {
 	digitalWrite(m_pinCS, LOW);
-        delay(1);
+	delay(1);
 	if (*s != '$') {
 		delayMicroseconds(5);
 		SPI.transfer('$');
@@ -609,3 +547,8 @@ byte COBDSPI::xbRecv(char* buffer, byte bufsize, int timeout, const char* expect
 	return 0;
 }
 
+void COBDSPI::xbPurge()
+{
+	char buf[16];
+	sendCommand("ATCLRGSM\r", buf, sizeof(buf));
+}
