@@ -252,7 +252,6 @@ public:
         if (!read(pid, value)) {
             // error occurred
             Serial.println("Error");
-            recover();
             errors++;
             return false;
         }
