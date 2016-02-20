@@ -84,8 +84,7 @@ public:
     bool initGSM()
     {
       // check GSM
-      setTarget(TARGET_OBD);
-      sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
+      xbBegin();
       for (;;) {
         // try turning on GSM
         //Serial.print("Turn on GSM...");
@@ -359,41 +358,43 @@ public:
         SerialRF.println(vin);
         SerialRF.print("#SIGNAL:");
         signal = getSignal();
-        SerialRF.print(signal);
+        SerialRF.println(signal);
       }
       gprsState = GPRS_READY;
       for (;;) {
-          if (action == 0) {
-            SerialRF.print("#CHANNEL:"); 
-            sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?CSQ=%d&VIN=%s\"\r", HOST_URL, signal, vin);
-          } else {
-            sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?id=%d&OFF=1\"\r", HOST_URL, channel);
-          }
-          if (!sendGSMCommand(buffer)) {
-            SerialRF.println(buffer);
-            continue;
-          }
-          httpConnect(HTTP_GET);
-          do {
-            delay(500);
-            SerialRF.print('.');
-          } while (!httpIsConnected());
-          if (action != 0) return;
-          if (gprsState != GPRS_HTTP_ERROR && httpRead()) {
-            char *p = strstr(buffer, "CH:");
-            if (p) {
-              int m = atoi(p + 3);
-              if (m > 0) {
-                channel = m;
-                SerialRF.print(m);
-                state |= STATE_CONNECTED;
-                break;
-              }
-            }            
-          }
-          SerialRF.println("Error");
-          SerialRF.println(buffer);
+        char *p = buffer;
+        p += sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?", HOST_URL);
+        if (action == 0) {
+          SerialRF.print("#CHANNEL:"); 
+          sprintf(p, "CSQ=%d&VIN=%s\"\r", signal, vin);
+        } else {
+          sprintf(p, "id=%d&OFF=1\"\r", channel);
         }
+        if (!sendGSMCommand(buffer)) {
+          SerialRF.println(buffer);
+          continue;
+        }
+        httpConnect(HTTP_GET);
+        do {
+          delay(500);
+          SerialRF.print('.');
+        } while (!httpIsConnected());
+        if (action != 0) return;
+        if (gprsState != GPRS_HTTP_ERROR && httpRead()) {
+          char *p = strstr(buffer, "CH:");
+          if (p) {
+            int m = atoi(p + 3);
+            if (m > 0) {
+              channel = m;
+              SerialRF.print(m);
+              state |= STATE_CONNECTED;
+              break;
+            }
+          }            
+        }
+        SerialRF.println("Error");
+        SerialRF.println(buffer);
+      }
     }
     void loop()
     {
@@ -442,6 +443,7 @@ public:
           // reset GPRS 
           SerialRF.print(connErrors);
           SerialRF.println("Reset GPRS...");
+          xbPurge();
           initGSM();
           setupGPRS(APN);
           if (httpInit()) {
@@ -503,7 +505,7 @@ private:
             SerialRF.println("HTTP ERROR");
             SerialRF.println(buffer);
             connCount = 0;
-            //sendCommand("ATCLRGSM\r", buffer, sizeof(buffer));
+            xbPurge();
             httpUninit();
             delay(500);
             httpInit();
