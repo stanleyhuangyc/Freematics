@@ -15,10 +15,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <I2Cdev.h>
-#include <MPU9150.h>
 #include <SPI.h>
-#include <Narcoleptic.h>
 #include <FreematicsONE.h>
 #include "config.h"
 #include "datalogger.h"
@@ -45,10 +42,6 @@ const byte PROGMEM pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
 
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
-
-#if USE_MPU6050
-MPU6050 accelgyro;
-#endif
 
 typedef enum {
     GPRS_DISABLED = 0,
@@ -281,7 +274,7 @@ public:
         SerialRF.begin(115200);
 
         // this will init SPI communication
-        begin(7, 6);
+        begin();
 
         SerialRF.print("#OBD..");
         setTarget(TARGET_OBD);
@@ -291,23 +284,22 @@ public:
         SerialRF.println("OK");
         state |= STATE_OBD_READY;
 
+#if USE_MPU6050
+        Wire.begin();
+        SerialRF.print("#MEMS...");
+        if (memsInit()) {
+          SerialRF.println("OK");
+        } else {
+          SerialRF.println("NO");
+        }
+#endif
+
         SerialRF.print("#GSM...");
         if (initGSM()) {
             SerialRF.println("OK");
         } else {
             SerialRF.println(buffer);
         }
-
-#if USE_MPU6050
-        SerialRF.print("#MEMS...");
-        Wire.begin();
-        accelgyro.initialize();
-        if (accelgyro.testConnection()) {
-          state |= STATE_MEMS_READY;
-          SerialRF.print("OK");
-        }
-        SerialRF.println();
-#endif
 
 #if USE_GPS
         delay(100);
@@ -518,16 +510,11 @@ private:
 #if USE_MPU6050
     void processMEMS()
     {
-        if (state & STATE_MEMS_READY) {
-          int16_t ax = 0, ay = 0, az = 0;
-          int16_t gx = 0, gy = 0, gz = 0;
-          accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-          dataTime = millis();
-          // log x/y/z of accelerometer
-          logData(PID_ACC, ax / ACC_DATA_RATIO, ay / ACC_DATA_RATIO, az / ACC_DATA_RATIO);
-          // log x/y/z of gyro meter
-          logData(PID_GYRO, gx / GYRO_DATA_RATIO, gy / GYRO_DATA_RATIO, gz / GYRO_DATA_RATIO);
-        }
+      if (state & STATE_MEMS_READY) {
+        MEMS_DATA mems;
+        memsRead(&mems);
+        logData(PID_ACC, mems.value.x_accel / ACC_DATA_RATIO, mems.value.y_accel / ACC_DATA_RATIO, mems.value.z_accel / ACC_DATA_RATIO);
+      }
     }
 #endif
     void processGPS()
@@ -575,7 +562,7 @@ private:
             int value;
             if (read(PID_RPM, value))
                 break;
-            Narcoleptic.delay(3000);
+            sleep(2);
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0

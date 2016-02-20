@@ -16,9 +16,6 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <I2Cdev.h>
-#include <MPU9150.h>
-#include <Narcoleptic.h>
 #include <FreematicsONE.h>
 #include "config.h"
 #if ENABLE_DATA_LOG
@@ -53,15 +50,9 @@ static const byte PROGMEM pidTier2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_D
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
 
-#if USE_MPU6050 || USE_MPU9150
-MPU6050 accelgyro;
-#if USE_MPU9150
-int16_t mems[3][3] = {0};
-#else
-int16_t mems[2][3] = {0};
+#if USE_MPU6050
+MEMS_DATA mems;
 #endif
-#endif
-
 
 static const byte PROGMEM parts[][3] = {
   {'S','D'},
@@ -110,10 +101,9 @@ public:
         }
 #endif
 
-#if USE_MPU6050 || USE_MPU9150
+#if USE_MPU6050
         Wire.begin();
-        accelgyro.initialize();
-        if (success = accelgyro.testConnection()) {
+        if (success = memsInit()) {
           state |= STATE_MEMS_READY;
         }
         showStatus(PART_MEMS, success);
@@ -172,18 +162,6 @@ public:
             }
         }
 #endif
-    }
-#endif
-#if USE_MPU6050 || USE_MPU9150
-    void loadMEMSData()
-    {
-        if (state & STATE_MEMS_READY) {
-#if USE_MPU9150
-          accelgyro.getMotion9(&mems[0][0], &mems[0][1], &mems[0][2], &mems[1][0], &mems[1][1], &mems[1][2], &mems[2][0], &mems[2][1], &mems[2][2]);
-#else
-          accelgyro.getMotion6(&mems[0][0], &mems[0][1], &mems[0][2], &mems[1][0], &mems[1][1], &mems[1][2]);
-#endif
-        }
     }
 #endif
 #if ENABLE_DATA_LOG
@@ -248,7 +226,7 @@ public:
             int value;
             if (read(PID_RPM, value))
                 break;
-            Narcoleptic.delay(3000);
+            sleep(2);
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
@@ -266,20 +244,9 @@ public:
         dataTime = millis();
         logData((uint16_t)pid | 0x100, value);
         errors = 0;
+#if USE_MPU6050
         // log the loaded MEMS data
-#if USE_MPU9150
-        if (state & STATE_MEMS_READY) {
-          // assume PID_GYRO = PID_AAC + 1, PID_MAG = PID_AAC + 2
-          for (byte n = 0; n < 3; n++) {
-            logData(PID_ACC + n, mems[n][0] >> 4, mems[n][1] >> 4, mems[n][2] >> 4);
-          }
-        }
-#else
-        if (state & STATE_MEMS_READY) {
-          for (byte n = 0; n < 2; n++) {
-            logData(PID_ACC + n, mems[n][0] >> 4, mems[n][1] >> 4, mems[n][2] >> 4);
-          }
-        }
+        logData(PID_ACC, mems.value.x_accel / ACC_DATA_RATIO, mems.value.y_accel / ACC_DATA_RATIO, mems.value.z_accel / ACC_DATA_RATIO);
 #endif
         return true;
     }
@@ -287,8 +254,10 @@ public:
     {
       // do something while waiting for data on SPI
       if (m_state != OBD_CONNECTED) return;
-#if USE_MPU6050 || USE_MPU9150
-      loadMEMSData();
+#if USE_MPU6050
+      if (state & STATE_MEMS_READY) {
+        memsRead(&mems);
+      }
 #endif
     }
     byte state;
