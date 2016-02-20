@@ -1,7 +1,8 @@
 /******************************************************************************
 * Vehicle Telematics Data Logger Sketch for Freematics ONE
+* Distributed under BSD license
+* Visit http://freematics.com/products/freematics-one for more information
 * Developed by Stanley Huang <stanleyhuangyc@gmail.com>
-* Distributed under GPL v2.0
 * 
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

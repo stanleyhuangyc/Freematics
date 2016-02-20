@@ -1,6 +1,6 @@
 /*************************************************************************
 * Telematics Data Logger Class
-* Distributed under GPL v2.0
+* Distributed under BSD license
 * Written by Stanley Huang <stanleyhuangyc@gmail.com>
 * Visit http://freematics.com for more information
 *************************************************************************/
