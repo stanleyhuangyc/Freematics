@@ -35,8 +35,8 @@
 * Hardware setup
 **************************************/
 
-// attempts for connecting OBD-II
-#define OBD_ATTEMPT_TIME 30 /* seconds */
+// max allowed time for connecting OBD-II (0 for forever)
+#define OBD_ATTEMPT_TIME 0 /* seconds */
 
 // OBD-II UART baudrate
 #define OBD_UART_BAUDRATE 115200L
