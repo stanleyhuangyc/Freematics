@@ -61,9 +61,8 @@ const PID_NAME pidNames[] PROGMEM = {
 
 class CDataLogger {
 public:
-    CDataLogger()
+    CDataLogger():m_lastDataTime(0),dataTime(0),dataSize(0)
     {
-        m_lastDataTime = 0;
 #if ENABLE_DATA_CACHE
         cacheBytes = 0;
 #endif
@@ -210,6 +209,7 @@ public:
     void closeFile()
     {
         sdfile.close();
+        dataSize = 0;
     }
     void flushFile()
     {

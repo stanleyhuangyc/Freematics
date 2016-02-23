@@ -153,6 +153,12 @@ public:
               logData(PID_GPS_ALTITUDE, gd.alt);
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
+              if (UTC == 0) {
+                // first GPS data arrived
+                // to re-create a new date/time named log file
+                closeFile();
+                state &= ~STATE_FILE_READY;
+              }
               // save current date in MMDD format
               unsigned int DDMM = gd.date / 100;
               UTC = gd.time;
@@ -164,6 +170,11 @@ public:
 #endif
     }
 #endif
+    void logMEMSData()
+    {
+        // log the loaded MEMS data
+        logData(PID_ACC, mems.value.x_accel / ACC_DATA_RATIO, mems.value.y_accel / ACC_DATA_RATIO, mems.value.z_accel / ACC_DATA_RATIO);
+    }
 #if ENABLE_DATA_LOG
     uint16_t initSD()
     {
@@ -244,16 +255,11 @@ public:
         dataTime = millis();
         logData((uint16_t)pid | 0x100, value);
         errors = 0;
-#if USE_MPU6050
-        // log the loaded MEMS data
-        logData(PID_ACC, mems.value.x_accel / ACC_DATA_RATIO, mems.value.y_accel / ACC_DATA_RATIO, mems.value.z_accel / ACC_DATA_RATIO);
-#endif
         return true;
     }
     void dataIdleLoop()
     {
       // do something while waiting for data on SPI
-      if (m_state != OBD_CONNECTED) return;
 #if USE_MPU6050
       if (state & STATE_MEMS_READY) {
         memsRead(&mems);
@@ -313,9 +319,14 @@ void loop()
             one.state |= STATE_OBD_READY;
         }
     }
+#if USE_MPU6050
+    if (one.state & STATE_MEMS_READY) {
+      one.logMEMSData();
+    }
+#endif
 #if USE_GPS
     if (one.state & STATE_GPS_FOUND) {
-        one.logGPSData();
+      one.logGPSData();
     }
 #endif
 #if ENABLE_DATA_LOG
