@@ -85,7 +85,8 @@ typedef enum {
 typedef enum {
     OBD_DISCONNECTED = 0,
     OBD_CONNECTING = 1,
-    OBD_CONNECTED = 2
+    OBD_CONNECTED = 2,
+	OBD_FAILED = 3
 } OBD_STATES;
 
 typedef struct {
@@ -152,81 +153,23 @@ typedef union
 uint16_t hex2uint16(const char *p);
 uint8_t hex2uint8(const char *p);
 
-class COBD
-{
-public:
-	COBD():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
-	// initialize OBD-II connection
-	virtual bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
-	// un-initialize OBD-II connection
-	virtual void end();
-	// get connection state
-	virtual OBD_STATES getState() { return m_state; }
-	// read specified OBD-II PID value
-	virtual bool read(byte pid, int& result);
-	// set device into
-	virtual void sleep();
-	// set working protocol (default auto)
-	virtual bool setProtocol(OBD_PROTOCOLS h = PROTO_AUTO);
-	// send AT command and receive response
-	virtual byte sendCommand(const char* cmd, char* buf, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
-	// clear diagnostic trouble code
-	virtual void clearDTC();
-	// get battery voltage (works without ECU)
-	virtual float getVoltage();
-	// get VIN as a string, buffer length should be >= OBD_RECV_BUF_SIZE
-	virtual bool getVIN(char* buffer, byte bufsize);
-	// send query for specified PID
-	virtual void sendQuery(byte pid);
-	// retrive and parse the response of specifie PID
-	virtual bool getResult(byte& pid, int& result);
-	// determine if the PID is supported
-	virtual bool isValidPID(byte pid);
-	// set current PID mode
-	byte dataMode;
-	// occurrence of errors
-	byte errors;
-	// bit map of supported PIDs
-	byte pidmap[4 * 4];
-protected:
-	virtual char* getResponse(byte& pid, char* buffer, byte bufsize);
-	virtual byte receive(char* buffer, byte bufsize, int timeout = OBD_TIMEOUT_SHORT) = 0;
-	virtual void write(const char* s) = 0;
-	virtual void dataIdleLoop() {}
-	void debugOutput(const char* s);
-	int normalizeData(byte pid, char* data);
-	OBD_STATES m_state;
-private:
-	virtual uint8_t getPercentageValue(char* data)
-	{
-		return (uint16_t)hex2uint8(data) * 100 / 255;
-	}
-	virtual uint16_t getLargeValue(char* data)
-	{
-		return hex2uint16(data);
-	}
-	virtual uint8_t getSmallValue(char* data)
-	{
-		return hex2uint8(data);
-	}
-	virtual int16_t getTemperatureValue(char* data)
-	{
-		return (int)hex2uint8(data) - 40;
-	}
-};
+#define SPI_PIN_CS 7
+#define SPI_PIN_READY 6
 
 #define TARGET_OBD 0
 #define TARGET_GPS 1
 #define TARGET_BEE 2
 
-class COBDSPI : public COBD {
+class COBDSPI {
 public:
-	void begin(byte pinCS = 7, byte pinReady = 6);
-	void end();
+	COBDSPI():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
+	byte begin();
 	// set SPI data target
 	void setTarget(byte target) { m_target = target; }
 	// receive data from SPI bus
 	byte receive(char* buffer, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
+	// read multiple (up to 4) OBD-II PID value
+	byte read(const byte pid[], byte count, int result[]);
 	// write data to SPI bus
 	void write(const char* s);
 	// send AT command and receive response
@@ -253,11 +196,62 @@ public:
 	bool memsInit();
 	// read out MEMS data
 	bool memsRead(MEMS_DATA* accel_t_gyro);
+	// initialize OBD-II connection
+	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
+	// un-initialize OBD-II connection
+	void end();
+	// get connection state
+	OBD_STATES getState() { return m_state; }
+	// read specified OBD-II PID value
+	bool read(byte pid, int& result);
+	// set device into
+	void sleep();
+	// set working protocol (default auto)
+	bool setProtocol(OBD_PROTOCOLS h = PROTO_AUTO);
+	// clear diagnostic trouble code
+	void clearDTC();
+	// get battery voltage (works without ECU)
+	float getVoltage();
+	// get VIN as a string, buffer length should be >= OBD_RECV_BUF_SIZE
+	bool getVIN(char* buffer, byte bufsize);
+	// send query for specified PID
+	void sendQuery(byte pid);
+	// retrive and parse the response of specifie PID
+	bool getResult(byte& pid, int& result);
+	// determine if the PID is supported
+	bool isValidPID(byte pid);
+	// set current PID mode
+	byte dataMode;
+	// occurrence of errors
+	byte errors;
+	// bit map of supported PIDs
+	byte pidmap[4 * 4];
+	byte version;
+protected:
+	char* getResponse(byte& pid, char* buffer, byte bufsize);
+	void dataIdleLoop() {}
+	void debugOutput(const char* s);
+	int normalizeData(byte pid, char* data);
+	OBD_STATES m_state;
 private:
 	bool MPU6050_read(int start, uint8_t *buffer, int size);
 	bool MPU6050_write(int start, const uint8_t *pData, int size);
 	bool MPU6050_write_reg(int reg, uint8_t data);
-	byte m_pinReady;
-	byte m_pinCS;
+	uint8_t getPercentageValue(char* data)
+	{
+		return (uint16_t)hex2uint8(data) * 100 / 255;
+	}
+	uint16_t getLargeValue(char* data)
+	{
+		return hex2uint16(data);
+	}
+	uint8_t getSmallValue(char* data)
+	{
+		return hex2uint8(data);
+	}
+	int16_t getTemperatureValue(char* data)
+	{
+		return (int)hex2uint8(data) - 40;
+	}
 	byte m_target;
 };
