@@ -1,4 +1,5 @@
 #include <SPI.h>
+#include <Wire.h>
 #include <FreematicsONE.h>
 #include <TinyGPS.h>
 
@@ -12,13 +13,16 @@ bool ready = false;
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  delay(500);
-  one.begin();
+  byte ver = one.begin();
+  Serial.print("Firmware Version ");
+  Serial.println(ver);
+  Serial.println("Init GPS...");
   if (one.initGPS(GPS_SERIAL_BAUDRATE)) {
-    Serial.println("GPS OK");
+    Serial.println("OK");
     Serial.println("Waiting for signal");
-    delay(2000);
   }
+  Serial.println();
+  delay(2000);
 }
 
 void showGPS()
