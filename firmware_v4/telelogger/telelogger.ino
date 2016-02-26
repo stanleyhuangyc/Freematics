@@ -228,22 +228,10 @@ public:
         }
         return (millis() - checkTimer < timeout) ? 0 : 2;
     }
-    byte sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = 0)
+    bool sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = 0)
     {
-      if (cmd) {
-        xbSend(cmd);
-        delay(10);
-      }
-      uint32_t t = millis();
-      do {
-        byte n = xbRead(buffer, sizeof(buffer), timeout);
-        if (n > 0) {
-          if (strstr(buffer, expected ? expected : "OK")) {
-            return n;
-          }
-        }
-      } while (millis() - t < timeout);
-      return 0;
+      xbWrite(cmd);
+      return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
     }
     bool setPostPayload(const char* payload, int bytes)
     {
