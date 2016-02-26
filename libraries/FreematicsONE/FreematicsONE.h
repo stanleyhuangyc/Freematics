@@ -166,7 +166,7 @@ public:
 	byte begin();
 	// set SPI data target
 	void setTarget(byte target) { m_target = target; }
-	// receive data from SPI bus
+	// receive data (up to 255 bytes) from SPI bus
 	byte receive(char* buffer, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
 	// read multiple (up to 4) OBD-II PID value
 	byte read(const byte pid[], byte count, int result[]);
@@ -187,9 +187,9 @@ public:
 	// read data to xBee UART
 	byte xbRead(char* buffer, byte bufsize, int timeout = 1000);
 	// send data to xBee UART
-	void xbSend(const char* cmd);
+	void xbWrite(const char* cmd);
 	// receive data from xBee UART
-	byte xbRecv(char* buffer, byte bufsize, int timeout = 1000, const char* expected = 0);	
+	byte xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);	
 	// purge xBee UART buffer
 	void xbPurge();
 	// initialize MEMS
@@ -229,11 +229,12 @@ public:
 	byte version;
 protected:
 	char* getResponse(byte& pid, char* buffer, byte bufsize);
-	void dataIdleLoop() {}
+	void dataIdleLoop() { delay(10); }
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
 	OBD_STATES m_state;
 private:
+	byte getVersion();
 	bool MPU6050_read(int start, uint8_t *buffer, int size);
 	bool MPU6050_write(int start, const uint8_t *pData, int size);
 	bool MPU6050_write_reg(int reg, uint8_t data);

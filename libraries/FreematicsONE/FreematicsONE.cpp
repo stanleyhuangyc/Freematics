@@ -266,9 +266,7 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 	const char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r","0100\r"};
 	char buffer[64];
 
-	m_state = OBD_CONNECTING;
-	version = 0;
-
+	if (!getVersion()) return false;
 	for (unsigned char i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 #ifdef DEBUG
 		debugOutput(initcmd[i]);
@@ -335,8 +333,23 @@ byte COBDSPI::begin()
 	delay(50);
 	SPI.begin();
 	SPI.setClockDivider(2);
-	
 	delay(50);
+	if (!getVersion()) {
+		m_state = OBD_FAILED;
+	} else {
+		m_state = OBD_DISCONNECTED;
+	}
+	return version;
+}
+
+void COBDSPI::end()
+{
+	SPI.end();
+}
+
+byte COBDSPI::getVersion()
+{
+	version = 0;
 	for (byte n = 0; n < 3; n++) {
 		write("ATI\r");
 		char buffer[64];
@@ -348,18 +361,9 @@ byte COBDSPI::begin()
 				if (version) break;
 			}
 		}
-	}
-	if (version == 0) {
-		m_state = OBD_FAILED;
-	} else {
-		m_state = OBD_DISCONNECTED;
+		delay(50);
 	}
 	return version;
-}
-
-void COBDSPI::end()
-{
-	SPI.end();
 }
 
 byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
@@ -378,11 +382,12 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (!eof && digitalRead(SPI_PIN_READY) == LOW) {
 			if (n == bufsize - 1) {
-				n -= 8;
-				memmove(buffer, buffer + 8, n); 
+				byte bytesToDiscard = bufsize >> 1;
+				n -= bytesToDiscard;
+				memmove(buffer, buffer + bytesToDiscard, n); 
 			}
 			buffer[n] = SPI.transfer(' ');
-			eof = n >= 2 && buffer[n] == 0x9 && buffer[n - 1] =='>' && buffer[n - 2] == '\r';
+			eof = n >= 2 && buffer[n] == 0x9 && buffer[n - 1] =='>';
 			n++;
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
@@ -407,8 +412,8 @@ void COBDSPI::write(const char* s)
 		}
 	}
 	for (; *s ;s++) {
-		delayMicroseconds(5);
 		SPI.transfer((byte)*s);
+		delayMicroseconds(5);
 	}
 	// send terminating byte (ESC)
 	if (version != 10) {
@@ -426,8 +431,12 @@ byte COBDSPI::read(const byte pid[], byte count, int result[])
 	char *p = buffer;
 	byte results = 0;
 	for (byte n = 0; n < count; n++) {
-		p += sprintf(p, "$OBD%02X%02X\r\n", dataMode, pid[n]);		
+		p += sprintf(p, "$OBD%02X%02X\r", dataMode, pid[n]);
+		if (version > 10) {
+			*(p++) = 0x1b;
+		}		
 	}
+	*(p - 1) = 0;
 	write(buffer);
 	// receive and parse the response
 	for (byte n = 0; n < count; n++) {
@@ -570,10 +579,15 @@ bool COBDSPI::xbBegin(unsigned long baudrate)
 	char buf[16];
 	sprintf(buf, "ATBR1%lu\r", baudrate);
 	setTarget(TARGET_OBD);
-	return sendCommand(buf, buf, sizeof(buf)) != 0;
+	if (sendCommand(buf, buf, sizeof(buf))) {
+		//xbPurge();
+		return true;
+	} else {
+		return false;
+	}
 }
 	
-void COBDSPI::xbSend(const char* cmd)
+void COBDSPI::xbWrite(const char* cmd)
 {
 	setTarget(TARGET_BEE);
 	write(cmd);
@@ -587,21 +601,36 @@ byte COBDSPI::xbRead(char* buffer, byte bufsize, int timeout)
 	return receive(buffer, bufsize, timeout);
 }
 
-byte COBDSPI::xbRecv(char* buffer, byte bufsize, int timeout, const char* expected)
+byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expected1, const char* expected2)
 {
+	int bytesRecv = 0;
 	uint32_t t = millis();
 	setTarget(TARGET_OBD);
 	do {
-		write("ATGRD\r");
-		dataIdleLoop();
-		byte n = receive(buffer, bufsize, timeout);
+		if (bytesRecv >= bufsize - 16) {
+			int bytesToDiscard = bufsize >> 1; 
+			bytesRecv -= bytesToDiscard;
+			memmove(buffer, buffer + bytesToDiscard, bytesRecv); 
+		}
+		byte n = xbRead(buffer + bytesRecv, bufsize - bytesRecv, timeout);
 		if (n > 0) {
-			if (!strncmp(buffer, "$GSMNO DATA", 11))
-				delay(10);
-			else if (!expected || strstr(buffer, expected))
-				return n;
+			if (!memcmp(buffer + bytesRecv, "$GSMNO DATA", 11)) {
+				delay(100);
+			} else {
+				memmove(buffer + bytesRecv, buffer + bytesRecv + 4, n - 5);
+				//Serial.print(buffer + bytesRecv);
+				bytesRecv += n - 5;
+				buffer[bytesRecv] = 0;
+				if (!expected1)
+					return 1;
+				else if (strstr(buffer, expected1))
+					return 1;
+				else if (expected2 && strstr(buffer, expected2))
+					return 2;
+			}
 		}
 	} while (millis() - t < timeout);
+	buffer[bytesRecv] = 0;
 	return 0;
 }
 
