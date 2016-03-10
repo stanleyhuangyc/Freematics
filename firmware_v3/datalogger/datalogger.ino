@@ -420,6 +420,7 @@ public:
     bool initGPS(unsigned long baudrate)
     {
         char buf[32];
+        sprintf(buf, "ATBR2 %lu\r", baudrate);
     	return (sendCommand(buf, buf, sizeof(buf)) && strstr(buf, "OK"));
     }
     bool getGPSData(GPS_DATA* gdata)
