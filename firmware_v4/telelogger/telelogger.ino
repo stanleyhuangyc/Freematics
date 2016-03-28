@@ -102,7 +102,7 @@ public:
       do {
         sendGSMCommand("AT+SAPBR=1,1\r", 5000);
         sendGSMCommand("AT+SAPBR=2,1\r", 5000);
-      } while (strstr(buffer, "0.0.0.0"));
+      } while (strstr(buffer, "0.0.0.0") || strstr(buffer, "ERROR"));
       //Serial.println(buffer);
       return true;
     }
@@ -228,7 +228,7 @@ public:
         }
         return (millis() - checkTimer < timeout) ? 0 : 2;
     }
-    bool sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = 0)
+    bool sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK")
     {
       xbWrite(cmd);
       return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
@@ -269,7 +269,8 @@ public:
         do {
             SerialRF.print('.');
         } while (!init());
-        SerialRF.println("OK");
+        SerialRF.print("VER ");
+        SerialRF.println(version);
         state |= STATE_OBD_READY;
 
 #if USE_MPU6050
