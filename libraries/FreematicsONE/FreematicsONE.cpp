@@ -361,7 +361,7 @@ byte COBDSPI::getVersion()
 				if (version) break;
 			}
 		}
-		delay(50);
+		delay(100);
 	}
 	return version;
 }
