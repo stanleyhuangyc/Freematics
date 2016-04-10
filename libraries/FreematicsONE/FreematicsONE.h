@@ -232,9 +232,9 @@ public:
 	byte version;
 protected:
 	char* getResponse(byte& pid, char* buffer, byte bufsize);
-	void dataIdleLoop() { delay(10); }
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
+	virtual void dataIdleLoop() { delay(1); }
 	OBD_STATES m_state;
 private:
 	byte getVersion();
