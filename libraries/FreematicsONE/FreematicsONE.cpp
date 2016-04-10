@@ -164,6 +164,9 @@ int COBDSPI::normalizeData(byte pid, char* data)
 	case PID_CATALYST_TEMP_B2S2:
 		result = getLargeValue(data) / 10 - 40;
 		break;
+	case PID_AIR_FUEL_EQUIV_RATIO: // 0~200
+		result = (long)getLargeValue(data) * 200 / 65536;
+		break;
 	default:
 		result = getSmallValue(data);
 	}
@@ -366,9 +369,9 @@ byte COBDSPI::getVersion()
 	return version;
 }
 
-byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
+int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 {
-	byte n = 0;
+	int n = 0;
 	bool eof = false;
 	uint32_t t = millis();
 	do {
@@ -382,7 +385,7 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (!eof && digitalRead(SPI_PIN_READY) == LOW) {
 			if (n == bufsize - 1) {
-				byte bytesToDiscard = bufsize >> 1;
+				int bytesToDiscard = bufsize >> 1;
 				n -= bytesToDiscard;
 				memmove(buffer, buffer + bytesToDiscard, n); 
 			}
@@ -392,7 +395,10 @@ byte COBDSPI::receive(char* buffer, byte bufsize, int timeout)
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
 	} while (!eof &&  millis() - t < timeout);
-	if (eof) n--;
+	if (m_target != TARGET_RAW) {
+		// eliminate ending char
+		if (eof) n--;
+	}
 	buffer[n] = 0;
 	if (m_target == TARGET_OBD && !memcmp(buffer, "$OBDTIMEOUT", 11)) {
 		// ECU not responding
@@ -422,6 +428,17 @@ void COBDSPI::write(const char* s)
 	} else {
 		digitalWrite(SPI_PIN_CS, HIGH);
 	}
+}
+
+void COBDSPI::write(byte* data, int len)
+{
+	digitalWrite(SPI_PIN_CS, LOW);
+	delay(1);
+	for (unsigned int i = 0; i < len; i++) {
+		SPI.transfer(data[i]);
+		delayMicroseconds(5);
+	}
+	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
 byte COBDSPI::read(const byte pid[], byte count, int result[])

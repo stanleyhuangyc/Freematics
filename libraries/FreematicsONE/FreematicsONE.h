@@ -50,6 +50,7 @@
 #define PID_CATALYST_TEMP_B2S2 0x3F
 #define PID_CONTROL_MODULE_VOLTAGE 0x42
 #define PID_ABSOLUTE_ENGINE_LOAD 0x43
+#define PID_AIR_FUEL_EQUIV_RATIO 0x44
 #define PID_RELATIVE_THROTTLE_POS 0x45
 #define PID_AMBIENT_TEMP 0x46
 #define PID_ABSOLUTE_THROTTLE_POS_B 0x47
@@ -159,6 +160,7 @@ uint8_t hex2uint8(const char *p);
 #define TARGET_OBD 0
 #define TARGET_GPS 1
 #define TARGET_BEE 2
+#define TARGET_RAW 3
 
 class COBDSPI {
 public:
@@ -167,11 +169,12 @@ public:
 	// set SPI data target
 	void setTarget(byte target) { m_target = target; }
 	// receive data (up to 255 bytes) from SPI bus
-	byte receive(char* buffer, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
+	int receive(char* buffer, int bufsize, int timeout = OBD_TIMEOUT_LONG);
 	// read multiple (up to 4) OBD-II PID value
 	byte read(const byte pid[], byte count, int result[]);
 	// write data to SPI bus
 	void write(const char* s);
+	void write(byte* data, int len);
 	// send AT command and receive response
 	byte sendCommand(const char* cmd, char* buf, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
 	// initialize GPS (set baudrate to 0 to power off GPS)
