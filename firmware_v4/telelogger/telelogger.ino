@@ -33,12 +33,6 @@ static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
 static uint16_t connCount = 0;
 
-const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
-const byte PROGMEM pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
-
-#define TIER_NUM1 sizeof(pidTier1)
-#define TIER_NUM2 sizeof(pidTier2)
-
 typedef enum {
     GPRS_DISABLED = 0,
     GPRS_READY,
@@ -73,11 +67,12 @@ public:
     }
     bool initGSM()
     {
-      // check GSM
+      // init xBee module serial communication
       xbBegin();
+      // discard any stale data
+      xbPurge();
       for (;;) {
         // try turning on GSM
-        //Serial.print("Turn on GSM...");
         toggleGSM();
         delay(3000);
         if (sendGSMCommand("ATE0\r") != 0) {
@@ -253,18 +248,34 @@ public:
         begin();
 
         Serial.print("#OBD..");
-        setTarget(TARGET_OBD);
-        do {
+        for (uint32_t t = millis(); millis() - t < OBD_CONN_TIMEOUT; ) {
             Serial.print('.');
-        } while (!init());
-        Serial.print("VER ");
-        Serial.println(version);
-        state |= STATE_OBD_READY;
+            if (init()) {
+              state |= STATE_OBD_READY;
+              break;              
+            }
+        }
+        if (state & STATE_OBD_READY) {
+          Serial.print("VER ");
+          Serial.println(version);
+        } else {
+          Serial.println("NO"); 
+        }
 
 #if USE_MPU6050
         Wire.begin();
         Serial.print("#MEMS...");
         if (memsInit()) {
+          Serial.println("OK");
+        } else {
+          Serial.println("NO");
+        }
+#endif
+
+#if USE_GPS
+        Serial.print("#GPS...");
+        if (initGPS(GPS_SERIAL_BAUDRATE)) {
+          state |= STATE_GPS_READY;
           Serial.println("OK");
         } else {
           Serial.println("NO");
@@ -277,14 +288,6 @@ public:
         } else {
             Serial.println(buffer);
         }
-
-#if USE_GPS
-        delay(100);
-        if (initGPS(GPS_SERIAL_BAUDRATE)) {
-          state |= STATE_GPS_READY;
-          Serial.println("#GPS...OK");
-        }
-#endif
 
         Serial.print("#GPRS...");
         delay(100);
@@ -348,7 +351,7 @@ public:
         do {
           delay(500);
           Serial.print('.');
-        } while (!httpIsConnected());
+        } while (!httpIsConnected() && action == 0);
         if (action != 0) return;
         if (gprsState != GPRS_HTTP_ERROR && httpRead()) {
           char *p = strstr(buffer, "CH:");
@@ -366,26 +369,39 @@ public:
         Serial.println(buffer);
       }
     }
-    void loop()
+    void processOBD()
     {
         // poll OBD-II PIDs
-        int value = 0;
-        setTarget(TARGET_OBD);
-        for (byte index = 0; index < TIER_NUM1; index++) {
-          byte pid = pgm_read_byte(pidTier1 + index);
-          if (read(pid, value)) {
-              dataTime = millis();
-              logData(0x100 | pid, value);
+        const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
+        int values[sizeof(pids)] = {0};
+        // read multiple OBD-II PIDs
+        byte results = read(pids, sizeof(pids), values);
+        if (results == sizeof(pids)) {
+          for (byte n = 0; n < sizeof(pids); n++) {
+            logData(0x100 | pids[n], values[n]);
           }
         }
-        if (errors >= 2) {
+        static byte index2 = 0;
+        const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
+        byte pid = pgm_read_byte(pidTier2 + index2);
+        int value;
+        if (read(pid, value)) {
+          logData(0x100 | pid, value);
+        }
+        index2 = (index2 + 1) % sizeof(pidTier2);
+        if (errors > 10) {
             reconnect();
+        }
+    }
+    void loop()
+    {
+        if (state & STATE_OBD_READY) {
+          processOBD();
         }
 
 #if USE_GPS
         if (state & STATE_GPS_READY) {
           processGPS();
-          delay(10);
         }
 #endif
 
@@ -394,13 +410,6 @@ public:
             processMEMS();  
         }
 #endif
-
-        static byte index2 = 0;
-        byte pid = pgm_read_byte(pidTier2 + index2);
-        if (read(pid, value)) {
-          logData(0x100 | pid, value);
-        }
-        index2 = (index2 + 1) % TIER_NUM2;
 
         if (millis() > nextConnTime) {
           processGPRS();
@@ -413,7 +422,6 @@ public:
           // reset GPRS 
           Serial.print(connErrors);
           Serial.println("Reset GPRS...");
-          xbPurge();
           initGSM();
           setupGPRS(APN);
           if (httpInit()) {
@@ -448,6 +456,7 @@ private:
                 } else {
                   Serial.println("POST FAIL");
                   Serial.println(buffer);
+                  gprsState = GPRS_HTTP_ERROR;
                   nextConnTime = millis() + 1000; 
                 }
             }
@@ -539,7 +548,8 @@ private:
             int value;
             if (read(PID_RPM, value))
                 break;
-            sleep(2);
+            lowPowerMode();
+            sleep(4);
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
