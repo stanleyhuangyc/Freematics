@@ -155,6 +155,7 @@ public:
         // may check for "ACTION: 0" for GET and "ACTION: 1" for POST
         byte ret = checkbuffer("ACTION:", MAX_CONN_TIME);
         if (ret == 1) {
+          // success
           connErrors = 0;
           return true;
         } else if (ret == 2) {
@@ -338,7 +339,7 @@ public:
         char *p = buffer;
         p += sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?", HOST_URL);
         if (action == 0) {
-          Serial.print("#CHANNEL:"); 
+          Serial.print("#SERVER:"); 
           sprintf(p, "CSQ=%d&VIN=%s\"\r", signal, vin);
         } else {
           sprintf(p, "id=%d&OFF=1\"\r", channel);
@@ -439,7 +440,7 @@ private:
         case GPRS_READY:
             if (state & STATE_CONNECTED) {
                 // generate URL
-                sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/post?id=%d\"\r", HOST_URL, channel);
+                sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/post?id=%u\"\r", HOST_URL, channel);
                 if (!sendGSMCommand(buffer)) {
                   break;
                 }
@@ -452,7 +453,6 @@ private:
                   Serial.println(cacheBytes);
                   gprsState = GPRS_HTTP_CONNECTING;
                   cacheBytes = 0;
-                  delay(100);
                 } else {
                   Serial.println("POST FAIL");
                   Serial.println(buffer);
@@ -473,12 +473,10 @@ private:
                   // success
                   Serial.println("SUCCESS");
                   //Serial.println(buffer);
-                } else {
-                  delay(100);  
+                  break;
                 }
-            } else {
-              nextConnTime = millis() + 200; 
             }
+            nextConnTime = millis() + 200; 
             break;
         case GPRS_HTTP_ERROR:
             Serial.println("HTTP ERROR");

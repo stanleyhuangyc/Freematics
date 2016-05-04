@@ -38,6 +38,7 @@
 **************************************/
 //#define DEBUG 1
 #define DEBUG_BAUDRATE 9600
+#define OBD_CONN_TIMEOUT 5000 /* ms */
 #define MAX_CONN_ERRORS 3
 #define MAX_CONN_TIME 10000 /* ms */
 
