@@ -284,7 +284,7 @@ void loop()
           }
         }
         static byte lastSec = 0;
-        const byte pids2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_AMBIENT_TEMP, PID_DISTANCE};
+        const byte pids2[] = {PID_COOLANT_TEMP, PID_INTAKE_TEMP, PID_DISTANCE};
         byte sec = (uint8_t)(millis() >> 10);
         if (sec != lastSec) {
           // goes in every other second
@@ -300,10 +300,14 @@ void loop()
         if (one.errors >= 10) {
             one.reconnect();
         }
-    } else if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
+    } else {
+      if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
         if (one.init()) {
             one.state |= STATE_OBD_READY;
         }
+      } else {
+        one.dataIdleLoop();
+      }
     }
 #if USE_MPU6050
     if (one.state & STATE_MEMS_READY) {
