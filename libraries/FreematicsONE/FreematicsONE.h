@@ -207,8 +207,8 @@ public:
 	OBD_STATES getState() { return m_state; }
 	// read specified OBD-II PID value
 	bool read(byte pid, int& result);
-	// set device into
-	void sleep();
+	// put OBD chip into low power mode
+	void lowPowerMode();
 	// set working protocol (default auto)
 	bool setProtocol(OBD_PROTOCOLS h = PROTO_AUTO);
 	// clear diagnostic trouble code

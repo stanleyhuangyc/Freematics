@@ -71,6 +71,7 @@ void COBDSPI::sendQuery(byte pid)
 #ifdef DEBUG
 	debugOutput(cmd);
 #endif
+       setTarget(TARGET_OBD);
 	write(cmd);
 }
 
@@ -85,6 +86,7 @@ bool COBDSPI::read(byte pid, int& result)
 void COBDSPI::clearDTC()
 {
 	char buffer[32];
+       setTarget(TARGET_OBD);
 	write("04\r");
 	receive(buffer, sizeof(buffer));
 }
@@ -207,6 +209,7 @@ bool COBDSPI::getResult(byte& pid, int& result)
 bool COBDSPI::setProtocol(OBD_PROTOCOLS h)
 {
 	char buf[32];
+       setTarget(TARGET_OBD);
 	if (h == PROTO_AUTO) {
 		write("ATSP00\r");
 	} else {
@@ -219,15 +222,17 @@ bool COBDSPI::setProtocol(OBD_PROTOCOLS h)
 		return false;
 }
 
-void COBDSPI::sleep()
+void COBDSPI::lowPowerMode()
 {
 	char buf[32];
+	setTarget(TARGET_OBD);
 	sendCommand("ATLP\r", buf, sizeof(buf));
 }
 
 float COBDSPI::getVoltage()
 {
 	char buf[32];
+	setTarget(TARGET_OBD);
 	if (sendCommand("ATRV\r", buf, sizeof(buf)) > 0) {
 		return atof(buf);
 	}
@@ -236,6 +241,7 @@ float COBDSPI::getVoltage()
 
 bool COBDSPI::getVIN(char* buffer, byte bufsize)
 {
+	setTarget(TARGET_OBD);
 	if (sendCommand("0902\r", buffer, bufsize)) {
 	    char *p = strstr(buffer, "49 02");
 	    if (p) {
@@ -353,6 +359,7 @@ void COBDSPI::end()
 byte COBDSPI::getVersion()
 {
 	version = 0;
+       setTarget(TARGET_OBD);
 	for (byte n = 0; n < 3; n++) {
 		write("ATI\r");
 		char buffer[64];
@@ -364,7 +371,7 @@ byte COBDSPI::getVersion()
 				if (version) break;
 			}
 		}
-		delay(100);
+		delay(200);
 	}
 	return version;
 }
@@ -654,6 +661,7 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expe
 void COBDSPI::xbPurge()
 {
 	char buf[16];
+	setTarget(TARGET_OBD);
 	sendCommand("ATCLRGSM\r", buf, sizeof(buf));
 }
 
