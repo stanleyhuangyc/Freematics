@@ -28,10 +28,6 @@
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
-#if !ENABLE_DATA_OUT
-#define SerialRF Serial
-#endif
-
 static uint16_t lastUTC = 0;
 static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
@@ -211,26 +207,18 @@ public:
     }
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
-        byte n = xbRead(buffer + bytesRecv, sizeof(buffer) - bytesRecv, timeout);
-        if (n > 0) {
-            if (memcmp(buffer + bytesRecv, "$GSMNO DATA", 11)) {
-              //Serial.print(buffer + bytesRecv);
-              bytesRecv += n;
-              if (strstr(buffer, expected)) {
-                  return 1;
-              }
-              if (bytesRecv >= sizeof(buffer) - 1) {
-                  // buffer full, discard first half
-                  bytesRecv = sizeof(buffer) / 2 - 1;
-                  memcpy(buffer, buffer + sizeof(buffer) / 2, bytesRecv);
-              }
-            }
-        }
+      byte ret = xbReceive(buffer, sizeof(buffer), 0, expected) != 0;
+      if (ret == 0) {
+        // timeout
         return (millis() - checkTimer < timeout) ? 0 : 2;
+      } else {
+        return ret;
+      }
     }
     bool sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK")
     {
       xbWrite(cmd);
+      delay(10);
       return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
     }
     bool setPostPayload(const char* payload, int bytes)
@@ -259,66 +247,66 @@ public:
     {
         delay(500);
         
-        SerialRF.begin(115200);
+        Serial.begin(115200);
 
         // this will init SPI communication
         begin();
 
-        SerialRF.print("#OBD..");
+        Serial.print("#OBD..");
         setTarget(TARGET_OBD);
         do {
-            SerialRF.print('.');
+            Serial.print('.');
         } while (!init());
-        SerialRF.print("VER ");
-        SerialRF.println(version);
+        Serial.print("VER ");
+        Serial.println(version);
         state |= STATE_OBD_READY;
 
 #if USE_MPU6050
         Wire.begin();
-        SerialRF.print("#MEMS...");
+        Serial.print("#MEMS...");
         if (memsInit()) {
-          SerialRF.println("OK");
+          Serial.println("OK");
         } else {
-          SerialRF.println("NO");
+          Serial.println("NO");
         }
 #endif
 
-        SerialRF.print("#GSM...");
+        Serial.print("#GSM...");
         if (initGSM()) {
-            SerialRF.println("OK");
+            Serial.println("OK");
         } else {
-            SerialRF.println(buffer);
+            Serial.println(buffer);
         }
 
 #if USE_GPS
         delay(100);
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_READY;
-          SerialRF.println("#GPS...OK");
+          Serial.println("#GPS...OK");
         }
 #endif
 
-        SerialRF.print("#GPRS...");
+        Serial.print("#GPRS...");
         delay(100);
         if (setupGPRS(APN)) {
-            SerialRF.println("OK");
+            Serial.println("OK");
         } else {
-            SerialRF.println(buffer);
+            Serial.println(buffer);
         }
         
         // init HTTP
-        SerialRF.print("#HTTP...");
+        Serial.print("#HTTP...");
         while (!httpInit()) {
-          SerialRF.print('.');
+          Serial.print('.');
           httpUninit();
           delay(1000);
         }
-        SerialRF.println("OK");
+        Serial.println("OK");
 
         joinChannel(0);
         state |= STATE_CONNECTED;
         
-        SerialRF.println();
+        Serial.println();
         delay(1000);
     }
     void joinChannel(byte action)
@@ -336,30 +324,30 @@ public:
 #else
         getVIN(vin, sizeof(vin));
 #endif
-        SerialRF.print("#VIN:");
-        SerialRF.println(vin);
-        SerialRF.print("#SIGNAL:");
+        Serial.print("#VIN:");
+        Serial.println(vin);
+        Serial.print("#SIGNAL:");
         signal = getSignal();
-        SerialRF.println(signal);
+        Serial.println(signal);
       }
       gprsState = GPRS_READY;
       for (;;) {
         char *p = buffer;
         p += sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?", HOST_URL);
         if (action == 0) {
-          SerialRF.print("#CHANNEL:"); 
+          Serial.print("#CHANNEL:"); 
           sprintf(p, "CSQ=%d&VIN=%s\"\r", signal, vin);
         } else {
           sprintf(p, "id=%d&OFF=1\"\r", channel);
         }
         if (!sendGSMCommand(buffer)) {
-          SerialRF.println(buffer);
+          Serial.println(buffer);
           continue;
         }
         httpConnect(HTTP_GET);
         do {
           delay(500);
-          SerialRF.print('.');
+          Serial.print('.');
         } while (!httpIsConnected());
         if (action != 0) return;
         if (gprsState != GPRS_HTTP_ERROR && httpRead()) {
@@ -368,14 +356,14 @@ public:
             int m = atoi(p + 3);
             if (m > 0) {
               channel = m;
-              SerialRF.print(m);
+              Serial.print(m);
               state |= STATE_CONNECTED;
               break;
             }
           }            
         }
-        SerialRF.println("Error");
-        SerialRF.println(buffer);
+        Serial.println("Error");
+        Serial.println(buffer);
       }
     }
     void loop()
@@ -423,15 +411,15 @@ public:
         }
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
-          SerialRF.print(connErrors);
-          SerialRF.println("Reset GPRS...");
+          Serial.print(connErrors);
+          Serial.println("Reset GPRS...");
           xbPurge();
           initGSM();
           setupGPRS(APN);
           if (httpInit()) {
-            SerialRF.println("OK"); 
+            Serial.println("OK"); 
           } else {
-            SerialRF.println(buffer); 
+            Serial.println(buffer); 
           }
           connErrors = 0;
         }
@@ -458,15 +446,15 @@ private:
                   cacheBytes = 0;
                   delay(100);
                 } else {
-                  SerialRF.println("POST FAIL");
-                  SerialRF.println(buffer);
+                  Serial.println("POST FAIL");
+                  Serial.println(buffer);
                   nextConnTime = millis() + 1000; 
                 }
             }
             break;        
         case GPRS_HTTP_CONNECTING:
-            SerialRF.print("CONNECT#");
-            SerialRF.println(++connCount);
+            Serial.print("CONNECT#");
+            Serial.println(++connCount);
             httpConnect(HTTP_POST);
             nextConnTime = millis() + 2000;
             break;
@@ -474,8 +462,8 @@ private:
             if (httpIsConnected()) {
                 if (httpRead()) {
                   // success
-                  SerialRF.println("SUCCESS");
-                  //SerialRF.println(buffer);
+                  Serial.println("SUCCESS");
+                  //Serial.println(buffer);
                 } else {
                   delay(100);  
                 }
@@ -484,8 +472,8 @@ private:
             }
             break;
         case GPRS_HTTP_ERROR:
-            SerialRF.println("HTTP ERROR");
-            SerialRF.println(buffer);
+            Serial.println("HTTP ERROR");
+            Serial.println(buffer);
             connCount = 0;
             xbPurge();
             httpUninit();
@@ -538,14 +526,14 @@ private:
           // reconnected
           return; 
         }
-        SerialRF.print("Sleeping");
+        Serial.print("Sleeping");
         state &= ~STATE_OBD_READY;
         joinChannel(1); // leave channel
         toggleGSM(); // turn off GSM power
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
-        SerialRF.println();
+        Serial.println();
         state |= STATE_SLEEPING;
         for (;;) {
             int value;
