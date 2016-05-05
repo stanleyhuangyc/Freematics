@@ -37,9 +37,6 @@ static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
 static uint16_t connCount = 0;
 
-const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
-const byte PROGMEM pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
-
 #define TIER_NUM1 sizeof(pidTier1)
 #define TIER_NUM2 sizeof(pidTier2)
 
@@ -145,6 +142,7 @@ public:
         checkTimer = millis();
         return true;
       }
+      connErrors++;
       return false;
     }
     bool httpIsSent()
@@ -194,6 +192,7 @@ public:
         xbWrite(cmd);
         delay(50);
       }
+      buffer[0] = 0;
       return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
     }
     char buffer[192];
