@@ -15,7 +15,7 @@
 #define MAX_CACHE_SIZE 256
 
 // change this to your own
-#define WIFI_SSID"HOMEWIFI"
+#define WIFI_SSID "YOUR_SSID"
 #define WIFI_PASSWORD "PASSWORD"
 #define SERVER_URL "live.freematics.com.au"
 #define SERVER_PORT 8080
@@ -40,7 +40,8 @@
 //#define DEBUG 1
 #define DEBUG_BAUDRATE 9600
 #define MAX_CONN_ERRORS 3
-#define MAX_CONN_TIME 10000 /* ms */
+#define MAX_CONN_TIME 5000 /* ms */
+#define MAX_HTTP_CONNS 99
 
 #define SD_CS_PIN 10
 
