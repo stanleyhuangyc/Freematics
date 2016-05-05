@@ -11,6 +11,8 @@ firmware_v2 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V2
 
 firmware_v3 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V3
 
+firmware_v4 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V4 (Freematics ONE)
+
 libraries - Arduino libraries used in firmware
 
 How to view logged data
