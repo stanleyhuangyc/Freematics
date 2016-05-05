@@ -47,6 +47,7 @@ typedef enum {
     WIFI_DISCONNECTED = 0,
     WIFI_READY,
     WIFI_CONNECTING,
+    WIFI_SENDING,
     WIFI_RECEIVING,
     WIFI_HTTP_ERROR,
 } WIFI_STATES;
@@ -59,9 +60,9 @@ typedef enum {
 class COBDWIFI : public COBDSPI {
 public:
     COBDWIFI():wifiState(WIFI_DISCONNECTED),connErrors(0) { buffer[0] = 0; }
-    void resetWifi()
+    void disconnectWifi()
     {
-      sendWifiCommand("AT+RST\r\n");
+      sendWifiCommand("AT+CWQAP\r\n");
     }
     bool initWifi()
     {
@@ -89,9 +90,7 @@ public:
           Serial.println(buffer); 
         }
       } else if (ret == 2) {
-        Serial.println("failed"); 
-      } else {
-        Serial.println("dead"); 
+        Serial.print("timeout"); 
       }
       return false;
     }
@@ -105,6 +104,7 @@ public:
       Serial.println("CONNECTING");
       sprintf(buffer, "AT+CIPSTART=\"TCP\",\"%s\",%d\r\n", SERVER_URL, SERVER_PORT);
       xbWrite(buffer);
+      buffer[0] = 0;
       bytesRecv = 0;
       checkTimer = millis();
     }
@@ -122,7 +122,7 @@ public:
         }
         return false;
     }
-    bool httpRequest(HTTP_METHOD method, const char* path, const char* payload = 0, int payloadSize = 0)
+    bool httpSend(HTTP_METHOD method, const char* path, const char* payload = 0, int payloadSize = 0)
     {
       char header[128];
       char *p = header;
@@ -140,9 +140,24 @@ public:
         xbWrite(header);
         // send POST payload if any
         if (payload) xbWrite(payload);
+        buffer[0] = 0;
         bytesRecv = 0;
         checkTimer = millis();
         return true;
+      }
+      return false;
+    }
+    bool httpIsSent()
+    {
+      byte ret = checkbuffer("SEND OK", MAX_CONN_TIME);
+      if (ret == 1) {
+        // success
+        connErrors = 0;
+        return true;
+      } else if (ret == 2) {
+        // timeout
+        wifiState = WIFI_HTTP_ERROR;
+        connErrors++;
       }
       return false;
     }
@@ -157,11 +172,14 @@ public:
           // timeout
           wifiState = WIFI_HTTP_ERROR;
           connErrors++;
-          return false;
         }
+        return false;
     }
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
+      if (strstr(buffer, expected)) {
+        return 1;
+      }
       byte ret = xbReceive(buffer, sizeof(buffer), 0, expected) != 0;
       if (ret == 0) {
         // timeout
@@ -289,7 +307,7 @@ public:
         } else {
           sprintf(buffer, "/push?id=%d&OFF=1", channel);
         }
-        if (!httpRequest(HTTP_GET, buffer, 0)) {
+        if (!httpSend(HTTP_GET, buffer, 0)) {
           Serial.println("Invalid response"); 
           httpClose();
           continue;
@@ -305,6 +323,7 @@ public:
             p = strstr(buffer, "CH:");
           }
           if (p) {
+            // parse channel number
             int m = atoi(p + 3);
             if (m > 0) {
               channel = m;
@@ -336,6 +355,7 @@ public:
         const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
         byte pid = pgm_read_byte(pidTier2 + index2);
         int value;
+        // read a single OBD-II PID
         if (read(pid, value)) {
           logData(0x100 | pid, value);
         }
@@ -373,10 +393,13 @@ public:
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset WIFI
           Serial.println("Reset WIFI...");
-          xbPurge();
-          initWifi();
+          httpClose();
+          disconnectWifi();
+          delay(1000);
           setupWifi();
+          httpConnect();
           connErrors = 0;
+          wifiState = WIFI_CONNECTING;          
         }
     }
 private:
@@ -384,16 +407,18 @@ private:
     {
         switch (wifiState) {
         case WIFI_READY:
-            if (state & STATE_CONNECTED) {
+            if (cacheBytes > 0) {
+              // there is data in cache for sending
               sprintf(buffer, "/post?id=%u", channel);
-              if (httpRequest(HTTP_POST, buffer, cache, cacheBytes)) {
+              if (httpSend(HTTP_POST, buffer, cache, cacheBytes)) {
                 // success
                 Serial.print("Sending ");
                 Serial.print(cacheBytes);
                 Serial.println(" bytes");
                 cacheBytes = 0;
-                wifiState = WIFI_RECEIVING;
+                wifiState = WIFI_SENDING;
               } else {
+                Serial.println("Request error");
                 wifiState = WIFI_HTTP_ERROR;
               }
             }
@@ -412,6 +437,14 @@ private:
             }
             nextConnTime = millis() + 100;
             break;
+        case WIFI_SENDING:
+            if (httpIsSent() || strstr(buffer, "+IPD")) {
+              Serial.println("Sent");
+              wifiState = WIFI_RECEIVING;
+              break; 
+            }
+            nextConnTime = millis() + 100;
+            break;
         case WIFI_RECEIVING:
             if (httpRead()) {
               // success
@@ -422,7 +455,7 @@ private:
               if (connCount >= MAX_HTTP_CONNS) {
                 // re-establish TCP connection
                 httpClose(); 
-                nextConnTime = millis() + 1000;
+                nextConnTime = millis() + 500;
                 wifiState = WIFI_DISCONNECTED;
               } else {
                 wifiState = WIFI_READY;
@@ -432,11 +465,16 @@ private:
             nextConnTime = millis() + 200; 
             break;
         case WIFI_HTTP_ERROR:
-            Serial.println("HTTP ERROR");
             Serial.println(buffer);
-            httpClose();
-            nextConnTime = millis() + 1000;
-            wifiState = WIFI_DISCONNECTED;
+            if (connErrors >= 3) {
+              // need to tear down TCP connection for reconnection
+              httpClose();
+              nextConnTime = millis() + 500;
+              wifiState = WIFI_DISCONNECTED;
+            } else {
+              // just ignore some minor response errors
+              wifiState = WIFI_READY;
+            }
             break;
         }
     }
@@ -473,19 +511,18 @@ private:
             //Serial.println(gd.time);
         } else {
           Serial.println("GPS error");
-          delay(200);
+          delay(500);
         }
     }
     void reconnect()
     {
-        if (init()) {
-          // reconnected
-          return; 
-        }
+        if (init()) return; 
+        delay(3000);
+        if (init()) return; 
         Serial.print("Sleeping");
         state &= ~STATE_OBD_READY;
         joinChannel(1); // leave channel
-        resetWifi(); // turn off GSM power
+        disconnectWifi(); // disconnect from AP
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
