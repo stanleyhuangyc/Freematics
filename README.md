@@ -1,15 +1,15 @@
 Firmware & Libraries for Project Freematics
 ===========================================
 
-Freematics OBD-II Adapter (http://freematics.com/pages/products/freematics-obd-adapter/) is an Arduino compatible device with OBD-II access and many useful peripherals, including 6-axis motion sensor, microSD storage and BLE wireless module, all accessible with Arduino libraries.
+Freematics Vehicle Data Logger (http://freematics.com/pages/products/freematics-one/) is an Arduino compatible device in the form of a OBD-II dongle with main controller of ATmega328p and a bunch of useful peripherals including MEMS motion sensor, microSD seat, BLE module, ESP8266 WIFI module, SIM800L GSM/GPRS module, all accessible with a unified Arduino library.
 
 Directory Descriptions
 ----------------------
-firmware - firmware (Arduino sketch) for Freematics OBD-II Adapter (discontinued)
+firmware - firmware (Arduino sketch) for Freematics OBD-II Adapter (deprecated)
 
-firmware_v2 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V2
+firmware_v2 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V2 (deprecated)
 
-firmware_v3 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V3
+firmware_v3 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V3 (deprecated)
 
 firmware_v4 - firmware (Arduino sketch) for Freematics OBD-II Data Logger V4 (Freematics ONE)
 
