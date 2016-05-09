@@ -1,4 +1,4 @@
-This sketch turns Freematics ONE device into a wireless (GPRS) vehicle data collector and transmitter. The live data of a car, including OBD-II, GPS and MEMS sensor data, is collected in realtime, cached in SRAM and pushed to a HTTP server by HTTP POST continuously.
+This sketch turns a Freematics ONE device into a wireless (GPRS) vehicle data collector and transmitter. The live data of a car, including OBD-II, GPS and MEMS sensor data, is collected in realtime, cached in SRAM and pushed to a HTTP server by HTTP POST continuously.
 
 Prerequisites
 -------------
