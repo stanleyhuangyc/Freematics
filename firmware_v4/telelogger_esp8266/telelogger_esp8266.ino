@@ -28,20 +28,10 @@
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
-#if !ENABLE_DATA_OUT
-#define Serial Serial
-#endif
-
 static uint16_t lastUTC = 0;
 static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
 static uint16_t connCount = 0;
-
-const byte PROGMEM pidTier1[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
-const byte PROGMEM pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
-
-#define TIER_NUM1 sizeof(pidTier1)
-#define TIER_NUM2 sizeof(pidTier2)
 
 typedef enum {
     WIFI_DISCONNECTED = 0,
