@@ -1,5 +1,5 @@
 /******************************************************************************
-* Vehicle data transmitter sketch for Freematics ONE with SIM800L
+* Vehicle data transmitter sketch for Freematics ONE with ESP8266 WIFI module
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
 * Written by Stanley Huang <support@freematics.com.au>
