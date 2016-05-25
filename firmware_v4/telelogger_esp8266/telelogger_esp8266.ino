@@ -223,6 +223,7 @@ public:
     {
         delay(500);
         
+        // initialize hardware serial (for USB or BLE)
         Serial.begin(115200);
 
         // this will init SPI communication
@@ -376,11 +377,15 @@ public:
     }
     void loop()
     {
+        // the main loop
+        
+        // process OBD data if connected
         if (state & STATE_OBD_READY) {
           processOBD();
         }
 
 #if USE_GPS
+        // process GPS data if connected
         if (state & STATE_GPS_READY) {
           processGPS();
           delay(10);
@@ -388,18 +393,22 @@ public:
 #endif
 
 #if USE_MPU6050
+        // process accelerometer data if available
         if (state & STATE_MEMS_READY) {
             processMEMS();  
         }
 #endif
 
         if (millis() > nextConnTime) {
+          // process HTTP state machine
           processHttp();
         } else {
 #if ENABLE_DATA_LOG
           flushData();
 #endif
         }
+
+        // check if there are too many connection errors
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset WIFI
           Serial.println("Reset WIFI...");
@@ -527,6 +536,7 @@ private:
     {
       if (state & STATE_MEMS_READY) {
         MEMS_DATA mems;
+        // read accelerometer data
         memsRead(&mems);
         logData(PID_ACC, mems.value.x_accel / ACC_DATA_RATIO, mems.value.y_accel / ACC_DATA_RATIO, mems.value.z_accel / ACC_DATA_RATIO);
       }
@@ -535,6 +545,7 @@ private:
     void processGPS()
     {
         GPS_DATA gd = {0};
+        // read parsed GPS data
         if (getGPSData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
               dataTime = millis();
