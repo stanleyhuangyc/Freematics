@@ -22,8 +22,6 @@
 
 #define PID_DATA_SIZE 0x80
 
-#define ID_STR "#FREEMATICS"
-
 #if ENABLE_DATA_OUT
 
 #if defined(RF_SERIAL)
@@ -71,7 +69,6 @@ public:
     {
 #if ENABLE_DATA_OUT
         SerialRF.begin(STREAM_BAUDRATE);
-        SerialRF.println(ID_STR);
 #endif
     }
     byte genTimestamp(char* buf, bool absolute)
