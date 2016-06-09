@@ -590,6 +590,7 @@ private:
             int value;
             if (read(PID_RPM, value))
                 break;
+            // put MCU into deep sleep mode for some time
             sleep(4);
         }
         // we are able to get OBD data again
