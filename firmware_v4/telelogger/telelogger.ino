@@ -290,8 +290,9 @@ public:
             Serial.println(buffer);
         }
 
-        Serial.print("#GPRS...");
-        delay(100);
+        Serial.print("#GPRS(APN:");
+        Serial.print(APN);
+        Serial.print(")...");
         if (setupGPRS(APN)) {
             Serial.println("OK");
         } else {
@@ -369,30 +370,6 @@ public:
         Serial.println("Error");
         Serial.println(buffer);
       }
-    }
-    void processOBD()
-    {
-        // poll OBD-II PIDs
-        const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
-        int values[sizeof(pids)] = {0};
-        // read multiple OBD-II PIDs
-        byte results = read(pids, sizeof(pids), values);
-        if (results == sizeof(pids)) {
-          for (byte n = 0; n < sizeof(pids); n++) {
-            logData(0x100 | pids[n], values[n]);
-          }
-        }
-        static byte index2 = 0;
-        const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
-        byte pid = pgm_read_byte(pidTier2 + index2);
-        int value;
-        if (read(pid, value)) {
-          logData(0x100 | pid, value);
-        }
-        index2 = (index2 + 1) % sizeof(pidTier2);
-        if (errors > 10) {
-            reconnect();
-        }
     }
     void loop()
     {
@@ -489,6 +466,30 @@ private:
             gprsState = GPRS_READY;
             nextConnTime = millis() + 500;
             break;
+        }
+    }
+    void processOBD()
+    {
+        // poll OBD-II PIDs
+        const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
+        int values[sizeof(pids)] = {0};
+        // read multiple OBD-II PIDs
+        byte results = read(pids, sizeof(pids), values);
+        if (results == sizeof(pids)) {
+          for (byte n = 0; n < sizeof(pids); n++) {
+            logData(0x100 | pids[n], values[n]);
+          }
+        }
+        static byte index2 = 0;
+        const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
+        byte pid = pgm_read_byte(pidTier2 + index2);
+        int value;
+        if (read(pid, value)) {
+          logData(0x100 | pid, value);
+        }
+        index2 = (index2 + 1) % sizeof(pidTier2);
+        if (errors > 10) {
+            reconnect();
         }
     }
 #if USE_MPU6050
