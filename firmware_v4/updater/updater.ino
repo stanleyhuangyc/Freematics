@@ -1,9 +1,8 @@
 /*************************************************************************
-* Sample sketch for Freematics OBD-II I2C Adapter
-* Reads and prints several OBD-II PIDs value and MEMS sensor data
+* Firmware updating agent for Freematics ONE
 * Distributed under GPL v2.0
 * Visit http://freematics.com for more information
-* (C)2012-2015 Stanley Huang <stanleyhuangyc@gmail.com>
+* (C)2016 Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
 #include <SPI.h>
