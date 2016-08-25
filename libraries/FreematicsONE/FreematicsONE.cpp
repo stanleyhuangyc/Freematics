@@ -75,7 +75,7 @@ void COBDSPI::sendQuery(byte pid)
 	write(cmd);
 }
 
-bool COBDSPI::read(byte pid, int& result)
+bool COBDSPI::readPID(byte pid, int& result)
 {
 	// send a single query command
 	sendQuery(pid);
@@ -359,7 +359,7 @@ void COBDSPI::end()
 byte COBDSPI::getVersion()
 {
 	version = 0;
-       setTarget(TARGET_OBD);
+    setTarget(TARGET_OBD);
 	for (byte n = 0; n < 3; n++) {
 		write("ATI\r");
 		char buffer[64];
@@ -448,27 +448,38 @@ void COBDSPI::write(byte* data, int len)
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
-byte COBDSPI::read(const byte pid[], byte count, int result[])
+byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 {
-	// send a multiple query command
-	char buffer[128];
-	char *p = buffer;
-	byte results = 0;
-	for (byte n = 0; n < count; n++) {
-		p += sprintf(p, "$OBD%02X%02X\r", dataMode, pid[n]);
-		if (version > 10) {
-			*(p++) = 0x1b;
-		}		
+	if (version > 10) {
+		// send a multiple query command
+		char buffer[128];
+		char *p = buffer;
+		byte results = 0;
+		for (byte n = 0; n < count; n++) {
+			p += sprintf(p, "$OBD%02X%02X\r", dataMode, pid[n]);
+			if (version > 10) {
+				*(p++) = 0x1b;
+			}
+		}
+		*(p - 1) = 0;
+		write(buffer);
+		// receive and parse the response
+		for (byte n = 0; n < count; n++) {
+			byte curpid = pid[n];
+			if (getResult(curpid, result[n]))
+				results++;
+		}
+		return results;
 	}
-	*(p - 1) = 0;
-	write(buffer);
-	// receive and parse the response
-	for (byte n = 0; n < count; n++) {
-		byte curpid = pid[n];
-		if (getResult(curpid, result[n]))
-			results++;
+	else {
+		byte results = 0;
+		for (byte n = 0; n < count; n++) {
+			if (readPID(pid[n], result[n])) {
+				results++;
+			}
+		}
+		return results;
 	}
-	return results;
 }
 
 byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
