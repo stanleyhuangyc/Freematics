@@ -512,7 +512,7 @@ private:
         const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
         int values[sizeof(pids)] = {0};
         // read multiple OBD-II PIDs
-        byte results = read(pids, sizeof(pids), values);
+        byte results = readPID(pids, sizeof(pids), values);
         if (results == sizeof(pids)) {
           for (byte n = 0; n < sizeof(pids); n++) {
             logData(0x100 | pids[n], values[n]);
@@ -523,7 +523,7 @@ private:
         byte pid = pgm_read_byte(pidTier2 + index2);
         int value;
         // read a single OBD-II PID
-        if (read(pid, value)) {
+        if (readPID(pid, value)) {
           logData(0x100 | pid, value);
         }
         index2 = (index2 + 1) % sizeof(pidTier2);
@@ -588,7 +588,7 @@ private:
         // regularly check if we can get any OBD data
         for (;;) {
             int value;
-            if (read(PID_RPM, value))
+            if (readPID(PID_RPM, value))
                 break;
             // put MCU into deep sleep mode for some time
             sleep(4);
