@@ -474,7 +474,7 @@ private:
         const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
         int values[sizeof(pids)] = {0};
         // read multiple OBD-II PIDs
-        byte results = read(pids, sizeof(pids), values);
+        byte results = readPID(pids, sizeof(pids), values);
         if (results == sizeof(pids)) {
           for (byte n = 0; n < sizeof(pids); n++) {
             logData(0x100 | pids[n], values[n]);
@@ -484,7 +484,7 @@ private:
         const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
         byte pid = pgm_read_byte(pidTier2 + index2);
         int value;
-        if (read(pid, value)) {
+        if (readPID(pid, value)) {
           logData(0x100 | pid, value);
         }
         index2 = (index2 + 1) % sizeof(pidTier2);
@@ -545,7 +545,7 @@ private:
         state |= STATE_SLEEPING;
         for (;;) {
             int value;
-            if (read(PID_RPM, value))
+            if (readPID(PID_RPM, value))
                 break;
             lowPowerMode();
             sleep(4);

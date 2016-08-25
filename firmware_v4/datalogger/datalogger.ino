@@ -211,7 +211,7 @@ public:
         // check if OBD is accessible again
         for (;;) {
             int value;
-            if (read(PID_RPM, value))
+            if (readPID(PID_RPM, value))
                 break;
             sleep(2);
         }
@@ -277,7 +277,7 @@ void loop()
         const byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
         int values[sizeof(pids)];
         // read multiple OBD-II PIDs
-        if (one.read(pids, sizeof(pids), values) == sizeof(pids)) {
+        if (one.readPID(pids, sizeof(pids), values) == sizeof(pids)) {
           one.dataTime = millis();
           for (byte n = 0; n < sizeof(pids); n++) {
             one.logData((uint16_t)pids[n] | 0x100, values[n]);
@@ -291,7 +291,7 @@ void loop()
           int value;
           byte pid = pids2[index2 = (index2 + 1) % (sizeof(pids2))];
           // read single OBD-II PID
-          if (one.isValidPID(pid) && one.read(pid, value)) {
+          if (one.isValidPID(pid) && one.readPID(pid, value)) {
             one.dataTime = millis();
             one.logData((uint16_t)pid | 0x100, value);
             lastSec = sec;
