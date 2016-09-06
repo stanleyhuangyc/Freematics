@@ -35,6 +35,11 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 
 /**************************************
+* OBD II
+**************************************/
+#define USE_OBDII 0
+
+/**************************************
 * Other options
 **************************************/
 //#define DEBUG 1
@@ -48,3 +53,4 @@
 #define USE_FRIENDLY_PID_NAME 1
 
 #endif // CONFIG_H_INCLUDED
+

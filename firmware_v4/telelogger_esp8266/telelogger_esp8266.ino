@@ -133,19 +133,22 @@ public:
       char header[128];
       char *p = header;
       // generate HTTP header
-      p += sprintf(p, "%s %s HTTP/1.1\r\nUser-Agent: Freematics\r\nConnection: keep-alive\r\n",
+      p += sprintf(p, "%s %s HTTP/1.1\r\nUser-Agent: Freematics\r\nConnection: keep-alive\r\nHost: %s\r\n",
       method == HTTP_GET ? "GET" : "POST", path, SERVER_URL);
       if (method == HTTP_POST) {
         p += sprintf(p, "Content-length: %u\r\n", payloadSize);
       }
-      p += sprintf(p, "\r\n");
+      p += sprintf(p, "\r\n"); // Always finish header by an empty line.
       // start TCP send
       sprintf(buffer, "AT+CIPSEND=%u\r\n", (unsigned int)(p - header) + payloadSize);
       if (sendWifiCommand(buffer, 1000, ">")) {
         // send HTTP header
         xbWrite(header);
         // send POST payload if any
-        if (payload) xbWrite(payload);
+        if (payload) {
+          xbWrite(payload);
+        }
+                
         buffer[0] = 0;
         bytesRecv = 0;
         checkTimer = millis();
@@ -230,6 +233,7 @@ public:
         begin();
 
         // initialize OBD communication
+#if USE_OBDII
         Serial.print("#OBD..");
         setTarget(TARGET_OBD);
         do {
@@ -239,6 +243,7 @@ public:
         Serial.print("VER ");
         Serial.println(version);
         state |= STATE_OBD_READY;
+#endif
 
 #if USE_MPU6050
         // start I2C communication 
@@ -247,6 +252,7 @@ public:
         Serial.print("#MEMS...");
         if (memsInit()) {
           Serial.println("OK");
+          state |= STATE_MEMS_READY;
         } else {
           Serial.println("NO");
         }
@@ -304,12 +310,16 @@ public:
         // get some info if it is about to joining a channel
         setTarget(TARGET_OBD);
         // retrieve VIN through OBD
+#if USE_OBDII
 #if ENABLE_DATA_CACHE
         getVIN(cache, MAX_CACHE_SIZE);
 #else
         getVIN(vin, sizeof(vin));
 #endif
-        Serial.print("#VIN:");
+#else
+        vin = "testrun";
+#endif
+        Serial.print("#VIN: ");
         Serial.println(vin);
       }
       wifiState = WIFI_READY;
@@ -394,9 +404,7 @@ public:
 
 #if USE_MPU6050
         // process accelerometer data if available
-        if (state & STATE_MEMS_READY) {
             processMEMS();  
-        }
 #endif
 
         if (millis() > nextConnTime) {
@@ -619,3 +627,4 @@ void loop()
 {
     logger.loop();
 }
+
