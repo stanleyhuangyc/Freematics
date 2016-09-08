@@ -89,8 +89,8 @@ public:
 #if ENABLE_DATA_LOG
         char tmp[12];
         byte n = genTimestamp(tmp, dataSize == 0);
-        dataSize += sdfile.write(tmp, n);
-        dataSize += sdfile.write(buf, len);
+        dataSize += sdfile.write((const unsigned char*)tmp, n);
+        dataSize += sdfile.write((const unsigned char*)buf, len);
         sdfile.println();
         dataSize += 3;
 #endif
