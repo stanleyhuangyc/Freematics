@@ -1,5 +1,5 @@
 /******************************************************************************
-* GPRS GPS/OBD-II Tracker based on Freematics ONE with SIM800L module 
+* GPRS OBD-II/GPS Tracker based on Freematics ONE with SIM800L module 
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
 * Written by Stanley Huang and partially by Brendan Myers
