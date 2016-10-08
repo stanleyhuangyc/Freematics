@@ -34,7 +34,7 @@
 * Other options
 **************************************/
 #define OBD_CONN_TIMEOUT 5000 /* ms */
-#define MAX_CONN_ERRORS 3
+#define MAX_CONN_ERRORS 5
 #define MAX_CONN_TIME 10000 /* ms */
 
 // device states
@@ -254,16 +254,16 @@ public:
 class CGPRSTracker : public COBDGSM
 {
 public:
-    CGPRSTracker():state(0),channel(0) {}
     void setup()
     {
+        state = 0;
         delay(500);
-        
         Serial.begin(115200);
 
         // this will init SPI communication
         begin();
-
+        
+        // connect to OBD port
         Serial.print("#OBD..");
         for (uint32_t t = millis(); millis() - t < OBD_CONN_TIMEOUT; ) {
             Serial.print('.');
@@ -272,6 +272,8 @@ public:
               break;              
             }
         }
+        
+        // display OBD adapter version
         if (state & STATE_OBD_READY) {
           Serial.print("VER ");
           Serial.println(version);
@@ -280,6 +282,7 @@ public:
         }
 
 #if USE_GPS
+        // initialize GPS
         Serial.print("#GPS...");
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_READY;
@@ -296,7 +299,6 @@ public:
             Serial.println(buffer);
         }
 
-        
         Serial.print("#GPRS(APN:");
         Serial.print(APN);
         Serial.print(")...");
@@ -305,7 +307,15 @@ public:
         } else {
             Serial.println(buffer);
         }
-        
+
+        int csq = getSignal();
+        Serial.print("#SIGNAL:");
+        Serial.println(csq);
+
+        if (getOperatorName()) {
+          Serial.print("#OP:");
+          Serial.println(buffer); 
+        }
         // init HTTP
         Serial.print("#HTTP...");
         while (!httpInit()) {
@@ -314,10 +324,6 @@ public:
           delay(1000);
         }
         Serial.println("OK");
-
-        int csq = getSignal();
-        Serial.print("#SIGNAL:");
-        Serial.println(csq);
 
         state |= STATE_CONNECTED;
         
@@ -336,6 +342,7 @@ public:
         if (state & STATE_GPS_READY) {
           if (!getGPSData(&gd)) {
             Serial.println("GPS error");
+            delay(500);
           }
         }
 #endif
@@ -346,8 +353,7 @@ public:
         
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
-          Serial.print(connErrors);
-          Serial.println("Reset GPRS...");
+          Serial.print("Reset GPRS...");
           initGSM();
           setupGPRS(APN);
           if (httpInit()) {
@@ -356,6 +362,7 @@ public:
             Serial.println(buffer); 
           }
           connErrors = 0;
+          connCount = 0;
         }
     }
 private:
@@ -367,23 +374,21 @@ private:
             if (state & STATE_CONNECTED) {
                 // URL format: http://f.skygrid.io/<DEVICE_KEY>/<RPM>/<SPEED>/<ENGINE_LOAD>/<COOLANT_TEMP>/<INTAKE_PRESSURE>/<THROTTLE_POSITION>/<FUEL_RATE>/<GPS_LAT>/<GPS_LNG>
                 // generate URL
-                sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/%u/%u/%u/%d/0/%u/0/%ld/%ld\"\r"),
+                snprintf_P(buffer, sizeof(buffer), PSTR("AT+HTTPPARA=\"URL\",\"%s/%u/%u/%u/%d/0/%u/0/%ld/%ld\"\r"),
                   HOST_URL, pidData[0], pidData[1], pidData[2], pidData[3], pidData[4], gd.lat, gd.lng);
-                Serial.print("URL:");
                 Serial.println(buffer);
                 if (!sendGSMCommand(buffer)) {
                   Serial.println("Request error");
                   break;
                 }
                 gprsState = GPRS_HTTP_CONNECTING;
-                nextConnTime = millis() + 1000;
             }
             break;        
         case GPRS_HTTP_CONNECTING:
             Serial.print("CONNECT#");
             Serial.println(++connCount);
             httpConnect(HTTP_GET);
-            nextConnTime = millis() + 1000;
+            nextConnTime = millis() + 2000;
             break;
         case GPRS_HTTP_RECEIVING:
             if (httpIsConnected()) {
@@ -392,7 +397,6 @@ private:
                   // success
                   Serial.println("Response:");
                   Serial.println(buffer);
-                  break;
                 }
                 */
                 gprsState = GPRS_READY;
@@ -418,13 +422,12 @@ private:
           // reconnected
           return; 
         }
-        Serial.print("Sleeping");
+        Serial.println("Sleeping");
         state &= ~STATE_OBD_READY;
         toggleGSM(); // turn off GSM power
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
-        Serial.println();
         state |= STATE_SLEEPING;
         for (;;) {
             int value;
@@ -437,9 +440,7 @@ private:
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
     }
-    
     byte state;
-    byte channel;
 };
 
 CGPRSTracker tracker;
