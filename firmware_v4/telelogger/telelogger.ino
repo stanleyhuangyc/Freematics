@@ -32,6 +32,7 @@ static uint16_t lastUTC = 0;
 static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
 static uint16_t connCount = 0;
+static char vin[20] = {0};
 
 typedef enum {
     GPRS_DISABLED = 0,
@@ -74,7 +75,7 @@ public:
       for (;;) {
         // try turning on GSM
         toggleGSM();
-        delay(3000);
+        delay(2000);
         if (sendGSMCommand("ATE0\r") != 0) {
           break;
         }
@@ -88,7 +89,7 @@ public:
       }
       sendGSMCommand("AT+CGATT?\r");
       sendGSMCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
-      sprintf(buffer, "AT+SAPBR=3,1,\"APN\",\"%s\"\r", apn);
+      sprintf_P(buffer, PSTR("AT+SAPBR=3,1,\"APN\",\"%s\"\r"), apn);
       sendGSMCommand(buffer, 15000);
       do {
         sendGSMCommand("AT+SAPBR=1,1\r", 5000);
@@ -143,7 +144,7 @@ public:
     {
         // 0 for GET, 1 for POST
         char cmd[17];
-        sprintf(cmd, "AT+HTTPACTION=%c\r", '0' + method);
+        sprintf_P(cmd, PSTR("AT+HTTPACTION=%c\r"), '0' + method);
         setTarget(TARGET_BEE);
         write(cmd);
         gprsState = GPRS_HTTP_RECEIVING;
@@ -221,7 +222,7 @@ public:
     {
         // set HTTP POST payload data
         char cmd[24];
-        sprintf(cmd, "AT+HTTPDATA=%d,1000\r", bytes);
+        sprintf_P(cmd, PSTR("AT+HTTPDATA=%d,1000\r"), bytes);
         if (!sendGSMCommand(cmd, 1000, "DOWNLOAD")) {
           return false;
         }
@@ -261,6 +262,13 @@ public:
           Serial.println(version);
         } else {
           Serial.println("NO"); 
+        }
+
+        // retrieve VIN        
+        if (getVIN(buffer, sizeof(buffer))) {
+          snprintf_P(vin, sizeof(vin), PSTR("%s"), buffer);
+          Serial.print("#VIN:");
+          Serial.println(vin);
         }
 
 #if USE_MPU6050
@@ -317,20 +325,7 @@ public:
     void joinChannel(byte action)
     {
       int signal;
-#if ENABLE_DATA_CACHE
-      char *vin = cache;
-#else
-      char vin[240];
-#endif
       if (action == 0) {
-        setTarget(TARGET_OBD);
-#if ENABLE_DATA_CACHE
-        getVIN(cache, MAX_CACHE_SIZE);
-#else
-        getVIN(vin, sizeof(vin));
-#endif
-        Serial.print("#VIN:");
-        Serial.println(vin);
         Serial.print("#SIGNAL:");
         signal = getSignal();
         Serial.println(signal);
@@ -338,12 +333,12 @@ public:
       gprsState = GPRS_READY;
       for (;;) {
         char *p = buffer;
-        p += sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/push?", HOST_URL);
+        p += sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/push?"), HOST_URL);
         if (action == 0) {
           Serial.print("#SERVER:"); 
-          sprintf(p, "CSQ=%d&VIN=%s\"\r", signal, vin);
+          sprintf_P(p, PSTR("CSQ=%d&VIN=%s\"\r"), signal, vin);
         } else {
-          sprintf(p, "id=%d&OFF=1\"\r", channel);
+          sprintf_P(p, PSTR("id=%d&OFF=1\"\r"), channel);
         }
         if (!sendGSMCommand(buffer)) {
           Serial.println(buffer);
@@ -417,7 +412,7 @@ private:
         case GPRS_READY:
             if (state & STATE_CONNECTED) {
                 // generate URL
-                sprintf(buffer, "AT+HTTPPARA=\"URL\",\"%s/post?id=%u\"\r", HOST_URL, channel);
+                sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/post?id=%u\"\r"), HOST_URL, channel);
                 if (!sendGSMCommand(buffer)) {
                   break;
                 }
@@ -534,14 +529,13 @@ private:
           // reconnected
           return; 
         }
-        Serial.print("Sleeping");
+        Serial.println("Sleeping");
         state &= ~STATE_OBD_READY;
         joinChannel(1); // leave channel
         toggleGSM(); // turn off GSM power
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
-        Serial.println();
         state |= STATE_SLEEPING;
         for (;;) {
             int value;
