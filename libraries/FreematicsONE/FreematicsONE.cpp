@@ -584,6 +584,12 @@ byte COBDSPI::getGPSRawData(char* buf, byte bufsize)
 	return n;
 }
 
+void COBDSPI::sendGPSCommand(const char* cmd)
+{
+	setTarget(TARGET_GPS);
+	write(cmd);
+}
+
 void COBDSPI::sleep(uint8_t seconds) {
 	uint8_t wdt_period;
 	switch (seconds) {
