@@ -185,6 +185,8 @@ public:
 	bool getGPSData(GPS_DATA* gdata);
 	// get GPS NMEA data
 	byte getGPSRawData(char* buf, byte bufsize);
+	// send command string to GPS
+	void sendGPSCommand(const char* cmd);
 	// hardware sleep (timer counter will stop)
 	void sleep(uint8_t seconds);
 	// start xBee UART communication
