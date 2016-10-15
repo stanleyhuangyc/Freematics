@@ -75,7 +75,7 @@ public:
     bool setupWifi()
     {
       // generate and send AT command for joining AP
-      sprintf(buffer, "AT+CWJAP=\"%s\",\"%s\"\r\n", WIFI_SSID, WIFI_PASSWORD);
+      sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
       byte ret = sendWifiCommand(buffer, 10000, "OK");
       if (ret == 1) {
         // get IP address
@@ -103,7 +103,7 @@ public:
     {
       Serial.println("CONNECTING");
       // start TCP connection
-      sprintf(buffer, "AT+CIPSTART=\"TCP\",\"%s\",%d\r\n", SERVER_URL, SERVER_PORT);
+      sprintf_P(buffer, PSTR("AT+CIPSTART=\"TCP\",\"%s\",%d\r\n"), SERVER_URL, SERVER_PORT);
       xbWrite(buffer);
       // clear reception buffer
       buffer[0] = 0;
@@ -130,17 +130,17 @@ public:
     }
     bool httpSend(HTTP_METHOD method, const char* path, const char* payload = 0, int payloadSize = 0)
     {
-      char header[128];
+      char header[192];
       char *p = header;
       // generate HTTP header
-      p += sprintf(p, "%s %s HTTP/1.1\r\nUser-Agent: Freematics\r\nConnection: keep-alive\r\n",
-      method == HTTP_GET ? "GET" : "POST", path, SERVER_URL);
+      p += sprintf_P(p, PSTR("%s %s HTTP/1.1\r\nUser-Agent: ONE\r\nHost: %s\r\nConnection: keep-alive\r\n"),
+        method == HTTP_GET ? "GET" : "POST", path, SERVER_URL);
       if (method == HTTP_POST) {
-        p += sprintf(p, "Content-length: %u\r\n", payloadSize);
+        p += sprintf_P(p, PSTR("Content-length: %u\r\n"), payloadSize);
       }
-      p += sprintf(p, "\r\n");
+      p += sprintf_P(p, PSTR("\r\n"));
       // start TCP send
-      sprintf(buffer, "AT+CIPSEND=%u\r\n", (unsigned int)(p - header) + payloadSize);
+      sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), (unsigned int)(p - header) + payloadSize);
       if (sendWifiCommand(buffer, 1000, ">")) {
         // send HTTP header
         xbWrite(header);
@@ -331,9 +331,9 @@ public:
 
         // generate HTTP URL
         if (action == 0) {
-          sprintf(buffer, "/push?VIN=%s", vin);
+          sprintf_P(buffer, PSTR("/push?VIN=%s"), vin);
         } else {
-          sprintf(buffer, "/push?id=%d&OFF=1", channel);
+          sprintf_P(buffer, PSTR("/push?id=%d&OFF=1"), channel);
         }
         
         // send HTTP request
@@ -430,7 +430,7 @@ private:
             // ready for doing next HTTP request
             if (cacheBytes > 0) {
               // and there is data in cache to send
-              sprintf(buffer, "/post?id=%u", channel);
+              sprintf_P(buffer, PSTR("/post?id=%u"), channel);
               // send HTTP POST request with cached data as payload
               if (httpSend(HTTP_POST, buffer, cache, cacheBytes)) {
                 // success
