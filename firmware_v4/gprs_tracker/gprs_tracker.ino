@@ -48,6 +48,7 @@ static uint16_t connCount = 0;
 static GPS_DATA gd = {0};
 static const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_COOLANT_TEMP, PID_THROTTLE};
 static int pidData[sizeof(pids)] = {0};
+static char vin[20] = {0};
 
 typedef enum {
     GPRS_DISABLED = 0,
@@ -90,7 +91,7 @@ public:
       for (;;) {
         // try turning on GSM
         toggleGSM();
-        delay(3000);
+        delay(2000);
         if (sendGSMCommand("ATE0\r") != 0) {
           break;
         }
@@ -104,7 +105,7 @@ public:
       }
       sendGSMCommand("AT+CGATT?\r");
       sendGSMCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
-      sprintf(buffer, "AT+SAPBR=3,1,\"APN\",\"%s\"\r", apn);
+      sprintf_P(buffer, PSTR("AT+SAPBR=3,1,\"APN\",\"%s\"\r"), apn);
       sendGSMCommand(buffer, 15000);
       do {
         sendGSMCommand("AT+SAPBR=1,1\r", 5000);
@@ -159,7 +160,7 @@ public:
     {
         // 0 for GET, 1 for POST
         char cmd[17];
-        sprintf(cmd, "AT+HTTPACTION=%c\r", '0' + method);
+        sprintf_P(cmd, PSTR("AT+HTTPACTION=%c\r"), '0' + method);
         setTarget(TARGET_BEE);
         write(cmd);
         gprsState = GPRS_HTTP_RECEIVING;
@@ -187,6 +188,7 @@ public:
           gprsState = GPRS_READY;
           return true;
         } else {
+          Serial.println("READ ERROR");
           Serial.println(buffer);
           gprsState = GPRS_HTTP_ERROR;
           return false;
@@ -237,7 +239,7 @@ public:
     {
         // set HTTP POST payload data
         char cmd[24];
-        sprintf(cmd, "AT+HTTPDATA=%d,1000\r", bytes);
+        sprintf_P(cmd, PSTR("AT+HTTPDATA=%d,1000\r"), bytes);
         if (!sendGSMCommand(cmd, 1000, "DOWNLOAD")) {
           return false;
         }
@@ -257,6 +259,8 @@ public:
     void setup()
     {
         state = 0;
+        deviceID = 0;
+        
         delay(500);
         Serial.begin(115200);
 
@@ -272,7 +276,7 @@ public:
               break;              
             }
         }
-        
+
         // display OBD adapter version
         if (state & STATE_OBD_READY) {
           Serial.print("VER ");
@@ -281,6 +285,13 @@ public:
           Serial.println("NO"); 
         }
 
+        // retrieve VIN        
+        if (getVIN(buffer, sizeof(buffer))) {
+          snprintf_P(vin, sizeof(vin), PSTR("%s"), buffer);
+          Serial.print("#VIN:");
+          Serial.println(vin);
+        }
+        
 #if USE_GPS
         // initialize GPS
         Serial.print("#GPS...");
@@ -309,8 +320,10 @@ public:
         }
 
         int csq = getSignal();
-        Serial.print("#SIGNAL:");
-        Serial.println(csq);
+        if (csq > 0) {
+          Serial.print("#SIGNAL:");
+          Serial.println(csq);
+        }
 
         if (getOperatorName()) {
           Serial.print("#OP:");
@@ -326,22 +339,21 @@ public:
         Serial.println("OK");
 
         state |= STATE_CONNECTED;
-        
-        Serial.println();
-        delay(1000);
     }
     void loop()
     {
         if (state & STATE_OBD_READY) {
           if (readPID(pids, sizeof(pids), pidData) != sizeof(pids)) {
-            Serial.println("OBD error");
+            if (errors > 10) {
+                reconnect();
+            }
+            delay(500);
           }
         }
 
 #if USE_GPS
         if (state & STATE_GPS_READY) {
           if (!getGPSData(&gd)) {
-            Serial.println("GPS error");
             delay(500);
           }
         }
@@ -366,39 +378,45 @@ public:
         }
     }
 private:
+    void generateURL()
+    {
+        // URL format: http://f.skygrid.io/<DEVICE_KEY>/<RPM>/<SPEED>/<ENGINE_LOAD>/<COOLANT_TEMP>/<INTAKE_PRESSURE>/<THROTTLE_POSITION>/<FUEL_RATE>/<GPS_LAT>/<GPS_LNG>
+        // generate URL
+        snprintf_P(buffer, sizeof(buffer), PSTR("AT+HTTPPARA=\"URL\",\"%s/%u/%u/%u/%d/0/%u/0/%ld/%ld\"\r"),
+          HOST_URL, pidData[0], pidData[1], pidData[2], pidData[3], pidData[4], gd.lat, gd.lng);
+       //Serial.println(buffer);
+       Serial.print(gd.lat);
+       Serial.print(' ');
+       Serial.println(gd.lng);
+    }
     void processGPRS()
     {
         // state machine for GPRS/HTTP communication
         switch (gprsState) {
         case GPRS_READY:
             if (state & STATE_CONNECTED) {
-                // URL format: http://f.skygrid.io/<DEVICE_KEY>/<RPM>/<SPEED>/<ENGINE_LOAD>/<COOLANT_TEMP>/<INTAKE_PRESSURE>/<THROTTLE_POSITION>/<FUEL_RATE>/<GPS_LAT>/<GPS_LNG>
-                // generate URL
-                snprintf_P(buffer, sizeof(buffer), PSTR("AT+HTTPPARA=\"URL\",\"%s/%u/%u/%u/%d/0/%u/0/%ld/%ld\"\r"),
-                  HOST_URL, pidData[0], pidData[1], pidData[2], pidData[3], pidData[4], gd.lat, gd.lng);
-                Serial.println(buffer);
-                if (!sendGSMCommand(buffer)) {
-                  Serial.println("Request error");
-                  break;
-                }
-                gprsState = GPRS_HTTP_CONNECTING;
+              generateURL();
+              if (!sendGSMCommand(buffer)) {
+                Serial.println("Request error");
+                delay(500);
+                break;
+              }
+              gprsState = GPRS_HTTP_CONNECTING;
             }
             break;        
         case GPRS_HTTP_CONNECTING:
             Serial.print("CONNECT#");
             Serial.println(++connCount);
             httpConnect(HTTP_GET);
-            nextConnTime = millis() + 2000;
+            nextConnTime = millis() + 1000;
             break;
         case GPRS_HTTP_RECEIVING:
             if (httpIsConnected()) {
-                /* no response to be read
                 if (httpRead()) {
                   // success
-                  Serial.println("Response:");
-                  Serial.println(buffer);
+                  //Serial.println("Response:");
+                  //Serial.println(buffer);
                 }
-                */
                 gprsState = GPRS_READY;
             }
             nextConnTime = millis() + 200; 
@@ -440,6 +458,11 @@ private:
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
     }
+    void dataIdleLoop()
+    {
+      delay(10);
+    }
+    
     byte state;
 };
 
