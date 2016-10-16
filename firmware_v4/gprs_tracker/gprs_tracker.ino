@@ -259,7 +259,6 @@ public:
     void setup()
     {
         state = 0;
-        deviceID = 0;
         
         delay(500);
         Serial.begin(115200);
@@ -394,7 +393,7 @@ private:
         // state machine for GPRS/HTTP communication
         switch (gprsState) {
         case GPRS_READY:
-            if (state & STATE_CONNECTED) {
+            if ((state & STATE_CONNECTED) && errors == 0) {
               generateURL();
               if (!sendGSMCommand(buffer)) {
                 Serial.println("Request error");
