@@ -17,6 +17,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
+#include <FreematicsMPU6050.h>
 #include "config.h"
 #if ENABLE_DATA_LOG
 #include <SD.h>
@@ -49,7 +50,7 @@ int acc[3]; // accelerometer x/y/z
 int temp; // device temperature (in 0.1 celcius degree)
 #endif
 
-class ONE : public COBDSPI, public CDataLogger
+class ONE : public COBDSPI, public CMPU6050, public CDataLogger
 {
 public:
     ONE():state(0) {}
@@ -227,7 +228,7 @@ public:
 #if USE_MPU6050
       if (state & STATE_MEMS_READY) {
         // load accelerometer and temperature data
-        memsRead(acc, 0, &temp);
+        memsRead(acc, 0, 0, &temp);
       }
 #endif
     }
