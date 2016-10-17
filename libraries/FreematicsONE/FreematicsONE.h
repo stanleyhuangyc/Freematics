@@ -1,6 +1,6 @@
 /*************************************************************************
 * Arduino Library for Freematics ONE
-* Distributed under GPL v2.0
+* Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
 * (C)2012-2016 Stanley Huang <stanleyhuangyc@gmail.com>
 *************************************************************************/
@@ -116,43 +116,6 @@ typedef struct {
     int16_t heading;
 } GPS_DATA;
 
-typedef struct
-{
-    uint8_t x_accel_h;
-    uint8_t x_accel_l;
-    uint8_t y_accel_h;
-    uint8_t y_accel_l;
-    uint8_t z_accel_h;
-    uint8_t z_accel_l;
-    uint8_t t_h;
-    uint8_t t_l;
-    uint8_t x_gyro_h;
-    uint8_t x_gyro_l;
-    uint8_t y_gyro_h;
-    uint8_t y_gyro_l;
-    uint8_t z_gyro_h;
-    uint8_t z_gyro_l;
-} MPU6050_READOUT_DATA;
-
-#define MPU6050_I2C_ADDRESS 0x68
-#define MPU6050_ACCEL_XOUT_H       0x3B   // R
-#define MPU6050_ACCEL_XOUT_L       0x3C   // R
-#define MPU6050_ACCEL_YOUT_H       0x3D   // R
-#define MPU6050_ACCEL_YOUT_L       0x3E   // R
-#define MPU6050_ACCEL_ZOUT_H       0x3F   // R
-#define MPU6050_ACCEL_ZOUT_L       0x40   // R
-#define MPU6050_TEMP_OUT_H         0x41   // R
-#define MPU6050_TEMP_OUT_L         0x42   // R
-#define MPU6050_GYRO_XOUT_H        0x43   // R
-#define MPU6050_GYRO_XOUT_L        0x44   // R
-#define MPU6050_GYRO_YOUT_H        0x45   // R
-#define MPU6050_GYRO_YOUT_L        0x46   // R
-#define MPU6050_GYRO_ZOUT_H        0x47   // R
-#define MPU6050_GYRO_ZOUT_L        0x48   // R
-#define MPU6050_PWR_MGMT_1         0x6B   // R/W
-#define MPU6050_PWR_MGMT_2         0x6C   // R/W
-#define MPU6050_WHO_AM_I           0x75   // R
-
 uint16_t hex2uint16(const char *p);
 uint8_t hex2uint8(const char *p);
 
@@ -201,10 +164,6 @@ public:
 	byte xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);	
 	// purge xBee UART buffer
 	void xbPurge();
-	// initialize MEMS
-	bool memsInit();
-	// read out MEMS data (acc for accelerometer x/y/z, gyr for gyroscope x/y/z, temp in 0.1 celcius degree)
-	bool memsRead(int* acc, int* gyr = 0, int* temp = 0);
 	// initialize OBD-II connection
 	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
 	// un-initialize OBD-II connection
@@ -242,10 +201,6 @@ protected:
 	OBD_STATES m_state;
 private:
 	byte getVersion();
-	bool MPU6050_read(int start, uint8_t *buffer, int size);
-	bool MPU6050_write(int start, const uint8_t *pData, int size);
-	bool MPU6050_write_reg(int reg, uint8_t data);
-	void MPU6050_store(int* pdata, uint8_t data_l, uint8_t data_h);
 	uint8_t getPercentageValue(char* data)
 	{
 		return (uint16_t)hex2uint8(data) * 100 / 255;
