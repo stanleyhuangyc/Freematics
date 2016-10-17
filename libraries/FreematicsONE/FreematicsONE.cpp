@@ -708,7 +708,14 @@ bool COBDSPI::memsInit()
 	return true;
 }
 
-bool COBDSPI::memsRead(MEMS_DATA* accel_t_gyro)
+void COBDSPI::MPU6050_store(int* pdata, uint8_t data_l, uint8_t data_h)
+{
+	uint8_t* ptr = (uint8_t*)pdata;
+	*ptr = data_l;
+	*(ptr + 1) = data_h;
+}
+
+bool COBDSPI::memsRead(int* acc, int* gyr, int* temp)
 {
 	bool success;
 
@@ -718,23 +725,28 @@ bool COBDSPI::memsRead(MEMS_DATA* accel_t_gyro)
 	// With the default settings of the MPU-6050,
 	// there is no filter enabled, and the values
 	// are not very stable.
-	success = MPU6050_read (MPU6050_ACCEL_XOUT_H, (uint8_t *)accel_t_gyro, sizeof(MEMS_DATA));
-	if (!success) return false;;
+	
+	MPU6050_READOUT_DATA accel_t_gyro;
+	success = MPU6050_read (MPU6050_ACCEL_XOUT_H, (uint8_t *)&accel_t_gyro, sizeof(MPU6050_READOUT_DATA));
+	if (!success) return false;
+	
+	
+	if (temp) {
+		// 340 per degrees Celsius, -512 at 35 degrees.
+		*temp = ((int)(((uint16_t)accel_t_gyro.t_h << 8) | accel_t_gyro.t_l) + 512) / 34 + 350; 
+	}
 
-	// Swap all high and low bytes.
-	// After this, the registers values are swapped,
-	// so the structure name like x_accel_l does no
-	// longer contain the lower byte.
-	uint8_t swap;
-	#define SWAP(x,y) swap = x; x = y; y = swap
+	if (acc) {
+		MPU6050_store(acc, accel_t_gyro.x_accel_l, accel_t_gyro.x_accel_h);
+		MPU6050_store(acc + 1, accel_t_gyro.y_accel_l, accel_t_gyro.y_accel_h);
+		MPU6050_store(acc + 2, accel_t_gyro.z_accel_l, accel_t_gyro.z_accel_h);
+	}
 
-	SWAP (accel_t_gyro->reg.x_accel_h, accel_t_gyro->reg.x_accel_l);
-	SWAP (accel_t_gyro->reg.y_accel_h, accel_t_gyro->reg.y_accel_l);
-	SWAP (accel_t_gyro->reg.z_accel_h, accel_t_gyro->reg.z_accel_l);
-	SWAP (accel_t_gyro->reg.t_h, accel_t_gyro->reg.t_l);
-	SWAP (accel_t_gyro->reg.x_gyro_h, accel_t_gyro->reg.x_gyro_l);
-	SWAP (accel_t_gyro->reg.y_gyro_h, accel_t_gyro->reg.y_gyro_l);
-	SWAP (accel_t_gyro->reg.z_gyro_h, accel_t_gyro->reg.z_gyro_l);
+	if (gyr) {
+		MPU6050_store(gyr, accel_t_gyro.x_gyro_l, accel_t_gyro.x_gyro_h);
+		MPU6050_store(gyr + 1, accel_t_gyro.y_gyro_l, accel_t_gyro.y_gyro_h);
+		MPU6050_store(gyr + 2, accel_t_gyro.z_gyro_l, accel_t_gyro.z_gyro_h);
+	}	
 	return true;
 }
 

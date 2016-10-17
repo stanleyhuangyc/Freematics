@@ -45,7 +45,8 @@ uint16_t MMDD = 0;
 uint32_t UTC = 0;
 
 #if USE_MPU6050
-MEMS_DATA mems;
+int acc[3]; // accelerometer x/y/z
+int temp; // device temperature (in 0.1 celcius degree)
 #endif
 
 class ONE : public COBDSPI, public CDataLogger
@@ -147,7 +148,8 @@ public:
     void logMEMSData()
     {
         // log the loaded MEMS data
-        logData(PID_ACC, mems.value.x_accel / ACC_DATA_RATIO, mems.value.y_accel / ACC_DATA_RATIO, mems.value.z_accel / ACC_DATA_RATIO);
+        logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
+        logData(PID_MEMS_TEMP, temp);
     }
 #endif
 #if ENABLE_DATA_LOG
@@ -224,7 +226,8 @@ public:
       // do something while waiting for data on SPI
 #if USE_MPU6050
       if (state & STATE_MEMS_READY) {
-        memsRead(&mems);
+        // load accelerometer and temperature data
+        memsRead(acc, 0, &temp);
       }
 #endif
     }

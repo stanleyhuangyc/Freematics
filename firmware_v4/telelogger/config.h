@@ -12,7 +12,7 @@
 #define STREAM_FORMAT FORMAT_TEXT
 
 #define ENABLE_DATA_CACHE 1
-#define MAX_CACHE_SIZE 256
+#define MAX_CACHE_SIZE 128
 
 // change this to your own
 #define APN "connect"
@@ -23,7 +23,7 @@
 * Accelerometer & Gyro
 **************************************/
 #define USE_MPU6050 1
-#define ACC_DATA_RATIO 160
+#define ACC_DATA_RATIO 172
 #define GYRO_DATA_RATIO 256
 #define COMPASS_DATA_RATIO 8
 
