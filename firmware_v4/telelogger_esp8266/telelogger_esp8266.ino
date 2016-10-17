@@ -246,6 +246,7 @@ public:
         // initialize MPU-6050
         Serial.print("#MEMS...");
         if (memsInit()) {
+          state |= STATE_MEMS_READY;
           Serial.println("OK");
         } else {
           Serial.println("NO");
@@ -534,12 +535,12 @@ private:
 #if USE_MPU6050
     void processMEMS()
     {
-      if (state & STATE_MEMS_READY) {
         int acc[3];
-        if (memsRead(acc)) {
+        int temp; // device temperature (in 0.1 celcius degree)
+        if (memsRead(acc, 0, 0, &temp)) {
           logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
+          logData(PID_MEMS_TEMP, temp);
         }
-      }
     }
 #endif
     void processGPS()
