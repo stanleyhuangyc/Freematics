@@ -535,10 +535,10 @@ private:
     void processMEMS()
     {
       if (state & STATE_MEMS_READY) {
-        MEMS_DATA mems;
-        // read accelerometer data
-        memsRead(&mems);
-        logData(PID_ACC, mems.value.x_accel / ACC_DATA_RATIO, mems.value.y_accel / ACC_DATA_RATIO, mems.value.z_accel / ACC_DATA_RATIO);
+        int acc[3];
+        if (memsRead(acc)) {
+          logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
+        }
       }
     }
 #endif

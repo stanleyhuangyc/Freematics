@@ -71,6 +71,21 @@
 #define PID_ENGINE_TORQUE_PERCENTAGE 0x62
 #define PID_ENGINE_REF_TORQUE 0x63
 
+// non-OBD/custom PIDs (no mode number)
+#define PID_GPS_LATITUDE 0xA
+#define PID_GPS_LONGITUDE 0xB
+#define PID_GPS_ALTITUDE 0xC
+#define PID_GPS_SPEED 0xD
+#define PID_GPS_HEADING 0xE
+#define PID_GPS_SAT_COUNT 0xF
+#define PID_GPS_TIME 0x10
+#define PID_GPS_DATE 0x11
+#define PID_ACC 0x20
+#define PID_GYRO 0x21
+#define PID_COMPASS 0x22
+#define PID_MEMS_TEMP 0x23
+#define PID_BATTERY_VOLTAGE 0x24
+
 typedef enum {
     PROTO_AUTO = 0,
     PROTO_ISO_9141_2 = 3,
@@ -101,10 +116,8 @@ typedef struct {
     int16_t heading;
 } GPS_DATA;
 
-typedef union
+typedef struct
 {
-  struct
-  {
     uint8_t x_accel_h;
     uint8_t x_accel_l;
     uint8_t y_accel_h;
@@ -119,18 +132,7 @@ typedef union
     uint8_t y_gyro_l;
     uint8_t z_gyro_h;
     uint8_t z_gyro_l;
-  } reg;
-  struct
-  {
-    int x_accel;
-    int y_accel;
-    int z_accel;
-    int temperature;
-    int x_gyro;
-    int y_gyro;
-    int z_gyro;
-  } value;
-} MEMS_DATA;
+} MPU6050_READOUT_DATA;
 
 #define MPU6050_I2C_ADDRESS 0x68
 #define MPU6050_ACCEL_XOUT_H       0x3B   // R
@@ -201,8 +203,8 @@ public:
 	void xbPurge();
 	// initialize MEMS
 	bool memsInit();
-	// read out MEMS data
-	bool memsRead(MEMS_DATA* accel_t_gyro);
+	// read out MEMS data (acc for accelerometer x/y/z, gyr for gyroscope x/y/z, temp in 0.1 celcius degree)
+	bool memsRead(int* acc, int* gyr = 0, int* temp = 0);
 	// initialize OBD-II connection
 	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
 	// un-initialize OBD-II connection
@@ -236,13 +238,14 @@ protected:
 	char* getResponse(byte& pid, char* buffer, byte bufsize);
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
-	virtual void dataIdleLoop() { delay(1); }
+	virtual void dataIdleLoop() { delay(10); }
 	OBD_STATES m_state;
 private:
 	byte getVersion();
 	bool MPU6050_read(int start, uint8_t *buffer, int size);
 	bool MPU6050_write(int start, const uint8_t *pData, int size);
 	bool MPU6050_write_reg(int reg, uint8_t data);
+	void MPU6050_store(int* pdata, uint8_t data_l, uint8_t data_h);
 	uint8_t getPercentageValue(char* data)
 	{
 		return (uint16_t)hex2uint8(data) * 100 / 255;

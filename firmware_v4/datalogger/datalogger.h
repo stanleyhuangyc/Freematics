@@ -5,21 +5,7 @@
 * Visit http://freematics.com for more information
 *************************************************************************/
 
-#define PID_GPS_LATITUDE 0xA
-#define PID_GPS_LONGITUDE 0xB
-#define PID_GPS_ALTITUDE 0xC
-#define PID_GPS_SPEED 0xD
-#define PID_GPS_HEADING 0xE
-#define PID_GPS_SAT_COUNT 0xF
-#define PID_GPS_TIME 0x10
-#define PID_GPS_DATE 0x11
-
-#define PID_ACC 0x20
-#define PID_GYRO 0x21
-#define PID_COMPASS 0x22
-#define PID_MEMS_TEMP 0x23
-#define PID_BATTERY_VOLTAGE 0x24
-
+// additional custom PID for data logger
 #define PID_DATA_SIZE 0x80
 
 #if ENABLE_DATA_OUT
