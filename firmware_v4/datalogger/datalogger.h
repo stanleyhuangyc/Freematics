@@ -1,7 +1,7 @@
 /*************************************************************************
 * Telematics Data Logger Class
 * Distributed under BSD license
-* Written by Stanley Huang <stanleyhuangyc@gmail.com>
+* Written by Stanley Huang <support@freematics.com.au>
 * Visit http://freematics.com for more information
 *************************************************************************/
 
