@@ -266,12 +266,12 @@ void loop()
       } else {
         // no GPS connected 
         int index = one.openFile(0);
-        if (one.openFile(0) != 0) {
+        if (index != 0) {
           one.state |= STATE_FILE_READY;
           SerialRF.print("FILE ");
           SerialRF.println(index);
         } else {
-            SerialRF.println("File error");
+          SerialRF.println("File error");
         }
       }
     }
