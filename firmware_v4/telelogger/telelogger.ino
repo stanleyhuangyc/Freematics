@@ -16,8 +16,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
-#include "FreematicsONE.h"
-#include "FreematicsMPU6050.h"
+#include <FreematicsONE.h>
+#include <FreematicsMPU6050.h>
 #include "config.h"
 #include "datalogger.h"
 
