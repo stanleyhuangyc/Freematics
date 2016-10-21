@@ -17,6 +17,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
+#include <FreematicsMPU6050.h>
 #include "config.h"
 #include "datalogger.h"
 
@@ -32,6 +33,7 @@ static uint16_t lastUTC = 0;
 static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
 static uint16_t connCount = 0;
+static char vin[20] = {0};
 
 typedef enum {
     WIFI_DISCONNECTED = 0,
@@ -215,7 +217,7 @@ public:
     byte connErrors;
 };
 
-class CTeleLogger : public COBDWIFI, public CDataLogger
+class CTeleLogger : public COBDWIFI, public CMPU6050, public CDataLogger
 {
 public:
     CTeleLogger():state(0),channel(0) {}
@@ -231,14 +233,26 @@ public:
 
         // initialize OBD communication
         Serial.print("#OBD..");
-        setTarget(TARGET_OBD);
-        do {
+        for (uint32_t t = millis(); millis() - t < OBD_CONN_TIMEOUT; ) {
             Serial.print('.');
-        } while (!init());
-        // display OBD firmware version
-        Serial.print("VER ");
-        Serial.println(version);
-        state |= STATE_OBD_READY;
+            if (init()) {
+              state |= STATE_OBD_READY;
+              break;              
+            }
+        }
+        if (state & STATE_OBD_READY) {
+          Serial.print("VER ");
+          Serial.println(version);
+        } else {
+          Serial.println("NO"); 
+        }
+
+        // retrieve VIN        
+        if (getVIN(buffer, sizeof(buffer))) {
+          snprintf_P(vin, sizeof(vin), PSTR("%s"), buffer);
+          Serial.print("#VIN:");
+          Serial.println(vin);
+        }
 
 #if USE_MPU6050
         // start I2C communication 
@@ -255,9 +269,12 @@ public:
 
 #if USE_GPS
         // start serial communication with GPS receive
+        Serial.print("#GPS...");
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_READY;
-          Serial.println("#GPS...OK");
+          Serial.println("OK");
+        } else {
+          Serial.println("NO");
         }
 #endif
 
@@ -296,22 +313,9 @@ public:
     {
         // action == 0 for joining a channel
         // action == 1 for leaving a channel
-#if ENABLE_DATA_CACHE
-      char *vin = cache;
-#else
-      char vin[240];
-#endif
       if (action == 0) {
         // get some info if it is about to joining a channel
         setTarget(TARGET_OBD);
-        // retrieve VIN through OBD
-#if ENABLE_DATA_CACHE
-        getVIN(cache, MAX_CACHE_SIZE);
-#else
-        getVIN(vin, sizeof(vin));
-#endif
-        Serial.print("#VIN:");
-        Serial.println(vin);
       }
       wifiState = WIFI_READY;
       for (;;) {
@@ -438,7 +442,7 @@ private:
                 Serial.print("Sending ");
                 Serial.print(cacheBytes);
                 Serial.println(" bytes");
-                cacheBytes = 0;
+                purgeCache();
                 wifiState = WIFI_SENDING;
               } else {
                 Serial.println("Request error");
@@ -589,10 +593,15 @@ private:
         // regularly check if we can get any OBD data
         for (;;) {
             int value;
-            if (readPID(PID_RPM, value))
-                break;
-            // put MCU into deep sleep mode for some time
+            Serial.print('.');
+            if (readPID(PID_SPEED, value)) {
+              // a successful readout
+              break;
+            }
+            enterLowPowerMode();
+            // deep sleep for 4 seconds
             sleep(4);
+            leaveLowPowerMode();
         }
         // we are able to get OBD data again
         // reset the device

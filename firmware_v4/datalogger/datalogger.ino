@@ -214,9 +214,15 @@ public:
         // check if OBD is accessible again
         for (;;) {
             int value;
-            if (readPID(PID_RPM, value))
-                break;
-            sleep(2);
+            Serial.print('.');
+            if (readPID(PID_SPEED, value)) {
+              // a successful readout
+              break;
+            }
+            enterLowPowerMode();
+            // deep sleep for 4 seconds
+            sleep(4);
+            leaveLowPowerMode();
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0

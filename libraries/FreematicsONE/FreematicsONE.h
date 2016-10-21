@@ -170,8 +170,10 @@ public:
 	void end();
 	// get connection state
 	OBD_STATES getState() { return m_state; }
-	// put OBD chip into low power mode
-	void lowPowerMode();
+	// enter low power mode
+	void enterLowPowerMode();
+	// leave low power mode
+	void leaveLowPowerMode();
 	// set working protocol (default auto)
 	bool setProtocol(OBD_PROTOCOLS h = PROTO_AUTO);
 	// clear diagnostic trouble code
