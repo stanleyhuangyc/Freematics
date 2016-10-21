@@ -200,6 +200,10 @@ public:
     uint32_t dataTime;
     uint32_t dataSize;
 #if ENABLE_DATA_CACHE
+    void purgeCache()
+    {
+      cacheBytes = 0;
+    }
     char cache[MAX_CACHE_SIZE];
     int cacheBytes;
 #endif

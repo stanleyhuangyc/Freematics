@@ -67,7 +67,7 @@ byte hex2uint8(const char *p)
 void COBDSPI::sendQuery(byte pid)
 {
 	char cmd[8];
-	sprintf(cmd, "%02X%02X\r", dataMode, pid);
+	sprintf_P(cmd, PSTR("%02X%02X\r"), dataMode, pid);
 #ifdef DEBUG
 	debugOutput(cmd);
 #endif
@@ -213,7 +213,7 @@ bool COBDSPI::setProtocol(OBD_PROTOCOLS h)
 	if (h == PROTO_AUTO) {
 		write("ATSP00\r");
 	} else {
-		sprintf(buf, "ATSP%d\r", h);
+		sprintf_P(buf, PSTR("ATSP%d\r"), h);
 		write(buf);
 	}
 	if (receive(buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0 && strstr(buf, "OK"))
@@ -222,11 +222,17 @@ bool COBDSPI::setProtocol(OBD_PROTOCOLS h)
 		return false;
 }
 
-void COBDSPI::lowPowerMode()
+void COBDSPI::enterLowPowerMode()
 {
 	char buf[32];
 	setTarget(TARGET_OBD);
 	sendCommand("ATLP\r", buf, sizeof(buf));
+}
+
+void COBDSPI::leaveLowPowerMode()
+{
+	// simply send any command to wake the device up
+	getVoltage();
 }
 
 float COBDSPI::getVoltage()
@@ -456,7 +462,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 		char *p = buffer;
 		byte results = 0;
 		for (byte n = 0; n < count; n++) {
-			p += sprintf(p, "$OBD%02X%02X\r", dataMode, pid[n]);
+			p += sprintf_P(p, PSTR("$OBD%02X%02X\r"), dataMode, pid[n]);
 			if (version > 10) {
 				*(p++) = 0x1b;
 			}
@@ -506,7 +512,7 @@ bool COBDSPI::initGPS(unsigned long baudrate)
 	m_target = TARGET_OBD;
 	if (baudrate) {
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
-			sprintf(buf, "ATBR2%lu\r", baudrate);
+			sprintf_P(buf, PSTR("ATBR2%lu\r"), baudrate);
 			if (sendCommand(buf, buf, sizeof(buf))) {
 				delay(200);
 				if (getGPSRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
@@ -618,7 +624,7 @@ void COBDSPI::sleep(uint8_t seconds) {
 bool COBDSPI::xbBegin(unsigned long baudrate)
 {
 	char buf[16];
-	sprintf(buf, "ATBR1%lu\r", baudrate);
+	sprintf_P(buf, PSTR("ATBR1%lu\r"), baudrate);
 	setTarget(TARGET_OBD);
 	if (sendCommand(buf, buf, sizeof(buf))) {
 		//xbPurge();

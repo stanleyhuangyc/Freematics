@@ -16,8 +16,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <FreematicsONE.h>
-#include <FreematicsMPU6050.h>
+#include "FreematicsONE.h"
+#include "FreematicsMPU6050.h"
 #include "config.h"
 #include "datalogger.h"
 
@@ -50,7 +50,7 @@ typedef enum {
 
 typedef struct {
   float lat;
-  float lon;
+  float lng;
   uint8_t year; /* year past 2000, e.g. 15 for 2015 */
   uint8_t month;
   uint8_t day;
@@ -59,7 +59,7 @@ typedef struct {
   uint8_t second;
 } GSM_LOCATION;
 
-class COBDGSM : public COBDSPI, public CMPU6050 {
+class COBDGSM : public COBDSPI {
 public:
     COBDGSM():gprsState(GPRS_DISABLED),connErrors(0) { buffer[0] = 0; }
     void toggleGSM()
@@ -184,7 +184,7 @@ public:
         char *p;
         if (!(p = strchr(buffer, ':'))) break;
         if (!(p = strchr(p, ','))) break;
-        loc->lon = atof(++p);
+        loc->lng = atof(++p);
         if (!(p = strchr(p, ','))) break;
         loc->lat = atof(++p);
         if (!(p = strchr(p, ','))) break;
@@ -201,6 +201,7 @@ public:
         loc->second = atoi(++p);
         return true;
       } while(0);
+      Serial.println(buffer);
       return false;
     }
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
@@ -237,7 +238,7 @@ public:
     byte connErrors;
 };
 
-class CTeleLogger : public COBDGSM, public CDataLogger
+class CTeleLogger : public COBDGSM, public CMPU6050, public CDataLogger
 {
 public:
     CTeleLogger():state(0),channel(0) {}
@@ -245,11 +246,13 @@ public:
     {
         delay(500);
         
+        // initialize hardware serial (for USB or BLE)
         Serial.begin(115200);
 
         // this will init SPI communication
         begin();
 
+        // initialize OBD communication
         Serial.print("#OBD..");
         for (uint32_t t = millis(); millis() - t < OBD_CONN_TIMEOUT; ) {
             Serial.print('.');
@@ -273,7 +276,9 @@ public:
         }
 
 #if USE_MPU6050
+        // start I2C communication 
         Wire.begin();
+        // initialize MPU-6050
         Serial.print("#MEMS...");
         if (memsInit()) {
           state |= STATE_MEMS_READY;
@@ -284,6 +289,7 @@ public:
 #endif
 
 #if USE_GPS
+        // start serial communication with GPS receive
         Serial.print("#GPS...");
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_READY;
@@ -293,6 +299,7 @@ public:
         }
 #endif
 
+        // initialize SIM800L xBee module (if present)
         Serial.print("#GSM...");
         if (initGSM()) {
             Serial.println("OK");
@@ -307,6 +314,15 @@ public:
             Serial.println("OK");
         } else {
             Serial.println(buffer);
+        }
+        
+        // GSM location
+        GSM_LOCATION loc;
+        if (getLocation(&loc)) {
+          Serial.print("#GSMLOC:");
+          Serial.print(loc.lat);
+          Serial.print(',');
+          Serial.println(loc.lng);
         }
         
         // init HTTP
@@ -370,6 +386,23 @@ public:
     }
     void loop()
     {
+        if (millis() > nextConnTime) {
+          processGPRS();
+        }
+        if (connErrors >= MAX_CONN_ERRORS) {
+          // reset GPRS 
+          Serial.print(connErrors);
+          Serial.println("Reset GPRS...");
+          initGSM();
+          setupGPRS(APN);
+          if (httpInit()) {
+            Serial.println("OK"); 
+          } else {
+            Serial.println(buffer); 
+          }
+          connErrors = 0;
+        }
+      
         if (state & STATE_OBD_READY) {
           processOBD();
         }
@@ -386,26 +419,8 @@ public:
         }
 #endif
 
-        if (millis() > nextConnTime) {
-          processGPRS();
-        } else {
-#if ENABLE_DATA_LOG
-          flushData();
-#endif
-        }
-        if (connErrors >= MAX_CONN_ERRORS) {
-          // reset GPRS 
-          Serial.print(connErrors);
-          Serial.println("Reset GPRS...");
-          initGSM();
-          setupGPRS(APN);
-          if (httpInit()) {
-            Serial.println("OK"); 
-          } else {
-            Serial.println(buffer); 
-          }
-          connErrors = 0;
-        }
+        // log battery voltage (from voltmeter), data in 0.01v
+        logData(PID_BATTERY_VOLTAGE, (int)(getVoltage() * 100));
     }
 private:
     void processGPRS()
@@ -426,7 +441,7 @@ private:
                   Serial.print("POST:");
                   Serial.println(cacheBytes);
                   gprsState = GPRS_HTTP_CONNECTING;
-                  cacheBytes = 0;
+                  purgeCache();
                 } else {
                   Serial.println("POST FAIL");
                   Serial.println(buffer);
@@ -468,7 +483,7 @@ private:
     void processOBD()
     {
         // poll OBD-II PIDs
-        const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
+        static const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
         int values[sizeof(pids)] = {0};
         // read multiple OBD-II PIDs
         byte results = readPID(pids, sizeof(pids), values);
@@ -478,7 +493,7 @@ private:
           }
         }
         static byte index2 = 0;
-        const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
+        static const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
         byte pid = pgm_read_byte(pidTier2 + index2);
         int value;
         if (readPID(pid, value)) {
@@ -493,9 +508,13 @@ private:
     void processMEMS()
     {
         int acc[3];
+        int gyr[3];
+        int mag[3];
         int temp; // device temperature (in 0.1 celcius degree)
-        if (memsRead(acc, 0, 0, &temp)) {
+        if (memsRead(acc, gyr, mag, &temp)) {
           logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
+          //logData(PID_GYRO, gyr[0] / GYRO_DATA_RATIO, gyr[1] / GYRO_DATA_RATIO, gyr[2] / GYRO_DATA_RATIO);
+          //logData(PID_COMPASS, mag[0] / COMPASS_DATA_RATIO, mag[1] / COMPASS_DATA_RATIO, mag[2] / COMPASS_DATA_RATIO);
           logData(PID_MEMS_TEMP, temp);
         }
     }
@@ -532,7 +551,7 @@ private:
           // reconnected
           return; 
         }
-        Serial.println("Sleeping");
+        Serial.print("Sleeping");
         state &= ~STATE_OBD_READY;
         joinChannel(1); // leave channel
         toggleGSM(); // turn off GSM power
@@ -542,20 +561,20 @@ private:
         state |= STATE_SLEEPING;
         for (;;) {
             int value;
-            if (readPID(PID_RPM, value))
-                break;
-            lowPowerMode();
+            Serial.print('.');
+            if (readPID(PID_SPEED, value)) {
+              // a successful readout
+              break;
+            }
+            enterLowPowerMode();
+            // deep sleep for 4 seconds
             sleep(4);
+            leaveLowPowerMode();
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
     }
-    void dataIdleLoop()
-    {
-      delay(10);
-    }
-    
     byte state;
     byte channel;
 };
