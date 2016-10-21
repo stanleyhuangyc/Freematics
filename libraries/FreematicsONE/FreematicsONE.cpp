@@ -68,10 +68,7 @@ void COBDSPI::sendQuery(byte pid)
 {
 	char cmd[8];
 	sprintf_P(cmd, PSTR("%02X%02X\r"), dataMode, pid);
-#ifdef DEBUG
-	debugOutput(cmd);
-#endif
-       setTarget(TARGET_OBD);
+    setTarget(TARGET_OBD);
 	write(cmd);
 }
 
@@ -328,7 +325,7 @@ void COBDSPI::debugOutput(const char *s)
 	DEBUG.print('[');
 	DEBUG.print(millis());
 	DEBUG.print(']');
-	DEBUG.print(s);
+	DEBUG.println(s);
 }
 #endif
 
@@ -413,9 +410,19 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 		if (eof) n--;
 	}
 	buffer[n] = 0;
-	if (m_target == TARGET_OBD && !memcmp(buffer, "$OBDTIMEOUT", 11)) {
-		// ECU not responding
-		return 0;
+	if (m_target == TARGET_OBD) {
+		if (!memcmp(buffer, "$OBDTIMEOUT", 11)) {
+			// ECU not responding
+#ifdef DEBUG
+			debugOutput("ECU TIMEOUT");
+#endif
+			return 0;
+		}
+#ifdef DEBUG
+		if (memcmp(buffer + 5, "NO DATA", 7)) {
+			debugOutput(buffer + 4);
+		}
+#endif
 	}
 	return n;
 }
