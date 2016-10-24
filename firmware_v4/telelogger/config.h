@@ -8,14 +8,14 @@
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
 #define ENABLE_DATA_CACHE 1
-#define MAX_CACHE_SIZE 256
-#define USE_FRIENDLY_PID_NAME 1
+#define CACHE_SIZE 320 /* bytes */
 
 /**************************************
 * GPRS/network settings
 **************************************/
 #define APN "connect"
 #define HOST_URL "http://live.freematics.com.au"
+#define USE_GSM_LOCATION 1
 
 /**************************************
 * MEMS sensors
