@@ -17,7 +17,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
-#include <FreematicsMPU6050.h>
 #include "config.h"
 #include "datalogger.h"
 
@@ -237,7 +236,12 @@ public:
     byte connErrors;
 };
 
-class CTeleLogger : public COBDGSM, public CMPU6050, public CDataLogger
+class CTeleLogger : public COBDGSM, public CDataLogger
+#if USE_MPU6050
+,public CMPU6050
+#elif USE_MPU9250
+,public CMPU9250
+#endif
 {
 public:
     CTeleLogger():state(0),channel(0) {}
@@ -274,7 +278,7 @@ public:
           Serial.println(vin);
         }
 
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
         // start I2C communication 
         Wire.begin();
         // initialize MPU-6050
@@ -393,7 +397,7 @@ public:
 #endif
         }
 
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
         if (state & STATE_MEMS_READY) {
             processMEMS();  
         }
@@ -442,7 +446,8 @@ private:
                   // success
                   Serial.print(cacheBytes - 1);
                   Serial.println(" bytes");
-                  //Serial.println(cache);                  
+                  // output payload data to serial
+                  Serial.println(cache);               
                   gprsState = GPRS_HTTP_CONNECTING;
                   purgeCache();
                 } else {
@@ -499,6 +504,7 @@ private:
         static const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
         byte pid = pgm_read_byte(pidTier2 + index2);
         int value;
+        // read a single OBD-II PID
         if (readPID(pid, value)) {
           logData(0x100 | pid, value);
         }
@@ -507,7 +513,7 @@ private:
             reconnect();
         }
     }
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
     void processMEMS()
     {
         int acc[3];
@@ -526,6 +532,7 @@ private:
     void processGPS()
     {
         GPS_DATA gd = {0};
+        // read parsed GPS data
         if (getGPSData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
               dataTime = millis();
@@ -578,6 +585,7 @@ private:
         initGPS(0); // turn off GPS power
 #endif
         state |= STATE_SLEEPING;
+        // regularly check if we can get any OBD data
         for (;;) {
             int value;
             Serial.print('.');
@@ -590,6 +598,7 @@ private:
             sleep(4);
             leaveLowPowerMode();
         }
+        // we are able to get OBD data again
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();

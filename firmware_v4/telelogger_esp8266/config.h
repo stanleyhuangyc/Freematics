@@ -12,7 +12,7 @@
 #define STREAM_FORMAT FORMAT_TEXT
 
 #define ENABLE_DATA_CACHE 1
-#define MAX_CACHE_SIZE 256
+#define CACHE_SIZE 320 /* bytes */
 
 // change this to your own
 #define WIFI_SSID "YOUR_SSID"
@@ -24,6 +24,7 @@
 * Accelerometer & Gyro
 **************************************/
 #define USE_MPU6050 1
+#define USE_MPU9250 0
 #define ACC_DATA_RATIO 172
 #define GYRO_DATA_RATIO 256
 #define COMPASS_DATA_RATIO 8
@@ -43,7 +44,5 @@
 #define MAX_HTTP_CONNS 99
 
 #define SD_CS_PIN 10
-
-#define USE_FRIENDLY_PID_NAME 1
 
 #endif // CONFIG_H_INCLUDED

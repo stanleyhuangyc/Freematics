@@ -5,6 +5,9 @@
 * (C)2012-2016 Stanley Huang <stanleyhuangyc@gmail.com>
 *************************************************************************/
 
+#include "FreematicsMPU6050.h"
+#include "FreematicsMPU9250.h"
+
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
 #define OBD_TIMEOUT_LONG 10000 /* ms */
 #define OBD_TIMEOUT_GPS 200 /* ms */
