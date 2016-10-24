@@ -17,7 +17,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
-#include <FreematicsMPU6050.h>
 #include "config.h"
 #include "datalogger.h"
 
@@ -217,7 +216,13 @@ public:
     byte connErrors;
 };
 
-class CTeleLogger : public COBDWIFI, public CMPU6050, public CDataLogger
+
+class CTeleLogger : public COBDWIFI, public CDataLogger
+#if USE_MPU6050
+,public CMPU6050
+#elif USE_MPU9250
+,public CMPU9250
+#endif
 {
 public:
     CTeleLogger():state(0),channel(0) {}
@@ -248,13 +253,13 @@ public:
         }
 
         // retrieve VIN        
-        if (getVIN(buffer, sizeof(buffer))) {
+        if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
           snprintf_P(vin, sizeof(vin), PSTR("%s"), buffer);
           Serial.print("#VIN:");
           Serial.println(vin);
         }
 
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
         // start I2C communication 
         Wire.begin();
         // initialize MPU-6050
@@ -397,8 +402,8 @@ public:
         }
 #endif
 
-#if USE_MPU6050
-        // process accelerometer data if available
+#if USE_MPU6050 || USE_MPU9250
+        // process MEMS data if available
         if (state & STATE_MEMS_READY) {
             processMEMS();  
         }
@@ -514,17 +519,18 @@ private:
     void processOBD()
     {
         // poll OBD-II PIDs
-        const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
+        static const byte pids[]= {PID_RPM, PID_SPEED, PID_ENGINE_LOAD, PID_THROTTLE};
         int values[sizeof(pids)] = {0};
         // read multiple OBD-II PIDs
         byte results = readPID(pids, sizeof(pids), values);
+        dataTime = millis();
         if (results == sizeof(pids)) {
           for (byte n = 0; n < sizeof(pids); n++) {
             logData(0x100 | pids[n], values[n]);
           }
         }
         static byte index2 = 0;
-        const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
+        static const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
         byte pid = pgm_read_byte(pidTier2 + index2);
         int value;
         // read a single OBD-II PID
@@ -536,13 +542,18 @@ private:
             reconnect();
         }
     }
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
     void processMEMS()
     {
         int acc[3];
+        int gyr[3];
+        int mag[3];
         int temp; // device temperature (in 0.1 celcius degree)
-        if (memsRead(acc, 0, 0, &temp)) {
+        if (memsRead(acc, gyr, mag, &temp)) {
+          dataTime = millis();
           logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
+          //logData(PID_GYRO, gyr[0] / GYRO_DATA_RATIO, gyr[1] / GYRO_DATA_RATIO, gyr[2] / GYRO_DATA_RATIO);
+          //logData(PID_COMPASS, mag[0] / COMPASS_DATA_RATIO, mag[1] / COMPASS_DATA_RATIO, mag[2] / COMPASS_DATA_RATIO);
           logData(PID_MEMS_TEMP, temp);
         }
     }
@@ -571,7 +582,7 @@ private:
             //Serial.println(gd.time);
         } else {
           Serial.println("GPS error");
-          delay(500);
+          delay(200);
         }
     }
     void reconnect()

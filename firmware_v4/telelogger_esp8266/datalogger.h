@@ -67,10 +67,10 @@ public:
       byte n;
       if (absolute || dataTime >= m_lastDataTime + 60000) {
         // absolute timestamp
-        n = sprintf(buf, "#%lu", dataTime);
+        n = sprintf_P(buf, PSTR("#%lu"), dataTime);
       } else {
         // relative timestamp
-        n += sprintf(buf, "%u", (unsigned int)(dataTime - m_lastDataTime));
+        n += sprintf_P(buf, PSTR("%u"), (unsigned int)(dataTime - m_lastDataTime));
       }
       buf[n++] = ',';      
       return n;
@@ -90,13 +90,31 @@ public:
     void dispatch(const char* buf, byte len)
     {
 #if ENABLE_DATA_CACHE
-        if (cacheBytes + len < MAX_CACHE_SIZE - 13) {
-          cacheBytes += genTimestamp(cache + cacheBytes, cacheBytes == 0);
+        // reserve some space for timestamp, ending white space and zero terminator
+        int l = cacheBytes + len + 12 - CACHE_SIZE;
+        if (l >= 0) {
+          // cache full
+#if CACHE_DISCARD
+          // discard the oldest data
+          for (; cache[l] && cache[l] != ' '; l++);
+          if (cache[l]) {
+            cacheBytes -= l;
+            memcpy(cache, cache + l + 1, cacheBytes);
+          } else {
+            cacheBytes = 0;  
+          }
+#else
+          return;        
+#endif
+        }
+        // add new data at the end
+        cacheBytes += genTimestamp(cache + cacheBytes, cacheBytes == 0);
+        if (cacheBytes + len < CACHE_SIZE - 1) {
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
           cache[cacheBytes++] = ' ';
-          cache[cacheBytes] = 0;
         }
+        cache[cacheBytes] = 0;
 #else
         //char tmp[12];
         //byte n = genTimestamp(tmp, dataTime >= m_lastDataTime + 100);
@@ -123,7 +141,7 @@ public:
     {
         char buf[16];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%d", value) + n;
+        byte len = sprintf_P(buf + n, PSTR("%d"), value) + n;
         dispatch(buf, len);
         record(buf, len);
     }
@@ -131,7 +149,7 @@ public:
     {
         char buf[20];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%ld", value) + n;
+        byte len = sprintf_P(buf + n, PSTR("%ld"), value) + n;
         dispatch(buf, len);
         record(buf, len);
     }
@@ -139,7 +157,7 @@ public:
     {
         char buf[20];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%lu", value) + n;
+        byte len = sprintf_P(buf + n, PSTR("%lu"), value) + n;
         dispatch(buf, len);
         record(buf, len);
     }
@@ -147,7 +165,7 @@ public:
     {
         char buf[24];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%d,%d,%d", value1, value2, value3) + n;
+        byte len = sprintf_P(buf + n, PSTR("%d,%d,%d"), value1, value2, value3) + n;
         dispatch(buf, len);
         record(buf, len);
     }
@@ -155,7 +173,7 @@ public:
     {
         char buf[24];
         byte len = translatePIDName(pid, buf);
-        len += sprintf(buf + len, "%d.%06lu", (int)(value / 1000000), abs(value) % 1000000);
+        len += sprintf_P(buf + len, PSTR("%d.%06lu"), (int)(value / 1000000), abs(value) % 1000000);
         dispatch(buf, len);
         record(buf, len);
     }
@@ -168,7 +186,7 @@ public:
         dataSize = 0;
         if (SD.exists(filename)) {
             for (fileIndex = 1; fileIndex; fileIndex++) {
-                sprintf(filename + 9, FILE_NAME_FORMAT, fileIndex);
+                sprintf_P(filename + 9, PSTR(FILE_NAME_FORMAT), fileIndex);
                 if (!SD.exists(filename)) {
                     break;
                 }
@@ -178,7 +196,7 @@ public:
         } else {
             SD.mkdir(filename);
             fileIndex = 1;
-            sprintf(filename + 9, FILE_NAME_FORMAT, 1);
+            sprintf_P(filename + 9, PSTR(FILE_NAME_FORMAT), 1);
         }
 
         sdfile = SD.open(filename, FILE_WRITE);
@@ -204,7 +222,7 @@ public:
     {
       cacheBytes = 0;
     }
-    char cache[MAX_CACHE_SIZE];
+    char cache[CACHE_SIZE];
     int cacheBytes;
 #endif
 private:
@@ -220,7 +238,7 @@ private:
             }
         }
 #endif
-        return sprintf(text, "%X,", pid);
+        return sprintf_P(text, PSTR("%X,"), pid);
     }
     uint32_t m_lastDataTime;
 };
