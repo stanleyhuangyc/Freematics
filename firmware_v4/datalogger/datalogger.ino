@@ -17,7 +17,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
-#include <FreematicsMPU6050.h>
 #include "config.h"
 #if ENABLE_DATA_LOG
 #include <SD.h>
@@ -50,7 +49,12 @@ int acc[3]; // accelerometer x/y/z
 int temp; // device temperature (in 0.1 celcius degree)
 #endif
 
-class ONE : public COBDSPI, public CMPU6050, public CDataLogger
+class ONE : public COBDSPI, public CDataLogger
+#if USE_MPU6050
+,public CMPU6050
+#elif USE_MPU9250
+,public CMPU9250
+#endif
 {
 public:
     ONE():state(0) {}
@@ -73,7 +77,7 @@ public:
         }
 #endif
 
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
         SerialRF.print("MEMS ");
         Wire.begin();
         if (memsInit()) {
@@ -231,7 +235,7 @@ public:
     void dataIdleLoop()
     {
       // do something while waiting for data on SPI
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
       if (state & STATE_MEMS_READY) {
         // load accelerometer and temperature data
         memsRead(acc, 0, 0, &temp);
