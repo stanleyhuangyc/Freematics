@@ -44,7 +44,7 @@ static uint16_t fileIndex = 0;
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
 
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
 int acc[3]; // accelerometer x/y/z
 int temp; // device temperature (in 0.1 celcius degree)
 #endif
@@ -63,7 +63,7 @@ public:
         state = 0;
         
         begin();
-        SerialRF.print("Firmware Version ");
+        SerialRF.print("Firmware Ver. ");
         SerialRF.println(version);
 
 #if ENABLE_DATA_LOG
@@ -78,8 +78,12 @@ public:
 #endif
 
 #if USE_MPU6050 || USE_MPU9250
-        SerialRF.print("MEMS ");
         Wire.begin();
+#if USE_MPU6050
+        SerialRF.print("MPU6050 ");
+#else
+        SerialRF.print("MPU9250 ");
+#endif
         if (memsInit()) {
           state |= STATE_MEMS_READY;
           SerialRF.println("OK");
@@ -149,7 +153,7 @@ public:
 #endif
     }
 #endif
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
     void logMEMSData()
     {
         // log the loaded MEMS data
@@ -323,7 +327,7 @@ void loop()
         one.dataIdleLoop();
       }
     }
-#if USE_MPU6050
+#if USE_MPU6050 || USE_MPU9250
     if (one.state & STATE_MEMS_READY) {
       one.logMEMSData();
     }
