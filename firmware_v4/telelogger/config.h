@@ -8,7 +8,7 @@
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
 #define ENABLE_DATA_CACHE 1
-#define CACHE_SIZE 320 /* bytes */
+#define CACHE_SIZE 384 /* bytes */
 
 /**************************************
 * GPRS/network settings
@@ -20,8 +20,8 @@
 /**************************************
 * MEMS sensors
 **************************************/
-#define USE_MPU6050 1
-#define USE_MPU9250 0
+#define USE_MPU6050 0
+#define USE_MPU9250 1
 #define ACC_DATA_RATIO 172
 #define GYRO_DATA_RATIO 256
 #define COMPASS_DATA_RATIO 8
