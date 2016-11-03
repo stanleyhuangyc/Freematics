@@ -338,11 +338,9 @@ public:
     void signInOut(byte action)
     {
       int signal;
-      if (action == 0) {
-        Serial.print("#SIGNAL:");
-        signal = getSignal();
-        Serial.println(signal);
-      }
+      Serial.print("#SIGNAL:");
+      signal = getSignal();
+      Serial.println(signal);
       gprsState = GPRS_IDLE;
       for (;;) {
         char *p = buffer;
@@ -361,7 +359,7 @@ public:
         do {
           delay(500);
           Serial.print('.');
-        } while (!httpIsConnected() && action == 0);
+        } while (!httpIsConnected());
         if (action != 0) return;
         if (gprsState != GPRS_HTTP_ERROR && httpRead()) {
           char *p = strstr(buffer, "CH:");
@@ -410,6 +408,9 @@ public:
 
         if (state & STATE_OBD_READY) {
           processOBD();
+          if (gprsState == GPRS_IDLE && errors > 10) {
+              reconnect();
+          }
         }
 
         if (millis() > nextConnTime) {
@@ -509,18 +510,15 @@ private:
           logData(0x100 | pid, value);
         }
         index2 = (index2 + 1) % sizeof(pidTier2);
-        if (errors > 10) {
-            reconnect();
-        }
     }
 #if USE_MPU6050 || USE_MPU9250
     void processMEMS()
     {
         int acc[3];
-        int gyr[3];
-        int mag[3];
+        //int gyr[3];
+        //int mag[3];
         int temp; // device temperature (in 0.1 celcius degree)
-        if (memsRead(acc, gyr, mag, &temp)) {
+        if (memsRead(acc, 0, 0, &temp)) {
           dataTime = millis();
           logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
           //logData(PID_GYRO, gyr[0] / GYRO_DATA_RATIO, gyr[1] / GYRO_DATA_RATIO, gyr[2] / GYRO_DATA_RATIO);
@@ -577,8 +575,8 @@ private:
           // reconnected
           return; 
         }
-        Serial.print("Sleeping");
-        signInOut(1); // sign out from server
+        Serial.println("Sleeping");
+        signInOut(1); // sign out
         toggleGSM(); // turn off GSM power
 #if USE_GPS
         initGPS(0); // turn off GPS power
