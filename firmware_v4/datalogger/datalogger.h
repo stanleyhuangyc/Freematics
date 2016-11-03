@@ -65,7 +65,8 @@ public:
         n = sprintf(buf, "#%lu", dataTime);
       } else {
         // relative timestamp
-        n += sprintf(buf, "%u", (unsigned int)(dataTime - m_lastDataTime));
+        uint16_t elapsed = (unsigned int)(dataTime - m_lastDataTime);
+        n = sprintf(buf, "%u", elapsed);
       }
       buf[n++] = ',';      
       return n;
