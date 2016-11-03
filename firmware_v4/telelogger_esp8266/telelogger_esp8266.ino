@@ -83,7 +83,7 @@ public:
         if (sendWifiCommand("AT+CIFSR\r\n", 1000, "OK")) {
           char *p = strchr(buffer, '\r');
           if (p) *p = 0;
-          Serial.print(buffer);
+          Serial.println(buffer);
           // output IP address
           return true;
         } else {
@@ -299,8 +299,6 @@ public:
           Serial.print(WIFI_SSID);
           Serial.print(")...");
           if (setupWifi()) {
-              Serial.print(' ');
-              Serial.println("OK");
               break;
           } else {
               Serial.println("NO");
@@ -588,18 +586,18 @@ private:
     void reconnect()
     {
         // try to re-connect to OBD
-        if (init()) return; 
-        delay(3000);
-        if (init()) return; 
+        if (init()) {
+          // reconnected
+          return; 
+        }
         // seems we can't connect, put the device into sleeping mode
-        Serial.print("Sleeping");
-        state &= ~STATE_OBD_READY;
+        Serial.println("Sleeping");
         joinChannel(1); // leave channel
         disconnectWifi(); // disconnect from AP
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
-        Serial.println();
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;
         // regularly check if we can get any OBD data
         for (;;) {

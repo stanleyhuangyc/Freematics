@@ -578,12 +578,12 @@ private:
           return; 
         }
         Serial.print("Sleeping");
-        state &= ~STATE_OBD_READY;
-        signInOut(1); // sign out
+        signInOut(1); // sign out from server
         toggleGSM(); // turn off GSM power
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;
         // regularly check if we can get any OBD data
         for (;;) {
@@ -594,8 +594,8 @@ private:
               break;
             }
             enterLowPowerMode();
-            // deep sleep for 4 seconds
-            sleep(4);
+            // deep sleep for 8 seconds
+            sleep(8);
             leaveLowPowerMode();
         }
         // we are able to get OBD data again
