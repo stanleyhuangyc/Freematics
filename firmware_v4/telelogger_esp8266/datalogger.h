@@ -64,13 +64,16 @@ public:
     }
     byte genTimestamp(char* buf, bool absolute)
     {
-      byte n;
+      byte n = 0;
       if (absolute || dataTime >= m_lastDataTime + 60000) {
         // absolute timestamp
         n = sprintf_P(buf, PSTR("#%lu"), dataTime);
       } else {
         // relative timestamp
-        n += sprintf_P(buf, PSTR("%u"), (unsigned int)(dataTime - m_lastDataTime));
+        uint16_t elapsed = (unsigned int)(dataTime - m_lastDataTime);
+        if (elapsed) {
+          n = sprintf_P(buf, PSTR("%u"), elapsed);
+        }
       }
       buf[n++] = ',';      
       return n;
