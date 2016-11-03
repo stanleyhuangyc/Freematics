@@ -440,18 +440,21 @@ private:
           return; 
         }
         Serial.println("Sleeping");
-        state &= ~STATE_OBD_READY;
         toggleGSM(); // turn off GSM power
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;
         for (;;) {
             int value;
-            if (readPID(PID_RPM, value))
-                break;
-            lowPowerMode();
-            sleep(4);
+            if (readPID(PID_SPEED, value)) {
+              // a successful readout
+              break;
+            }
+            enterLowPowerMode();
+            sleep(8);
+            leaveLowPowerMode();
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0

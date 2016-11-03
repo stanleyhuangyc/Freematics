@@ -62,6 +62,7 @@ public:
     {
         state = 0;
         
+        delay(1000);
         begin();
         SerialRF.print("Firmware Ver. ");
         SerialRF.println(version);
@@ -153,14 +154,6 @@ public:
 #endif
     }
 #endif
-#if USE_MPU6050 || USE_MPU9250
-    void logMEMSData()
-    {
-        // log the loaded MEMS data
-        logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
-        logData(PID_MEMS_TEMP, temp);
-    }
-#endif
 #if ENABLE_DATA_LOG
     uint16_t initSD()
     {
@@ -216,9 +209,10 @@ public:
 #if ENABLE_DATA_LOG
         closeFile();
 #endif
-        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GPS_FOUND);
-        // cut off GPS power
+        // turn off GPS power
         initGPS(0);
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
+        state |= STATE_SLEEPING;
         // check if OBD is accessible again
         for (;;) {
             int value;
@@ -228,8 +222,8 @@ public:
               break;
             }
             enterLowPowerMode();
-            // deep sleep for 4 seconds
-            sleep(4);
+            // deep sleep for 8 seconds
+            sleep(8);
             leaveLowPowerMode();
         }
         // reset device
@@ -243,6 +237,8 @@ public:
       if (state & STATE_MEMS_READY) {
         // load accelerometer and temperature data
         memsRead(acc, 0, 0, &temp);
+      } else {
+        delay(10);
       }
 #endif
     }
@@ -327,16 +323,26 @@ void loop()
         one.dataIdleLoop();
       }
     }
+    
+    // log battery voltage (from voltmeter), data in 0.01v
+    int v = one.getVoltage() * 100;
+    one.dataTime = millis();
+    one.logData(PID_BATTERY_VOLTAGE, v);
+    
 #if USE_MPU6050 || USE_MPU9250
     if (one.state & STATE_MEMS_READY) {
-      one.logMEMSData();
+       // log the loaded MEMS data
+      one.logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
+      one.logData(PID_MEMS_TEMP, temp);
     }
 #endif
+
 #if USE_GPS
     if (one.state & STATE_GPS_FOUND) {
       one.logGPSData();
     }
 #endif
+
 #if ENABLE_DATA_LOG
     one.flushData();
 #endif
