@@ -229,7 +229,8 @@ void COBDSPI::enterLowPowerMode()
 void COBDSPI::leaveLowPowerMode()
 {
 	// simply send any command to wake the device up
-	getVoltage();
+	char buf[32];
+	sendCommand("ATI\r", buf, sizeof(buf), 100);
 }
 
 float COBDSPI::getVoltage()
@@ -237,7 +238,7 @@ float COBDSPI::getVoltage()
 	char buf[32];
 	setTarget(TARGET_OBD);
 	if (sendCommand("ATRV\r", buf, sizeof(buf)) > 0) {
-		return atof(buf);
+		return atof(buf + 4);
 	}
 	return 0;
 }
@@ -634,7 +635,7 @@ bool COBDSPI::xbBegin(unsigned long baudrate)
 	sprintf_P(buf, PSTR("ATBR1%lu\r"), baudrate);
 	setTarget(TARGET_OBD);
 	if (sendCommand(buf, buf, sizeof(buf))) {
-		//xbPurge();
+		xbPurge();
 		return true;
 	} else {
 		return false;

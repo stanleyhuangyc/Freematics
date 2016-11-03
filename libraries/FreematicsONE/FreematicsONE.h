@@ -137,7 +137,7 @@ public:
 	// set SPI data target
 	void setTarget(byte target) { m_target = target; }
 	// receive data (up to 255 bytes) from SPI bus
-	int receive(char* buffer, int bufsize, int timeout = OBD_TIMEOUT_LONG);
+	int receive(char* buffer, int bufsize, int timeout = OBD_TIMEOUT_SHORT);
 	// read specified OBD-II PID value
 	bool readPID(byte pid, int& result);
 	// read multiple (up to 4) OBD-II PID value
