@@ -28,8 +28,6 @@
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
-static uint16_t lastUTC = 0;
-static uint8_t lastGPSDay = 0;
 static uint32_t nextConnTime = 0;
 static uint16_t connCount = 0;
 static char vin[20] = {0};
@@ -51,6 +49,13 @@ typedef enum {
 class COBDWIFI : public COBDSPI {
 public:
     COBDWIFI():wifiState(WIFI_DISCONNECTED),connErrors(0) { buffer[0] = 0; }
+    void resetWifi()
+    {
+      sendWifiCommand("AT+RST\r\n");
+      delay(1000);
+      initWifi();
+      setupWifi();
+    }
     void disconnectWifi()
     {
       sendWifiCommand("AT+CWQAP\r\n");
@@ -58,7 +63,6 @@ public:
     bool initWifi()
     {
       // set xBee module serial baudrate
-      xbBegin(9600);
       bool success = false;
       // test the module by issuing AT command and confirming response of "OK"
       for (byte n = 0; !(success = sendWifiCommand("ATE0\r\n")) && n < 10; n++) {
@@ -98,14 +102,14 @@ public:
     void httpClose()
     {
       sendWifiCommand("AT+CIPCLOSE\r\n", 1000, "Unlink");
-      Serial.println("DISCONNECTED");
+      Serial.println("TCP closed");
     }
     void httpConnect()
     {
-      Serial.println("CONNECTING");
       // start TCP connection
       sprintf_P(buffer, PSTR("AT+CIPSTART=\"TCP\",\"%s\",%d\r\n"), SERVER_URL, SERVER_PORT);
       xbWrite(buffer);
+      Serial.print(buffer);
       // clear reception buffer
       buffer[0] = 0;
       bytesRecv = 0;
@@ -145,6 +149,7 @@ public:
       if (sendWifiCommand(buffer, 1000, ">")) {
         // send HTTP header
         xbWrite(header);
+        delay(10);
         // send POST payload if any
         if (payload) xbWrite(payload);
         buffer[0] = 0;
@@ -285,6 +290,7 @@ public:
 
         // initialize ESP8266 xBee module (if present)
         Serial.print("#ESP8266...");
+        xbBegin(9600);
         if (initWifi()) {
             Serial.println("OK");
         } else {
@@ -321,7 +327,7 @@ public:
         setTarget(TARGET_OBD);
       }
       wifiState = WIFI_READY;
-      for (;;) {
+      for (byte n = 0; ;n++) {
         // start a HTTP connection (TCP)
         httpConnect();
         do {
@@ -329,9 +335,13 @@ public:
           delay(200);
         } while (!httpIsConnected() && wifiState != WIFI_HTTP_ERROR);
         if (wifiState == WIFI_HTTP_ERROR) {
-          Serial.println("Unable to connect");
           Serial.println(buffer);
+          Serial.println("Unable to connect");
           httpClose();
+          if (n >= MAX_ERRORS_RESET) {
+            Serial.println("Reset WIFI");
+            resetWifi();
+          }
           delay(1000);
           wifiState = WIFI_READY;
           continue;
@@ -396,7 +406,6 @@ public:
         // process GPS data if connected
         if (state & STATE_GPS_READY) {
           processGPS();
-          delay(10);
         }
 #endif
 
@@ -414,19 +423,6 @@ public:
 #if ENABLE_DATA_LOG
           flushData();
 #endif
-        }
-
-        // check if there are too many connection errors
-        if (connErrors >= MAX_CONN_ERRORS) {
-          // reset WIFI
-          Serial.println("Reset WIFI...");
-          httpClose();
-          disconnectWifi();
-          delay(1000);
-          setupWifi();
-          httpConnect();
-          connErrors = 0;
-          wifiState = WIFI_CONNECTING;          
         }
     }
 private:
@@ -473,6 +469,7 @@ private:
             // in the progress of data sending
             if (httpIsSent() || strstr(buffer, "+IPD")) {
               Serial.println("Sent");
+              connErrors = 0;
               wifiState = WIFI_RECEIVING;
               break; 
             }
@@ -489,7 +486,6 @@ private:
               if (connCount >= MAX_HTTP_CONNS) {
                 // re-establish TCP connection
                 httpClose(); 
-                nextConnTime = millis() + 500;
                 wifiState = WIFI_DISCONNECTED;
               } else {
                 wifiState = WIFI_READY;
@@ -501,16 +497,21 @@ private:
         case WIFI_HTTP_ERROR:
             // oops, we got an error
             Serial.println(buffer);
-            if (connErrors >= 3) {
-              // if there are several consequent errors
-              // need to tear down TCP connection for reconnection
+            // check if there are too many connection errors
+            if (connErrors >= MAX_ERRORS_RECONNECT) {
+              // reset WIFI
               httpClose();
-              nextConnTime = millis() + 500;
+              if (connErrors >= MAX_ERRORS_RESET) {
+                Serial.println("Reset WIFI...");
+                disconnectWifi();
+                resetWifi();
+                connErrors = 0;
+              }
               wifiState = WIFI_DISCONNECTED;
             } else {
-              // otherwise just ignore some minor response errors
               wifiState = WIFI_READY;
             }
+            nextConnTime = millis() + 200; 
             break;
         }
     }
@@ -544,10 +545,10 @@ private:
     void processMEMS()
     {
         int acc[3];
-        int gyr[3];
-        int mag[3];
+        //int gyr[3];
+        //int mag[3];
         int temp; // device temperature (in 0.1 celcius degree)
-        if (memsRead(acc, gyr, mag, &temp)) {
+        if (memsRead(acc, 0, 0, &temp)) {
           dataTime = millis();
           logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
           //logData(PID_GYRO, gyr[0] / GYRO_DATA_RATIO, gyr[1] / GYRO_DATA_RATIO, gyr[2] / GYRO_DATA_RATIO);
@@ -558,6 +559,8 @@ private:
 #endif
     void processGPS()
     {
+        static uint16_t lastUTC = 0;
+        static uint8_t lastGPSDay = 0;
         GPS_DATA gd = {0};
         // read parsed GPS data
         if (getGPSData(&gd)) {
@@ -579,8 +582,7 @@ private:
             //Serial.print("#UTC:"); 
             //Serial.println(gd.time);
         } else {
-          Serial.println("GPS error");
-          delay(200);
+          Serial.println("No GPS data");
         }
     }
     void reconnect()
@@ -609,7 +611,7 @@ private:
             }
             enterLowPowerMode();
             // deep sleep for 4 seconds
-            sleep(4);
+            sleep(8);
             leaveLowPowerMode();
         }
         // we are able to get OBD data again
