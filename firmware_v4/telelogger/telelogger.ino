@@ -503,7 +503,7 @@ private:
         }
         static byte index2 = 0;
         static const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
-        byte pid = pgm_read_byte(pidTier2 + index2);
+        byte pid = pidTier2[index2];
         int value;
         // read a single OBD-II PID
         if (readPID(pid, value)) {
