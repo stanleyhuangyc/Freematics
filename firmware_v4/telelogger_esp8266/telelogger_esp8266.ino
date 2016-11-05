@@ -149,7 +149,7 @@ public:
       if (sendWifiCommand(buffer, 1000, ">")) {
         // send HTTP header
         xbWrite(header);
-        delay(10);
+        delay(50);
         // send POST payload if any
         if (payload) xbWrite(payload);
         buffer[0] = 0;
@@ -367,6 +367,7 @@ public:
         }
         
         // receive HTTP response
+        delay(100);
         if (xbReceive(buffer, sizeof(buffer), MAX_CONN_TIME, "+IPD")) {
           // grab the data we need from HTTP response payload
           char *p = strstr(buffer, "CH:");
@@ -455,7 +456,6 @@ private:
             httpConnect();
             wifiState = WIFI_CONNECTING;            
             connCount = 0;
-            nextConnTime = millis() + 100;
             break;
         case WIFI_CONNECTING:
             // in the progress of connecting
@@ -498,7 +498,7 @@ private:
             // oops, we got an error
             Serial.println(buffer);
             // check if there are too many connection errors
-            if (connErrors >= MAX_ERRORS_RECONNECT) {
+            if (connErrors >= MAX_ERRORS_RECONNECT || strstr_P(buffer, PSTR("link is not"))) {
               // reset WIFI
               httpClose();
               if (connErrors >= MAX_ERRORS_RESET) {
@@ -530,7 +530,7 @@ private:
         }
         static byte index2 = 0;
         static const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
-        byte pid = pgm_read_byte(pidTier2 + index2);
+        byte pid = pidTier2[index2];
         int value;
         // read a single OBD-II PID
         if (readPID(pid, value)) {
