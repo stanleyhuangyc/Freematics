@@ -588,9 +588,12 @@ private:
     void reconnect()
     {
         // try to re-connect to OBD
-        if (init()) {
-          // reconnected
-          return; 
+        for (byte n = 0; n < 3; n++) {
+          delay(1000);
+          if (init()) {
+            // reconnected
+            return; 
+          }
         }
         // seems we can't connect, put the device into sleeping mode
         Serial.println("Sleeping");
