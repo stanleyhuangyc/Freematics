@@ -443,10 +443,12 @@ private:
                 Serial.print(cacheBytes);
                 Serial.println(" bytes");
                 purgeCache();
+                nextConnTime = millis() + 100;
                 wifiState = WIFI_SENDING;
               } else {
                 Serial.println("Request error");
                 wifiState = WIFI_HTTP_ERROR;
+                nextConnTime = millis() + 1000;
               }
             }
             break;
