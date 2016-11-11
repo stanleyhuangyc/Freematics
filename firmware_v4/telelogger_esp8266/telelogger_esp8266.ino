@@ -425,6 +425,9 @@ public:
           flushData();
 #endif
         }
+        if (wifiState == WIFI_READY && errors > 10) {
+          reconnect();
+        }
     }
 private:
     void processHttp()
@@ -539,9 +542,6 @@ private:
           logData(0x100 | pid, value);
         }
         index2 = (index2 + 1) % sizeof(pidTier2);
-        if (errors > 10) {
-            reconnect();
-        }
     }
 #if USE_MPU6050 || USE_MPU9250
     void processMEMS()
@@ -598,7 +598,7 @@ private:
           }
         }
         // seems we can't connect, put the device into sleeping mode
-        Serial.println("Sleeping");
+        httpClose();
         joinChannel(1); // leave channel
         disconnectWifi(); // disconnect from AP
 #if USE_GPS
@@ -606,6 +606,7 @@ private:
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;
+        Serial.println("Sleeping");
         // regularly check if we can get any OBD data
         for (;;) {
             int value;
