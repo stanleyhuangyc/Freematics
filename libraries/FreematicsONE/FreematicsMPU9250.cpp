@@ -441,4 +441,5 @@ bool CMPU9250::memsRead(int* acc, int* gyr, int* mag, int* temp)
     int t = readTempData();
     *temp = (float)t / 33.387 + 210;
   }
+  return true;
 }
