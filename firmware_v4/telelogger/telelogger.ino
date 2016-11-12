@@ -28,16 +28,18 @@
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
-static uint16_t lastUTC = 0;
-static uint8_t lastGPSDay = 0;
-static uint32_t nextConnTime = 0;
-static uint16_t connCount = 0;
-static char vin[20] = {0};
+uint16_t lastUTC = 0;
+uint8_t lastGPSDay = 0;
+uint32_t nextConnTime = 0;
+uint16_t connCount = 0;
+char vin[20] = {0};
+long accSum[3]; // sum of accelerometer x/y/z data
+byte accCount = 0; // count of accelerometer readings
+int temp; // device temperature (in 0.1 celcius degree)
 
 typedef enum {
     GPRS_DISABLED = 0,
     GPRS_IDLE,
-    GPRS_HTTP_CONNECTING,
     GPRS_HTTP_RECEIVING,
     GPRS_HTTP_ERROR,
 } GPRS_STATES;
@@ -353,6 +355,7 @@ public:
         }
         if (!sendGSMCommand(buffer)) {
           Serial.println(buffer);
+          delay(3000);
           continue;
         }
         httpConnect(HTTP_GET);
@@ -379,6 +382,21 @@ public:
     }
     void loop()
     {
+        uint32_t start = millis();
+
+        if (state & STATE_OBD_READY) {
+          processOBD();
+          if (gprsState == GPRS_IDLE && errors > 10) {
+              reconnect();
+          }
+        }
+
+#if USE_MPU6050 || USE_MPU9250
+        if (state & STATE_MEMS_READY) {
+            processMEMS();  
+        }
+#endif
+
         if (state & STATE_GPS_READY) {
 #if USE_GPS
           processGPS();
@@ -395,27 +413,19 @@ public:
 #endif
         }
 
-#if USE_MPU6050 || USE_MPU9250
-        if (state & STATE_MEMS_READY) {
-            processMEMS();  
-        }
-#endif
-
         // log battery voltage (from voltmeter), data in 0.01v
         int v = getVoltage() * 100;
         dataTime = millis();
         logData(PID_BATTERY_VOLTAGE, v);
 
-        if (state & STATE_OBD_READY) {
-          processOBD();
-          if (gprsState == GPRS_IDLE && errors > 10) {
-              reconnect();
+        do {
+          if (millis() > nextConnTime) {
+            // process HTTP state machine
+            processGPRS();
+            //delay(100);
           }
-        }
-
-        if (millis() > nextConnTime) {
-          processGPRS();
-        }
+        } while (millis() - start < MIN_LOOP_TIME);
+          
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
           Serial.print(connErrors);
@@ -448,22 +458,20 @@ private:
                   Serial.print(cacheBytes - 1);
                   Serial.println(" bytes");
                   // output payload data to serial
-                  Serial.println(cache);               
-                  gprsState = GPRS_HTTP_CONNECTING;
+                  //Serial.println(cache);               
                   purgeCache();
+                  delay(50);
+                  Serial.print("Sending #");
+                  Serial.print(++connCount);
+                  Serial.print("...");
+                  httpConnect(HTTP_POST);
+                  nextConnTime = millis() + 500;
                 } else {
                   Serial.println(buffer);
                   gprsState = GPRS_HTTP_ERROR;
                 }
             }
             break;        
-        case GPRS_HTTP_CONNECTING:
-            Serial.print("Sending #");
-            Serial.print(++connCount);
-            Serial.print("...");
-            httpConnect(HTTP_POST);
-            nextConnTime = millis() + 2000;
-            break;
         case GPRS_HTTP_RECEIVING:
             if (httpIsConnected()) {
                 if (httpRead()) {
@@ -514,16 +522,14 @@ private:
 #if USE_MPU6050 || USE_MPU9250
     void processMEMS()
     {
-        int acc[3];
-        //int gyr[3];
-        //int mag[3];
-        int temp; // device temperature (in 0.1 celcius degree)
-        if (memsRead(acc, 0, 0, &temp)) {
-          dataTime = millis();
-          logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
-          //logData(PID_GYRO, gyr[0] / GYRO_DATA_RATIO, gyr[1] / GYRO_DATA_RATIO, gyr[2] / GYRO_DATA_RATIO);
-          //logData(PID_COMPASS, mag[0] / COMPASS_DATA_RATIO, mag[1] / COMPASS_DATA_RATIO, mag[2] / COMPASS_DATA_RATIO);
+         // log the loaded MEMS data
+        if (accCount) {
+          logData(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
           logData(PID_MEMS_TEMP, temp);
+          accSum[0] = 0;
+          accSum[1] = 0;
+          accSum[2] = 0;
+          accCount = 0;
         }
     }
 #endif
@@ -544,14 +550,14 @@ private:
               logCoordinate(PID_GPS_LONGITUDE, gd.lng);
               logData(PID_GPS_ALTITUDE, gd.alt);
               logData(PID_GPS_SPEED, gd.speed);
-              //logData(PID_GPS_SAT_COUNT, gd.sat);
+              logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
             }
             //Serial.print("#UTC:"); 
             //Serial.println(gd.time);
         } else {
-          Serial.println("GPS error");
-          delay(200);
+          Serial.println("No GPS data");
+          delay(500);
         }
     }
     void processGSMLocation()
@@ -571,11 +577,15 @@ private:
     }
     void reconnect()
     {
-        if (init()) {
-          // reconnected
-          return; 
+        // try to re-connect to OBD
+        Serial.println("Reconnecting");
+        for (byte n = 0; n < 3; n++) {
+          if (init()) {
+            // reconnected
+            return; 
+          }
+          delay(1000);
         }
-        Serial.println("Sleeping");
         signInOut(1); // sign out
         toggleGSM(); // turn off GSM power
 #if USE_GPS
@@ -584,6 +594,7 @@ private:
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;
         // regularly check if we can get any OBD data
+        Serial.println("Sleeping");
         for (;;) {
             int value;
             Serial.print('.');
@@ -601,6 +612,24 @@ private:
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
     }
+#if USE_MPU6050 || USE_MPU9250
+    void dataIdleLoop()
+    {
+      // do something while waiting for data on SPI
+      if (state & STATE_MEMS_READY) {
+        // load accelerometer and temperature data
+        int acc[3] = {0};
+        memsRead(acc, 0, 0, &temp);
+        if (accCount < 250) {
+          accSum[0] += acc[0];
+          accSum[1] += acc[1];
+          accSum[2] += acc[2];
+          accCount++;
+        }
+      }
+      delay(20);
+    }
+#endif
     byte state;
     byte channel;
     GSM_LOCATION loc;
