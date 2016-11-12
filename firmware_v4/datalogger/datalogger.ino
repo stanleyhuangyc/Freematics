@@ -45,7 +45,8 @@ uint16_t MMDD = 0;
 uint32_t UTC = 0;
 
 #if USE_MPU6050 || USE_MPU9250
-int acc[3]; // accelerometer x/y/z
+long accSum[3]; // sum of accelerometer x/y/z data
+byte accCount = 0; // count of accelerometer readings
 int temp; // device temperature (in 0.1 celcius degree)
 #endif
 
@@ -200,12 +201,15 @@ public:
 #endif
     void reconnect()
     {
+        // try to re-connect to OBD
         SerialRF.println("Reconnecting");
-        if (init()) {
-          // reconnected
-          return; 
+        for (byte n = 0; n < 3; n++) {
+          if (init()) {
+            // reconnected
+            return; 
+          }
+          delay(1000);
         }
-        SerialRF.println("Sleeping");
 #if ENABLE_DATA_LOG
         closeFile();
 #endif
@@ -214,6 +218,7 @@ public:
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;
         // check if OBD is accessible again
+        SerialRF.println("Sleeping");
         for (;;) {
             int value;
             Serial.print('.');
@@ -230,18 +235,25 @@ public:
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
     }
+#if USE_MPU6050 || USE_MPU9250
     void dataIdleLoop()
     {
       // do something while waiting for data on SPI
-#if USE_MPU6050 || USE_MPU9250
       if (state & STATE_MEMS_READY) {
         // load accelerometer and temperature data
+        int acc[3] = {0};
         memsRead(acc, 0, 0, &temp);
+        if (accCount < 250) {
+          accSum[0] += acc[0];
+          accSum[1] += acc[1];
+          accSum[2] += acc[2];
+          accCount++;
+        }
       } else {
         delay(10);
       }
-#endif
     }
+#endif
     byte state;
 };
 
@@ -330,10 +342,14 @@ void loop()
     one.logData(PID_BATTERY_VOLTAGE, v);
     
 #if USE_MPU6050 || USE_MPU9250
-    if (one.state & STATE_MEMS_READY) {
+    if ((one.state & STATE_MEMS_READY) && accCount) {
        // log the loaded MEMS data
-      one.logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
+      one.logData(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
       one.logData(PID_MEMS_TEMP, temp);
+      accSum[0] = 0;
+      accSum[1] = 0;
+      accSum[2] = 0;
+      accCount = 0;
     }
 #endif
 
