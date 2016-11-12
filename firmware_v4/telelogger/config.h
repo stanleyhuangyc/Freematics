@@ -8,7 +8,7 @@
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
 #define ENABLE_DATA_CACHE 1
-#define CACHE_SIZE 384 /* bytes */
+#define CACHE_SIZE 400 /* bytes */
 
 /**************************************
 * GPRS/network settings
@@ -38,6 +38,7 @@
 #define OBD_CONN_TIMEOUT 5000 /* ms */
 #define MAX_CONN_ERRORS 3
 #define MAX_CONN_TIME 10000 /* ms */
+#define MIN_LOOP_TIME 800 /* ms */
 
 #define SD_CS_PIN 10
 
