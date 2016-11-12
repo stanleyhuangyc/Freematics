@@ -97,9 +97,9 @@ public:
         int l = cacheBytes + len + 12 - CACHE_SIZE;
         if (l >= 0) {
           // cache full
-#if CACHE_DISCARD
+#if CACHE_SHIFT
           // discard the oldest data
-          for (; cache[l] && cache[l] != ' '; l++);
+          for (l = CACHE_SIZE / 2; cache[l] && cache[l] != ' '; l++);
           if (cache[l]) {
             cacheBytes -= l;
             memcpy(cache, cache + l + 1, cacheBytes);

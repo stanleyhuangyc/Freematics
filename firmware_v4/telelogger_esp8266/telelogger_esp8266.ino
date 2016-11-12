@@ -28,9 +28,12 @@
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
-static uint32_t nextConnTime = 0;
-static uint16_t connCount = 0;
-static char vin[20] = {0};
+uint32_t nextConnTime = 0;
+uint16_t connCount = 0;
+char vin[20] = {0};
+long accSum[3]; // sum of accelerometer x/y/z data
+byte accCount = 0; // count of accelerometer readings
+int temp; // device temperature (in 0.1 celcius degree)
 
 typedef enum {
     WIFI_DISCONNECTED = 0,
@@ -397,18 +400,12 @@ public:
     void loop()
     {
         // the main loop
+        uint32_t start = millis();
         
         // process OBD data if connected
         if (state & STATE_OBD_READY) {
           processOBD();
         }
-
-#if USE_GPS
-        // process GPS data if connected
-        if (state & STATE_GPS_READY) {
-          processGPS();
-        }
-#endif
 
 #if USE_MPU6050 || USE_MPU9250
         // process MEMS data if available
@@ -417,22 +414,39 @@ public:
         }
 #endif
 
-        if (millis() > nextConnTime) {
-          // process HTTP state machine
-          processHttp();
-        } else {
-#if ENABLE_DATA_LOG
-          flushData();
-#endif
+#if USE_GPS
+        // process GPS data if connected
+        if (state & STATE_GPS_READY) {
+          processGPS();
         }
+#endif
+
+        int v = getVoltage() * 100;
+        dataTime = millis();
+        logData(PID_BATTERY_VOLTAGE, v);
+
+        do {
+          if (millis() > nextConnTime) {
+            // process HTTP state machine
+            processHttp();
+            delay(100);
+          }
+        } while (millis() - start < MIN_LOOP_TIME);
+        
         if (wifiState == WIFI_READY && errors > 10) {
           reconnect();
         }
+
+        // slow down a bit as the bottleneck is always the network
+#if ENABLE_DATA_LOG
+          flushData();
+#endif
     }
 private:
     void processHttp()
     {
         // state machine for HTTP communications
+        nextConnTime = millis() + 200;
         switch (wifiState) {
         case WIFI_READY:
             // ready for doing next HTTP request
@@ -446,12 +460,10 @@ private:
                 Serial.print(cacheBytes);
                 Serial.println(" bytes");
                 purgeCache();
-                nextConnTime = millis() + 100;
                 wifiState = WIFI_SENDING;
               } else {
                 Serial.println("Request error");
                 wifiState = WIFI_HTTP_ERROR;
-                nextConnTime = millis() + 1000;
               }
             }
             break;
@@ -468,7 +480,6 @@ private:
               wifiState = WIFI_READY;
               break; 
             }
-            nextConnTime = millis() + 100;
             break;
         case WIFI_SENDING:
             // in the progress of data sending
@@ -478,7 +489,6 @@ private:
               wifiState = WIFI_RECEIVING;
               break; 
             }
-            nextConnTime = millis() + 100;
             break;
         case WIFI_RECEIVING:
             // in the progress of data receiving
@@ -497,7 +507,6 @@ private:
               }
               break;
             }
-            nextConnTime = millis() + 200; 
             break;
         case WIFI_HTTP_ERROR:
             // oops, we got an error
@@ -516,7 +525,6 @@ private:
             } else {
               wifiState = WIFI_READY;
             }
-            nextConnTime = millis() + 200; 
             break;
         }
     }
@@ -546,16 +554,14 @@ private:
 #if USE_MPU6050 || USE_MPU9250
     void processMEMS()
     {
-        int acc[3];
-        //int gyr[3];
-        //int mag[3];
-        int temp; // device temperature (in 0.1 celcius degree)
-        if (memsRead(acc, 0, 0, &temp)) {
-          dataTime = millis();
-          logData(PID_ACC, acc[0] / ACC_DATA_RATIO, acc[1] / ACC_DATA_RATIO, acc[2] / ACC_DATA_RATIO);
-          //logData(PID_GYRO, gyr[0] / GYRO_DATA_RATIO, gyr[1] / GYRO_DATA_RATIO, gyr[2] / GYRO_DATA_RATIO);
-          //logData(PID_COMPASS, mag[0] / COMPASS_DATA_RATIO, mag[1] / COMPASS_DATA_RATIO, mag[2] / COMPASS_DATA_RATIO);
+         // log the loaded MEMS data
+        if (accCount) {
+          logData(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
           logData(PID_MEMS_TEMP, temp);
+          accSum[0] = 0;
+          accSum[1] = 0;
+          accSum[2] = 0;
+          accCount = 0;
         }
     }
 #endif
@@ -585,17 +591,19 @@ private:
             //Serial.println(gd.time);
         } else {
           Serial.println("No GPS data");
+          delay(20);
         }
     }
     void reconnect()
     {
         // try to re-connect to OBD
+        Serial.println("Reconnecting");
         for (byte n = 0; n < 3; n++) {
-          delay(1000);
           if (init()) {
             // reconnected
             return; 
           }
+          delay(1000);
         }
         // seems we can't connect, put the device into sleeping mode
         httpClose();
@@ -625,10 +633,24 @@ private:
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
     }
+#if USE_MPU6050 || USE_MPU9250
     void dataIdleLoop()
     {
-      delay(10);
+      // do something while waiting for data on SPI
+      if (state & STATE_MEMS_READY) {
+        // load accelerometer and temperature data
+        int acc[3] = {0};
+        memsRead(acc, 0, 0, &temp);
+        if (accCount < 250) {
+          accSum[0] += acc[0];
+          accSum[1] += acc[1];
+          accSum[2] += acc[2];
+          accCount++;
+        }
+      }
+      delay(20);
     }
+#endif
     
     byte state;
     byte channel;
