@@ -275,7 +275,7 @@ public:
 
         // retrieve VIN
         if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
-          snprintf_P(vin, sizeof(vin), PSTR("%s"), buffer);
+          snprintf_P(vin, sizeof(vin) - 1, PSTR("%s"), buffer);
           Serial.print("#VIN:");
           Serial.println(vin);
         }
@@ -283,8 +283,11 @@ public:
 #if USE_MPU6050 || USE_MPU9250
         // start I2C communication 
         Wire.begin();
-        // initialize MPU-6050
-        Serial.print("#MEMS...");
+#if USE_MPU6050
+        Serial.print("#MPU6050:");
+#else
+        Serial.print("#MPU9250:");
+#endif
         if (memsInit()) {
           state |= STATE_MEMS_READY;
           Serial.println("OK");
@@ -407,7 +410,7 @@ public:
 #endif
         }
 
-        // log battery voltage (from voltmeter), data in 0.01v
+        // read and log car battery voltage , data in 0.01v
         int v = getVoltage() * 100;
         dataTime = millis();
         logData(PID_BATTERY_VOLTAGE, v);
@@ -450,6 +453,12 @@ private:
         switch (gprsState) {
         case GPRS_IDLE:
             if (state & STATE_CONNECTED) {
+#if !ENABLE_DATA_CACHE
+                char cache[16];
+                int v = getVoltage() * 100;
+                byte cacheBytes = sprintf(cache, "#%lu,%u,%d ", millis(), PID_BATTERY_VOLTAGE, v);
+                Serial.println(v);
+#endif
                 // generate URL
                 sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/post?id=%u\"\r"), HOST_URL, channel);
                 if (!sendGSMCommand(buffer)) {
@@ -463,7 +472,9 @@ private:
                   Serial.println(" bytes");
                   // output payload data to serial
                   //Serial.println(cache);               
+#if ENABLE_DATA_CACHE
                   purgeCache();
+#endif
                   delay(50);
                   Serial.print("Sending #");
                   Serial.print(++connCount);
