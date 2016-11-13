@@ -262,7 +262,7 @@ public:
 
         // retrieve VIN        
         if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
-          snprintf_P(vin, sizeof(vin), PSTR("%s"), buffer);
+          strncpy(vin, buffer, sizeof(vin) - 1);
           Serial.print("#VIN:");
           Serial.println(vin);
         }
@@ -271,7 +271,11 @@ public:
         // start I2C communication 
         Wire.begin();
         // initialize MPU-6050
-        Serial.print("#MEMS...");
+#if USE_MPU6050
+        Serial.print("#MPU6050:");
+#else
+        Serial.print("#MPU9250:");
+#endif
         if (memsInit()) {
           state |= STATE_MEMS_READY;
           Serial.println("OK");
@@ -356,6 +360,7 @@ public:
         } else {
           sprintf_P(buffer, PSTR("/push?id=%d&OFF=1"), channel);
         }
+        Serial.println(buffer);
         
         // send HTTP request
         if (!httpSend(HTTP_GET, buffer, 0)) {
@@ -421,6 +426,7 @@ public:
         }
 #endif
 
+        // read and log car battery voltage
         int v = getVoltage() * 100;
         dataTime = millis();
         logData(PID_BATTERY_VOLTAGE, v);
@@ -591,7 +597,7 @@ private:
             //Serial.println(gd.time);
         } else {
           Serial.println("No GPS data");
-          delay(20);
+          delay(200);
         }
     }
     void reconnect()
