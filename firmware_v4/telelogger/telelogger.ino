@@ -275,7 +275,7 @@ public:
 
         // retrieve VIN
         if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
-          snprintf_P(vin, sizeof(vin) - 1, PSTR("%s"), buffer);
+          strncpy(vin, buffer, sizeof(vin) - 1);
           Serial.print("#VIN:");
           Serial.println(vin);
         }
