@@ -403,13 +403,7 @@ public:
 #endif
 #if USE_GSM_LOCATION
         } else {
-          if (gprsState == GPRS_IDLE) {
-            // get GSM location if GPS not present
-            if (getLocation(&loc)) {
-              //Serial.print(buffer);
-            }
-          }
-          if (cacheBytes == 0) processGSMLocation();
+          processGSMLocation();
 #endif
         }
 
@@ -420,6 +414,16 @@ public:
 
         do {
           if (millis() > nextConnTime) {
+#if USE_GSM_LOCATION
+            if (!(state & STATE_GPS_READY)) {
+              if (gprsState == GPRS_IDLE) {
+                // get GSM location if GPS not present
+                if (getLocation(&loc)) {
+                  Serial.print(buffer);
+                }
+              }
+            }
+#endif
             // process HTTP state machine
             processGPRS();
             //delay(100);
