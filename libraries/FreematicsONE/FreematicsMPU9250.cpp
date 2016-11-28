@@ -6,6 +6,7 @@
 *************************************************************************/
 
 #include <Arduino.h>
+#include <SPI.h>
 #include <Wire.h>
 #include "FreematicsMPU9250.h"
 

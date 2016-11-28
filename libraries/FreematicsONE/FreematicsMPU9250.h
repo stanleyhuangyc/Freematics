@@ -5,8 +5,8 @@
 * (C)2016 Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
-#include <SPI.h>
-#include <Wire.h>
+#ifndef _MPU9250_H
+#define _MPU9250_H
 
 // See also MPU-9250 Register Map and Descriptions, Revision 4.0,
 // RM-MPU-9250A-00, Rev. 1.4, 9/9/2013 for registers not listed in above
@@ -225,3 +225,5 @@ class CMPU9250
     uint8_t readByte(uint8_t, uint8_t);
     void readBytes(uint8_t, uint8_t, uint8_t, uint8_t *);
 };  // class MPU9250
+
+#endif

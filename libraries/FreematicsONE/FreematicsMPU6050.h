@@ -5,6 +5,9 @@
 * (C)2016 Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
+#ifndef _MPU6050_H
+#define _MPU6050_H
+
 typedef struct
 {
     uint8_t x_accel_h;
@@ -55,3 +58,5 @@ private:
 	bool MPU6050_write_reg(int reg, uint8_t data);
 	void MPU6050_store(int* pData, uint8_t data_l, uint8_t data_h);
 };
+
+#endif
