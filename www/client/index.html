@@ -1,0 +1,74 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>Freematics Live Data Service</title>
+<meta name="viewport" content="user-scalable=no" />
+<script type='text/javascript' src='//code.jquery.com/jquery-1.9.1.js'></script>
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/modules/exporting.js"></script>
+<script src="https://code.highcharts.com/highcharts-more.js"></script>
+<script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+<style>
+body { font-family:Verdana, Geneva, sans-serif; margin:0; background-color:#111; color:#FFF }
+.chart { height:43%; width:98%; margin-top:20px; margin-bottom: 20px}
+#stats table { width: 100% }
+#chartTabs { text-align:center; margin-top:10px; margin-bottom:10px; font-weight:bold; color:#CCC; font-size: large}
+#chartTabs a { color:#09F;  }
+#grid td { height:30px; }
+.gauge { width: 240px; height: 160px; float: left}
+.sidebar { width: 17%; float: left; font-size:smaller; border-style:solid; border-color:#AAA; border-width:1px; height:100%}
+.sidebarstate { margin-left:10px; margin-top:10px; font-size:xx-large }
+.sidebarcontent { margin-left:10px; margin-top:10px }
+.profile { text-align:center; font-size:medium; float:none}
+.map { width:82%; height:100%; float:left; border-right-style:solid; border-top-style:solid; border-bottom-style:solid; border-color:#AAA; border-width:1px}
+.grid { width:100%; text-align:center}
+li { list-style:none }
+div.clear {
+    clear:both; height:0
+}
+</style>
+</head>
+<body onload="init()">
+<div style="margin: 0 auto; height:390px">
+	<div id="sidebar" class="sidebar">
+        <div id="state" class="sidebarstate">Loading</div>
+    	<div id="channels" class="sidebarcontent"></div>
+        <div id="stats" class="sidebarcontent"></div>
+        <div id="info" class="sidebarcontent"></div>
+    </div>
+    <div id="map" class="map"></div>
+</div>
+<div style="width:100%"></div>
+<div>
+    <div id="gauge0" class="gauge"></div>
+    <div id="gauge1" class="gauge"></div>
+    <div id="gauge2" class="gauge"></div>
+    <div id="gauge3" class="gauge"></div>
+    <div id="gauge4" class="gauge"></div>
+</div>
+<div class="clear"></div>
+<div style="margin: 0 auto; height:600px; width:100%; float:none">
+	<div id="sidebar" class="sidebar">
+    	<div id="grid">
+        
+        </div>
+    </div>
+    <div class="map">
+    <div id="chartTabs"></div>
+    <div id="container0" class="chart"></div>
+    <div id="container1" class="chart"></div>
+    <div id="container2" class="chart"></div>
+    <div id="container3" class="chart"></div>
+    <div id="container4" class="chart"></div>
+    <div id="container5" class="chart"></div>
+    </div>
+</div>
+<div id="data" style="font-family:Verdana, Geneva, sans-serif; font-size:smaller"></div>
+<script language="javascript" src="common.js"></script>
+<script language="javascript" src="gadgets.js"></script>
+<script language="javascript" src="telematics.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBHNmXf2of_5gOV21BOZ0MwwOAVCEvSjOk&callback=initMap"
+        async defer></script>
+</body>
+</html>
