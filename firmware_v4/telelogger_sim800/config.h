@@ -2,7 +2,7 @@
 #define CONFIG_H_INCLUDED
 
 /**************************************
-* Data logging settings
+* Data logging/streaming out
 **************************************/
 #define ENABLE_DATA_CACHE 1
 #define CACHE_SIZE 384 /* bytes */
@@ -11,32 +11,24 @@
 #define STREAM_FORMAT FORMAT_TEXT
 
 /**************************************
-* WIFI and networking settings
+* GPRS/network settings
 **************************************/
-
-#define XBEE_BAUDRATE 9600
-// change SSID and PASSWORD to your own
-#define WIFI_SSID "SSID"
-#define WIFI_PASSWORD "PASSWORD"
+#define XBEE_BAUDRATE 115200
+// change APN to your carrier's setting
+#define APN "connect"
 // change YOUR_SERVER_KEY to your server key
-#define SERVER_KEY "YOUR_SERVER_KEY"
-#define SERVER_URL "hub.freematics.com"
-#define SERVER_PORT 80
-
-// maximum consecutive errors before performing a reconnection
-#define MAX_ERRORS_RECONNECT 3
+#define SERVER_URL "http://hub.freematics.com/YOUR_SERVER_KEY"
+#define USE_GSM_LOCATION 1
 // maximum consecutive errors before performing a module reset
-#define MAX_ERRORS_RESET 6
+#define MAX_CONN_ERRORS 3
 // maximum allowed connecting time
-#define MAX_CONN_TIME 5000 /* ms */
-// maximum consecutive HTTP requests on a TCP connection (keep-alive)
-#define MAX_HTTP_CONNS 99
+#define MAX_CONN_TIME 10000 /* ms */
 
 /**************************************
-* Accelerometer & Gyro
+* MEMS sensors
 **************************************/
-#define USE_MPU6050 1
-#define USE_MPU9250 0
+#define USE_MPU6050 0
+#define USE_MPU9250 1
 #define ACC_DATA_RATIO 172
 #define GYRO_DATA_RATIO 256
 #define COMPASS_DATA_RATIO 8
@@ -50,7 +42,9 @@
 /**************************************
 * Other options
 **************************************/
-#define OBD_CONN_TIMEOUT 5000 /* ms */
-#define MIN_LOOP_TIME 500 /* ms */
+#define OBD_CONN_TIMEOUT 15000 /* ms */
+#define MIN_LOOP_TIME 1000 /* ms */
+
+#define SD_CS_PIN 10
 
 #endif // CONFIG_H_INCLUDED
