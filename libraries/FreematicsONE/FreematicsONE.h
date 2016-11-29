@@ -159,7 +159,7 @@ public:
 	// send command string to GPS
 	void sendGPSCommand(const char* cmd);
 	// hardware sleep (timer counter will stop)
-	void sleep(uint8_t seconds);
+	void sleep(int seconds);
 	// start xBee UART communication
 	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
