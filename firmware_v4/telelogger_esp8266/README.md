@@ -5,5 +5,6 @@ Prerequisites
 
 * Freematics ONE with ESP8266 WIFI module - http://freematics.com/products/freematics-one
 * Arduino IDE (for compiling and uploading the code)
+* A Freematics Hub server key
 * A wireless AP or hotspot with known SSID and password
 * A car with OBD-II port
