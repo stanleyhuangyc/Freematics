@@ -1,0 +1,25 @@
+body {
+	font-family: "Courier New", "Courier", "mono";
+	color:#FFFFFF;
+	background-color: #0066CC;
+	font-size: 12px;
+}
+A:link {
+	text-decoration:underline;
+	font-weight:normal;
+	color:#FFFF00;
+	font-size: 12px;
+}
+A:visited {
+	text-decoration:underline;
+	font-weight:normal;
+	color:#CCCCCC;
+	font-size: 12px;
+}
+A:hover   {text-decoration:underline;font-weight:normal;background:#0000FF;color:#FFFFFF}
+A:active {text-decoration:underline;font-weight:normal}
+undernote   {
+	font-family:"Avantgarde", "Helvetica", "Arial", "sans-serif";
+	font-size: 9px;
+	font-style: italic;
+}
