@@ -604,29 +604,27 @@ void COBDSPI::sendGPSCommand(const char* cmd)
 	write(cmd);
 }
 
-void COBDSPI::sleep(uint8_t seconds) {
-	uint8_t wdt_period;
-	switch (seconds) {
-	case 1:
-		wdt_period = WDTO_1S;
-		break;
-	case 2:
-		wdt_period = WDTO_2S;
-		break;
-	case 3:
-	case 4:
-		wdt_period = WDTO_4S;
-		break;
-	default:
-		wdt_period = WDTO_8S;
-	}
-	wdt_enable(wdt_period);
-	wdt_reset();
-	WDTCSR |= _BV(WDIE);
-	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-	sleep_mode();
-	wdt_disable();
-	WDTCSR &= ~_BV(WDIE);
+void COBDSPI::sleep(int seconds)
+{
+	enterLowPowerMode();
+	while (seconds > 0) {
+		uint8_t wdt_period; 
+		if (seconds >= 8) {
+			wdt_period = WDTO_8S;
+			seconds -= 8;
+		} else {
+			wdt_period = WDTO_1S;
+			seconds--;
+		}
+		wdt_enable(wdt_period);
+		wdt_reset();
+		WDTCSR |= _BV(WDIE);
+		set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+		sleep_mode();
+		wdt_disable();
+		WDTCSR &= ~_BV(WDIE);
+	 }
+	 leaveLowPowerMode();
 }
 
 bool COBDSPI::xbBegin(unsigned long baudrate)
