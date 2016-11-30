@@ -28,6 +28,7 @@
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
+#define STATE_WIFI_READY 0x10
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
@@ -235,7 +236,7 @@ class CTeleLogger : public COBDWIFI, public CDataLogger
 #endif
 {
 public:
-    CTeleLogger():state(0),channel(0) {}
+    CTeleLogger():state(0),feedid(0) {}
     void setup()
     {
         delay(500);
@@ -248,7 +249,7 @@ public:
 
         // initialize OBD communication
         Serial.print("#OBD..");
-        for (uint32_t t = millis(); millis() - t < OBD_CONN_TIMEOUT; ) {
+        for (uint32_t t = millis(); millis() - t < OBD_INIT_TIMEOUT; ) {
             Serial.print('.');
             if (init()) {
               state |= STATE_OBD_READY;
@@ -266,9 +267,9 @@ public:
         // start I2C communication 
         Wire.begin();
 #if USE_MPU6050
-        Serial.print("#MPU6050:");
+        Serial.print("#MPU6050...");
 #else
-        Serial.print("#MPU9250:");
+        Serial.print("#MPU9250...");
 #endif
         if (memsInit()) {
           state |= STATE_MEMS_READY;
@@ -293,14 +294,16 @@ public:
         Serial.print("#ESP8266...");
         xbBegin(XBEE_BAUDRATE);
         if (initWifi()) {
-            Serial.println("OK");
+          state |= STATE_WIFI_READY;
+          Serial.println("OK");
         } else {
-            Serial.println(buffer);
+          Serial.println(buffer);
+          standby();
         }
 
         // attempt to join AP with pre-defined credential
         // make sure to change WIFI_SSID and WIFI_PASSWORD to your own ones
-        for (;;) {
+        for (byte n = 0; ;n++) {
           delay(100);
           Serial.print("#WIFI(SSID:");
           Serial.print(WIFI_SSID);
@@ -309,6 +312,7 @@ public:
               break;
           } else {
               Serial.println("NO");
+              if (n >= MAX_ERRORS_RECONNECT) standby();
           }
         }
         
@@ -325,14 +329,23 @@ public:
 
       // retrieve VIN
       char vin[20] = {0};
-      if (action == 0 && getVIN(buffer, sizeof(buffer))) {
-        strncpy(vin, buffer, sizeof(vin) - 1);
-        Serial.print("#VIN:");
-        Serial.println(vin);
+      if (action == 0) {
+        // retrieve VIN
+        if (getVIN(buffer, sizeof(buffer))) {
+          strncpy(vin, buffer, sizeof(vin) - 1);
+          Serial.print("#VIN:");
+          Serial.println(vin);
+        }
+      } else {
+        if (feedid == 0) return; 
       }
 
       wifiState = WIFI_READY;
       for (byte n = 0; ;n++) {
+        // make sure OBD is still accessible
+        if (readSpeed() == -1) {
+          reconnect(); 
+        }
         // start a HTTP connection (TCP)
         httpConnect();
         do {
@@ -344,13 +357,9 @@ public:
           Serial.println("Unable to connect");
           httpClose();
           if (n >= MAX_ERRORS_RESET) {
-            Serial.println("Reset WIFI");
-            resetWifi();
-            delay(5000);
-            initWifi();
-            setupWifi();
+            standby();
           }
-          delay(1000);
+          delay(5000);
           wifiState = WIFI_READY;
           continue;
         }
@@ -359,7 +368,7 @@ public:
         if (action == 0) {
           sprintf_P(buffer, PSTR("/%s/reg?vin=%s"), SERVER_KEY, vin);
         } else {
-          sprintf_P(buffer, PSTR("/%s/reg?id=%d&off=1"), SERVER_KEY, channel);
+          sprintf_P(buffer, PSTR("/%s/reg?id=%d&off=1"), SERVER_KEY, feedid);
         }
         
         // send HTTP request
@@ -384,15 +393,15 @@ public:
         if (action == 0) {
           // receive HTTP response
           // grab the data we need from HTTP response payload
-          // parse channel number
+          // parse feed ID
           p = strstr(buffer, "\"id\"");
           if (p) {
             int m = atoi(p + 5);
             if (m > 0) {
-              // keep the channel number needed for data pushing
-              channel = m;
+              // keep the feed ID needed for data pushing
+              feedid = m;
               Serial.print("#FEED ID:");
-              Serial.println(m);
+              Serial.println(feedid);
               state |= STATE_CONNECTED;
               break;
             }
@@ -461,7 +470,7 @@ private:
             // ready for doing next HTTP request
             if (cacheBytes > 0) {
               // and there is data in cache to send
-              sprintf_P(buffer, PSTR("/%s/post?id=%u"), SERVER_KEY, channel);
+              sprintf_P(buffer, PSTR("/%s/post?id=%u"), SERVER_KEY, feedid);
               // send HTTP POST request with cached data as payload
               if (httpSend(HTTP_POST, buffer, true, cache, cacheBytes)) {
                 // success
@@ -630,26 +639,33 @@ private:
           }
           delay(1000);
         }
-        // seems we can't connect, put the device into sleeping mode
-        httpClose();
-        regDataFeed(1); // de-register
-        disconnectWifi(); // disconnect from AP
-        //delay(500);
-        //resetWifi();
+        standby();
+    }
+    void standby()
+    {
+        // seems we can't connect, put the device into low power mode
+        if (state & STATE_WIFI_READY) {
+          httpClose();
+          regDataFeed(1); // de-register
+          disconnectWifi(); // disconnect from AP
+          delay(500);
+          resetWifi();
+        }
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;
-        Serial.println("Sleeping");
+        Serial.println("Standby");
         // regularly check if we can get any OBD data
         for (;;) {
+            // put the device into low power mode for 30 seconds
+            sleep(30);
+            // try OBD reading
             if (readSpeed() != -1) {
               // a successful readout
               break;
             }
-            // put the device into low power mode for 30 seconds
-            sleep(30);
         }
         // we are able to get OBD data again
         // reset the device
@@ -676,7 +692,7 @@ private:
 #endif
     
     byte state;
-    byte channel;
+    uint16_t feedid;
 };
 
 CTeleLogger logger;

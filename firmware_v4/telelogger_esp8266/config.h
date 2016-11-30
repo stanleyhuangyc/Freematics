@@ -50,7 +50,7 @@
 /**************************************
 * Other options
 **************************************/
-#define OBD_CONN_TIMEOUT 5000 /* ms */
+#define OBD_INIT_TIMEOUT 60000 /* ms */
 #define MIN_LOOP_TIME 500 /* ms */
 
 #endif // CONFIG_H_INCLUDED

@@ -20,7 +20,7 @@
 #define SERVER_URL "http://hub.freematics.com/YOUR_SERVER_KEY"
 #define USE_GSM_LOCATION 1
 // maximum consecutive errors before performing a module reset
-#define MAX_CONN_ERRORS 3
+#define MAX_CONN_ERRORS 5
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
 
@@ -42,7 +42,7 @@
 /**************************************
 * Other options
 **************************************/
-#define OBD_CONN_TIMEOUT 15000 /* ms */
+#define OBD_INIT_TIMEOUT 60000 /* ms */
 #define MIN_LOOP_TIME 1000 /* ms */
 
 #define SD_CS_PIN 10
