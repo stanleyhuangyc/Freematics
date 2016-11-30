@@ -28,6 +28,7 @@
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
+#define STATE_GSM_READY 0x10
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
@@ -90,9 +91,12 @@ public:
     }
     bool setupGPRS(const char* apn)
     {
-      while (sendGSMCommand("AT+CREG?\r", 5000, "+CREG: 0,") == 0) {
+      uint32_t t = millis();
+      bool success = false;
+      do {
+        success = sendGSMCommand("AT+CREG?\r", 5000, "+CREG: 0,") != 0;
         Serial.print('.'); 
-      }
+      } while (!success && millis() - t < MAX_CONN_TIME);
       sendGSMCommand("AT+CGATT?\r");
       sendGSMCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
       sprintf_P(buffer, PSTR("AT+SAPBR=3,1,\"APN\",\"%s\"\r"), apn);
@@ -100,9 +104,9 @@ public:
       do {
         sendGSMCommand("AT+SAPBR=1,1\r", 5000);
         sendGSMCommand("AT+SAPBR=2,1\r", 5000);
-      } while (strstr_P(buffer, PSTR("0.0.0.0")) || strstr_P(buffer, PSTR("ERROR")));
-      //Serial.println(buffer);
-      return true;
+        success = !strstr_P(buffer, PSTR("0.0.0.0")) && !strstr_P(buffer, PSTR("ERROR"));
+      } while (!success && millis() - t < MAX_CONN_TIME);
+      return success;
     }
     int getSignal()
     {
@@ -250,7 +254,7 @@ class CTeleLogger : public COBDGSM, public CDataLogger
 #endif
 {
 public:
-    CTeleLogger():state(0),channel(0) {}
+    CTeleLogger():state(0),feedid(0) {}
     void setup()
     {
         delay(500);
@@ -263,7 +267,7 @@ public:
 
         // initialize OBD communication
         Serial.print("#OBD..");
-        for (uint32_t t = millis(); millis() - t < OBD_CONN_TIMEOUT; ) {
+        for (uint32_t t = millis(); millis() - t < OBD_INIT_TIMEOUT; ) {
             Serial.print('.');
             if (init()) {
               state |= STATE_OBD_READY;
@@ -275,15 +279,16 @@ public:
           Serial.println(version);
         } else {
           Serial.println("NO"); 
+          reconnect();
         }
 
 #if USE_MPU6050 || USE_MPU9250
         // start I2C communication 
         Wire.begin();
 #if USE_MPU6050
-        Serial.print("#MPU6050:");
+        Serial.print("#MPU6050...");
 #else
-        Serial.print("#MPU9250:");
+        Serial.print("#MPU9250...");
 #endif
         if (memsInit()) {
           state |= STATE_MEMS_READY;
@@ -308,18 +313,21 @@ public:
         Serial.print("#GSM...");
         xbBegin(XBEE_BAUDRATE);
         if (initGSM()) {
-            Serial.println("OK");
+          state |= STATE_GSM_READY;
+          Serial.println("OK");
         } else {
-            Serial.println(buffer);
+          Serial.println(buffer);
+          standby();
         }
 
         Serial.print("#GPRS(APN:");
         Serial.print(APN);
         Serial.print(")...");
         if (setupGPRS(APN)) {
-            Serial.println("OK");
+          Serial.println("OK");
         } else {
-            Serial.println(buffer);
+          Serial.println(buffer);
+          standby();
         }
         
         // init HTTP
@@ -327,7 +335,10 @@ public:
         while (!httpInit()) {
           Serial.print('.');
           httpUninit();
-          delay(1000);
+          delay(3000);
+          if (readSpeed() == -1) {
+            reconnect(); 
+          }
         }
         Serial.println("OK");
 
@@ -342,28 +353,41 @@ public:
     {
       // action == 0 for registering a data feed, action == 1 for de-registering a data feed
 
-      // retrieve VIN
       char vin[20] = {0};
-      if (action == 0 && getVIN(buffer, sizeof(buffer))) {
-        strncpy(vin, buffer, sizeof(vin) - 1);
-        Serial.print("#VIN:");
-        Serial.println(vin);
+      int signal = 0;
+      if (action == 0) {
+        // retrieve VIN
+        if (getVIN(buffer, sizeof(buffer))) {
+          strncpy(vin, buffer, sizeof(vin) - 1);
+          Serial.print("#VIN:");
+          Serial.println(vin);
+        }
+        Serial.print("#SIGNAL:");
+        signal = getSignal();
+        Serial.println(signal);
+      } else {
+        if (feedid == 0) return; 
       }
-
-      // get signal strength
-      int signal;
-      Serial.print("#SIGNAL:");
-      signal = getSignal();
-      Serial.println(signal);
-      gprsState = GPRS_IDLE;
       
-      for (;;) {
+      gprsState = GPRS_IDLE;
+      for (byte n = 0; ;n++) {
+        // make sure OBD is still accessible
+        if (readSpeed() == -1) {
+          reconnect(); 
+        }
+        if (n >= MAX_CONN_ERRORS) {
+          if (action == 1)
+            return;
+          else
+            standby();
+        }
+        Serial.print("#SERVER");
         char *p = buffer;
         p += sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/reg?"), SERVER_URL);
         if (action == 0) {
           sprintf_P(p, PSTR("CSQ=%d&vin=%s\"\r"), signal, vin);
         } else {
-          sprintf_P(p, PSTR("id=%u&off=1\"\r"), channel);
+          sprintf_P(p, PSTR("id=%u&off=1\"\r"), feedid);
         }
         if (!sendGSMCommand(buffer)) {
           Serial.println(buffer);
@@ -381,7 +405,7 @@ public:
           if (p) {
             int m = atoi(p + 5);
             if (m > 0) {
-              channel = m;
+              feedid = m;
               Serial.print(m);
               state |= STATE_CONNECTED;
               break;
@@ -473,7 +497,7 @@ private:
                 Serial.println(v);
 #endif
                 // generate URL
-                sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/post?id=%u\"\r"), SERVER_URL, channel);
+                sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/post?id=%u\"\r"), SERVER_URL, feedid);
                 if (!sendGSMCommand(buffer)) {
                   break;
                 }
@@ -617,7 +641,6 @@ private:
     void reconnect()
     {
         // try to re-connect to OBD
-        Serial.println("Reconnecting");
         for (byte n = 0; n < 3; n++) {
           if (init()) {
             // reconnected
@@ -625,23 +648,29 @@ private:
           }
           delay(1000);
         }
-        regDataFeed(1); // de-register
-        toggleGSM(); // turn off GSM power
+        standby();
+    }
+    void standby()
+    {
+        Serial.println("Standby");
+        if (state & STATE_GSM_READY) {
+          regDataFeed(1); // de-register
+          toggleGSM(); // turn off GSM power
+        }
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
-        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY | STATE_GSM_READY);
         state |= STATE_SLEEPING;
         // regularly check if we can get any OBD data
-        Serial.println("Sleeping");
         for (;;) {
-            int value;
-            if (readPID(PID_SPEED, value)) {
+            // put the device into low power mode for 30 seconds
+            sleep(30);
+            // try OBD reading
+            if (readSpeed() != -1) {
               // a successful readout
               break;
             }
-            // put the device into low power mode for 30 seconds
-            sleep(30);
         }
         // we are able to get OBD data again
         // reset device
@@ -668,7 +697,7 @@ private:
     }
 #endif
     byte state;
-    byte channel;
+    uint16_t feedid;
     GSM_LOCATION loc;
 };
 
