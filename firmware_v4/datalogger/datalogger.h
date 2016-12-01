@@ -8,16 +8,6 @@
 // additional custom PID for data logger
 #define PID_DATA_SIZE 0x80
 
-#if ENABLE_DATA_OUT
-
-#if defined(RF_SERIAL)
-#define SerialRF RF_SERIAL
-#else
-#define SerialRF Serial
-#endif
-
-#endif
-
 #if ENABLE_DATA_LOG
 static File sdfile;
 #endif
@@ -54,7 +44,7 @@ public:
     void initSender()
     {
 #if ENABLE_DATA_OUT
-        SerialRF.begin(STREAM_BAUDRATE);
+        Serial.begin(STREAM_BAUDRATE);
 #endif
     }
     byte genTimestamp(char* buf, bool absolute)
@@ -96,11 +86,11 @@ public:
 #else
         //char tmp[12];
         //byte n = genTimestamp(tmp, dataTime >= m_lastDataTime + 100);
-        //SerialRF.write(tmp, n);
+        //Serial.write(tmp, n);
 #endif
 #if ENABLE_DATA_OUT
-        SerialRF.write(buf, len);
-        SerialRF.println();
+        Serial.write(buf, len);
+        Serial.println();
 #endif
     }
     void logData(const char* buf, byte len)
