@@ -10,12 +10,12 @@
 #include <Wire.h>
 #include <FreematicsONE.h>
 
-COBDSPI one;
-
-#define WIFI_SSID "HOMEWIFI"
+#define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
-#define SERVER_URL "live.freematics.com.au"
-#define SERVER_PORT 8080
+#define SERVER_URL "hub.freematics.com"
+#define SERVER_PORT 80
+
+COBDSPI one;
 
 char buffer[256];
 
@@ -33,6 +33,7 @@ void setup() {
   
   one.begin();
   Serial.begin(115200);
+  delay(500);
   // set xBee module baudrate
   Serial.print("Setting xBee baudrate...");
   if (one.xbBegin(9600) ) {
@@ -77,9 +78,11 @@ void setup() {
   else
     Serial.println("failed");
   
-  Serial.print("Connecting AP...");
-  sprintf(buffer, "AT+CWJAP=\"%s\",\"%s\"\r\n", WIFI_SSID, WIFI_PASSWORD);
-  ret = sendCommand(buffer, 10000, "OK", "ERROR");
+  Serial.print("Connecting AP (SSID:");
+  Serial.print(WIFI_SSID);
+  Serial.print(")...");
+  sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
+  ret = sendCommand(buffer, 20000, "OK", "ERROR");
   if (ret == 1) {
     // get IP address
     if (sendCommand("AT+CIFSR\r\n", 1000, "OK")) {
@@ -93,16 +96,15 @@ void setup() {
     } else {
       Serial.println("N/A"); 
     }
-  } else if (ret == 2) {
-    Serial.println("failed"); 
   } else {
-    Serial.println("dead"); 
+    Serial.println("failed"); 
+    for (;;);
   }
   
   Serial.print("Connecting to ");
   Serial.print(SERVER_URL);
   Serial.print("...");
-  sprintf(buffer, "AT+CIPSTART=\"TCP\",\"%s\",%d\r\n", SERVER_URL, SERVER_PORT);
+  sprintf_P(buffer, PSTR("AT+CIPSTART=\"TCP\",\"%s\",%d\r\n"), SERVER_URL, SERVER_PORT);
   if (sendCommand(buffer, 10000, "Linked")) {
     Serial.println("OK");
   } else {
@@ -112,9 +114,9 @@ void setup() {
 
 void loop() {
   static unsigned long count = 0;
-  char payload[256];
-  unsigned int len = sprintf(payload, "GET /push HTTP/1.1\r\nUser-Agent:Freematics ONE\r\nConnection: keep-alive\r\n\r\n");
-  sprintf(buffer, "AT+CIPSEND=%u\r\n", len);
+  char payload[128];
+  unsigned int len = sprintf_P(payload, PSTR("GET /test HTTP/1.1\r\nUser-Agent:ONE\r\nConnection: keep-alive\r\nHost: %s\r\n\r\n"), SERVER_URL);
+  sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), len);
   if (sendCommand(buffer, 1000, ">")) {
     Serial.print('[');
     Serial.print(++count);
