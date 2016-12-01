@@ -35,7 +35,7 @@
 #if VERBOSE && !ENABLE_DATA_OUT
 #define SerialInfo Serial
 #else
-#define SerialInfo SerialRF
+#define SerialInfo Serial
 #endif
 
 static uint8_t lastFileSize = 0;
@@ -65,51 +65,58 @@ public:
         
         delay(1000);
         begin();
-        SerialRF.print("Firmware Ver. ");
-        SerialRF.println(version);
-
-#if ENABLE_DATA_LOG
-        SerialRF.print("SD ");
-        uint16_t volsize = initSD();
-        if (volsize) {
-          SerialRF.print(volsize);
-          SerialRF.println("MB");
-        } else {
-          SerialRF.println("NO");
-        }
-#endif
+        Serial.print("Firmware Ver. ");
+        Serial.println(version);
 
 #if USE_MPU6050 || USE_MPU9250
         Wire.begin();
 #if USE_MPU6050
-        SerialRF.print("MPU6050 ");
+        Serial.print("MPU6050 ");
 #else
-        SerialRF.print("MPU9250 ");
+        Serial.print("MPU9250 ");
 #endif
         if (memsInit()) {
           state |= STATE_MEMS_READY;
-          SerialRF.println("OK");
+          Serial.println("OK");
         } else {
-          SerialRF.println("NO");
+          Serial.println("NO");
         }
 #endif
 
-        SerialRF.print("OBD ");
+#if ENABLE_DATA_LOG
+        Serial.print("SD ");
+        uint16_t volsize = initSD();
+        if (volsize) {
+          Serial.print(volsize);
+          Serial.println("MB");
+        } else {
+          Serial.println("NO");
+        }
+#endif
+
+        Serial.print("OBD ");
         if (init()) {
           state |= STATE_OBD_READY;
-          SerialRF.println("OK");
+          Serial.println("OK");
         } else {
-          SerialRF.println("NO");
+          Serial.println("NO");
+          reconnect();
+        }
+
+        // retrieve VIN
+        char buffer[128];
+        if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
+          Serial.print("VIN:");
+          Serial.println(buffer);
         }
 
 #if USE_GPS
-        delay(100);
-        SerialRF.print("GPS ");
+        Serial.print("GPS ");
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_FOUND;
-          SerialRF.println("OK");
+          Serial.println("OK");
         } else {
-          SerialRF.println("NO");
+          Serial.println("NO");
         }
 #endif
 
@@ -202,7 +209,6 @@ public:
     void reconnect()
     {
         // try to re-connect to OBD
-        SerialRF.println("Reconnecting");
         for (byte n = 0; n < 3; n++) {
           if (init()) {
             // reconnected
@@ -218,18 +224,15 @@ public:
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;
         // check if OBD is accessible again
-        SerialRF.println("Sleeping");
+        Serial.println("Standby");
         for (;;) {
+            // standby for 30 seconds
+            sleep(30);
             int value;
-            Serial.print('.');
             if (readPID(PID_SPEED, value)) {
               // a successful readout
               break;
             }
-            enterLowPowerMode();
-            // deep sleep for 8 seconds
-            sleep(8);
-            leaveLowPowerMode();
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
@@ -277,12 +280,12 @@ void loop()
         if (one.state & STATE_GPS_READY) {
           uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
           if (one.openFile(dateTime) != 0) {
-            SerialRF.print("FILE ");
-            SerialRF.println(dateTime);
+            Serial.print("FILE ");
+            Serial.println(dateTime);
             MMDD = 0;
             one.state |= STATE_FILE_READY;
           } else {
-            SerialRF.println("File error");
+            Serial.println("File error");
           }
         }
       } else {
@@ -290,10 +293,10 @@ void loop()
         int index = one.openFile(0);
         if (index != 0) {
           one.state |= STATE_FILE_READY;
-          SerialRF.print("FILE ");
-          SerialRF.println(index);
+          Serial.print("FILE ");
+          Serial.println(index);
         } else {
-          SerialRF.println("File error");
+          Serial.println("File error");
         }
       }
     }
