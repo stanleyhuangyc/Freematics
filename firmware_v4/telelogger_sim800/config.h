@@ -44,7 +44,7 @@
 **************************************/
 #define OBD_INIT_TIMEOUT 60000 /* ms */
 #define MIN_LOOP_TIME 1000 /* ms */
-
-#define SD_CS_PIN 10
+#define START_MOTION_THRESHOLD 100000 /* for device wakeup on movement */
+#define COOLING_DOWN_TEMP 60 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED
