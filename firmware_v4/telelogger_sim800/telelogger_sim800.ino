@@ -291,7 +291,6 @@ public:
           Serial.println("OK");
         } else {
           Serial.println("NO"); 
-          calibrateMEMS();
           reconnect();
           reboot();
         }
@@ -332,20 +331,25 @@ public:
         
         // init HTTP
         Serial.print("#HTTP...");
-        while (!httpInit()) {
+        for (byte n = 0; n < 5; n++) {
+          if (httpInit()) {
+            state |= STATE_CONNECTED;
+            break;
+          }
           Serial.print('.');
           httpUninit();
           delay(3000);
-          if (readSpeed() == -1) {
-            reconnect();
-            reboot();
-          }
         }
-        Serial.println("OK");
+        if (state & STATE_CONNECTED) {
+          Serial.println("OK");
+        } else {
+          Serial.println(buffer);
+          standby();
+          reboot();
+        }
 
         // sign in server, will block if not successful
         regDataFeed(0);
-        state |= STATE_CONNECTED;
 
         calibrateMEMS();
     }
@@ -412,12 +416,16 @@ public:
         do {
           delay(500);
           Serial.print('.');
+          if (gprsState == GPRS_HTTP_ERROR) {
+            standby();
+            reboot(); 
+          }
         } while (!httpIsConnected());
         if (action != 0) {
           Serial.println(); 
           return;
         }
-        if (gprsState != GPRS_HTTP_ERROR && httpRead()) {
+        if (httpRead()) {
           char *p = strstr(buffer, "\"id\":");
           if (p) {
             int m = atoi(p + 5);
@@ -488,8 +496,10 @@ public:
                 reboot();
               } else if (deviceTemp >= COOLING_DOWN_TEMP) {
                 // device too hot, slow down communication a bit
-                Serial.println("Cool down");
+                Serial.print("Cool down - ");
+                Serial.println(deviceTemp);
                 delay(3000);
+                break;
               }
             }          
           }
@@ -539,7 +549,6 @@ private:
                   purgeCache();
 #endif
                   delay(50);
-                  Serial.println(deviceTemp);
                   Serial.print("Sending #");
                   Serial.print(++connCount);
                   Serial.print("...");
@@ -691,6 +700,12 @@ private:
         // put OBD chips into low power mode
         Serial.println("Standby");
         enterLowPowerMode();
+        // calibrate MEMS for several seconds
+        for (accCount = 0; accCount < 250; ) {
+          dataIdleLoop();
+          delay(50);
+        }
+        calibrateMEMS();
         for (;;) {            
           accSum[0] = 0;
           accSum[1] = 0;
