@@ -36,8 +36,10 @@ uint16_t lastUTC = 0;
 uint8_t lastGPSDay = 0;
 uint32_t nextConnTime = 0;
 uint16_t connCount = 0;
-long accSum[3]; // sum of accelerometer x/y/z data
 byte accCount = 0; // count of accelerometer readings
+long accSum[3] = {0}; // sum of accelerometer data
+int accCal[3]; // calibrated reference accelerometer data
+byte deviceTemp = 0; // device temperature
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
@@ -257,31 +259,9 @@ public:
     CTeleLogger():state(0),feedid(0) {}
     void setup()
     {
-        delay(500);
-        
-        // initialize hardware serial (for USB or BLE)
-        Serial.begin(115200);
-
         // this will init SPI communication
         begin();
-
-        // initialize OBD communication
-        Serial.print("#OBD..");
-        for (uint32_t t = millis(); millis() - t < OBD_INIT_TIMEOUT; ) {
-            Serial.print('.');
-            if (init()) {
-              state |= STATE_OBD_READY;
-              break;              
-            }
-        }
-        if (state & STATE_OBD_READY) {
-          Serial.print("VER ");
-          Serial.println(version);
-        } else {
-          Serial.println("NO"); 
-          reconnect();
-        }
-
+ 
 #if USE_MPU6050 || USE_MPU9250
         // start I2C communication 
         Wire.begin();
@@ -297,6 +277,24 @@ public:
           Serial.println("NO");
         }
 #endif
+
+        // initialize OBD communication
+        Serial.print("#OBD..");
+        for (uint32_t t = millis(); millis() - t < OBD_INIT_TIMEOUT; ) {
+            Serial.print('.');
+            if (init()) {
+              state |= STATE_OBD_READY;
+              break;              
+            }
+        }
+        if (state & STATE_OBD_READY) {
+          Serial.println("OK");
+        } else {
+          Serial.println("NO"); 
+          calibrateMEMS();
+          reconnect();
+          reboot();
+        }
 
 #if USE_GPS
         // start serial communication with GPS receive
@@ -318,6 +316,7 @@ public:
         } else {
           Serial.println(buffer);
           standby();
+          reboot();
         }
 
         Serial.print("#GPRS(APN:");
@@ -328,6 +327,7 @@ public:
         } else {
           Serial.println(buffer);
           standby();
+          reboot();
         }
         
         // init HTTP
@@ -337,7 +337,8 @@ public:
           httpUninit();
           delay(3000);
           if (readSpeed() == -1) {
-            reconnect(); 
+            reconnect();
+            reboot();
           }
         }
         Serial.println("OK");
@@ -345,9 +346,21 @@ public:
         // sign in server, will block if not successful
         regDataFeed(0);
         state |= STATE_CONNECTED;
-        
-        Serial.println();
-        delay(1000);
+
+        calibrateMEMS();
+    }
+    void calibrateMEMS()
+    {
+        // get accelerometer calibration reference data
+        accCal[0] = accSum[0] / accCount;
+        accCal[1] = accSum[1] / accCount;
+        accCal[2] = accSum[2] / accCount;
+        Serial.print("#ACC:");
+        Serial.print(accCal[0]);
+        Serial.print('/');
+        Serial.print(accCal[1]);
+        Serial.print('/');
+        Serial.println(accCal[2]);
     }
     void regDataFeed(byte action)
     {
@@ -371,20 +384,21 @@ public:
       
       gprsState = GPRS_IDLE;
       for (byte n = 0; ;n++) {
-        // make sure OBD is still accessible
-        if (readSpeed() == -1) {
-          reconnect(); 
-        }
-        if (n >= MAX_CONN_ERRORS) {
-          if (action == 1)
-            return;
-          else
+        if (action == 0) {
+          // error handling
+          if (readSpeed() == -1 || n >= MAX_CONN_ERRORS) {
             standby();
+            reboot();
+          }
+        } else {
+          if (n >= MAX_CONN_ERRORS) {
+            return;
+          } 
         }
-        Serial.print("#SERVER");
         char *p = buffer;
         p += sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/reg?"), SERVER_URL);
         if (action == 0) {
+          Serial.print("#SERVER");
           sprintf_P(p, PSTR("CSQ=%d&vin=%s\"\r"), signal, vin);
         } else {
           sprintf_P(p, PSTR("id=%u&off=1\"\r"), feedid);
@@ -399,14 +413,17 @@ public:
           delay(500);
           Serial.print('.');
         } while (!httpIsConnected());
-        if (action != 0) return;
+        if (action != 0) {
+          Serial.println(); 
+          return;
+        }
         if (gprsState != GPRS_HTTP_ERROR && httpRead()) {
           char *p = strstr(buffer, "\"id\":");
           if (p) {
             int m = atoi(p + 5);
             if (m > 0) {
               feedid = m;
-              Serial.print(m);
+              Serial.println(m);
               state |= STATE_CONNECTED;
               break;
             }
@@ -422,9 +439,6 @@ public:
 
         if (state & STATE_OBD_READY) {
           processOBD();
-          if (gprsState == GPRS_IDLE && errors > 10) {
-              reconnect();
-          }
         }
 
 #if USE_MPU6050 || USE_MPU9250
@@ -455,7 +469,7 @@ public:
               if (gprsState == GPRS_IDLE) {
                 // get GSM location if GPS not present
                 if (getLocation(&loc)) {
-                  Serial.print(buffer);
+                  //Serial.print(buffer);
                 }
               }
             }
@@ -467,9 +481,21 @@ public:
             if (state & STATE_OBD_READY) {
                readSpeed();
             }
+            // error and exception handling
+            if (gprsState == GPRS_IDLE) {
+              if (errors > 10) {
+                reconnect();
+                reboot();
+              } else if (deviceTemp >= COOLING_DOWN_TEMP) {
+                // device too hot, slow down communication a bit
+                Serial.println("Cool down");
+                delay(3000);
+              }
+            }          
           }
         } while (millis() - start < MIN_LOOP_TIME);
-          
+
+        // error handling
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
           Serial.print(connErrors);
@@ -513,6 +539,7 @@ private:
                   purgeCache();
 #endif
                   delay(50);
+                  Serial.println(deviceTemp);
                   Serial.print("Sending #");
                   Serial.print(++connCount);
                   Serial.print("...");
@@ -652,7 +679,6 @@ private:
     }
     void standby()
     {
-        Serial.println("Standby");
         if (state & STATE_GSM_READY) {
           regDataFeed(1); // de-register
           toggleGSM(); // turn off GSM power
@@ -660,19 +686,45 @@ private:
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
-        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY | STATE_GSM_READY);
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GSM_READY | STATE_CONNECTED);
         state |= STATE_SLEEPING;
-        // regularly check if we can get any OBD data
-        for (;;) {
-            // put the device into low power mode for 30 seconds
-            sleep(30);
+        // put OBD chips into low power mode
+        Serial.println("Standby");
+        enterLowPowerMode();
+        for (;;) {            
+          accSum[0] = 0;
+          accSum[1] = 0;
+          accSum[2] = 0;
+          for (accCount = 0; accCount < 10; ) {
+            dataIdleLoop();
+            delay(50);
+          }
+          // calculate relative movement
+          unsigned long motion = 0;
+          for (byte i = 0; i < 3; i++) {
+            long n = accSum[i] / accCount - accCal[i];
+            motion += n * n;
+          }
+          // check movement
+          //Serial.println(motion);
+          if (motion > START_MOTION_THRESHOLD) {
+            Serial.println("Check OBD");
             // try OBD reading
+            leaveLowPowerMode();
             if (readSpeed() != -1) {
               // a successful readout
               break;
             }
+            enterLowPowerMode();
+            // calibrate MEMS again in case the device posture changed
+            calibrateMEMS();
+          }
         }
         // we are able to get OBD data again
+        state &= ~STATE_SLEEPING;
+    }
+    void reboot()
+    {
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
@@ -686,14 +738,19 @@ private:
         int acc[3] = {0};
         int temp; // device temperature (in 0.1 celcius degree)
         memsRead(acc, 0, 0, &temp);
-        if (accCount < 250) {
-          accSum[0] += acc[0];
-          accSum[1] += acc[1];
-          accSum[2] += acc[2];
-          accCount++;
+        if (accCount >= 250) {
+          accSum[0] >>= 1;
+          accSum[1] >>= 1;
+          accSum[2] >>= 1;
+          accCount >>= 1;
         }
+        accSum[0] += acc[0];
+        accSum[1] += acc[1];
+        accSum[2] += acc[2];
+        accCount++;
+        deviceTemp = temp / 10;
       }
-      delay(20);
+      delay(10);
     }
 #endif
     byte state;
@@ -705,7 +762,10 @@ CTeleLogger logger;
 
 void setup()
 {
-    logger.initSender();
+    // initialize hardware serial (for USB or BLE)
+    Serial.begin(115200);
+    delay(500);
+    // perform initializations
     logger.setup();
 }
 

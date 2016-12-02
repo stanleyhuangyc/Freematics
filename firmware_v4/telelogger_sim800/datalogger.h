@@ -8,7 +8,6 @@
 #define PID_DATA_SIZE 0x80
 
 #define FILE_NAME_FORMAT "/DAT%05d.CSV"
-#define ID_STR "#FREEMATICS"
 
 #if ENABLE_DATA_LOG
 static File sdfile;
@@ -21,13 +20,6 @@ public:
         m_lastDataTime = 0;
 #if ENABLE_DATA_CACHE
         cacheBytes = 0;
-#endif
-    }
-    void initSender()
-    {
-#if ENABLE_DATA_OUT
-        SerialRF.begin(STREAM_BAUDRATE);
-        SerialRF.println(ID_STR);
 #endif
     }
     byte genTimestamp(char* buf, bool absolute)
