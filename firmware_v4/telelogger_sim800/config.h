@@ -27,8 +27,8 @@
 /**************************************
 * MEMS sensors
 **************************************/
-#define USE_MPU6050 0
-#define USE_MPU9250 1
+#define USE_MPU6050 1
+#define USE_MPU9250 0
 #define ACC_DATA_RATIO 172
 #define GYRO_DATA_RATIO 256
 #define COMPASS_DATA_RATIO 8
@@ -40,11 +40,16 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 
 /**************************************
+* Motion detection
+**************************************/
+#define START_MOTION_THRESHOLD 200000 /* for wakeup on movement */
+#define RECALIBRATION_TIME 3000 /* ms */ 
+
+/**************************************
 * Other options
 **************************************/
 #define OBD_INIT_TIMEOUT 60000 /* ms */
 #define MIN_LOOP_TIME 1000 /* ms */
-#define START_MOTION_THRESHOLD 100000 /* for device wakeup on movement */
 #define COOLING_DOWN_TEMP 60 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED

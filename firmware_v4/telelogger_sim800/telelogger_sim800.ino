@@ -29,7 +29,6 @@
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
 #define STATE_GSM_READY 0x10
-#define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
 uint16_t lastUTC = 0;
@@ -38,7 +37,7 @@ uint32_t nextConnTime = 0;
 uint16_t connCount = 0;
 byte accCount = 0; // count of accelerometer readings
 long accSum[3] = {0}; // sum of accelerometer data
-int accCal[3]; // calibrated reference accelerometer data
+int accCal[3] = {0}; // calibrated reference accelerometer data
 byte deviceTemp = 0; // device temperature
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
@@ -265,11 +264,7 @@ public:
 #if USE_MPU6050 || USE_MPU9250
         // start I2C communication 
         Wire.begin();
-#if USE_MPU6050
-        Serial.print("#MPU6050...");
-#else
-        Serial.print("#MPU9250...");
-#endif
+        Serial.print("#MEMS...");
         if (memsInit()) {
           state |= STATE_MEMS_READY;
           Serial.println("OK");
@@ -352,19 +347,6 @@ public:
         regDataFeed(0);
 
         calibrateMEMS();
-    }
-    void calibrateMEMS()
-    {
-        // get accelerometer calibration reference data
-        accCal[0] = accSum[0] / accCount;
-        accCal[1] = accSum[1] / accCount;
-        accCal[2] = accSum[2] / accCount;
-        Serial.print("#ACC:");
-        Serial.print(accCal[0]);
-        Serial.print('/');
-        Serial.print(accCal[1]);
-        Serial.print('/');
-        Serial.println(accCal[2]);
     }
     void regDataFeed(byte action)
     {
@@ -496,8 +478,9 @@ public:
                 reboot();
               } else if (deviceTemp >= COOLING_DOWN_TEMP) {
                 // device too hot, slow down communication a bit
-                Serial.print("Cool down - ");
-                Serial.println(deviceTemp);
+                Serial.print("Cool down (");
+                Serial.print(deviceTemp);
+                Serial.println("C)");
                 delay(3000);
                 break;
               }
@@ -625,10 +608,6 @@ private:
          // log the loaded MEMS data
         if (accCount) {
           logData(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
-          accSum[0] = 0;
-          accSum[1] = 0;
-          accSum[2] = 0;
-          accCount = 0;
         }
     }
 #endif
@@ -677,13 +656,9 @@ private:
     void reconnect()
     {
         // try to re-connect to OBD
-        for (byte n = 0; n < 3; n++) {
-          if (init()) {
-            // reconnected
-            return; 
-          }
-          delay(1000);
-        }
+        if (init()) return;
+        delay(1000);
+        if (init()) return;
         standby();
     }
     void standby()
@@ -696,23 +671,18 @@ private:
         initGPS(0); // turn off GPS power
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GSM_READY | STATE_CONNECTED);
-        state |= STATE_SLEEPING;
-        // put OBD chips into low power mode
         Serial.println("Standby");
+        // put OBD chips into low power mode
         enterLowPowerMode();
-        // calibrate MEMS for several seconds
-        for (accCount = 0; accCount < 250; ) {
-          dataIdleLoop();
-          delay(50);
-        }
-        calibrateMEMS();
-        for (;;) {            
+        // sleep 10 seconds in anyway
+        for (byte n = 0; n < 40; n++) sleepms(250);
+        for (;;) {
           accSum[0] = 0;
           accSum[1] = 0;
           accSum[2] = 0;
           for (accCount = 0; accCount < 10; ) {
-            dataIdleLoop();
-            delay(50);
+            readMEMS();
+            sleepms(30);
           }
           // calculate relative movement
           unsigned long motion = 0;
@@ -721,13 +691,14 @@ private:
             motion += n * n;
           }
           // check movement
-          //Serial.println(motion);
           if (motion > START_MOTION_THRESHOLD) {
-            Serial.println("Check OBD");
+            Serial.print("Motion=");
+            Serial.print(motion);
+            Serial.println(" Check OBD");
             // try OBD reading
             leaveLowPowerMode();
-            if (readSpeed() != -1) {
-              // a successful readout
+            if (init()) {
+              // OBD is accessible
               break;
             }
             enterLowPowerMode();
@@ -735,8 +706,7 @@ private:
             calibrateMEMS();
           }
         }
-        // we are able to get OBD data again
-        state &= ~STATE_SLEEPING;
+        // now we are able to get OBD data again
     }
     void reboot()
     {
@@ -744,11 +714,15 @@ private:
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
     }
-#if USE_MPU6050 || USE_MPU9250
-    void dataIdleLoop()
+    void calibrateMEMS()
     {
-      // do something while waiting for data on SPI
-      if (state & STATE_MEMS_READY) {
+        // get accelerometer calibration reference data
+        accCal[0] = accSum[0] / accCount;
+        accCal[1] = accSum[1] / accCount;
+        accCal[2] = accSum[2] / accCount;
+    }
+    void readMEMS()
+    {
         // load accelerometer and temperature data
         int acc[3] = {0};
         int temp; // device temperature (in 0.1 celcius degree)
@@ -764,10 +738,15 @@ private:
         accSum[2] += acc[2];
         accCount++;
         deviceTemp = temp / 10;
+    }
+    void dataIdleLoop()
+    {
+      // do something while waiting for data on SPI
+      if (state & STATE_MEMS_READY) {
+        readMEMS();
       }
       delay(10);
     }
-#endif
     byte state;
     uint16_t feedid;
     GSM_LOCATION loc;
