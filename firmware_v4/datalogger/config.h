@@ -14,8 +14,6 @@
 #define ENABLE_DATA_CACHE 0
 #define MAX_CACHE_SIZE 256  /* bytes */
 
-#define USE_FRIENDLY_PID_NAME 1
-
 // followings define the format of data streaming, enable one of them only
 // FORMAT_BIN is required by Freematics OBD iOS App
 //#define STREAM_FORMAT FORMAT_BIN
@@ -27,9 +25,6 @@
 
 // maximum size per file, a new file will be created on reaching this size
 #define MAX_LOG_FILE_SIZE 1024 /* KB */
-
-// outputs more debug information
-#define VERBOSE 0
 
 /**************************************
 * Hardware setup
@@ -58,5 +53,8 @@
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
+
+// motion detection
+#define START_MOTION_THRESHOLD 200000 /* for wakeup on movement */
 
 #endif // CONFIG_H_INCLUDED
