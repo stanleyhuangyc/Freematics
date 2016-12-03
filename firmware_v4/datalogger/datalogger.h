@@ -17,22 +17,6 @@ typedef struct {
     char name[3];
 } PID_NAME;
 
-const PID_NAME pidNames[] PROGMEM = {
-{PID_ACC, {'A','C','C'}},
-{PID_GYRO, {'G','Y','R'}},
-{PID_COMPASS, {'M','A','G'}},
-{PID_GPS_LATITUDE, {'L','A','T'}},
-{PID_GPS_LONGITUDE, {'L','N','G'}},
-{PID_GPS_ALTITUDE, {'A','L','T'}},
-{PID_GPS_SPEED, {'S','P','D'}},
-{PID_GPS_HEADING, {'C','R','S'}},
-{PID_GPS_SAT_COUNT, {'S','A','T'}},
-{PID_GPS_TIME, {'U','T','C'}},
-{PID_GPS_DATE, {'D','T','E'}},
-{PID_BATTERY_VOLTAGE, {'B','A','T'}},
-{PID_DATA_SIZE, {'D','A','T'}},
-};
-
 class CDataLogger {
 public:
     CDataLogger():m_lastDataTime(0),dataTime(0),dataSize(0)
@@ -199,16 +183,6 @@ public:
 private:
     byte translatePIDName(uint16_t pid, char* text)
     {
-#if USE_FRIENDLY_PID_NAME
-        for (uint16_t n = 0; n < sizeof(pidNames) / sizeof(pidNames[0]); n++) {
-            uint16_t id = pgm_read_byte(&pidNames[n].pid);
-            if (pid == id) {
-                memcpy_P(text, pidNames[n].name, 3);
-                text[3] = ',';
-                return 4;
-            }
-        }
-#endif
         return sprintf(text, "%X,", pid);
     }
     uint32_t m_lastDataTime;
