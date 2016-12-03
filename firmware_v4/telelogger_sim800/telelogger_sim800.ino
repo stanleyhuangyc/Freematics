@@ -274,20 +274,13 @@ public:
 #endif
 
         // initialize OBD communication
-        Serial.print("#OBD..");
-        for (uint32_t t = millis(); millis() - t < OBD_INIT_TIMEOUT; ) {
-            Serial.print('.');
-            if (init()) {
-              state |= STATE_OBD_READY;
-              break;              
-            }
-        }
-        if (state & STATE_OBD_READY) {
+        Serial.print("#OBD...");
+        if (init()) {
+          state |= STATE_OBD_READY;
           Serial.println("OK");
         } else {
-          Serial.println("NO"); 
+          Serial.println("NO");
           reconnect();
-          reboot();
         }
 
 #if USE_GPS
@@ -310,7 +303,6 @@ public:
         } else {
           Serial.println(buffer);
           standby();
-          reboot();
         }
 
         Serial.print("#GPRS(APN:");
@@ -321,7 +313,6 @@ public:
         } else {
           Serial.println(buffer);
           standby();
-          reboot();
         }
         
         // init HTTP
@@ -340,7 +331,6 @@ public:
         } else {
           Serial.println(buffer);
           standby();
-          reboot();
         }
 
         // sign in server, will block if not successful
@@ -374,7 +364,6 @@ public:
           // error handling
           if (readSpeed() == -1 || n >= MAX_CONN_ERRORS) {
             standby();
-            reboot();
           }
         } else {
           if (n >= MAX_CONN_ERRORS) {
@@ -400,7 +389,6 @@ public:
           Serial.print('.');
           if (gprsState == GPRS_HTTP_ERROR) {
             standby();
-            reboot(); 
           }
         } while (!httpIsConnected());
         if (action != 0) {
@@ -475,7 +463,6 @@ public:
             if (gprsState == GPRS_IDLE) {
               if (errors > 10) {
                 reconnect();
-                reboot();
               } else if (deviceTemp >= COOLING_DOWN_TEMP) {
                 // device too hot, slow down communication a bit
                 Serial.print("Cool down (");
@@ -671,11 +658,16 @@ private:
         initGPS(0); // turn off GPS power
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GSM_READY | STATE_CONNECTED);
-        Serial.println("Standby");
+        Serial.print("Standby");
         // put OBD chips into low power mode
         enterLowPowerMode();
-        // sleep 10 seconds in anyway
-        for (byte n = 0; n < 40; n++) sleepms(250);
+        // sleep for serveral seconds
+        for (byte n = 0; n < 30; n++) {
+          Serial.print('.');
+          readMEMS();
+          sleepms(250);
+        }
+        calibrateMEMS();
         for (;;) {
           accSum[0] = 0;
           accSum[1] = 0;
@@ -692,9 +684,7 @@ private:
           }
           // check movement
           if (motion > START_MOTION_THRESHOLD) {
-            Serial.print("Motion=");
-            Serial.print(motion);
-            Serial.println(" Check OBD");
+            Serial.println(motion);
             // try OBD reading
             leaveLowPowerMode();
             if (init()) {
@@ -707,9 +697,6 @@ private:
           }
         }
         // now we are able to get OBD data again
-    }
-    void reboot()
-    {
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
