@@ -339,6 +339,9 @@ static const char PROGMEM targets[][4] = {
 
 byte COBDSPI::begin()
 {
+	// turn off ADC
+	ADCSRA &= ~(1 << ADEN);
+	
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
@@ -602,6 +605,30 @@ void COBDSPI::sendGPSCommand(const char* cmd)
 {
 	setTarget(TARGET_GPS);
 	write(cmd);
+}
+
+
+void COBDSPI::sleepms(byte ms)
+{
+	uint8_t wdt_period;
+	if (ms <= 15)
+		wdt_period = WDTO_15MS;
+	else if (ms <= 30)
+		wdt_period = WDTO_30MS;
+	else if (ms <= 60)
+		wdt_period = WDTO_60MS;
+	else if (ms <= 120)
+		wdt_period = WDTO_120MS;
+	else
+		wdt_period = WDTO_250MS;
+
+	wdt_enable(wdt_period);
+	wdt_reset();
+	WDTCSR |= _BV(WDIE);
+	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+	sleep_mode();
+	wdt_disable();
+	WDTCSR &= ~_BV(WDIE);
 }
 
 void COBDSPI::sleep(int seconds)
