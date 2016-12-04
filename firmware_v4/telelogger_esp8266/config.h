@@ -48,9 +48,15 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 
 /**************************************
+* Motion detection
+**************************************/
+#define START_MOTION_THRESHOLD 200000 /* for wakeup on movement */
+#define RECALIBRATION_TIME 3000 /* ms */ 
+
+/**************************************
 * Other options
 **************************************/
-#define OBD_INIT_TIMEOUT 60000 /* ms */
 #define MIN_LOOP_TIME 500 /* ms */
+#define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED
