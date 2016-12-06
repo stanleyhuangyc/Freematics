@@ -461,6 +461,12 @@ public:
             if (gprsState == GPRS_IDLE) {
               if (errors > 10) {
                 reconnect();
+              } else if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
+-               Serial.print("Cooling (");
+-               Serial.print(deviceTemp);
+-               Serial.println("C)");
+-               delay(5000);
+-               break;
               }
             }          
           }
