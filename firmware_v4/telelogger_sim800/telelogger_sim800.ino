@@ -76,19 +76,17 @@ public:
     }
     bool initGSM()
     {
-      // init xBee module serial communication
-      xbBegin();
       // discard any stale data
       xbPurge();
-      for (;;) {
+      for (byte n = 0; n < 10; n++) {
         // try turning on GSM
         toggleGSM();
         delay(2000);
         if (sendGSMCommand("ATE0\r") != 0) {
-          break;
+          return true;
         }
       }
-      //sendGSMCommand("ATE0\r");
+      return false;
     }
     bool setupGPRS(const char* apn)
     {
@@ -276,12 +274,12 @@ public:
         // initialize OBD communication
         Serial.print("#OBD...");
         if (init()) {
-          state |= STATE_OBD_READY;
           Serial.println("OK");
         } else {
           Serial.println("NO");
           reconnect();
         }
+        state |= STATE_OBD_READY;
 
 #if USE_GPS
         // start serial communication with GPS receive
@@ -301,7 +299,6 @@ public:
           state |= STATE_GSM_READY;
           Serial.println("OK");
         } else {
-          Serial.println(buffer);
           standby();
         }
 
@@ -342,6 +339,7 @@ public:
     {
       // action == 0 for registering a data feed, action == 1 for de-registering a data feed
 
+      // retrieve VIN and GSM signal index
       char vin[20] = {0};
       int signal = 0;
       if (action == 0) {
@@ -463,13 +461,6 @@ public:
             if (gprsState == GPRS_IDLE) {
               if (errors > 10) {
                 reconnect();
-              } else if (deviceTemp >= COOLING_DOWN_TEMP) {
-                // device too hot, slow down communication a bit
-                Serial.print("Cool down (");
-                Serial.print(deviceTemp);
-                Serial.println("C)");
-                delay(3000);
-                break;
               }
             }          
           }
@@ -479,7 +470,7 @@ public:
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
           Serial.print(connErrors);
-          Serial.println("Reset GPRS...");
+          Serial.print("Reset GPRS...");
           initGSM();
           setupGPRS(APN);
           if (httpInit()) {
@@ -543,14 +534,19 @@ private:
             break;
         case GPRS_HTTP_ERROR:
             Serial.println("HTTP error");
-            Serial.println(buffer);
+            //Serial.println(buffer);
             connCount = 0;
             xbPurge();
             httpUninit();
             delay(500);
-            httpInit();
-            gprsState = GPRS_IDLE;
-            nextConnTime = millis() + 500;
+            if (httpInit()) {
+              gprsState = GPRS_IDLE;
+              Serial.println("Reconnected");
+              nextConnTime = millis() + 500;
+            } else {
+              connErrors = MAX_CONN_ERRORS;
+              nextConnTime = millis() + 3000;
+            }
             break;
         }
     }
@@ -697,6 +693,7 @@ private:
           }
         }
         // now we are able to get OBD data again
+        delay(500);
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
@@ -732,7 +729,7 @@ private:
       if (state & STATE_MEMS_READY) {
         readMEMS();
       }
-      delay(10);
+      delay(20);
     }
     byte state;
     uint16_t feedid;
@@ -743,7 +740,7 @@ CTeleLogger logger;
 
 void setup()
 {
-    // initialize hardware serial (for USB or BLE)
+    // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
     delay(500);
     // perform initializations
