@@ -100,6 +100,7 @@ public:
       sendGSMCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
       sprintf_P(buffer, PSTR("AT+SAPBR=3,1,\"APN\",\"%s\"\r"), apn);
       sendGSMCommand(buffer, 15000);
+      t = millis();
       do {
         sendGSMCommand("AT+SAPBR=1,1\r", 5000);
         sendGSMCommand("AT+SAPBR=2,1\r", 5000);
