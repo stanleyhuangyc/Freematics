@@ -114,7 +114,7 @@ void setup() {
 
 void loop() {
   static unsigned long count = 0;
-  char payload[128];
+  char payload[256];
   unsigned int len = sprintf_P(payload, PSTR("GET /test HTTP/1.1\r\nUser-Agent:ONE\r\nConnection: keep-alive\r\nHost: %s\r\n\r\n"), SERVER_URL);
   sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), len);
   if (sendCommand(buffer, 1000, ">")) {
