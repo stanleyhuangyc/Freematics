@@ -16,10 +16,10 @@
 #define XBEE_BAUDRATE 115200
 // change APN to your carrier's setting
 #define APN "connect"
-// change YOUR_SERVER_KEY to your server key
-#define SERVER_URL "http://hub.freematics.com/YOUR_SERVER_KEY"
+// change TEST_SERVER_KEY to your server key if you have one
+#define SERVER_URL "http://hub.freematics.com/TEST_SERVER_KEY"
 #define USE_GSM_LOCATION 1
-// maximum consecutive errors before performing a module reset
+// maximum consecutive errors before resetting
 #define MAX_CONN_ERRORS 5
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
@@ -42,14 +42,13 @@
 /**************************************
 * Motion detection
 **************************************/
-#define START_MOTION_THRESHOLD 200000 /* for wakeup on movement */
+#define WAKEUP_MOTION_THRESHOLD 300000
 #define RECALIBRATION_TIME 3000 /* ms */ 
 
 /**************************************
 * Other options
 **************************************/
-#define OBD_INIT_TIMEOUT 60000 /* ms */
 #define MIN_LOOP_TIME 1000 /* ms */
-#define COOLING_DOWN_TEMP 60 /* celsius degrees */
+#define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED

@@ -68,7 +68,7 @@ typedef struct {
 
 class COBDGSM : public COBDSPI {
 public:
-    COBDGSM():gprsState(GPRS_DISABLED),connErrors(0) { buffer[0] = 0; }
+    COBDGSM():connErrors(0) { buffer[0] = 0; }
     void toggleGSM()
     {
         setTarget(TARGET_OBD);
@@ -96,7 +96,8 @@ public:
         success = sendGSMCommand("AT+CREG?\r", 5000, "+CREG: 0,") != 0;
         Serial.print('.'); 
       } while (!success && millis() - t < MAX_CONN_TIME);
-      sendGSMCommand("AT+CGATT?\r");
+      if (!success) return false;
+      //sendGSMCommand("AT+CGATT?\r");
       sendGSMCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
       sprintf_P(buffer, PSTR("AT+SAPBR=3,1,\"APN\",\"%s\"\r"), apn);
       sendGSMCommand(buffer, 15000);
@@ -144,10 +145,8 @@ public:
     bool httpInit()
     {
       if (!sendGSMCommand("AT+HTTPINIT\r", 3000) || !sendGSMCommand("AT+HTTPPARA=\"CID\",1\r", 3000)) {
-        gprsState = GPRS_DISABLED;
         return false;
       }
-      gprsState = GPRS_IDLE;
       return true;
     }
     void httpConnect(HTTP_METHOD method)
@@ -157,33 +156,28 @@ public:
         sprintf_P(cmd, PSTR("AT+HTTPACTION=%c\r"), '0' + method);
         setTarget(TARGET_BEE);
         write(cmd);
-        gprsState = GPRS_HTTP_RECEIVING;
         bytesRecv = 0;
         checkTimer = millis();
     }
-    bool httpIsConnected()
+    byte httpIsConnected()
     {
         // may check for "ACTION: 0" for GET and "ACTION: 1" for POST
         byte ret = checkbuffer("ACTION:", MAX_CONN_TIME);
         if (ret == 1) {
           // success
           connErrors = 0;
-          return true;
         } else if (ret == 2) {
           // timeout
-          gprsState = GPRS_HTTP_ERROR;
           connErrors++;
         }
-        return false;
+        return ret;
     }
     bool httpRead()
     {
         if (sendGSMCommand("AT+HTTPREAD\r", MAX_CONN_TIME) && strstr(buffer, "+HTTPREAD:")) {
-          gprsState = GPRS_IDLE;
           return true;
         } else {
           Serial.println("READ ERROR");
-          gprsState = GPRS_HTTP_ERROR;
           return false;
         }
     }
@@ -242,7 +236,6 @@ public:
     char buffer[128];
     byte bytesRecv;
     uint32_t checkTimer;
-    byte gprsState;
     byte connErrors;
 };
 
@@ -254,89 +247,100 @@ class CTeleLogger : public COBDGSM, public CDataLogger
 #endif
 {
 public:
-    CTeleLogger():state(0),feedid(0) {}
+    CTeleLogger():gprsState(GPRS_DISABLED),state(0),feedid(0) {}
     void setup()
     {
-        // this will init SPI communication
-        begin();
- 
 #if USE_MPU6050 || USE_MPU9250
-        // start I2C communication 
-        Wire.begin();
-        Serial.print("#MEMS...");
-        if (memsInit()) {
-          state |= STATE_MEMS_READY;
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
+        if (!(state & STATE_MEMS_READY)) {
+          Serial.print("#MEMS...");
+          if (memsInit()) {
+            state |= STATE_MEMS_READY;
+            Serial.println("OK");
+          } else {
+            Serial.println("NO");
+          }
         }
 #endif
 
-        // initialize OBD communication
-        Serial.print("#OBD...");
-        if (init()) {
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
-          reconnect();
-        }
-        state |= STATE_OBD_READY;
+        for (;;) {
+          // initialize OBD communication
+          Serial.print("#OBD...");
+          if (init()) {
+            Serial.println("OK");
+          } else {
+            Serial.println("NO");
+            reconnect();
+            continue;
+          }
+          state |= STATE_OBD_READY;
 
 #if USE_GPS
-        // start serial communication with GPS receive
-        Serial.print("#GPS...");
-        if (initGPS(GPS_SERIAL_BAUDRATE)) {
-          state |= STATE_GPS_READY;
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
-        }
+          // start serial communication with GPS receive
+          Serial.print("#GPS...");
+          if (initGPS(GPS_SERIAL_BAUDRATE)) {
+            state |= STATE_GPS_READY;
+            Serial.println("OK");
+          } else {
+            Serial.println("NO");
+          }
 #endif
 
-        // initialize SIM800L xBee module (if present)
-        Serial.print("#GSM...");
-        xbBegin(XBEE_BAUDRATE);
-        if (initGSM()) {
-          state |= STATE_GSM_READY;
-          Serial.println("OK");
-        } else {
-          standby();
-        }
-
-        Serial.print("#GPRS(APN:");
-        Serial.print(APN);
-        Serial.print(")...");
-        if (setupGPRS(APN)) {
-          Serial.println("OK");
-        } else {
-          Serial.println(buffer);
-          standby();
-        }
-        
-        // init HTTP
-        Serial.print("#HTTP...");
-        for (byte n = 0; n < 5; n++) {
-          if (httpInit()) {
-            state |= STATE_CONNECTED;
-            break;
+          // initialize SIM800L xBee module (if present)
+          Serial.print("#GSM...");
+          xbBegin(XBEE_BAUDRATE);
+          if (initGSM()) {
+            state |= STATE_GSM_READY;
+            Serial.println("OK");
+          } else {
+            standby();
+            continue;
           }
-          Serial.print('.');
-          httpUninit();
-          delay(3000);
-        }
-        if (state & STATE_CONNECTED) {
-          Serial.println("OK");
-        } else {
-          Serial.println(buffer);
-          standby();
-        }
 
-        // sign in server, will block if not successful
-        regDataFeed(0);
+          Serial.print("#GPRS(APN:");
+          Serial.print(APN);
+          Serial.print(")...");
+          if (setupGPRS(APN)) {
+            Serial.println("OK");
+          } else {
+            Serial.println("NO (check SIM card & APN setting)");
+            Serial.print("#SIGNAL:");
+            Serial.println(getSignal());
+            standby();
+            continue;
+          }
+          
+          // init HTTP
+          Serial.print("#HTTP...");
+          for (byte n = 0; n < 5; n++) {
+            if (httpInit()) {
+              state |= STATE_CONNECTED;
+              gprsState = GPRS_IDLE;
+              break;
+            }
+            Serial.print('.');
+            httpUninit();
+            delay(3000);
+          }
+          if (state & STATE_CONNECTED) {
+            Serial.println("OK");
+          } else {
+            Serial.println(buffer);
+            standby();
+            continue;
+          }
+
+          // sign in server
+          if (!regDataFeed(0)) {
+            standby(); 
+            continue;
+          }
+
+          break;
+        }
 
         calibrateMEMS();
     }
-    void regDataFeed(byte action)
+    bool regDataFeed(byte action)
     {
       // action == 0 for registering a data feed, action == 1 for de-registering a data feed
 
@@ -354,7 +358,7 @@ public:
         signal = getSignal();
         Serial.println(signal);
       } else {
-        if (feedid == 0) return; 
+        if (feedid == 0) return false; 
       }
       
       gprsState = GPRS_IDLE;
@@ -362,11 +366,11 @@ public:
         if (action == 0) {
           // error handling
           if (readSpeed() == -1 || n >= MAX_CONN_ERRORS) {
-            standby();
+            return false;
           }
         } else {
           if (n >= MAX_CONN_ERRORS) {
-            return;
+            return false;
           } 
         }
         char *p = buffer;
@@ -386,13 +390,13 @@ public:
         do {
           delay(500);
           Serial.print('.');
-          if (gprsState == GPRS_HTTP_ERROR) {
-            standby();
-          }
-        } while (!httpIsConnected());
+        } while (httpIsConnected() == 0);
+        if (gprsState == GPRS_HTTP_ERROR) {
+          continue;
+        }
         if (action != 0) {
           Serial.println(); 
-          return;
+          return true;
         }
         if (httpRead()) {
           char *p = strstr(buffer, "\"id\":");
@@ -407,8 +411,8 @@ public:
           }            
         }
         Serial.println(buffer);
-        delay(5000);
       }
+      return true;
     }
     void loop()
     {
@@ -462,6 +466,7 @@ public:
             if (gprsState == GPRS_IDLE) {
               if (errors > 10) {
                 reconnect();
+                setup();
               } else if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
                 // device too hot, cool down
                 Serial.print("Cooling (");
@@ -483,6 +488,7 @@ public:
           setupGPRS(APN);
           if (httpInit()) {
             Serial.println("OK"); 
+            gprsState = GPRS_IDLE;
           } else {
             Serial.println(buffer); 
           }
@@ -510,19 +516,20 @@ private:
                 cache[cacheBytes - 1] = '\r';
                 if (setPostPayload(cache, cacheBytes - 1)) {
                   // success
-                  Serial.print(cacheBytes - 1);
-                  Serial.println(" bytes");
                   // output payload data to serial
                   //Serial.println(cache);               
+                  Serial.print("#");
+                  Serial.print(++connCount);
+                  Serial.print(" Send ");
+                  Serial.print(cacheBytes - 1);
+                  Serial.print(" bytes...");
 #if ENABLE_DATA_CACHE
                   purgeCache();
 #endif
-                  delay(50);
-                  Serial.print("Sending #");
-                  Serial.print(++connCount);
-                  Serial.print("...");
+                  //delay(50);
                   httpConnect(HTTP_POST);
-                  nextConnTime = millis() + 500;
+                  gprsState = GPRS_HTTP_RECEIVING;
+                  nextConnTime = millis() + 200;
                 } else {
                   Serial.println(buffer);
                   gprsState = GPRS_HTTP_ERROR;
@@ -530,15 +537,25 @@ private:
             }
             break;        
         case GPRS_HTTP_RECEIVING:
-            if (httpIsConnected()) {
-                if (httpRead()) {
-                  // success
-                  Serial.println("OK");
-                  //Serial.println(buffer);
-                  break;
-                }
+            switch (httpIsConnected()) {
+            case 0:
+              // not yet connected
+              nextConnTime = millis() + 200;
+              break;
+            case 1:
+              // connected
+              if (httpRead()) {
+                // success
+                Serial.println("OK");
+                //Serial.println(buffer);
+                gprsState = GPRS_IDLE;
+                break;
+              }
+            case 2:
+              // error occurred
+              gprsState = GPRS_HTTP_ERROR;
+              break;
             }
-            nextConnTime = millis() + 200; 
             break;
         case GPRS_HTTP_ERROR:
             Serial.println("HTTP error");
@@ -546,12 +563,12 @@ private:
             connCount = 0;
             xbPurge();
             httpUninit();
-            delay(500);
+            delay(200);
             if (httpInit()) {
               gprsState = GPRS_IDLE;
-              Serial.println("Reconnected");
               nextConnTime = millis() + 500;
             } else {
+              Serial.println("Failed to reconnect");
               connErrors = MAX_CONN_ERRORS;
               nextConnTime = millis() + 3000;
             }
@@ -687,7 +704,7 @@ private:
             motion += n * n;
           }
           // check movement
-          if (motion > START_MOTION_THRESHOLD) {
+          if (motion > WAKEUP_MOTION_THRESHOLD) {
             Serial.println(motion);
             // try OBD reading
             leaveLowPowerMode();
@@ -701,7 +718,9 @@ private:
           }
         }
         // now we are able to get OBD data again
-        delay(500);
+    }
+    void reset()
+    {
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
@@ -740,6 +759,7 @@ private:
       delay(20);
     }
     byte state;
+    byte gprsState;
     uint16_t feedid;
     GSM_LOCATION loc;
 };
@@ -750,7 +770,13 @@ void setup()
 {
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
+ #if USE_MPU6050 || USE_MPU9250
+    // start I2C communication 
+    Wire.begin();
+#endif
     delay(500);
+    // this will also init SPI communication
+    logger.begin();
     // perform initializations
     logger.setup();
 }
