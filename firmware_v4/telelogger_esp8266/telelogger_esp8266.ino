@@ -28,7 +28,7 @@
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
-#define STATE_WIFI_READY 0x10
+#define STATE_NET_READY 0x10
 #define STATE_CONNECTED 0x40
 
 uint32_t nextConnTime = 0;
@@ -42,13 +42,12 @@ uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
 
 typedef enum {
-    WIFI_DISCONNECTED = 0,
-    WIFI_READY,
-    WIFI_CONNECTING,
-    WIFI_SENDING,
-    WIFI_RECEIVING,
-    WIFI_HTTP_ERROR,
-} WIFI_STATES;
+    NET_DISCONNECTED = 0,
+    NET_CONNECTED,
+    NET_CONNECTING,
+    NET_RECEIVING,
+    NET_HTTP_ERROR,
+} NET_STATES;
 
 typedef enum {
   HTTP_GET = 0,
@@ -57,40 +56,40 @@ typedef enum {
 
 class COBDWIFI : public COBDSPI {
 public:
-    COBDWIFI():wifiState(WIFI_DISCONNECTED),connErrors(0) { buffer[0] = 0; }
-    void resetWifi()
+    COBDWIFI():netState(NET_DISCONNECTED),connErrors(0) { buffer[0] = 0; }
+    void netReset()
     {
-      sendWifiCommand("AT+RST\r\n");
+      netSendCommand("AT+RST\r\n");
     }
-    void disconnectWifi()
+    void netDisconnect()
     {
-      sendWifiCommand("AT+CWQAP\r\n");
+      netSendCommand("AT+CWQAP\r\n");
     }
-    bool initWifi()
+    bool netInit()
     {
       // set xBee module serial baudrate
       bool success = false;
       // test the module by issuing AT command and confirming response of "OK"
-      for (byte n = 0; !(success = sendWifiCommand("ATE0\r\n")) && n < 10; n++) {
+      for (byte n = 0; !(success = netSendCommand("ATE0\r\n")) && n < 10; n++) {
         delay(100);
       }
       if (success) {
         // send ESP8266 initialization commands
-        sendWifiCommand("AT+CWMODE=1\r\n", 100);
-        sendWifiCommand("AT+CIPMUX=0\r\n");
+        netSendCommand("AT+CWMODE=1\r\n", 100);
+        netSendCommand("AT+CIPMUX=0\r\n");
         return true;
       } else {
         return false;
       }
     }
-    bool setupWifi()
+    bool netSetup()
     {
       // generate and send AT command for joining AP
       sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
-      byte ret = sendWifiCommand(buffer, 10000, "OK");
+      byte ret = netSendCommand(buffer, 10000, "OK");
       if (ret == 1) {
         // get IP address
-        if (sendWifiCommand("AT+CIFSR\r\n", 1000, "OK") && !strstr(buffer, "0.0.0.0")) {
+        if (netSendCommand("AT+CIFSR\r\n", 1000, "OK") && !strstr(buffer, "0.0.0.0")) {
           char *p = strchr(buffer, '\r');
           if (p) *p = 0;
           Serial.println(buffer);
@@ -105,12 +104,12 @@ public:
       }
       return false;
     }
-    void httpClose()
+    void tcpClose()
     {
-      sendWifiCommand("AT+CIPCLOSE\r\n", 1000, "Unlink");
+      netSendCommand("AT+CIPCLOSE\r\n", 1000, "Unlink");
       Serial.println("TCP closed");
     }
-    void httpConnect()
+    void tcpConnect()
     {
       // start TCP connection
       sprintf_P(buffer, PSTR("AT+CIPSTART=\"TCP\",\"%s\",%d\r\n"), SERVER_URL, SERVER_PORT);
@@ -122,22 +121,10 @@ public:
       // reset reception timeout timer
       checkTimer = millis();
     }
-    bool httpIsConnected()
+    byte tcpIsConnected()
     {
         // check if "Linked" is received
-        byte ret = checkbuffer("Linked", MAX_CONN_TIME);
-        if (ret == 1) {
-          // success
-          Serial.println("CONNECTED");
-          connErrors = 0;
-          return true;
-        } else if (ret == 2) {
-          // timeout
-          wifiState = WIFI_HTTP_ERROR;
-          connErrors++;
-        }
-        // not yet
-        return false;
+        return checkbuffer("Linked", MAX_CONN_TIME);
     }
     bool httpSend(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0)
     {
@@ -152,49 +139,25 @@ public:
       p += sprintf_P(p, PSTR("\r\n"));
       // start TCP send
       sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), (unsigned int)(p - header) + payloadSize);
-      if (sendWifiCommand(buffer, 1000, ">")) {
+      if (netSendCommand(buffer, 1000, ">")) {
         // send HTTP header
         xbWrite(header);
         delay(50);
         // send POST payload if any
         if (payload) xbWrite(payload);
-        buffer[0] = 0;
-        bytesRecv = 0;
-        checkTimer = millis();
+        if (xbReceive(buffer, sizeof(buffer), MAX_CONN_TIME, "SEND OK")) {
+          buffer[0] = 0;
+          bytesRecv = 0;
+          checkTimer = millis();
+        }
         return true;
       }
       connErrors++;
       return false;
     }
-    bool httpIsSent()
+    byte tcpReceive(const char* expected)
     {
-      // check if "SEND OK" is received
-      byte ret = checkbuffer("SEND OK", MAX_CONN_TIME);
-      if (ret == 1) {
-        // success
-        connErrors = 0;
-        return true;
-      } else if (ret == 2) {
-        // timeout
-        wifiState = WIFI_HTTP_ERROR;
-        connErrors++;
-      }
-      // not yet
-      return false;
-    }
-    bool httpRead()
-    {
-        byte ret = checkbuffer("+IPD", MAX_CONN_TIME);
-        if (ret == 1) {
-          // success
-          connErrors = 0;
-          return true;
-        } else if (ret == 2) {
-          // timeout
-          wifiState = WIFI_HTTP_ERROR;
-          connErrors++;
-        }
-        return false;
+      return checkbuffer(expected, MAX_CONN_TIME);
     }
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
@@ -211,7 +174,7 @@ public:
         return ret;
       }
     }
-    bool sendWifiCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK")
+    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK")
     {
       xbPurge();
       if (cmd) {
@@ -224,7 +187,7 @@ public:
     char buffer[192];
     byte bytesRecv;
     uint32_t checkTimer;
-    byte wifiState;
+    byte netState;
     byte connErrors;
 };
 
@@ -258,12 +221,12 @@ public:
         // initialize OBD communication
         Serial.print("#OBD...");
         if (init()) {
-          state |= STATE_OBD_READY;
           Serial.println("OK");
         } else {
           Serial.println("NO");
           reconnect();
         }
+        state |= STATE_OBD_READY;
 
 #if USE_GPS
         // start serial communication with GPS receive
@@ -279,8 +242,8 @@ public:
         // initialize ESP8266 xBee module (if present)
         Serial.print("#ESP8266...");
         xbBegin(XBEE_BAUDRATE);
-        if (initWifi()) {
-          state |= STATE_WIFI_READY;
+        if (netInit()) {
+          state |= STATE_NET_READY;
           Serial.println("OK");
         } else {
           Serial.println(buffer);
@@ -291,10 +254,8 @@ public:
         // make sure to change WIFI_SSID and WIFI_PASSWORD to your own ones
         for (byte n = 0; ;n++) {
           delay(100);
-          Serial.print("#WIFI(SSID:");
-          Serial.print(WIFI_SSID);
-          Serial.print(")...");
-          if (setupWifi()) {
+          Serial.print("#WIFI...");
+          if (netSetup()) {
               break;
           } else {
               Serial.println("NO");
@@ -326,31 +287,31 @@ public:
         if (feedid == 0) return; 
       }
 
-      wifiState = WIFI_READY;
+      netState = NET_CONNECTED;
       for (byte n = 0; ;n++) {
         // make sure OBD is still accessible
         if (readSpeed() == -1) {
           reconnect(); 
         }
         // start a HTTP connection (TCP)
-        httpConnect();
+        tcpConnect();
+        byte ret;
         do {
-          Serial.print('.');
-          delay(200);
-        } while (!httpIsConnected() && wifiState != WIFI_HTTP_ERROR);
-        if (wifiState == WIFI_HTTP_ERROR) {
+          delay(100);
+        } while ((ret = tcpIsConnected()) == 0);
+        if (ret == 2) {
           Serial.println(buffer);
           Serial.println("Unable to connect");
-          httpClose();
+          tcpClose();
           if (n >= MAX_ERRORS_RESET) {
             standby();
           }
           delay(5000);
-          wifiState = WIFI_READY;
+          netState = NET_CONNECTED;
           continue;
         }
 
-        // generate HTTP URL
+        // generate HTTP request path
         if (action == 0) {
           sprintf_P(buffer, PSTR("/%s/reg?vin=%s"), SERVER_KEY, vin);
         } else {
@@ -358,29 +319,25 @@ public:
         }
         
         // send HTTP request
-        if (!httpSend(HTTP_GET, buffer, true) || !xbReceive(buffer, sizeof(buffer), MAX_CONN_TIME, "SEND OK")) {
+        if (!httpSend(HTTP_GET, buffer, true)) {
           Serial.println("Error sending");
-          httpClose();
+          tcpClose();
           delay(3000);
           continue;
         }
 
         delay(500);
         // receive and parse response
-        xbReceive(buffer, sizeof(buffer), MAX_CONN_TIME, "\"id\"");
-        char *p = strstr(buffer, "\"id\"");
-        if (!p) {
-          if (!xbReceive(buffer, sizeof(buffer), MAX_CONN_TIME, "\"id\"")) {
-            httpClose();
+        if (tcpReceive("\"id\"") != 1) {
+            tcpClose();
             delay(3000);
             continue; 
-          }
         }
         if (action == 0) {
           // receive HTTP response
           // grab the data we need from HTTP response payload
           // parse feed ID
-          p = strstr(buffer, "\"id\"");
+          char *p = strstr(buffer, "\"id\"");
           if (p) {
             int m = atoi(p + 5);
             if (m > 0) {
@@ -393,11 +350,11 @@ public:
             }
           }
         } else {
-          httpClose();
+          tcpClose();
           break; 
         }
         Serial.println(buffer);
-        httpClose();
+        tcpClose();
         delay(3000);
       }
     }
@@ -440,12 +397,12 @@ public:
                readSpeed();
             }
             // error and exception handling
-            if (wifiState == WIFI_READY) {
+            if (netState == NET_CONNECTED) {
               if (errors > 10) {
                 reconnect();
-              } else if (deviceTemp >= COOLING_DOWN_TEMP) {
+              } else if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
                 // device too hot, slow down communication a bit
-                Serial.print("Cool down (");
+                Serial.print("Cooling (");
                 Serial.print(deviceTemp);
                 Serial.println("C)");
                 delay(5000);
@@ -460,89 +417,88 @@ private:
     {
         // state machine for HTTP communications
         nextConnTime = millis() + 200;
-        switch (wifiState) {
-        case WIFI_READY:
-            // ready for doing next HTTP request
+        switch (netState) {
+        case NET_CONNECTED:
+            // TCP connected, ready for doing next HTTP request
             if (cacheBytes > 0) {
               // and there is data in cache to send
               sprintf_P(buffer, PSTR("/%s/post?id=%u"), SERVER_KEY, feedid);
               // send HTTP POST request with cached data as payload
               if (httpSend(HTTP_POST, buffer, true, cache, cacheBytes)) {
                 // success
-                Serial.print("Sending ");
                 Serial.print(cacheBytes);
-                Serial.println(" bytes");
+                Serial.println(" bytes sent");
                 //Serial.println(cache);
                 purgeCache();
-                wifiState = WIFI_SENDING;
+                netState = NET_RECEIVING;
               } else {
                 Serial.println("Request error");
-                wifiState = WIFI_HTTP_ERROR;
+                netState = NET_HTTP_ERROR;
               }
             }
             break;
-        case WIFI_DISCONNECTED:
-            // attempt to connect again
+        case NET_DISCONNECTED:
+            // TCP disconnected, attempt to connect again
             xbPurge();
-            httpConnect();
-            wifiState = WIFI_CONNECTING;            
+            tcpConnect();
+            netState = NET_CONNECTING;            
             connCount = 0;
             break;
-        case WIFI_CONNECTING:
+        case NET_CONNECTING: {
+            byte ret = tcpIsConnected();
             // in the progress of connecting
-            if (httpIsConnected()) {
-              wifiState = WIFI_READY;
+            if (ret == 1) {
+              // success
+              netState = NET_CONNECTED;
               state |= STATE_CONNECTED;
-              break; 
+            } else if (ret == 2) {
+              // timeout
+              netState = NET_HTTP_ERROR;
             }
-            break;
-        case WIFI_SENDING:
-            // in the progress of data sending
-            if (httpIsSent() || strstr(buffer, "+IPD")) {
-              Serial.println("Sent");
-              connErrors = 0;
-              wifiState = WIFI_RECEIVING;
-              break; 
-            }
-            break;
-        case WIFI_RECEIVING:
+            } break;
+        case NET_RECEIVING: {
             // in the progress of data receiving
-            if (httpRead()) {
+            byte ret = tcpReceive("\"result\"");
+            if (ret == 1) {
               // success
               connCount++;
+              connErrors = 0;
               Serial.print("Success #");
               Serial.println(connCount);
               //Serial.println(buffer);
               if (connCount >= MAX_HTTP_CONNS) {
                 // re-establish TCP connection
-                httpClose(); 
-                wifiState = WIFI_DISCONNECTED;
+                tcpClose(); 
+                netState = NET_DISCONNECTED;
               } else {
-                wifiState = WIFI_READY;
+                netState = NET_CONNECTED;
               }
-              break;
+            } else if (ret == 2) {
+              // timeout
+              Serial.print("Timeout");
+              netState = NET_HTTP_ERROR;
             }
-            break;
-        case WIFI_HTTP_ERROR:
+            } break;
+        case NET_HTTP_ERROR:
             // oops, we got an error
             Serial.println(buffer);
             // check if there are too many connection errors
-            if (connErrors >= MAX_ERRORS_RECONNECT || strstr_P(buffer, PSTR("link is not"))) {
+            if (++connErrors >= MAX_ERRORS_RECONNECT || strstr_P(buffer, PSTR("link is not"))) {
               // reset WIFI
-              httpClose();
+              tcpClose();
               if (connErrors >= MAX_ERRORS_RESET) {
                 state &= ~STATE_CONNECTED;
                 Serial.println("Reset WIFI...");
-                disconnectWifi();
-                resetWifi();
+                netDisconnect();
+                netReset();
                 delay(1000);
-                initWifi();
-                setupWifi();
+                netInit();
+                netSetup();
                 connErrors = 0;
               }
-              wifiState = WIFI_DISCONNECTED;
+              netState = NET_DISCONNECTED;
             } else {
-              wifiState = WIFI_READY;
+              netState = NET_CONNECTED;
             }
             break;
         }
@@ -630,17 +586,17 @@ private:
     }
     void standby()
     {
-        if (state & STATE_WIFI_READY) {
-          httpClose();
+        if (state & STATE_NET_READY) {
+          tcpClose();
           regDataFeed(1); // de-register
-          disconnectWifi(); // disconnect from AP
+          netDisconnect(); // disconnect from AP
           delay(500);
-          resetWifi();
+          netReset();
         }
 #if USE_GPS
         initGPS(0); // turn off GPS power
 #endif
-        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_WIFI_READY | STATE_CONNECTED);
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
         Serial.print("Standby");
         // put OBD chips into low power mode
         enterLowPowerMode();
@@ -717,6 +673,7 @@ private:
       }
       delay(20);
     }
+private:
     byte state;
     uint16_t feedid;
 };
