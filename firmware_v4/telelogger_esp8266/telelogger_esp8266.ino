@@ -161,9 +161,11 @@ public:
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
       // check if expected string is in reception buffer
+      /*
       if (strstr(buffer, expected)) {
         return 1;
       }
+      */
       // if not, receive a chunk of data from xBee module and look for expected string
       byte ret = xbReceive(buffer, sizeof(buffer), 0, expected) != 0;
       if (ret == 0) {
@@ -271,19 +273,6 @@ public:
     {
       // action == 0 for registering a data feed, action == 1 for de-registering a data feed
 
-      // retrieve VIN
-      char vin[20] = {0};
-      if (action == 0) {
-        // retrieve VIN
-        if (getVIN(buffer, sizeof(buffer))) {
-          strncpy(vin, buffer, sizeof(vin) - 1);
-          Serial.print("#VIN:");
-          Serial.println(vin);
-        }
-      } else {
-        if (feedid == 0) return; 
-      }
-
       for (byte n = 0; ;n++) {
         // make sure OBD is still accessible
         if (readSpeed() == -1) {
@@ -292,9 +281,11 @@ public:
         // start a HTTP connection (TCP)
         tcpConnect();
         byte ret;
-        do {
-          delay(100);
-        } while ((ret = tcpIsConnected()) == 0);
+        for (byte n = 0; n < 10 && (ret = tcpIsConnected()) == 0; n++) {
+          Serial.print('.');
+          delay(1000);
+        }
+        Serial.println();
         if (ret == 2) {
           Serial.println(buffer);
           Serial.println("Unable to connect");
@@ -308,7 +299,12 @@ public:
 
         // generate HTTP request path
         if (action == 0) {
-          sprintf_P(buffer, PSTR("/%s/reg?vin=%s"), SERVER_KEY, vin);
+          char vin[20] = {0};
+          byte n = sprintf_P(buffer, PSTR("/%s/reg?vin="), SERVER_KEY);
+          // retrieve VIN and append it to URL
+          getVIN(buffer + n, sizeof(buffer) - n - 1);
+          Serial.print("#VIN:");
+          Serial.println(buffer + n);
         } else {
           sprintf_P(buffer, PSTR("/%s/reg?id=%d&off=1"), SERVER_KEY, feedid);
         }
