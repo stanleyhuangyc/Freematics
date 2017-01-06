@@ -32,7 +32,6 @@
 #define STATE_CONNECTED 0x40
 
 uint32_t nextConnTime = 0;
-uint16_t connCount = 0;
 byte accCount = 0; // count of accelerometer readings
 long accSum[3] = {0}; // sum of accelerometer data
 int accCal[3] = {0}; // calibrated reference accelerometer data
@@ -56,7 +55,7 @@ typedef enum {
 
 class COBDWIFI : public COBDSPI {
 public:
-    COBDWIFI():netState(NET_DISCONNECTED),connErrors(0) { buffer[0] = 0; }
+    COBDWIFI() { buffer[0] = 0; }
     void netReset()
     {
       netSendCommand("AT+RST\r\n");
@@ -109,7 +108,7 @@ public:
       netSendCommand("AT+CIPCLOSE\r\n", 1000, "Unlink");
       Serial.println("TCP closed");
     }
-    void tcpConnect()
+    bool tcpConnect()
     {
       // start TCP connection
       sprintf_P(buffer, PSTR("AT+CIPSTART=\"TCP\",\"%s\",%d\r\n"), SERVER_URL, SERVER_PORT);
@@ -120,6 +119,7 @@ public:
       bytesRecv = 0;
       // reset reception timeout timer
       checkTimer = millis();
+      return true;
     }
     byte tcpIsConnected()
     {
@@ -152,7 +152,6 @@ public:
         }
         return true;
       }
-      connErrors++;
       return false;
     }
     byte tcpReceive(const char* expected)
@@ -187,8 +186,6 @@ public:
     char buffer[192];
     byte bytesRecv;
     uint32_t checkTimer;
-    byte netState;
-    byte connErrors;
 };
 
 
@@ -200,7 +197,7 @@ class CTeleLogger : public COBDWIFI, public CDataLogger
 #endif
 {
 public:
-    CTeleLogger():state(0),feedid(0) {}
+    CTeleLogger():state(0),feedid(0),connErrors(0),connCount(0),netState(NET_DISCONNECTED) {}
     void setup()
     {
         // this will init SPI communication
@@ -287,7 +284,6 @@ public:
         if (feedid == 0) return; 
       }
 
-      netState = NET_CONNECTED;
       for (byte n = 0; ;n++) {
         // make sure OBD is still accessible
         if (readSpeed() == -1) {
@@ -307,7 +303,6 @@ public:
             standby();
           }
           delay(5000);
-          netState = NET_CONNECTED;
           continue;
         }
 
@@ -333,6 +328,8 @@ public:
             delay(3000);
             continue; 
         }
+        netState = NET_CONNECTED;
+
         if (action == 0) {
           // receive HTTP response
           // grab the data we need from HTTP response payload
@@ -416,7 +413,7 @@ private:
     void processHttp()
     {
         // state machine for HTTP communications
-        nextConnTime = millis() + 200;
+        nextConnTime = millis() + 100;
         switch (netState) {
         case NET_CONNECTED:
             // TCP connected, ready for doing next HTTP request
@@ -436,13 +433,6 @@ private:
                 netState = NET_HTTP_ERROR;
               }
             }
-            break;
-        case NET_DISCONNECTED:
-            // TCP disconnected, attempt to connect again
-            xbPurge();
-            tcpConnect();
-            netState = NET_CONNECTING;            
-            connCount = 0;
             break;
         case NET_CONNECTING: {
             byte ret = tcpIsConnected();
@@ -479,6 +469,15 @@ private:
               netState = NET_HTTP_ERROR;
             }
             } break;
+        case NET_DISCONNECTED:
+            // TCP disconnected, attempt to connect again
+            if (state & STATE_CONNECTED) {
+              xbPurge();
+              tcpConnect();
+              netState = NET_CONNECTING;            
+              connCount = 0;
+            }
+            break;
         case NET_HTTP_ERROR:
             // oops, we got an error
             Serial.println(buffer);
@@ -573,7 +572,7 @@ private:
             //Serial.println(gd.time);
         } else {
           Serial.println("No GPS data");
-          xbPurge();
+          delay(100);
         }
     }
     void reconnect()
@@ -676,6 +675,9 @@ private:
 private:
     byte state;
     uint16_t feedid;
+    uint16_t connCount;
+    byte connErrors;
+    byte netState;
 };
 
 CTeleLogger logger;
