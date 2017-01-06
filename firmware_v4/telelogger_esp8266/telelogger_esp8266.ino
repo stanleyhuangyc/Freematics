@@ -491,9 +491,10 @@ private:
                 netDisconnect();
                 netReset();
                 delay(1000);
-                netInit();
-                netSetup();
-                connErrors = 0;
+                if (netInit() && netSetup()) {
+                  state |= STATE_CONNECTED;
+                  connErrors = 0;
+                }
               }
               netState = NET_DISCONNECTED;
             } else {
