@@ -260,23 +260,20 @@ bool COBDSPI::isValidPID(byte pid)
 
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
-	char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r","ATSP00\r"};
+	const char PROGMEM *initcmd[] = {PSTR("ATZ\r"),PSTR("ATE0\r"),PSTR("ATL1\r"),PSTR("ATSP%02u\r")};
 	char buffer[64];
 
 	if (!getVersion()) return false;
 	for (unsigned char i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
+		sprintf_P(buffer, initcmd[i], protocol);
 #ifdef DEBUG
-		debugOutput(initcmd[i]);
+		debugOutput(buffer);
 #endif
-		if (i == 3 && protocol != PROTO_AUTO) {
-			sprintf_P(initcmd[i], PSTR("ATSP%02u\r"), protocol);
-		}
-		write(initcmd[i]);
-		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0 || !strstr(buffer, "OK")) {
+		write(buffer);
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0 || (i > 0 && !strstr(buffer, "OK"))) {
 			m_state = OBD_DISCONNECTED;
 			return false;
 		}
-		delay(50);
 	}
 
 	// load pid map
@@ -294,7 +291,6 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 			pidmap[i * 4 + n] = hex2uint8(data + n * 3 + 1);
 		}
 		success = true;
-		delay(50);
 	}
 
 	if (success) {
@@ -333,7 +329,7 @@ byte COBDSPI::begin()
 	digitalWrite(SPI_PIN_CS, HIGH);
 	delay(50);
 	SPI.begin();
-	SPI.setClockDivider(2);
+	SPI.setClockDivider(1);
 	delay(50);
 	if (!getVersion()) {
 		m_state = OBD_FAILED;
