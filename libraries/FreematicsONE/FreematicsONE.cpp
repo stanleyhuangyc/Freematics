@@ -385,6 +385,15 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 		while (!eof && digitalRead(SPI_PIN_READY) == LOW) {
 			if (n == bufsize - 1) {
 				int bytesToDiscard = bufsize >> 1;
+				for (int i = 0; i < n; i++) {
+					// find out first line end and discard the first line
+					if (buffer[i] == '\r' || buffer[i] == '\n') {
+						// go through all following \r or \n if any
+						while (++i < n && (buffer[i] == '\r' || buffer[i] == '\n'));
+						bytesToDiscard = i;
+						break;
+					}					
+				}
 				n -= bytesToDiscard;
 				memmove(buffer, buffer + bytesToDiscard, n); 
 			}

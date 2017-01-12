@@ -1,3 +1,19 @@
+/******************************************************************************
+* Web based vehicle tracker based on Freematics Hub
+* Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
+* Distributed under BSD license
+* Visit http://freematics.com/hub/api for Freematics Hub API reference
+* To obtain your Freematics Hub server key, contact support@freematics.com.au
+* 
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+* THE SOFTWARE.
+******************************************************************************/
+
 var TRIP_TIMEOUT = 300000;
 var REQUEST_INTERVAL = 1000;
 var ROLLBACK_TIME = 180000;
@@ -413,7 +429,10 @@ function requestDataHistory()
 
 function openChannel(id)
 {
-    if (id) window.location.href = "live.html?channel=" + id;
+    if (id) {
+		location.href = "#?channel=" + id;
+        location.reload();
+	}
 }
 
 function loadChannels()

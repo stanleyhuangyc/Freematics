@@ -5,7 +5,7 @@
 * Data logging settings
 **************************************/
 #define ENABLE_DATA_CACHE 1
-#define CACHE_SIZE 384 /* bytes */
+#define CACHE_SIZE 256 /* bytes */
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
@@ -19,7 +19,7 @@
 #define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
 // change YOUR_SERVER_KEY to your server key
-#define SERVER_KEY "YOUR_SERVER_KEY"
+#define SERVER_KEY "TEST_SERVER_KEY"
 #define SERVER_URL "hub.freematics.com"
 #define SERVER_PORT 80
 
@@ -56,7 +56,7 @@
 /**************************************
 * Other options
 **************************************/
-#define MIN_LOOP_TIME 500 /* ms */
+#define MIN_LOOP_TIME 200 /* ms */
 #define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED

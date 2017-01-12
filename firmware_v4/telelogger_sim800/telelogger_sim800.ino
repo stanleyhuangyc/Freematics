@@ -100,7 +100,7 @@ public:
       //sendGSMCommand("AT+CGATT?\r");
       sendGSMCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
       sprintf_P(buffer, PSTR("AT+SAPBR=3,1,\"APN\",\"%s\"\r"), apn);
-      sendGSMCommand(buffer, 15000);
+      sendGSMCommand(buffer, MAX_CONN_TIME);
       t = millis();
       do {
         sendGSMCommand("AT+SAPBR=1,1\r", 5000);
@@ -343,24 +343,6 @@ public:
     bool regDataFeed(byte action)
     {
       // action == 0 for registering a data feed, action == 1 for de-registering a data feed
-
-      // retrieve VIN and GSM signal index
-      char vin[20] = {0};
-      int signal = 0;
-      if (action == 0) {
-        // retrieve VIN
-        if (getVIN(buffer, sizeof(buffer))) {
-          strncpy(vin, buffer, sizeof(vin) - 1);
-          Serial.print("#VIN:");
-          Serial.println(vin);
-        }
-        Serial.print("#SIGNAL:");
-        signal = getSignal();
-        Serial.println(signal);
-      } else {
-        if (feedid == 0) return false; 
-      }
-      
       gprsState = GPRS_IDLE;
       for (byte n = 0; ;n++) {
         if (action == 0) {
@@ -376,11 +358,20 @@ public:
         char *p = buffer;
         p += sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/reg?"), SERVER_URL);
         if (action == 0) {
-          Serial.print("#SERVER");
-          sprintf_P(p, PSTR("CSQ=%d&vin=%s\"\r"), signal, vin);
+          int signal = getSignal();
+          Serial.print("#SIGNAL:");
+          Serial.println(signal);
+          p += sprintf_P(p, PSTR("CSQ=%d&vin="), signal);
+          // retrieve VIN
+          if (getVIN(p, sizeof(buffer) - (p - buffer))) {
+            Serial.print("#VIN:");
+            Serial.println(p);
+          }
+          strcat(p, "\"\r");
         } else {
           sprintf_P(p, PSTR("id=%u&off=1\"\r"), feedid);
         }
+        Serial.print("#SERVER");
         if (!sendGSMCommand(buffer)) {
           Serial.println(buffer);
           delay(3000);
@@ -520,7 +511,7 @@ private:
                   //Serial.println(cache);               
                   Serial.print("#");
                   Serial.print(++connCount);
-                  Serial.print(" Send ");
+                  Serial.print(' ');
                   Serial.print(cacheBytes - 1);
                   Serial.print(" bytes...");
 #if ENABLE_DATA_CACHE
@@ -671,7 +662,7 @@ private:
     }
     void standby()
     {
-        if (state & STATE_GSM_READY) {
+        if (state & STATE_CONNECTED) {
           regDataFeed(1); // de-register
           toggleGSM(); // turn off GSM power
         }
