@@ -203,22 +203,6 @@ bool COBDSPI::getResult(byte& pid, int& result)
 	return true;
 }
 
-bool COBDSPI::setProtocol(OBD_PROTOCOLS h)
-{
-	char buf[32];
-       setTarget(TARGET_OBD);
-	if (h == PROTO_AUTO) {
-		write("ATSP00\r");
-	} else {
-		sprintf_P(buf, PSTR("ATSP%d\r"), h);
-		write(buf);
-	}
-	if (receive(buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0 && strstr(buf, "OK"))
-		return true;
-	else
-		return false;
-}
-
 void COBDSPI::enterLowPowerMode()
 {
 	char buf[32];
@@ -276,7 +260,7 @@ bool COBDSPI::isValidPID(byte pid)
 
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r","0100\r"};
+	char *initcmd[] = {"ATZ\r","ATE0\r","ATL1\r","ATSP00\r"};
 	char buffer[64];
 
 	if (!getVersion()) return false;
@@ -284,16 +268,15 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 #ifdef DEBUG
 		debugOutput(initcmd[i]);
 #endif
+		if (i == 3 && protocol != PROTO_AUTO) {
+			sprintf_P(initcmd[i], PSTR("ATSP%02u\r"), protocol);
+		}
 		write(initcmd[i]);
-		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0) {
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0 || !strstr(buffer, "OK")) {
 			m_state = OBD_DISCONNECTED;
 			return false;
 		}
 		delay(50);
-	}
-
-	if (protocol != PROTO_AUTO) {
-		setProtocol(protocol);
 	}
 
 	// load pid map
@@ -314,8 +297,10 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 		delay(50);
 	}
 
-	m_state = OBD_CONNECTED;
-	errors = 0;
+	if (success) {
+		m_state = OBD_CONNECTED;
+		errors = 0;
+	}
 	return success;
 }
 

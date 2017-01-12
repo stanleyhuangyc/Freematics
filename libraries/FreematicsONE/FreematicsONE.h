@@ -9,7 +9,7 @@
 #include "FreematicsMPU9250.h"
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
-#define OBD_TIMEOUT_LONG 10000 /* ms */
+#define OBD_TIMEOUT_LONG 5000 /* ms */
 #define OBD_TIMEOUT_GPS 200 /* ms */
 #define OBD_SERIAL_BAUDRATE 38400
 
@@ -181,8 +181,6 @@ public:
 	void enterLowPowerMode();
 	// leave low power mode
 	void leaveLowPowerMode();
-	// set working protocol (default auto)
-	bool setProtocol(OBD_PROTOCOLS h = PROTO_AUTO);
 	// clear diagnostic trouble code
 	void clearDTC();
 	// get battery voltage (works without ECU)
