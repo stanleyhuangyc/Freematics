@@ -45,7 +45,7 @@ var cache = new Array;
 var stats = null;
 var lat, lng;
 
-var serverURL = "freematics.php";
+var serverURL = "freematics.php?api=";
 
 var chartData = [
     [0x10d, "Vehicle Speed", "#808080", "km/h", "Speed (km/h)", 100],
@@ -333,7 +333,7 @@ function requestData()
         }
         self.setTimeout(requestData, DATA_FETCH_INTERVAL);
     };
-	var url = serverURL + "?api=pull&id=" + channel + "&ts=" + (lastDataTick + 1);
+	var url = serverURL + "/pull/" + channel + "?ts=" + (lastDataTick + 1);
 	xhr.open('GET', url, true);    
 	xhr.send(null);
 }
@@ -419,10 +419,10 @@ function requestDataHistory()
     
     if (!stats) {
         // relative rollback
-	   xhr.open('GET', serverURL + "?api=pull&id=" + channel + "&rollback=" + ROLLBACK_TIME, true);
+	   xhr.open('GET', serverURL + "/pull/" + channel + "&rollback=" + ROLLBACK_TIME, true);
     } else {
         // rollback with timestamp
-       xhr.open('GET', serverURL + "?api=pull&id=" + channel + "&ts=" + (stats.tick - ROLLBACK_TIME), true);
+       xhr.open('GET', serverURL + "/pull/" + channel + "&ts=" + (stats.tick - ROLLBACK_TIME), true);
     }
 	xhr.send(null);
 }
@@ -437,7 +437,7 @@ function openChannel(id)
 
 function loadChannels()
 {
-    var chdata = loadJSON(serverURL + "?api=channels");
+    var chdata = loadJSON(serverURL + "/channels");
     if (!chdata) {
         document.getElementById("state").innerText = "Service unavailable";
         return false;
