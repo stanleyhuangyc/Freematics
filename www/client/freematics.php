@@ -1,6 +1,6 @@
 <?php 
   $server_key = "TEST_SERVER_KEY"; // replace it with your server key and keep it secret
-  $server_url = "http://hub.freematics.com/".$server_key."/".$_GET["api"]."?";
+  $server_url = "http://hub.freematics.com/".$server_key.$_GET["api"]."?";
   
   if (!$_GET["api"]) {
     echo "No API specified";
@@ -23,5 +23,6 @@
 
   // forward response
   header('Content-Type: application/json');
+  header("Cache-Control: no-cache, must-revalidate");
   echo $result;
 ?>
