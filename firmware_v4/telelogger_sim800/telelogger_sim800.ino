@@ -345,21 +345,8 @@ public:
       // action == 0 for registering a data feed, action == 1 for de-registering a data feed
 
       // retrieve VIN and GSM signal index
-      char vin[20] = {0};
+      char vin[20];
       int signal = 0;
-      if (action == 0) {
-        // retrieve VIN
-        if (getVIN(buffer, sizeof(buffer))) {
-          strncpy(vin, buffer, sizeof(vin) - 1);
-          Serial.print("#VIN:");
-          Serial.println(vin);
-        }
-        Serial.print("#SIGNAL:");
-        signal = getSignal();
-        Serial.println(signal);
-      } else {
-        if (feedid == 0) return false; 
-      }
 
       gprsState = GPRS_IDLE;
       for (byte n = 0; ;n++) {
@@ -376,6 +363,17 @@ public:
         char *p = buffer;
         p += sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/reg?"), SERVER_URL);
         if (action == 0) {
+          char vin[20] = {0};
+          // retrieve VIN
+          if (getVIN(buffer, sizeof(buffer))) {
+            strncpy(vin, buffer, sizeof(vin) - 1);
+            Serial.print("#VIN:");
+            Serial.println(vin);
+          }
+          Serial.print("#SIGNAL:");
+          signal = getSignal();
+          Serial.println(signal);
+
           sprintf_P(p, PSTR("CSQ=%d&vin=%s\"\r"), signal, vin);
         } else {
           sprintf_P(p, PSTR("id=%u&off=1\"\r"), feedid);
