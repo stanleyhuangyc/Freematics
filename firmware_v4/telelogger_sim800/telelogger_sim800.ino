@@ -208,7 +208,7 @@ public:
     }
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
-      byte ret = xbReceive(buffer, sizeof(buffer), 0, expected) != 0;
+      byte ret = xbReceive(buffer, sizeof(buffer), 0, expected);
       if (ret == 0) {
         // timeout
         return (millis() - checkTimer < timeout) ? 0 : 2;
