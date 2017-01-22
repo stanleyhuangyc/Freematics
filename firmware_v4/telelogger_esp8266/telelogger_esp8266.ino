@@ -410,7 +410,7 @@ private:
     void processHttp()
     {
         // state machine for HTTP communications
-        nextConnTime = millis() + 100;
+        nextConnTime = millis() + 200;
         switch (netState) {
         case NET_CONNECTED:
             // TCP connected, ready for doing next HTTP request
