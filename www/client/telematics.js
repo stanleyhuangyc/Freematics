@@ -180,11 +180,11 @@ function updateStats()
     s += "<tr><td width='50%'>Data</td><td>" + Math.floor(stats.data / 1024) + "KB</td>";
     //s += "<li>Device Tick: " + stats.tick + "</li>";
     //s += "<li>Local Tick: " + lastDataTick + "</li>";
+    if (cache[PID_TRIP_DISTANCE]) {
+        s += "<tr><td>Distance</td><td>" + (parseInt(cache[PID_TRIP_DISTANCE]) / 1000).toFixed(1) + "km</td>";
+    }
+    s += "<tr><td>Top Speed</td><td>" + stats.topspeed + "km/h</td>";
     if (stats.age < TRIP_TIMEOUT) {
-        if (cache[PID_TRIP_DISTANCE]) {
-            s += "<tr><td>Distance</td><td>" + (parseInt(cache[PID_TRIP_DISTANCE]) / 1000).toFixed(1) + "km</td>";
-        }
-        s += "<tr><td>Top Speed</td><td>" + stats.topspeed + "km/h</td>";
         s += "<tr><td>Delay</td><td>" + stats.age + "ms</td>";
     }
     s += "</table>";
@@ -310,9 +310,9 @@ function requestData()
         var pull = JSON.parse(this.responseText);
         if (pull.stats) {
             stats = pull.stats;
-            if (pull.stats.tick < deviceStartTick) {
+            if (deviceStartTick && pull.stats.tick < deviceStartTick) {
                 // device reset
-                alert("Device reset");
+                alert("Device reset (start tick: " + deviceStartTick + ", device tick: " + pull.stats.tick + ")");
                 location.reload();
                 return;
             }
@@ -351,15 +351,14 @@ function requestDataHistory()
             return;
         } else if (pull.stats) {
             if (pull.data.length == 0) {
-                if (pull.stats.flags & FLAG_DRIVING)
-                    alert("No data in the past " + ROLLBACK_TIME / 60000 + " minutes");
                 if (!stats) {
                     // no data, roll further back for once
                     stats = pull.stats;
                     self.setTimeout(requestDataHistory, 0);
                     return;
                 }
-        
+                if (pull.stats.flags & FLAG_DRIVING)
+                    alert("No data received in the past " + ROLLBACK_TIME / 60000 + " minutes. Possible signal loss.");
             }
             stats = pull.stats;
             updateStats();
