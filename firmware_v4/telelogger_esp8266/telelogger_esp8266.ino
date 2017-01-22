@@ -167,7 +167,7 @@ public:
       }
       */
       // if not, receive a chunk of data from xBee module and look for expected string
-      byte ret = xbReceive(buffer, sizeof(buffer), 0, expected) != 0;
+      byte ret = xbReceive(buffer, sizeof(buffer), 100, expected) != 0;
       if (ret == 0) {
         // timeout
         return (millis() - checkTimer < timeout) ? 0 : 2;
@@ -306,7 +306,7 @@ public:
           Serial.print("#VIN:");
           Serial.println(buffer + n);
         } else {
-          sprintf_P(buffer, PSTR("/%s/reg?id=%d&off=1"), SERVER_KEY, feedid);
+          sprintf_P(buffer, PSTR("/%s/reg/%d?off=1"), SERVER_KEY, feedid);
         }
         
         // send HTTP request
@@ -317,9 +317,10 @@ public:
           continue;
         }
 
-        delay(500);
+        delay(1000);
         // receive and parse response
         if (tcpReceive("\"id\"") != 1) {
+            Serial.println(buffer);
             tcpClose();
             delay(3000);
             continue; 
@@ -415,13 +416,14 @@ private:
             // TCP connected, ready for doing next HTTP request
             if (cacheBytes > 0) {
               // and there is data in cache to send
-              sprintf_P(buffer, PSTR("/%s/post?id=%u"), SERVER_KEY, feedid);
+              sprintf_P(buffer, PSTR("/%s/post/%u"), SERVER_KEY, feedid);
               // send HTTP POST request with cached data as payload
               if (httpSend(HTTP_POST, buffer, true, cache, cacheBytes)) {
                 // success
                 Serial.print(cacheBytes);
                 Serial.println(" bytes sent");
                 //Serial.println(cache);
+                connCount++;
                 purgeCache();
                 netState = NET_RECEIVING;
               } else {
@@ -447,7 +449,6 @@ private:
             byte ret = tcpReceive("\"result\"");
             if (ret == 1) {
               // success
-              connCount++;
               connErrors = 0;
               Serial.print("Success #");
               Serial.println(connCount);
