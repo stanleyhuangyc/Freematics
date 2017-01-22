@@ -16,7 +16,7 @@
 
 var TRIP_TIMEOUT = 300000;
 var REQUEST_INTERVAL = 1000;
-var ROLLBACK_TIME = 180000;
+var ROLLBACK_TIME = 300000;
 var MAX_CACHE_SIZE = 10000;
 var DATA_FETCH_INTERVAL = 500;
 
@@ -106,14 +106,13 @@ var marker;
 
 function initMap() {
 	map = new google.maps.Map(document.getElementById('map'), {
-		zoom: 18,
-		mapTypeId: google.maps.MapTypeId.SATELLITE,
-		center: {lat: 0, lng: 0}
+		zoom: 12,
+		mapTypeId: google.maps.MapTypeId.ROADMAP,
+		center: {lat: -33.890, lng: 151.274}
 	});
   	var image = 'car.png';
 	marker = new google.maps.Marker( {map: map, icon: image} );
 	marker.addListener('click', showMapInfo);
-	setMapPos(-33.890, 151.274);
 }
 
 function setMapPos(latitude, longitude)
@@ -347,7 +346,10 @@ function requestDataHistory()
         
         var pull = JSON.parse(this.responseText);
     
-        if (pull.stats) {
+        if (pull.error) {
+            alert(pull.error);
+            return;
+        } else if (pull.stats) {
             if (pull.data.length == 0) {
                 if (pull.stats.flags & FLAG_DRIVING)
                     alert("No data in the past " + ROLLBACK_TIME / 60000 + " minutes");
