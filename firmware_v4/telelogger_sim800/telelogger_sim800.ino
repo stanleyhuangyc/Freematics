@@ -208,7 +208,7 @@ public:
     }
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
-      byte ret = xbReceive(buffer, sizeof(buffer), 0, expected);
+      byte ret = xbReceive(buffer, sizeof(buffer), 100, expected);
       if (ret == 0) {
         // timeout
         return (millis() - checkTimer < timeout) ? 0 : 2;
@@ -329,8 +329,23 @@ public:
             continue;
           }
 
+          // retrieve VIN and GSM signal index
+          int signal = getSignal();
+          Serial.print("#SIGNAL:");
+          Serial.println(signal);
+
+          char vin[20];
+          // retrieve VIN
+          if (getVIN(buffer, sizeof(buffer))) {
+            strncpy(vin, buffer, sizeof(vin) - 1);
+            Serial.print("#VIN:");
+            Serial.println(vin);
+          } else {
+            strcpy(vin, "NO_VIN");            
+          }
+
           // sign in server
-          if (!regDataFeed(0)) {
+          if (!regDataFeed(0, vin, signal)) {
             standby(); 
             continue;
           }
@@ -340,27 +355,9 @@ public:
 
         calibrateMEMS();
     }
-    bool regDataFeed(byte action)
+    bool regDataFeed(byte action, const char* vin = 0, int csq = 0)
     {
       // action == 0 for registering a data feed, action == 1 for de-registering a data feed
-
-      // retrieve VIN and GSM signal index
-      char vin[20] = {0};
-      int signal = 0;
-      if (action == 0) {
-        // retrieve VIN
-        if (getVIN(buffer, sizeof(buffer))) {
-          strncpy(vin, buffer, sizeof(vin) - 1);
-          Serial.print("#VIN:");
-          Serial.println(vin);
-        }
-        Serial.print("#SIGNAL:");
-        signal = getSignal();
-        Serial.println(signal);
-      } else {
-        if (feedid == 0) return false; 
-      }
-
       gprsState = GPRS_IDLE;
       for (byte n = 0; ;n++) {
         if (action == 0) {
@@ -376,7 +373,7 @@ public:
         char *p = buffer;
         p += sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/reg?"), SERVER_URL);
         if (action == 0) {
-          sprintf_P(p, PSTR("CSQ=%d&vin=%s\"\r"), signal, vin);
+          sprintf_P(p, PSTR("CSQ=%d&vin=%s\"\r"), csq, vin);
         } else {
           sprintf_P(p, PSTR("id=%u&off=1\"\r"), feedid);
         }
@@ -671,8 +668,10 @@ private:
     }
     void standby()
     {
-        if (state & STATE_CONNECTED) {
-          regDataFeed(1); // de-register
+        if (state & STATE_GSM_READY) {
+          if (state & STATE_CONNECTED) {
+            regDataFeed(1); // de-register
+          }
           toggleGSM(); // turn off GSM power
         }
 #if USE_GPS
@@ -705,19 +704,12 @@ private:
           }
           // check movement
           if (motion > WAKEUP_MOTION_THRESHOLD) {
-            Serial.println(motion);
-            // try OBD reading
+            //Serial.println(motion);
             leaveLowPowerMode();
-            if (init()) {
-              // OBD is accessible
-              break;
-            }
-            enterLowPowerMode();
-            // calibrate MEMS again in case the device posture changed
-            calibrateMEMS();
+            break;
           }
         }
-        // now we are able to get OBD data again
+        Serial.println("Wakeup");
     }
     void reset()
     {
