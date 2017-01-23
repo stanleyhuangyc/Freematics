@@ -5,7 +5,7 @@
 * Data logging/streaming out
 **************************************/
 #define ENABLE_DATA_CACHE 1
-#define CACHE_SIZE 384 /* bytes */
+#define CACHE_SIZE 320 /* bytes */
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
