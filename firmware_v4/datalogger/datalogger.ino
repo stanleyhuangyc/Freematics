@@ -75,12 +75,12 @@ public:
 
         Serial.print("OBD ");
         if (init()) {
-          state |= STATE_OBD_READY;
           Serial.println("OK");
         } else {
           Serial.println("NO");
           reconnect();
         }
+        state |= STATE_OBD_READY;
 
 #if 0
         // retrieve VIN
