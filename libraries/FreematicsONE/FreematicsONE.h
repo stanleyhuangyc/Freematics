@@ -181,6 +181,8 @@ public:
 	void enterLowPowerMode();
 	// leave low power mode
 	void leaveLowPowerMode();
+	// read diagnostic trouble codes (return number of DTCs read)
+	byte readDTC(uint16_t codes[], byte maxCodes = 1);
 	// clear diagnostic trouble code
 	void clearDTC();
 	// get battery voltage (works without ECU)

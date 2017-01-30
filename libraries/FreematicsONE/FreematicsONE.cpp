@@ -80,6 +80,43 @@ bool COBDSPI::readPID(byte pid, int& result)
 	return getResult(pid, result);
 }
 
+byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
+{
+	/*
+	Response example:
+	0: 43 04 01 08 01 09 
+	1: 01 11 01 15 00 00 00
+	*/ 
+	byte codesRead = 0;
+ 	for (byte n = 0; n < 6; n++) {
+		char buffer[128];
+		sprintf_P(buffer, n == 0 ? PSTR("03\r") : PSTR("03%02X\r"), n);
+		write(buffer);
+		Serial.println(buffer);
+		if (receive(buffer, sizeof(buffer)) > 0) {
+			Serial.println(buffer);
+			if (!strstr(buffer, "NO DATA")) {
+				char *p = strstr(buffer, "43");
+				if (p) {
+					while (codesRead < maxCodes && *p) {
+						p += 6;
+						if (*p == '\r') {
+							p = strchr(p, ':');
+							if (!p) break;
+							p += 2; 
+						}
+						uint16_t code = hex2uint16(p);
+						if (code == 0) break;
+						codes[codesRead++] = code;
+					}
+				}
+				break;
+			}
+		}
+	}
+	return codesRead;
+}
+
 void COBDSPI::clearDTC()
 {
 	char buffer[32];
@@ -260,17 +297,20 @@ bool COBDSPI::isValidPID(byte pid)
 
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
-	const char PROGMEM *initcmd[] = {PSTR("ATZ\r"),PSTR("ATE0\r"),PSTR("ATL1\r"),PSTR("ATSP%02u\r")};
+	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATL1\r"};
 	char buffer[64];
 
 	if (!getVersion()) return false;
 	for (unsigned char i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
-		sprintf_P(buffer, initcmd[i], protocol);
-#ifdef DEBUG
-		debugOutput(buffer);
-#endif
-		write(buffer);
-		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0 || (i > 0 && !strstr(buffer, "OK"))) {
+		write(initcmd[i]);
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0) {
+			m_state = OBD_DISCONNECTED;
+			return false;
+		}
+	}
+	if (protocol != PROTO_AUTO) {
+		sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0 && !strstr(buffer, "OK")) {
 			m_state = OBD_DISCONNECTED;
 			return false;
 		}
@@ -329,7 +369,7 @@ byte COBDSPI::begin()
 	digitalWrite(SPI_PIN_CS, HIGH);
 	delay(50);
 	SPI.begin();
-	SPI.setClockDivider(1);
+	SPI.setClockDivider(2);
 	delay(50);
 	if (!getVersion()) {
 		m_state = OBD_FAILED;
