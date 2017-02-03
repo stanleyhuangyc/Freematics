@@ -40,8 +40,8 @@
 #define SD_CS_PIN 10
 
 // enable(1)/disable(0) MEMS sensor
-#define USE_MPU6050 1
-#define USE_MPU9250 0
+#define USE_MPU6050 0
+#define USE_MPU9250 1
 #define ACC_DATA_RATIO 172
 #define GYRO_DATA_RATIO 256
 #define COMPASS_DATA_RATIO 8
