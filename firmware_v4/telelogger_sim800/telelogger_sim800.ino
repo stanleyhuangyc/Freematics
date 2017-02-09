@@ -29,7 +29,8 @@
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
 #define STATE_GSM_READY 0x10
-#define STATE_CONNECTED 0x40
+#define STATE_CONNECTED 0x20
+#define STATE_POSITIONED 0x40
 
 uint16_t lastUTC = 0;
 uint8_t lastGPSDay = 0;
@@ -79,12 +80,12 @@ public:
       // discard any stale data
       xbPurge();
       for (byte n = 0; n < 10; n++) {
-        // try turning on GSM
-        toggleGSM();
-        delay(2000);
         if (sendGSMCommand("ATE0\r") != 0) {
           return true;
         }
+        // try turning on GSM
+        toggleGSM();
+        delay(2000);
       }
       return false;
     }
@@ -250,6 +251,11 @@ public:
     CTeleLogger():gprsState(GPRS_DISABLED),state(0),feedid(0) {}
     void setup()
     {
+        // setup xBee module serial baudrate
+        xbBegin(XBEE_BAUDRATE);
+        // turn on power for GSM module which needs some time to boot
+        toggleGSM();
+        
 #if USE_MPU6050 || USE_MPU9250
         if (!(state & STATE_MEMS_READY)) {
           Serial.print("#MEMS...");
@@ -269,7 +275,7 @@ public:
             Serial.println("OK");
           } else {
             Serial.println("NO");
-            reconnect();
+            standby();
             continue;
           }
           state |= STATE_OBD_READY;
@@ -287,7 +293,6 @@ public:
 
           // initialize SIM800L xBee module (if present)
           Serial.print("#GSM...");
-          xbBegin(XBEE_BAUDRATE);
           if (initGSM()) {
             state |= STATE_GSM_READY;
             Serial.println("OK");
@@ -415,9 +420,11 @@ public:
     {
         uint32_t start = millis();
 
-        if (state & STATE_OBD_READY) {
-          processOBD();
+        if (!(state & STATE_OBD_READY)) {
+          setup();
+          return;
         }
+        processOBD();
 
 #if USE_MPU6050 || USE_MPU9250
         if (state & STATE_MEMS_READY) {
@@ -444,7 +451,7 @@ public:
           if (millis() > nextConnTime) {
 #if USE_GSM_LOCATION
             if (!(state & STATE_GPS_READY)) {
-              if (gprsState == GPRS_IDLE) {
+              if (gprsState == GPRS_IDLE && !(state & STATE_POSITIONED)) {
                 // get GSM location if GPS not present
                 if (getLocation(&loc)) {
                   //Serial.print(buffer);
@@ -463,7 +470,7 @@ public:
             if (gprsState == GPRS_IDLE) {
               if (errors > 10) {
                 reconnect();
-                setup();
+                return;
               } else if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
                 // device too hot, cool down
                 Serial.print("Cooling (");
@@ -514,16 +521,17 @@ private:
                 if (setPostPayload(cache, cacheBytes - 1)) {
                   // success
                   // output payload data to serial
-                  //Serial.println(cache);               
+                  //Serial.println(cache);
                   Serial.print("#");
                   Serial.print(++connCount);
                   Serial.print(' ');
                   Serial.print(cacheBytes - 1);
-                  Serial.print(" bytes...");
+                  Serial.print("B ");
 #if ENABLE_DATA_CACHE
                   purgeCache();
 #endif
-                  //delay(50);
+                  state &= ~STATE_POSITIONED; // to be positioned again
+                  delay(10);
                   httpConnect(HTTP_POST);
                   gprsState = GPRS_HTTP_RECEIVING;
                   nextConnTime = millis() + 200;
@@ -635,6 +643,7 @@ private:
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
+              state |= STATE_POSITIONED;
             }
             //Serial.print("#UTC:"); 
             //Serial.println(gd.time);
@@ -656,45 +665,51 @@ private:
           logCoordinate(PID_GPS_LATITUDE, loc.lat * 1000000);
           logCoordinate(PID_GPS_LONGITUDE, loc.lng * 1000000);
           lastUTC = (uint16_t)t;
+          state |= STATE_POSITIONED;
         }
     }
     void reconnect()
     {
         // try to re-connect to OBD
         if (init()) return;
-        delay(1000);
-        if (init()) return;
+        //delay(1000);
+        //if (init()) return;
         standby();
     }
     void standby()
     {
+#if USE_GPS
+        if (state & STATE_GPS_READY) {
+          initGPS(0); // turn off GPS power
+          Serial.println("GPS shutdown");
+        }
+#endif
         if (state & STATE_GSM_READY) {
           if (state & STATE_CONNECTED) {
             regDataFeed(1); // de-register
           }
           toggleGSM(); // turn off GSM power
+          Serial.println("GSM shutdown");
         }
-#if USE_GPS
-        initGPS(0); // turn off GPS power
-#endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GSM_READY | STATE_CONNECTED);
         Serial.print("Standby");
         // put OBD chips into low power mode
         enterLowPowerMode();
         // sleep for serveral seconds
-        for (byte n = 0; n < 30; n++) {
+        for (byte n = 0; n < RECALIBRATION_TIME / 210; n++) {
           Serial.print('.');
           readMEMS();
-          sleepms(250);
+          delay(200);
         }
+        // re-calibrate MEMS sensor with past data
         calibrateMEMS();
         for (;;) {
           accSum[0] = 0;
           accSum[1] = 0;
           accSum[2] = 0;
-          for (accCount = 0; accCount < 10; ) {
+          for (accCount = 0; accCount < 50; ) {
             readMEMS();
-            sleepms(30);
+            delay(50);
           }
           // calculate relative movement
           unsigned long motion = 0;
@@ -704,10 +719,11 @@ private:
           }
           // check movement
           if (motion > WAKEUP_MOTION_THRESHOLD) {
-            //Serial.println(motion);
+            Serial.println(motion);
             leaveLowPowerMode();
             break;
           }
+          Serial.print('.');
         }
         Serial.println("Wakeup");
     }
@@ -769,8 +785,6 @@ void setup()
     delay(500);
     // this will also init SPI communication
     logger.begin();
-    // perform initializations
-    logger.setup();
 }
 
 void loop()
