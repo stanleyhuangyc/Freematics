@@ -5,7 +5,7 @@
 * Data logging/streaming out
 **************************************/
 #define ENABLE_DATA_CACHE 1
-#define CACHE_SIZE 320 /* bytes */
+#define CACHE_SIZE 256 /* bytes */
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
@@ -42,8 +42,8 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 300000
-#define RECALIBRATION_TIME 3000 /* ms */ 
+#define WAKEUP_MOTION_THRESHOLD 100000
+#define RECALIBRATION_TIME 5000 /* ms */ 
 
 /**************************************
 * Other options
