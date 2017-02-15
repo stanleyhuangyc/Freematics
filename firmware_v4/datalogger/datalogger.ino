@@ -311,6 +311,7 @@ void loop()
           one.state |= STATE_FILE_READY;
           Serial.println(index);
         } else {
+          Serial.println("File error");
         }
       }
     }
