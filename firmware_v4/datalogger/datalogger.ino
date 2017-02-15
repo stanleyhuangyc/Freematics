@@ -56,11 +56,11 @@ public:
     void setup()
     {
         state = 0;
-        
+
         delay(500);
-        begin();
+        byte ver = begin();
         Serial.print("Firmware Ver. ");
-        Serial.println(version);
+        Serial.println(ver);
 
 #if USE_MPU6050 || USE_MPU9250
         Wire.begin();
@@ -68,6 +68,17 @@ public:
         if (memsInit()) {
           state |= STATE_MEMS_READY;
           Serial.println("OK");
+        } else {
+          Serial.println("NO");
+        }
+#endif
+
+#if ENABLE_DATA_LOG
+        Serial.print("SD ");
+        uint16_t volsize = initSD();
+        if (volsize) {
+          Serial.print(volsize);
+          Serial.println("MB");
         } else {
           Serial.println("NO");
         }
@@ -96,17 +107,6 @@ public:
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_FOUND;
           Serial.println("OK");
-        } else {
-          Serial.println("NO");
-        }
-#endif
-
-#if ENABLE_DATA_LOG
-        Serial.print("SD ");
-        uint16_t volsize = initSD();
-        if (volsize) {
-          Serial.print(volsize);
-          Serial.println("MB");
         } else {
           Serial.println("NO");
         }
@@ -161,7 +161,7 @@ public:
         pinMode(SS, OUTPUT);
         Sd2Card card;
         uint32_t volumesize = 0;
-        if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
+        if (card.init(SPI_FULL_SPEED, SD_CS_PIN)) {
             SdVolume volume;
             if (volume.init(card)) {
               volumesize = volume.blocksPerCluster();
@@ -195,6 +195,7 @@ public:
 #endif
     void reconnect()
     {
+        Serial.println("Reconnecting");
         // try to re-connect to OBD
         if (init()) return;
         delay(1000);
@@ -300,7 +301,7 @@ void loop()
             MMDD = 0;
             one.state |= STATE_FILE_READY;
           } else {
-            Serial.println("error");
+            Serial.println("File error");
           }
         }
       } else {
@@ -310,7 +311,6 @@ void loop()
           one.state |= STATE_FILE_READY;
           Serial.println(index);
         } else {
-          Serial.println("error");
         }
       }
     }
@@ -359,5 +359,10 @@ void loop()
 
 #if ENABLE_DATA_LOG
     one.flushData();
+#endif
+
+#if ENABLE_DATA_LOG
+    Serial.print(sdfile.size());
+    Serial.println(" bytes");
 #endif
 }
