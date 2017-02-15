@@ -201,7 +201,6 @@ public:
 	byte errors;
 	// bit map of supported PIDs
 	byte pidmap[4 * 4];
-	byte version;
 protected:
 	char* getResponse(byte& pid, char* buffer, byte bufsize);
 	void debugOutput(const char* s);

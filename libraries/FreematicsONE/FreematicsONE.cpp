@@ -297,20 +297,19 @@ bool COBDSPI::isValidPID(byte pid)
 
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {"ATZ\r", "ATE0\r"};
+	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
 
+	m_state = OBD_DISCONNECTED;
 	for (unsigned char i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 		write(initcmd[i]);
 		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0) {
-			m_state = OBD_DISCONNECTED;
 			return false;
 		}
 	}
 	if (protocol != PROTO_AUTO) {
 		sprintf_P(buffer, PSTR("ATSP %u\r"), protocol);
 		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0 && !strstr(buffer, "OK")) {
-			m_state = OBD_DISCONNECTED;
 			return false;
 		}
 	}
@@ -366,16 +365,10 @@ byte COBDSPI::begin()
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
 	digitalWrite(SPI_PIN_CS, HIGH);
-	delay(50);
 	SPI.begin();
-	//SPI.setClockDivider(2);
+	SPI.setClockDivider(1);
 	delay(50);
-	if (!getVersion()) {
-		m_state = OBD_FAILED;
-	} else {
-		m_state = OBD_DISCONNECTED;
-	}
-	return version;
+	return getVersion();
 }
 
 void COBDSPI::end()
@@ -385,13 +378,13 @@ void COBDSPI::end()
 
 byte COBDSPI::getVersion()
 {
-	version = 0;
+	byte version = 0;
     setTarget(TARGET_OBD);
 	for (byte n = 0; n < 3; n++) {
 		write("ATI\r");
-		char buffer[64];
-		if (receive(buffer, sizeof(buffer), 100)) {
-			char *p = strstr(buffer, "OBD");
+		char buffer[32];
+		if (receive(buffer, sizeof(buffer), 500)) {
+			char *p = strstr(buffer, "OBDUART");
 			if (p) {
 				p += 9;
 				version = (*p - '0') * 10 + (*(p + 2) - '0');
@@ -488,12 +481,8 @@ void COBDSPI::write(const char* s)
 		delayMicroseconds(5);
 	}
 	// send terminating byte (ESC)
-	if (version != 10) {
-		SPI.transfer(0x1B);
-		digitalWrite(SPI_PIN_CS, HIGH);
-	} else {
-		digitalWrite(SPI_PIN_CS, HIGH);
-	}
+	SPI.transfer(0x1B);
+	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
 void COBDSPI::write(byte* data, int len)
@@ -690,6 +679,8 @@ void COBDSPI::xbWrite(const char* cmd)
 {
 	setTarget(TARGET_BEE);
 	write(cmd);
+	Serial.print("<<<");
+	Serial.println(cmd);
 }
 
 byte COBDSPI::xbRead(char* buffer, byte bufsize, int timeout)
@@ -713,6 +704,9 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expe
 		}
 		byte n = xbRead(buffer + bytesRecv, bufsize - bytesRecv, timeout);
 		if (n > 0) {
+#ifdef DEBUG
+			debugOutput(buffer);
+#endif
 			if (!memcmp(buffer + bytesRecv, "$GSMNO DATA", 11)) {
 				if (timeout > 50) delay(50);
 			} else {
