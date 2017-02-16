@@ -13,14 +13,6 @@
 #define OBD_TIMEOUT_GPS 200 /* ms */
 #define OBD_SERIAL_BAUDRATE 38400
 
-#ifndef OBDUART
-#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168P__)
-#define OBDUART Serial
-#else
-#define OBDUART Serial1
-#endif
-#endif
-
 // Mode 1 PIDs
 #define PID_ENGINE_LOAD 0x04
 #define PID_COOLANT_TEMP 0x05
