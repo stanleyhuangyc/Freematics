@@ -297,7 +297,7 @@ bool COBDSPI::isValidPID(byte pid)
 
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
+	const char *initcmd[] = {"ATZ\r", "ATE0\r"};
 	char buffer[64];
 
 	m_state = OBD_DISCONNECTED;
@@ -366,7 +366,7 @@ byte COBDSPI::begin()
 	pinMode(SPI_PIN_CS, OUTPUT);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
-	SPI.setClockDivider(1);
+	SPI.setClockDivider(2);
 	delay(50);
 	return getVersion();
 }
@@ -457,7 +457,7 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 			return 0;
 		}
 #ifdef DEBUG
-		debugOutput(buffer + 4);
+		debugOutput(buffer);
 #endif
 	}
 	return n;
@@ -679,8 +679,10 @@ void COBDSPI::xbWrite(const char* cmd)
 {
 	setTarget(TARGET_BEE);
 	write(cmd);
+#ifdef DEBUG
 	Serial.print("<<<");
 	Serial.println(cmd);
+#endif
 }
 
 byte COBDSPI::xbRead(char* buffer, byte bufsize, int timeout)
