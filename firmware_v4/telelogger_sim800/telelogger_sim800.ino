@@ -221,7 +221,7 @@ public:
     {
       xbWrite(cmd);
       delay(10);
-      return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
+      return xbReceive(buffer, sizeof(buffer), timeout, expected, "\r\nERROR") == 1;
     }
     bool setPostPayload(const char* payload, int bytes)
     {
