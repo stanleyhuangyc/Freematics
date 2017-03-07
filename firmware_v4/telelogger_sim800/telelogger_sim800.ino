@@ -251,11 +251,6 @@ public:
     CTeleLogger():gprsState(GPRS_DISABLED),state(0),feedid(0) {}
     void setup()
     {
-        // setup xBee module serial baudrate
-        xbBegin(XBEE_BAUDRATE);
-        // turn on power for GSM module which needs some time to boot
-        toggleGSM();
-        
 #if USE_MPU6050 || USE_MPU9250
         if (!(state & STATE_MEMS_READY)) {
           Serial.print("#MEMS...");
@@ -293,6 +288,10 @@ public:
 
           // initialize SIM800L xBee module (if present)
           Serial.print("#GSM...");
+          // setup xBee module serial baudrate
+          xbBegin(XBEE_BAUDRATE);
+          // turn on power for GSM module which needs some time to boot
+          toggleGSM();
           if (initGSM()) {
             state |= STATE_GSM_READY;
             Serial.println("OK");
@@ -672,8 +671,6 @@ private:
     {
         // try to re-connect to OBD
         if (init()) return;
-        //delay(1000);
-        //if (init()) return;
         standby();
     }
     void standby()
