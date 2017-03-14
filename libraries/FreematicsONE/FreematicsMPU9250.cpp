@@ -427,7 +427,7 @@ bool CMPU9250::memsInit()
   return true;
 }
 
-bool CMPU9250::memsRead(int* acc, int* gyr, int* mag, int* temp)
+bool CMPU9250::memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp)
 {
   if (acc) {
     readAccelData(acc);

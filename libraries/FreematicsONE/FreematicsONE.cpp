@@ -8,20 +8,25 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
+#ifdef ARDUINO_ARCH_AVR
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/common.h>
 #include <avr/wdt.h>
 #include <avr/sleep.h>
+#endif
 #include "FreematicsONE.h"
 
+//#define XBEE_DEBUG
 //#define DEBUG Serial
 
+#ifdef ARDUINO_ARCH_AVR
 SIGNAL(WDT_vect) {
   wdt_disable();
   wdt_reset();
   WDTCSR &= ~_BV(WDIE);
 }
+#endif
 
 uint16_t hex2uint16(const char *p)
 {
@@ -251,7 +256,7 @@ void COBDSPI::leaveLowPowerMode()
 {
 	// simply send any command to wake the device up
 	char buf[32];
-	sendCommand("ATI\r", buf, sizeof(buf), 100);
+	sendCommand("ATI\r", buf, sizeof(buf), 1000);
 }
 
 float COBDSPI::getVoltage()
@@ -297,7 +302,7 @@ bool COBDSPI::isValidPID(byte pid)
 
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {"ATZ\r", "ATE0\r"};
+	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
 
 	m_state = OBD_DISCONNECTED;
@@ -359,7 +364,9 @@ static const char PROGMEM targets[][4] = {
 byte COBDSPI::begin()
 {
 	// turn off ADC
+#ifdef ARDUINO_ARCH_AVR
 	ADCSRA &= ~(1 << ADEN);
+#endif
 	
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
@@ -396,6 +403,21 @@ byte COBDSPI::getVersion()
 	return version;
 }
 
+int COBDSPI::dumpLine(char* buffer, int len)
+{
+	int bytesToDump = len >> 1;
+	for (int i = 0; i < len; i++) {
+		// find out first line end and discard the first line
+		if (buffer[i] == '\r' || buffer[i] == '\n') {
+			// go through all following \r or \n if any
+			while (++i < len && (buffer[i] == '\r' || buffer[i] == '\n'));
+			bytesToDump = i;
+			break;
+		}					
+	}
+	memmove(buffer, buffer + bytesToDump, len - bytesToDump); 
+	return bytesToDump;
+}
 int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 {
 	int n = 0;
@@ -421,19 +443,7 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 #ifdef DEBUG
 					debugOutput("Buffer full");
 #endif
-					// buffer full
-					int bytesToDiscard = bufsize >> 1;
-					for (int i = 0; i < n; i++) {
-						// find out first line end and discard the first line
-						if (buffer[i] == '\r' || buffer[i] == '\n') {
-							// go through all following \r or \n if any
-							while (++i < n && (buffer[i] == '\r' || buffer[i] == '\n'));
-							bytesToDiscard = i;
-							break;
-						}					
-					}
-					n -= bytesToDiscard;
-					memmove(buffer, buffer + bytesToDiscard, n); 
+					n -= dumpLine(buffer, n);
 				}
 
 				buffer[n] = c;
@@ -618,6 +628,7 @@ void COBDSPI::sendGPSCommand(const char* cmd)
 
 void COBDSPI::sleepms(byte ms)
 {
+#ifdef ARDUINO_ARCH_AVR
 	uint8_t wdt_period;
 	if (ms <= 15)
 		wdt_period = WDTO_15MS;
@@ -637,11 +648,15 @@ void COBDSPI::sleepms(byte ms)
 	sleep_mode();
 	wdt_disable();
 	WDTCSR &= ~_BV(WDIE);
+#else
+	delay(ms);
+#endif
 }
 
 void COBDSPI::sleep(int seconds)
 {
 	enterLowPowerMode();
+#ifdef ARDUINO_ARCH_AVR
 	while (seconds > 0) {
 		uint8_t wdt_period; 
 		if (seconds >= 8) {
@@ -659,6 +674,9 @@ void COBDSPI::sleep(int seconds)
 		wdt_disable();
 		WDTCSR &= ~_BV(WDIE);
 	 }
+#else
+	delay((unsigned long)seconds * 1000);
+#endif
 	 leaveLowPowerMode();
 }
 
@@ -679,13 +697,13 @@ void COBDSPI::xbWrite(const char* cmd)
 {
 	setTarget(TARGET_BEE);
 	write(cmd);
-#ifdef DEBUG
+#ifdef XBEE_DEBUG
 	Serial.print("<<<");
 	Serial.println(cmd);
 #endif
 }
 
-byte COBDSPI::xbRead(char* buffer, byte bufsize, int timeout)
+int COBDSPI::xbRead(char* buffer, byte bufsize, int timeout)
 {
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");
@@ -693,39 +711,45 @@ byte COBDSPI::xbRead(char* buffer, byte bufsize, int timeout)
 	return receive(buffer, bufsize, timeout);
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expected1, const char* expected2)
+int COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expected1, const char* expected2)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
 	setTarget(TARGET_OBD);
 	do {
 		if (bytesRecv >= bufsize - 16) {
-			int bytesToDiscard = bufsize >> 1; 
-			bytesRecv -= bytesToDiscard;
-			memmove(buffer, buffer + bytesToDiscard, bytesRecv); 
+			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-		byte n = xbRead(buffer + bytesRecv, bufsize - bytesRecv, timeout);
+		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv, timeout);
 		if (n > 0) {
-#ifdef DEBUG
-			debugOutput(buffer);
-#endif
 			if (!memcmp(buffer + bytesRecv, "$GSMNO DATA", 11)) {
-				if (timeout > 50) delay(50);
+				if (timeout > 100) delay(100);
 			} else {
 				memmove(buffer + bytesRecv, buffer + bytesRecv + 4, n - 5);
 				//Serial.print(buffer + bytesRecv);
 				bytesRecv += n - 5;
 				buffer[bytesRecv] = 0;
-				if (!expected1)
+				if (!expected1 || strstr(buffer, expected1)) {
+#ifdef XBEE_DEBUG
+				Serial.print(">>>");
+				Serial.println(buffer);
+#endif
 					return 1;
-				else if (strstr(buffer, expected1))
-					return 1;
-				else if (expected2 && strstr(buffer, expected2))
+				} else if (expected2 && strstr(buffer, expected2)) {
+#ifdef XBEE_DEBUG
+				Serial.print(">>>");
+				Serial.println(buffer);
+#endif
 					return 2;
+				}
 			}
 		}
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
+#ifdef XBEE_DEBUG
+	Serial.print(">>>");
+	Serial.println(buffer);
+#endif
 	return 0;
 }
 

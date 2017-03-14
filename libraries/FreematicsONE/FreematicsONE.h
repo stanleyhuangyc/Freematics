@@ -7,6 +7,11 @@
 
 #include "FreematicsMPU6050.h"
 #include "FreematicsMPU9250.h"
+#include "SD.h"
+
+#ifndef ARDUINO_ARCH_AVR
+#define sprintf_P sprintf
+#endif 
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
 #define OBD_TIMEOUT_LONG 5000 /* ms */
@@ -117,8 +122,14 @@ typedef struct {
 uint16_t hex2uint16(const char *p);
 uint8_t hex2uint8(const char *p);
 
+#ifdef ARDUINO_ARCH_AVR
 #define SPI_PIN_CS 7
 #define SPI_PIN_READY 6
+#else
+#define SPI_PIN_CS 2
+#define SPI_PIN_READY 16
+
+#endif
 
 #define TARGET_OBD 0
 #define TARGET_GPS 1
@@ -156,11 +167,11 @@ public:
 	// start xBee UART communication
 	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
-	byte xbRead(char* buffer, byte bufsize, int timeout = 1000);
+	int xbRead(char* buffer, byte bufsize, int timeout = 1000);
 	// send data to xBee UART
 	void xbWrite(const char* cmd);
 	// receive data from xBee UART
-	byte xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);	
+	int xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);	
 	// purge xBee UART buffer
 	void xbPurge();
 	// initialize OBD-II connection
@@ -217,5 +228,6 @@ private:
 	{
 		return (int)hex2uint8(data) - 40;
 	}
+	int dumpLine(char* buffer, int len);
 	byte m_target;
 };
