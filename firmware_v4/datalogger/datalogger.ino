@@ -18,9 +18,6 @@
 #include <SPI.h>
 #include <FreematicsONE.h>
 #include "config.h"
-#if ENABLE_DATA_LOG
-#include <SD.h>
-#endif
 #include "datalogger.h"
 
 // states
@@ -112,7 +109,9 @@ public:
         }
 #endif
 
+#if USE_MPU6050 || USE_MPU9250
         calibrateMEMS();
+#endif
     }
 #if USE_GPS
     void logGPSData()
@@ -130,6 +129,7 @@ public:
 #if LOG_GPS_PARSED_DATA
         // issue the command to get parsed GPS data
         GPS_DATA gd = {0};
+        
         if (getGPSData(&gd)) {
             dataTime = millis();
             if (gd.time && gd.time != UTC) {
@@ -159,9 +159,10 @@ public:
     {
         state &= ~STATE_SD_READY;
         pinMode(SS, OUTPUT);
+
         Sd2Card card;
         uint32_t volumesize = 0;
-        if (card.init(SPI_FULL_SPEED, SD_CS_PIN)) {
+        if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
             SdVolume volume;
             if (volume.init(card)) {
               volumesize = volume.blocksPerCluster();
@@ -198,8 +199,6 @@ public:
         Serial.println("Reconnecting");
         // try to re-connect to OBD
         if (init()) return;
-        delay(1000);
-        if (init()) return;
 #if ENABLE_DATA_LOG
         closeFile();
 #endif
@@ -212,6 +211,7 @@ public:
         
         // calibrate MEMS for several seconds
         for (;;) {
+#if USE_MPU6050 || USE_MPU9250
           accSum[0] = 0;
           accSum[1] = 0;
           accSum[2] = 0;
@@ -229,20 +229,24 @@ public:
           if (motion > START_MOTION_THRESHOLD) {
             Serial.println(motion);
             // try OBD reading
+#endif
             leaveLowPowerMode();
             if (init()) {
               // OBD is accessible
               break;
             }
             enterLowPowerMode();
+#if USE_MPU6050 || USE_MPU9250
             // calibrate MEMS again in case the device posture changed
             calibrateMEMS();
           }
+#endif
         }
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
     }
+#if USE_MPU6050 || USE_MPU9250
     void calibrateMEMS()
     {
         // get accelerometer calibration reference data
@@ -276,6 +280,7 @@ public:
       }
       delay(10);
     }
+ #endif
     byte state;
 };
 
@@ -337,8 +342,6 @@ void loop()
         if (one.init()) {
             one.state |= STATE_OBD_READY;
         }
-      } else {
-        one.dataIdleLoop();
       }
     }
     
@@ -346,12 +349,13 @@ void loop()
     int v = one.getVoltage() * 100;
     one.dataTime = millis();
     one.logData(PID_BATTERY_VOLTAGE, v);
-    
+
+#if USE_MPU6050 || USE_MPU9250
     if ((one.state & STATE_MEMS_READY) && accCount) {
        // log the loaded MEMS data
       one.logData(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
     }
-
+#endif
 #if USE_GPS
     if (one.state & STATE_GPS_FOUND) {
       one.logGPSData();
@@ -360,9 +364,6 @@ void loop()
 
 #if ENABLE_DATA_LOG
     one.flushData();
-#endif
-
-#if ENABLE_DATA_LOG
     Serial.print(sdfile.size());
     Serial.println(" bytes");
 #endif

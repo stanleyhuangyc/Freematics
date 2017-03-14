@@ -9,7 +9,8 @@
 #define PID_DATA_SIZE 0x80
 
 #if ENABLE_DATA_LOG
-static File sdfile;
+SDClass SD;
+File sdfile;
 #endif
 
 typedef struct {
@@ -89,7 +90,7 @@ public:
         dispatch(buf, len);
         record(buf, len);
     }
-    void logData(uint16_t pid, int value)
+    void logData(uint16_t pid, int16_t value)
     {
         char buf[16];
         byte n = translatePIDName(pid, buf);
