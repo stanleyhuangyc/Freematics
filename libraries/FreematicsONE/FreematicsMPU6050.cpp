@@ -35,7 +35,7 @@ bool CMPU6050::memsInit()
 	return true;
 }
 
-bool CMPU6050::memsRead(int* acc, int* gyr, int* mag, int* temp)
+bool CMPU6050::memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp)
 {
 	bool success;
 
@@ -77,7 +77,7 @@ bool CMPU6050::memsRead(int* acc, int* gyr, int* mag, int* temp)
 	return true;
 }
 
-void CMPU6050::MPU6050_store(int* pData, uint8_t data_l, uint8_t data_h)
+void CMPU6050::MPU6050_store(int16_t* pData, uint8_t data_l, uint8_t data_h)
 {
 	uint8_t* ptr = (uint8_t*)pData;
 	*ptr = data_l;

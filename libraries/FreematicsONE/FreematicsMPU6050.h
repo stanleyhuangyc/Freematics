@@ -51,12 +51,12 @@ public:
 	// initialize MEMS
 	bool memsInit();
 	// read out MEMS data (acc for accelerometer x/y/z, gyr for gyroscope x/y/z, temp in 0.1 celcius degree)
-	bool memsRead(int* acc, int* gyr = 0, int* mag = 0, int* temp = 0);
+	bool memsRead(int16_t* acc, int16_t* gyr = 0, int16_t* mag = 0, int16_t* temp = 0);
 private:
 	bool MPU6050_read(int start, uint8_t* buffer, int size);
 	bool MPU6050_write(int start, const uint8_t* pData, int size);
 	bool MPU6050_write_reg(int reg, uint8_t data);
-	void MPU6050_store(int* pData, uint8_t data_l, uint8_t data_h);
+	void MPU6050_store(int16_t* pData, uint8_t data_l, uint8_t data_h);
 };
 
 #endif

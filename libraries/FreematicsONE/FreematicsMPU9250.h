@@ -207,7 +207,7 @@ class CMPU9250
 
   public:
     bool memsInit();
-    bool memsRead(int* acc, int* gyr, int* mag, int* temp);
+    bool memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp);
     
     void getMres();
     void getGres();
