@@ -221,6 +221,7 @@ private:
 
 CSIM5360 sim;
 byte netState = NET_DISCONNECTED;
+byte errors = 0;
 
 void setup()
 {
@@ -281,6 +282,7 @@ void loop()
     Serial.println("OK");
   } else {
     Serial.println("failed");
+    errors++;
     return;
   }
 
@@ -295,11 +297,17 @@ void loop()
       if (p) *p = 0;
       Serial.println(payload + 4);
     }
+    netState = NET_CONNECTED;
+    errors = 0;
   } else {
     Serial.println("failed");
+    errors++;
   }
-  netState = NET_CONNECTED;
 
+  if (errors > 3) {
+    sim.httpClose();
+    netState = NET_DISCONNECTED;
+  }
   delay(3000);
 }
 
