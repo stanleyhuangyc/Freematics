@@ -10,7 +10,8 @@
 #define FILE_NAME_FORMAT "/DAT%05d.CSV"
 
 #if ENABLE_DATA_LOG
-static File sdfile;
+SDClass SD;
+File sdfile;
 #endif
 
 class CDataLogger {
