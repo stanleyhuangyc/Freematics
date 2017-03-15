@@ -7,7 +7,7 @@
 
 #include "FreematicsMPU6050.h"
 #include "FreematicsMPU9250.h"
-#include "SD.h"
+#include "FreematicsSD.h"
 
 #ifndef ARDUINO_ARCH_AVR
 #define sprintf_P sprintf
