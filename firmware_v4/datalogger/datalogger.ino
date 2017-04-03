@@ -242,9 +242,13 @@ public:
           }
 #endif
         }
+#ifdef ARDUINO_ARCH_AVR
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
         resetFunc();
+#else
+        setup();
+#endif
     }
 #if USE_MPU6050 || USE_MPU9250
     void calibrateMEMS()
@@ -257,8 +261,8 @@ public:
     void readMEMS()
     {
         // load accelerometer and temperature data
-        int acc[3] = {0};
-        int temp; // device temperature (in 0.1 celcius degree)
+        int16_t acc[3] = {0};
+        int16_t temp; // device temperature (in 0.1 celcius degree)
         memsRead(acc, 0, 0, &temp);
         if (accCount >= 250) {
           accSum[0] >>= 1;
