@@ -300,7 +300,7 @@ public:
 #endif
 
         // initialize SIM5360 xBee module (if present)
-        Serial.print("#SIM5360");
+        Serial.print("#SIM5360...");
         xbBegin(XBEE_BAUDRATE);
         if (netInit()) {
           Serial.println("OK");
