@@ -74,7 +74,7 @@ public:
         //Serial.write(tmp, n);
 #endif
 #if ENABLE_DATA_OUT
-        Serial.write(buf, len);
+        Serial.write((uint8_t*)buf, len);
         Serial.println();
 #endif
     }
