@@ -187,25 +187,24 @@ public:
       }
       p += sprintf_P(p, PSTR("\r\n\r"));
       // start TCP send
-      sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), (unsigned int)(p - header) + payloadSize);
+      char cmd[32];
+      sprintf_P(cmd, PSTR("AT+CHTTPSSEND=%u\r"), (unsigned int)(p - header) + payloadSize);
       //netSendCommand(buffer, 500, ">");
-      xbWrite(buffer);
+      xbWrite(cmd);
       delay(50);
-        xbWrite(header);
-        delay(50);
-        // send POST payload if any
-        if (payload)
-       {
-           xbWrite(payload);
-       }
-        buffer[0] = 0;
-      
-          xbWrite("AT+CHTTPSSEND\r");
-          bytesRecv = 0;
-          checkTimer = millis();
-        return true;        
-      return false;
-      // send HTTP header
+      xbWrite(header);
+      delay(50);
+      // send POST payload if any
+      if (payload)
+     {
+         xbWrite(payload);
+     }
+      buffer[0] = 0;
+    
+      xbWrite("AT+CHTTPSSEND\r");
+      bytesRecv = 0;
+      checkTimer = millis();
+      return true;        
     }
     bool httpReceive()
     {
