@@ -7,8 +7,6 @@
 // additional custom PID for data logger
 #define PID_DATA_SIZE 0x80
 
-#define FILE_NAME_FORMAT "/DAT%05d.CSV"
-
 #if ENABLE_DATA_LOG
 SDClass SD;
 File sdfile;
@@ -16,25 +14,22 @@ File sdfile;
 
 class CDataLogger {
 public:
-    CDataLogger()
+    CDataLogger():m_lastDataTime(0),dataTime(0),dataSize(0)
     {
-        m_lastDataTime = 0;
 #if ENABLE_DATA_CACHE
         cacheBytes = 0;
 #endif
     }
     byte genTimestamp(char* buf, bool absolute)
     {
-      byte n = 0;
+      byte n;
       if (absolute || dataTime >= m_lastDataTime + 60000) {
         // absolute timestamp
-        n = sprintf_P(buf, PSTR("#%lu"), dataTime);
+        n = sprintf_P(buf, PSTR("#%lu,"), dataTime);
       } else {
         // relative timestamp
         uint16_t elapsed = (unsigned int)(dataTime - m_lastDataTime);
-        if (elapsed) {
-          n = sprintf_P(buf, PSTR("%u"), elapsed);
-        }
+        n = sprintf_P(buf, PSTR("%u,"), elapsed);
       }
       return n;
     }
@@ -43,11 +38,10 @@ public:
 #if ENABLE_DATA_LOG
         char tmp[12];
         byte n = genTimestamp(tmp, dataSize == 0);
-        tmp[n++] = ',';      
         dataSize += sdfile.write(tmp, n);
         dataSize += sdfile.write(buf, len);
-        sdfile.println();
-        dataSize += 3;
+        sdfile.write('\n');
+        dataSize++;
 #endif
         m_lastDataTime = dataTime;
     }
@@ -92,8 +86,8 @@ public:
         //SerialRF.write(tmp, n);
 #endif
 #if ENABLE_DATA_OUT
-        SerialRF.write(buf, len);
-        SerialRF.println();
+        Serial.write((uint8_t*)buf, len);
+        Serial.println();
 #endif
     }
     void logData(const char* buf, byte len)
@@ -108,7 +102,7 @@ public:
         dispatch(buf, len);
         record(buf, len);
     }
-    void logData(uint16_t pid, int value)
+    void logData(uint16_t pid, int16_t value)
     {
         char buf[16];
         byte n = translatePIDName(pid, buf);
@@ -136,9 +130,9 @@ public:
     {
         char buf[24];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf_P(buf + n, PSTR("%d/%d/%d"), value1, value2, value3) + n;
-        dispatch(buf, len);
-        record(buf, len);
+        n += sprintf_P(buf + n, PSTR("%d/%d/%d"), value1, value2, value3);
+        dispatch(buf, n);
+        record(buf, n);
     }
     void logCoordinate(uint16_t pid, int32_t value)
     {
@@ -149,37 +143,44 @@ public:
         record(buf, len);
     }
 #if ENABLE_DATA_LOG
-    uint16_t openFile(uint16_t logFlags = 0, uint32_t dateTime = 0)
+    uint16_t openFile(uint32_t dateTime = 0)
     {
         uint16_t fileIndex;
-        char filename[24] = "/FRMATICS";
+        char path[20] = "/DATA";
 
         dataSize = 0;
-        if (SD.exists(filename)) {
-            for (fileIndex = 1; fileIndex; fileIndex++) {
-                sprintf_P(filename + 9, PSTR(FILE_NAME_FORMAT), fileIndex);
-                if (!SD.exists(filename)) {
-                    break;
-                }
+        if (SD.exists(path)) {
+            if (dateTime) {
+               // using date and time as file name 
+               sprintf(path + 5, "/%08lu.CSV", dateTime);
+               fileIndex = 1;
+            } else {
+              // use index number as file name
+              for (fileIndex = 1; fileIndex; fileIndex++) {
+                  sprintf(path + 5, "/DAT%05u.CSV", fileIndex);
+                  if (!SD.exists(path)) {
+                      break;
+                  }
+              }
+              if (fileIndex == 0)
+                  return 0;
             }
-            if (fileIndex == 0)
-                return 0;
         } else {
-            SD.mkdir(filename);
+            SD.mkdir(path);
             fileIndex = 1;
-            sprintf_P(filename + 9, PSTR(FILE_NAME_FORMAT), 1);
+            sprintf(path + 5, "/DAT%05u.CSV", 1);
         }
 
-        sdfile = SD.open(filename, FILE_WRITE);
+        sdfile = SD.open(path, FILE_WRITE);
         if (!sdfile) {
             return 0;
         }
-        m_lastDataTime = dateTime;
         return fileIndex;
     }
     void closeFile()
     {
         sdfile.close();
+        dataSize = 0;
     }
     void flushFile()
     {
