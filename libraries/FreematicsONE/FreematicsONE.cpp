@@ -535,7 +535,7 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 	do {
 		write(cmd);
 		n = receive(buf, bufsize, timeout);
-		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7)))
+		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
 			// data not ready
 			dataIdleLoop();
 		} else {
