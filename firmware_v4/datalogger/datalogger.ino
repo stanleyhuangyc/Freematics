@@ -367,8 +367,11 @@ void loop()
 #endif
 
 #if ENABLE_DATA_LOG
-    one.flushData();
-    Serial.print(sdfile.size());
-    Serial.println(" bytes");
+    uint32_t logsize = sdfile.size();
+    if (logsize > 0) {
+      one.flushData();
+      Serial.print(sdfile.size());
+      Serial.println(" bytes");
+    }
 #endif
 }
