@@ -314,6 +314,7 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 	}
 	if (protocol != PROTO_AUTO) {
 		sprintf_P(buffer, PSTR("ATSP %u\r"), protocol);
+		write(buffer);
 		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0 && !strstr(buffer, "OK")) {
 			return false;
 		}
@@ -325,15 +326,19 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 	for (byte i = 0; i < 4; i++) {
 		byte pid = i * 0x20;
 		sendQuery(pid);
-		char* data = getResponse(pid, buffer, sizeof(buffer));
-		if (!data) break;
-		data--;
-		for (byte n = 0; n < 4; n++) {
-			if (data[n * 3] != ' ')
-				break;
-			pidmap[i * 4 + n] = hex2uint8(data + n * 3 + 1);
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0) {
+			char *p = buffer;
+			while ((p = strstr(p, "41 "))) {
+				p += 3;
+				if (hex2uint8(p) == pid) {
+					p += 2;
+					for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
+						pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
+					}
+					success = true;
+				}
+			}
 		}
-		success = true;
 	}
 
 	if (success) {
@@ -372,9 +377,15 @@ byte COBDSPI::begin()
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
 	digitalWrite(SPI_PIN_CS, HIGH);
+#ifdef DEBUG
+	debugOutput("Initing SPI");
+#endif	
 	SPI.begin();
 	SPI.setClockDivider(2);
 	delay(50);
+#ifdef DEBUG
+	debugOutput("SPI inited");
+#endif	
 	return getVersion();
 }
 
@@ -524,7 +535,7 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 	do {
 		write(cmd);
 		n = receive(buf, bufsize, timeout);
-		if (n == 0 || strstr(buf, "NO DATA")) {
+		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7)))
 			// data not ready
 			dataIdleLoop();
 		} else {

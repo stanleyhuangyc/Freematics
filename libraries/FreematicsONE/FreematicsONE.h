@@ -14,7 +14,7 @@
 #endif 
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
-#define OBD_TIMEOUT_LONG 5000 /* ms */
+#define OBD_TIMEOUT_LONG 10000 /* ms */
 #define OBD_TIMEOUT_GPS 200 /* ms */
 #define OBD_SERIAL_BAUDRATE 38400
 
