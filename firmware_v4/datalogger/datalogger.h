@@ -13,11 +13,6 @@ SDClass SD;
 File sdfile;
 #endif
 
-typedef struct {
-    uint8_t pid;
-    char name[3];
-} PID_NAME;
-
 class CDataLogger {
 public:
     CDataLogger():m_lastDataTime(0),dataTime(0),dataSize(0)
@@ -37,13 +32,12 @@ public:
       byte n;
       if (absolute || dataTime >= m_lastDataTime + 60000) {
         // absolute timestamp
-        n = sprintf(buf, "#%lu", dataTime);
+        n = sprintf_P(buf, PSTR("#%lu,"), dataTime);
       } else {
         // relative timestamp
         uint16_t elapsed = (unsigned int)(dataTime - m_lastDataTime);
-        n = sprintf(buf, "%u", elapsed);
+        n = sprintf_P(buf, PSTR("%u,"), elapsed);
       }
-      buf[n++] = ',';      
       return n;
     }
     void record(const char* buf, byte len)
@@ -53,21 +47,46 @@ public:
         byte n = genTimestamp(tmp, dataSize == 0);
         dataSize += sdfile.write(tmp, n);
         dataSize += sdfile.write(buf, len);
-        sdfile.println();
-        dataSize += 3;
+        sdfile.write('\n');
+        dataSize++;
 #endif
         m_lastDataTime = dataTime;
     }
     void dispatch(const char* buf, byte len)
     {
 #if ENABLE_DATA_CACHE
-        if (cacheBytes + len < MAX_CACHE_SIZE - 10) {
-          cacheBytes += genTimestamp(cache + cacheBytes, cacheBytes == 0);
+        // reserve some space for timestamp, ending white space and zero terminator
+        int l = cacheBytes + len + 12 - CACHE_SIZE;
+        if (l >= 0) {
+          // cache full
+#if CACHE_SHIFT
+          // discard the oldest data
+          for (l = CACHE_SIZE / 2; cache[l] && cache[l] != ' '; l++);
+          if (cache[l]) {
+            cacheBytes -= l;
+            memcpy(cache, cache + l + 1, cacheBytes);
+          } else {
+            cacheBytes = 0;  
+          }
+#else
+          return;        
+#endif
+        }
+        // add new data at the end
+        byte n = genTimestamp(cache + cacheBytes, cacheBytes == 0);
+        if (n == 0) {
+          // same timestamp 
+          cache[cacheBytes - 1] = ';';
+        } else {
+          cacheBytes += n;
+          cache[cacheBytes++] = ',';
+        }
+        if (cacheBytes + len < CACHE_SIZE - 1) {
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
           cache[cacheBytes++] = ' ';
-          cache[cacheBytes] = 0;
         }
+        cache[cacheBytes] = 0;
 #else
         //char tmp[12];
         //byte n = genTimestamp(tmp, dataTime >= m_lastDataTime + 100);
@@ -94,7 +113,7 @@ public:
     {
         char buf[16];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%d", value) + n;
+        byte len = sprintf_P(buf + n, PSTR("%d"), value) + n;
         dispatch(buf, len);
         record(buf, len);
     }
@@ -102,7 +121,7 @@ public:
     {
         char buf[20];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%ld", value) + n;
+        byte len = sprintf_P(buf + n, PSTR("%ld"), value) + n;
         dispatch(buf, len);
         record(buf, len);
     }
@@ -110,7 +129,7 @@ public:
     {
         char buf[20];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%lu", value) + n;
+        byte len = sprintf_P(buf + n, PSTR("%lu"), value) + n;
         dispatch(buf, len);
         record(buf, len);
     }
@@ -118,15 +137,15 @@ public:
     {
         char buf[24];
         byte n = translatePIDName(pid, buf);
-        byte len = sprintf(buf + n, "%d,%d,%d", value1, value2, value3) + n;
-        dispatch(buf, len);
-        record(buf, len);
+        n += sprintf_P(buf + n, PSTR("%d,%d,%d"), value1, value2, value3);
+        dispatch(buf, n);
+        record(buf, n);
     }
     void logCoordinate(uint16_t pid, int32_t value)
     {
         char buf[24];
         byte len = translatePIDName(pid, buf);
-        len += sprintf(buf + len, "%d.%06lu", (int)(value / 1000000), abs(value) % 1000000);
+        len += sprintf_P(buf + len, PSTR("%d.%06lu"), (int)(value / 1000000), abs(value) % 1000000);
         dispatch(buf, len);
         record(buf, len);
     }
@@ -178,13 +197,17 @@ public:
     uint32_t dataTime;
     uint32_t dataSize;
 #if ENABLE_DATA_CACHE
-    char cache[MAX_CACHE_SIZE];
+    void purgeCache()
+    {
+      cacheBytes = 0;
+    }
+    char cache[CACHE_SIZE];
     int cacheBytes;
 #endif
 private:
     byte translatePIDName(uint16_t pid, char* text)
     {
-        return sprintf(text, "%X,", pid);
+        return sprintf_P(text, PSTR("%X,"), pid);
     }
     uint32_t m_lastDataTime;
 };
