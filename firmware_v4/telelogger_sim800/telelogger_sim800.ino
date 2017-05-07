@@ -485,7 +485,6 @@ public:
         // error handling
         if (connErrors >= MAX_CONN_ERRORS) {
           // reset GPRS 
-          Serial.print(connErrors);
           Serial.print("Reset GPRS...");
           initGSM();
           setupGPRS(APN);
