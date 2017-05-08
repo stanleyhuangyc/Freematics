@@ -203,7 +203,9 @@ public:
         closeFile();
 #endif
         // turn off GPS power
+#if USE_GPS
         initGPS(0);
+#endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY);
         Serial.println("Standby");
         // put OBD chips into low power mode
