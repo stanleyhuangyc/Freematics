@@ -2,4 +2,6 @@ Freematics ESPRIT is an Arduino compatible development board based on Espressif 
 
 ![Freematics ESPRIT ESP32 Arduino Dev Board](http://freematics.com/pages/wp-content/uploads/2017/05/IMG_0979-300x300.jpg)
 
-More info: http://freematics.com/pages/products/freematics-esprit/
+[Learn more about Freematics ESPRIT](http://freematics.com/products/freematics-esprit)
+
+All Arduino sketches here can be directly compiled and uploaded to Freematics ESPRIT by [Freematics Arduino Builder](http://freematics.com/software/arduino-builder/).
