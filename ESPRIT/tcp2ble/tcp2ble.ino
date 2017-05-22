@@ -1,18 +1,18 @@
 /*
-  Freematics Esprit demo sketch
+  A Freematics ESPRIT demo sketch
 
-  This demo includes an HTTP server that is accessible
-  via http://esp32.local URL thanks to mDNS responder.
+  This sketch demonstrates simplest TCP-to-BLE transparent communication
 
   Instructions:
-  - Update WiFi SSID and password as necessary.
-  - Flash the sketch to the ESP32 board
-  - Install host software:
-    - For Linux, install Avahi (http://avahi.org/).
-    - For Windows, install Bonjour (http://www.apple.com/support/bonjour/).
-    - For Mac OSX and iOS support is built in through Bonjour already.
-  - Point your browser to http://esp32.local, you should see a response.
- */
+  - Update WiFi SSID and password as necessary
+  - Import ESPRIT and TinyGPS library (once)
+  - Compile and flash the sketch to the ESPRIT board
+
+  Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
+  Distributed under BSD license
+  Visit http://freematics.com/products/freematics-esprit for product information
+
+*/
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -20,8 +20,8 @@
 #include <WiFiClient.h>
 #include <Esprit.h>
 
-#define WIFI_SSID "HOMEWIFI"
-#define WIFI_PASSWORD "862150909018"
+#define WIFI_SSID "WIFI_SSID"
+#define WIFI_PASSWORD "WIFI_PASSWORD"
 
 WiFiServer server(8000);
 
