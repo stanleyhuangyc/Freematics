@@ -5,7 +5,11 @@
 * Data logging/streaming out
 **************************************/
 #define ENABLE_DATA_CACHE 1
+#ifdef ESP32
+#define CACHE_SIZE 512 /* bytes */
+#else
 #define CACHE_SIZE 128 /* bytes */
+#endif
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
@@ -15,16 +19,14 @@
 **************************************/
 #define XBEE_BAUDRATE 115200
 // change APN to your carrier's setting
-#define APN "yesinternet"
+#define APN "connect"
 // change YOUR_SERVER_KEY to your server key
 #define SERVER_URL "hub.freematics.com"
 #define SERVER_PORT 80
 #define SERVER_KEY "TEST_SERVER_KEY"
 
-// maximum consecutive errors before performing a reconnection
-#define MAX_ERRORS_RECONNECT 3
 // maximum consecutive errors before performing a module reset
-#define MAX_ERRORS_RESET 6
+#define MAX_ERRORS_RESET 5
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
 // maximum consecutive HTTP requests on a TCP connection (keep-alive)
@@ -33,8 +35,8 @@
 /**************************************
 * MEMS sensors
 **************************************/
-#define USE_MPU6050 1
-#define USE_MPU9250 0
+#define USE_MPU6050 0
+#define USE_MPU9250 1
 #define ACC_DATA_RATIO 172
 #define GYRO_DATA_RATIO 256
 #define COMPASS_DATA_RATIO 8
@@ -48,8 +50,8 @@
 /**************************************
 * Motion detection
 **************************************/
-#define START_MOTION_THRESHOLD 200000 /* for wakeup on movement */
-#define RECALIBRATION_TIME 3000 /* ms */ 
+#define WAKEUP_MOTION_THRESHOLD 200000 /* for wakeup on movement */
+#define CALIBRATION_TIME 1000 /* ms */ 
 
 /**************************************
 * Other options

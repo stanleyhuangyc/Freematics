@@ -43,7 +43,6 @@
 * Motion detection
 **************************************/
 #define WAKEUP_MOTION_THRESHOLD 20000
-#define RECALIBRATION_TIME 5000 /* ms */ 
 
 /**************************************
 * Other options

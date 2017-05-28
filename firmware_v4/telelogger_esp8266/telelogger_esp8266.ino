@@ -70,7 +70,7 @@ public:
       bool success = false;
       // test the module by issuing AT command and confirming response of "OK"
       for (byte n = 0; !(success = netSendCommand("ATE0\r\n")) && n < 10; n++) {
-        delay(100);
+        sleep(100);
       }
       if (success) {
         // send ESP8266 initialization commands
@@ -142,7 +142,7 @@ public:
       if (netSendCommand(buffer, 1000, ">")) {
         // send HTTP header
         xbWrite(header);
-        delay(50);
+        sleep(50);
         // send POST payload if any
         if (payload) xbWrite(payload);
         if (xbReceive(buffer, sizeof(buffer), MAX_CONN_TIME, "SEND OK")) {
@@ -180,7 +180,7 @@ public:
       xbPurge();
       if (cmd) {
         xbWrite(cmd);
-        delay(50);
+        sleep(50);
       }
       buffer[0] = 0;
       return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
@@ -217,57 +217,62 @@ public:
         }
 #endif
 
-        // initialize OBD communication
-        Serial.print("#OBD...");
-        if (init()) {
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
-          reconnect();
-        }
-        state |= STATE_OBD_READY;
-
-#if USE_GPS
-        // start serial communication with GPS receive
-        Serial.print("#GPS...");
-        if (initGPS(GPS_SERIAL_BAUDRATE)) {
-          state |= STATE_GPS_READY;
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
-        }
-#endif
-
-        // initialize ESP8266 xBee module (if present)
-        Serial.print("#ESP8266...");
-        xbBegin(XBEE_BAUDRATE);
-        if (netInit()) {
-          state |= STATE_NET_READY;
-          Serial.println("OK");
-        } else {
-          Serial.println(buffer);
-          standby();
-        }
-
-        // attempt to join AP with pre-defined credential
-        // make sure to change WIFI_SSID and WIFI_PASSWORD to your own ones
-        for (byte n = 0; ;n++) {
-          delay(100);
-          Serial.print("#WIFI...");
-          if (netSetup()) {
-              break;
+        for (;;) {
+          // initialize OBD communication
+          Serial.print("#OBD...");
+          if (init()) {
+            Serial.println("OK");
           } else {
-              Serial.println("NO");
-              if (n >= MAX_ERRORS_RECONNECT) standby();
+            Serial.println("NO");
+            reconnect();
+            continue;
           }
+          state |= STATE_OBD_READY;
+  
+#if USE_GPS
+          // start serial communication with GPS receive
+          Serial.print("#GPS...");
+          if (initGPS(GPS_SERIAL_BAUDRATE)) {
+            state |= STATE_GPS_READY;
+            Serial.println("OK");
+          } else {
+            Serial.println("NO");
+          }
+#endif
+  
+          // initialize ESP8266 xBee module (if present)
+          Serial.print("#ESP8266...");
+          xbBegin(XBEE_BAUDRATE);
+          if (netInit()) {
+            state |= STATE_NET_READY;
+            Serial.println("OK");
+          } else {
+            Serial.println(buffer);
+            standby();
+            continue;
+          }
+  
+          // attempt to join AP with pre-defined credential
+          // make sure to change WIFI_SSID and WIFI_PASSWORD to your own ones
+          for (byte n = 0; ;n++) {
+            sleep(100);
+            Serial.print("#WIFI...");
+            if (netSetup()) {
+                break;
+            } else {
+                Serial.println("NO");
+                if (n >= MAX_ERRORS_RECONNECT) standby();
+            }
+          }
+          
+          // connect with TeleServer (Freematics live data server)
+          // will be stuck in the function if unsuccessful
+          regDataFeed(0);
+          break;
         }
-        
-        // connect with TeleServer (Freematics live data server)
-        // will be stuck in the function if unsuccessful
-        regDataFeed(0);
 
         Serial.println();
-        delay(1000);
+        sleep(1000);
     }
     void regDataFeed(byte action)
     {
@@ -283,7 +288,7 @@ public:
         byte ret;
         for (byte n = 0; n < 10 && (ret = tcpIsConnected()) == 0; n++) {
           Serial.print('.');
-          delay(1000);
+          sleep(1000);
         }
         Serial.println();
         if (ret == 2) {
@@ -293,7 +298,7 @@ public:
           if (n >= MAX_ERRORS_RESET) {
             standby();
           }
-          delay(5000);
+          sleep(3000);
           continue;
         }
 
@@ -313,16 +318,16 @@ public:
         if (!httpSend(HTTP_GET, buffer, true)) {
           Serial.println("Error sending");
           tcpClose();
-          delay(3000);
+          sleep(3000);
           continue;
         }
 
-        delay(1000);
+        sleep(1000);
         // receive and parse response
         if (tcpReceive("\"id\"") != 1) {
             Serial.println(buffer);
             tcpClose();
-            delay(3000);
+            sleep(3000);
             continue; 
         }
         netState = NET_CONNECTED;
@@ -349,13 +354,12 @@ public:
         }
         Serial.println(buffer);
         tcpClose();
-        delay(3000);
+        sleep(3000);
       }
     }
     void loop()
     {
-        // the main loop
-        uint32_t start = millis();
+        logTimestamp();
 
         if (state & STATE_CONNECTED) {
           // process OBD data if connected
@@ -382,29 +386,26 @@ public:
           logData(PID_BATTERY_VOLTAGE, v);
         }
 
-        do {
-          if (millis() > nextConnTime) {
-            // process HTTP state machine
-            processHttp();
-            // continously read speed for calculating trip distance
-            if (state & STATE_OBD_READY) {
-               readSpeed();
-            }
-            // error and exception handling
-            if (netState == NET_CONNECTED) {
-              if (errors > 10) {
-                reconnect();
-              } else if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
-                // device too hot, slow down communication a bit
-                Serial.print("Cooling (");
-                Serial.print(deviceTemp);
-                Serial.println("C)");
-                delay(5000);
-                break;
-              }
-            }          
+        if (millis() > nextConnTime) {
+          // process HTTP state machine
+          processHttp();
+          // continously read speed for calculating trip distance
+          if (state & STATE_OBD_READY) {
+             readSpeed();
           }
-        } while (millis() - start < MIN_LOOP_TIME);
+          // error and exception handling
+          if (netState == NET_CONNECTED) {
+            if (errors > 10) {
+              reconnect();
+            } else if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
+              // device too hot, slow down communication a bit
+              Serial.print("Cooling (");
+              Serial.print(deviceTemp);
+              Serial.println("C)");
+              sleep(5000);
+            }
+          }          
+        }
     }
 private:
     void processHttp()
@@ -487,7 +488,7 @@ private:
                 Serial.println("Reset WIFI...");
                 netDisconnect();
                 netReset();
-                delay(1000);
+                sleep(1000);
                 if (netInit() && netSetup()) {
                   state |= STATE_CONNECTED;
                   connErrors = 0;
@@ -526,11 +527,11 @@ private:
     {
         int value;
         if (readPID(PID_SPEED, value)) {
-           dataTime = millis();
-           distance += (value + lastSpeed) * (dataTime - lastSpeedTime) / 3600 / 2;
-           lastSpeedTime = dataTime;
-           lastSpeed = value;
-           return value;
+          uint32_t t = millis();    
+          distance += (value + lastSpeed) * (t - lastSpeedTime) / 3600 / 2;
+          lastSpeedTime = t;
+          lastSpeed = value;
+          return value;
         } else {
           return -1; 
         }
@@ -552,7 +553,6 @@ private:
         // read parsed GPS data
         if (getGPSData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
-              dataTime = millis();
               byte day = gd.date / 10000;
               logData(PID_GPS_TIME, gd.time);
               if (lastGPSDay != day) {
@@ -570,14 +570,13 @@ private:
             //Serial.println(gd.time);
         } else {
           Serial.println("No GPS data");
-          delay(100);
         }
     }
     void reconnect()
     {
         // try to re-connect to OBD
         if (init()) return;
-        delay(1000);
+        sleep(1000);
         if (init()) return;
         standby();
     }
@@ -587,7 +586,7 @@ private:
           tcpClose();
           regDataFeed(1); // de-register
           netDisconnect(); // disconnect from AP
-          delay(500);
+          sleep(500);
           netReset();
         }
 #if USE_GPS
@@ -597,21 +596,9 @@ private:
         Serial.print("Standby");
         // put OBD chips into low power mode
         enterLowPowerMode();
-        // sleep for serveral seconds
-        for (byte n = 0; n < 30; n++) {
-          Serial.print('.');
-          readMEMS();
-          sleepms(250);
-        }
         calibrateMEMS();
         for (;;) {
-          accSum[0] = 0;
-          accSum[1] = 0;
-          accSum[2] = 0;
-          for (accCount = 0; accCount < 10; ) {
-            readMEMS();
-            sleepms(30);
-          }
+          sleep(1000);
           // calculate relative movement
           unsigned long motion = 0;
           for (byte i = 0; i < 3; i++) {
@@ -619,8 +606,7 @@ private:
             motion += n * n;
           }
           // check movement
-          if (motion > START_MOTION_THRESHOLD) {
-            Serial.println(motion);
+          if (motion > WAKEUP_MOTION_THRESHOLD) {
             // try OBD reading
             leaveLowPowerMode();
             if (init()) {
@@ -633,9 +619,6 @@ private:
           }
         }
         // now we are able to get OBD data again
-        // reset device
-        void(* resetFunc) (void) = 0; //declare reset function at address 0
-        resetFunc();
     }
     void calibrateMEMS()
     {
@@ -668,7 +651,6 @@ private:
       if (state & STATE_MEMS_READY) {
         readMEMS();
       }
-      delay(20);
     }
 private:
     byte state;
@@ -684,6 +666,7 @@ void setup()
 {
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
+    Serial.println("Freematics ONE");
     delay(500);
     // perform initializations
     logger.setup();

@@ -5,7 +5,7 @@
 * Data logging settings
 **************************************/
 #define ENABLE_DATA_CACHE 1
-#define CACHE_SIZE 256 /* bytes */
+#define CACHE_SIZE 128 /* bytes */
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
@@ -16,8 +16,8 @@
 
 #define XBEE_BAUDRATE 9600
 // change SSID and PASSWORD to your own
-#define WIFI_SSID "SSID"
-#define WIFI_PASSWORD "PASSWORD"
+#define WIFI_SSID "HOMEWIFI"
+#define WIFI_PASSWORD "862150909018"
 // change YOUR_SERVER_KEY to your server key
 #define SERVER_KEY "TEST_SERVER_KEY"
 #define SERVER_URL "hub.freematics.com"
@@ -50,13 +50,11 @@
 /**************************************
 * Motion detection
 **************************************/
-#define START_MOTION_THRESHOLD 200000 /* for wakeup on movement */
-#define RECALIBRATION_TIME 3000 /* ms */ 
+#define WAKEUP_MOTION_THRESHOLD 200000 /* for wakeup on movement */
 
 /**************************************
 * Other options
 **************************************/
-#define MIN_LOOP_TIME 200 /* ms */
 #define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED

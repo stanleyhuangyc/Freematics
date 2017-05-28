@@ -37,7 +37,11 @@
 #define OBD_UART_BAUDRATE 115200L
 
 // SD pin
+#ifdef ESP32
+#define SD_CS_PIN 5
+#else
 #define SD_CS_PIN 10
+#endif
 
 // enable(1)/disable(0) MEMS sensor
 #define USE_MPU6050 1
@@ -55,6 +59,6 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 
 // motion detection
-#define START_MOTION_THRESHOLD 10000 /* for wakeup on movement */
+#define WAKEUP_MOTION_THRESHOLD 10000 /* for wakeup on movement */
 
 #endif // CONFIG_H_INCLUDED
