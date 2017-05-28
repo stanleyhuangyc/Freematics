@@ -15,7 +15,8 @@
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
 #define OBD_TIMEOUT_LONG 10000 /* ms */
-#define OBD_TIMEOUT_GPS 200 /* ms */
+#define GPS_READ_TIMEOUT 200 /* ms */
+#define GPS_INIT_TIMEOUT 2000 /* ms */
 #define OBD_SERIAL_BAUDRATE 38400
 
 // Mode 1 PIDs
@@ -127,8 +128,9 @@ uint8_t hex2uint8(const char *p);
 #define SPI_PIN_READY 6
 #else
 #define SPI_PIN_CS 2
-#define SPI_PIN_READY 16
-
+#define SPI_PIN_READY 13
+#define PIN_XBEE_PWR 27
+#define PIN_GPS_POWER 15
 #endif
 
 #define TARGET_OBD 0
@@ -158,22 +160,28 @@ public:
 	// get parsed GPS data
 	bool getGPSData(GPS_DATA* gdata);
 	// get GPS NMEA data
-	byte getGPSRawData(char* buf, byte bufsize);
+	int getGPSRawData(char* buf, int bufsize);
 	// send command string to GPS
 	void sendGPSCommand(const char* cmd);
+	// whether internal GPS is present
+	bool internalGPS() { return m_internalGPS; }
+	// decode GPS data
+	bool decodeGPSData();
 	// hardware sleep (timer counter will stop)
-	void sleep(int seconds);
-	void sleepms(byte ms);
+	void sleepSec(unsigned int seconds);
+	void sleep(unsigned int ms);
 	// start xBee UART communication
 	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
-	int xbRead(char* buffer, byte bufsize, int timeout = 1000);
+	int xbRead(char* buffer, int bufsize, int timeout = 1000);
 	// send data to xBee UART
 	void xbWrite(const char* cmd);
 	// receive data from xBee UART
 	int xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);	
 	// purge xBee UART buffer
 	void xbPurge();
+	// toggle xBee module power
+	void xbTogglePower();
 	// initialize OBD-II connection
 	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
 	// un-initialize OBD-II connection
@@ -208,10 +216,12 @@ protected:
 	char* getResponse(byte& pid, char* buffer, byte bufsize);
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
-	virtual void dataIdleLoop() { delay(10); }
+	virtual void dataIdleLoop() {}
 	OBD_STATES m_state;
 private:
+	// get firmware version
 	byte getVersion();
+	// PID data conversion functions
 	uint8_t getPercentageValue(char* data)
 	{
 		return (uint16_t)hex2uint8(data) * 100 / 255;
@@ -230,4 +240,8 @@ private:
 	}
 	int dumpLine(char* buffer, int len);
 	byte m_target;
+	bool m_internalGPS;
+#ifdef ESP32
+	bool m_newGPSData;
+#endif
 };

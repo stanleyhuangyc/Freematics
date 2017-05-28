@@ -84,6 +84,10 @@ public:
   
   boolean rmdir(char *filepath);
 
+  uint32_t cardSize()
+  {
+      return volume.blocksPerCluster() / 2 * volume.clusterCount() / 1000;
+  }
 private:
 
   // This is used to determine the mode used to open a file
