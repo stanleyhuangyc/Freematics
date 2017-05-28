@@ -14,36 +14,23 @@ File sdfile;
 
 class CDataLogger {
 public:
-    CDataLogger():m_lastDataTime(0),dataTime(0),dataSize(0)
+    CDataLogger():m_dataTime(0)
     {
 #if ENABLE_DATA_CACHE
         cacheBytes = 0;
 #endif
     }
-    byte genTimestamp(char* buf, bool absolute)
-    {
-      byte n;
-      if (absolute || dataTime >= m_lastDataTime + 60000) {
-        // absolute timestamp
-        n = sprintf_P(buf, PSTR("#%lu,"), dataTime);
-      } else {
-        // relative timestamp
-        uint16_t elapsed = (unsigned int)(dataTime - m_lastDataTime);
-        n = sprintf_P(buf, PSTR("%u,"), elapsed);
-      }
-      return n;
-    }
     void record(const char* buf, byte len)
     {
 #if ENABLE_DATA_LOG
         char tmp[12];
-        byte n = genTimestamp(tmp, dataSize == 0);
-        dataSize += sdfile.write(tmp, n);
-        dataSize += sdfile.write(buf, len);
+        // absolute timestamp
+        sdfile.print(m_dataTime);
+        sdfile.write(',');
+        sdfile.write(tmp, n);
+        sdfile.write(buf, len);
         sdfile.write('\n');
-        dataSize++;
 #endif
-        m_lastDataTime = dataTime;
     }
     void dispatch(const char* buf, byte len)
     {
@@ -65,29 +52,16 @@ public:
           return;        
 #endif
         }
-        // add new data at the end
-        byte n = genTimestamp(cache + cacheBytes, cacheBytes == 0);
-        if (n == 0) {
-          // same timestamp 
-          cache[cacheBytes - 1] = ';';
-        } else {
-          cacheBytes += n;
-          cache[cacheBytes++] = ',';
-        }
         if (cacheBytes + len < CACHE_SIZE - 1) {
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
           cache[cacheBytes++] = ' ';
         }
         cache[cacheBytes] = 0;
-#else
-        //char tmp[12];
-        //byte n = genTimestamp(tmp, dataTime >= m_lastDataTime + 100);
-        //SerialRF.write(tmp, n);
 #endif
 #if ENABLE_DATA_OUT
         Serial.write((uint8_t*)buf, len);
-        Serial.println();
+        Serial.write('\n');
 #endif
     }
     void logData(const char* buf, byte len)
@@ -142,6 +116,10 @@ public:
         dispatch(buf, len);
         record(buf, len);
     }
+    void logTimestamp()
+    {
+        logData(0, m_dataTime = millis());
+    }
 #if ENABLE_DATA_LOG
     uint16_t openFile(uint32_t dateTime = 0)
     {
@@ -180,27 +158,24 @@ public:
     void closeFile()
     {
         sdfile.close();
-        dataSize = 0;
     }
     void flushFile()
     {
         sdfile.flush();
     }
 #endif
-    uint32_t dataTime;
-    uint32_t dataSize;
 #if ENABLE_DATA_CACHE
     void purgeCache()
     {
       cacheBytes = 0;
     }
     char cache[CACHE_SIZE];
-    int cacheBytes;
+    unsigned int cacheBytes;
 #endif
 private:
     byte translatePIDName(uint16_t pid, char* text)
     {
-        return sprintf_P(text, PSTR("%X="), pid);
+        return sprintf_P(text, PSTR("%X:"), pid);
     }
-    uint32_t m_lastDataTime;
+    uint32_t m_dataTime;
 };

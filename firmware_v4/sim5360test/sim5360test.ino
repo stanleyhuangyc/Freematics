@@ -18,8 +18,11 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
+#ifdef ESP32
+#include <TinyGPS.h>
+#endif
 
-#define APN "yesinternet"
+#define APN "connect"
 #define SERVER_URL "hub.freematics.com"
 #define SERVER_PORT 80
 #define MAX_CONN_TIME 10000
@@ -41,14 +44,13 @@ public:
     CSIM5360() { buffer[0] = 0; }
     bool netInit()
     {
-      // discard any stale data
       for (byte n = 0; n < 10; n++) {
         // try turning on module
+        xbTogglePower();
+        sleep(3000);
+        // discard any stale data
         xbPurge();
-        togglePower();
-        delay(2000);
         for (byte m = 0; m < 3; m++) {
-          Serial.print('.');
           if (netSendCommand("AT\r"))
             return true;
         }
@@ -61,36 +63,52 @@ public:
       bool success = false;
       netSendCommand("ATE0\r");
       do {
-        success = netSendCommand("AT+CREG?\r", 3000, "+CREG: 0,1");
-        //Serial.println(buffer);
-        Serial.print('.'); 
-      } while (!success);
-      if (!success) {
+        do {
+          Serial.print('.');
+          sleep(500);
+          success = netSendCommand("AT+CPSI?\r", 1000, "Online");
+          if (success) {
+            if (!strstr_P(buffer, PSTR("NO SERVICE")))
+              break;
+            success = false;
+          } else {
+            if (strstr_P(buffer, PSTR("Off"))) break;
+          }
+        } while (millis() - t < 60000);
         Serial.println(buffer);
-        return false;
-      }
-      do{
-        success = netSendCommand("AT+CGREG?\r",3000, "+CGREG: 0,1");
-        Serial.print('.'); 
-       }while(!success);
+        if (!success) break;
+        
+        t = millis();
+        do {
+          success = netSendCommand("AT+CREG?\r", 5000, "+CREG: 0,1");
+        } while (!success && millis() - t < 30000);
+        if (!success) break;
 
-      netSendCommand("AT+CSQ\r");
-      Serial.println(buffer);
-      netSendCommand("AT+CPSI?\r");
-      Serial.println(buffer);
+        do {
+          success = netSendCommand("AT+CGREG?\r",1000, "+CGREG: 0,1");
+        } while (!success && millis() - t < 30000);
+        if (!success) break;
 
-      sprintf_P(buffer, PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), apn);
-      netSendCommand(buffer);
-      netSendCommand("AT+CSOCKSETPN=1\r");
-      netSendCommand("AT+CIPMODE=0\r");
-      if (!netSendCommand("AT+NETOPEN\r", 5000)) {
-        return false;
-      }
-      t = millis();
-      do {
-        netSendCommand("AT+IPADDR\r", 5000);
-        success = !strstr_P(buffer, PSTR("0.0.0.0")) && !strstr_P(buffer, PSTR("ERROR"));
-      } while (!success && millis() - t < MAX_CONN_TIME);
+        do {
+          sprintf_P(buffer, PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), apn);
+          success = netSendCommand(buffer);
+        } while (!success && millis() - t < 30000);
+        if (!success) break;
+
+        success = netSendCommand("AT+CSOCKSETPN=1\r");
+        if (!success) break;
+
+        success = netSendCommand("AT+CIPMODE=0\r");
+        if (!success) break;
+        
+        netSendCommand("AT+NETOPEN\r");
+        sleep(500);
+        t = millis();
+        do {
+          netSendCommand("AT+IPADDR\r", 5000);
+          success = !strstr_P(buffer, PSTR("0.0.0.0")) && !strstr_P(buffer, PSTR("ERROR"));
+        } while (!success && millis() - t < 15000);
+      } while(0);
       Serial.println(buffer);
       return success;
     }
@@ -123,7 +141,7 @@ public:
         }
         return false;
     }
-    bool httpInit()
+    bool httpOpen()
     {
         return netSendCommand("AT+CHTTPSSTART\r", 3000);
     }
@@ -137,28 +155,38 @@ public:
         sprintf_P(buffer, PSTR("AT+CHTTPSOPSE=\"%s\",%u,1\r"), SERVER_URL, SERVER_PORT);
 	      return netSendCommand(buffer, MAX_CONN_TIME);
     }
+    unsigned int genHttpHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+    {
+        // generate HTTP header
+        char *p = buffer;
+        p += sprintf_P(p, PSTR("%s %s HTTP/1.1\r\nUser-Agent: ONE\r\nHost: %s\r\nConnection: %s\r\n"),
+          method == HTTP_GET ? "GET" : "POST", path, SERVER_URL, keepAlive ? "keep-alive" : "close");
+        if (method == HTTP_POST) {
+          p += sprintf_P(p, PSTR("Content-length: %u\r\n"), payloadSize);
+        }
+        p += sprintf_P(p, PSTR("\r\n\r"));
+        return (unsigned int)(p - buffer);
+    }
     bool httpSend(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0)
     {
-      char header[192];
-      char *p = header;
-      // generate HTTP header
-      p += sprintf_P(p, PSTR("%s %s HTTP/1.1\r\nUser-Agent: ONE\r\nHost: %s\r\nConnection: %s\r\n"),
-        method == HTTP_GET ? "GET" : "POST", path, SERVER_URL, keepAlive ? "keep-alive" : "close");
-      if (method == HTTP_POST) {
-        p += sprintf_P(p, PSTR("Content-length: %u\r\n"), payloadSize);
+      unsigned int headerSize = genHttpHeader(method, path, keepAlive, payload, payloadSize);
+      // issue HTTP send command
+      sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), headerSize + payloadSize);
+      if (!netSendCommand(buffer, 100, ">")) {
+        Serial.println("Connection closed");
       }
-      p += sprintf_P(p, PSTR("\r\n"));
-      // start TCP send
-      sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), (unsigned int)(p - header) + payloadSize);
-      xbWrite(buffer);
-      delay(500);
       // send HTTP header
-      xbWrite(header);
-      delay(50);
+      genHttpHeader(method, path, keepAlive, payload, payloadSize);
+      xbWrite(buffer);
       // send POST payload if any
       if (payload) xbWrite(payload);
       buffer[0] = 0;
-      return true;
+      if (netSendCommand("AT+CHTTPSSEND\r")) {
+        return true;        
+      } else {
+        Serial.println(buffer);
+        return false;
+      }
     }
     bool httpStartRecv()
     {
@@ -226,11 +254,14 @@ byte errors = 0;
 void setup()
 {
     Serial.begin(115200);
+    Serial.println("Freematics ONE");
+
+    delay(500);
     // this will init SPI communication
     sim.begin();
 
     // initialize SIM5360 xBee module (if present)
-    Serial.print("Init SIM5360");
+    Serial.print("Init SIM5360...");
     sim.xbBegin(XBEE_BAUDRATE);
     if (sim.netInit()) {
       Serial.println("OK");
@@ -246,8 +277,20 @@ void setup()
       Serial.println("NO");
     }
 
+    int signal = sim.getSignal();
+    if (signal > 0) {
+      Serial.print("CSQ:");
+      Serial.print((float)signal / 10, 1);
+      Serial.println("dB");
+    }
+
+    if (sim.getOperatorName()) {
+      Serial.print("Operator:");
+      Serial.println(sim.buffer);
+    }
+    
     Serial.print("Init HTTP stack...");
-    if (sim.httpInit()) {
+    if (sim.httpOpen()) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
@@ -310,5 +353,4 @@ void loop()
   }
   delay(3000);
 }
-
 

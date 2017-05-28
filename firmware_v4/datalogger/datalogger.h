@@ -21,12 +21,6 @@ public:
         cacheBytes = 0;
 #endif
     }
-    void initSender()
-    {
-#if ENABLE_DATA_OUT
-        Serial.begin(STREAM_BAUDRATE);
-#endif
-    }
     byte genTimestamp(char* buf, bool absolute)
     {
       byte n;

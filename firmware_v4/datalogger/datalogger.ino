@@ -2,7 +2,7 @@
 * OBD-II/MEMS/GPS Data Logging Sketch for Freematics ONE
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
-* Developed by Stanley Huang <stanleyhuangyc@gmail.com>
+* Developed by Stanley Huang <support@freematics.com.au>
 * 
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -17,6 +17,9 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
+#ifdef ESP32
+#include <TinyGPS.h>
+#endif
 #include "config.h"
 #include "datalogger.h"
 
@@ -52,13 +55,6 @@ public:
     ONE():state(0) {}
     void setup()
     {
-        state = 0;
-
-        delay(500);
-        byte ver = begin();
-        Serial.print("Firmware Ver. ");
-        Serial.println(ver);
-
 #if USE_MPU6050 || USE_MPU9250
         Wire.begin();
         Serial.print("MEMS ");
@@ -70,6 +66,19 @@ public:
         }
 #endif
 
+        byte ver = begin();
+        Serial.print("Firmware Ver. ");
+        Serial.println(ver);
+
+        Serial.print("OBD ");
+        if (init()) {
+          Serial.println("OK");
+        } else {
+          Serial.println("NO");
+          reconnect();
+        }
+        state |= STATE_OBD_READY;
+
 #if ENABLE_DATA_LOG
         Serial.print("SD ");
         uint16_t volsize = initSD();
@@ -80,15 +89,6 @@ public:
           Serial.println("NO");
         }
 #endif
-
-        Serial.print("OBD ");
-        if (init()) {
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
-          reconnect();
-        }
-        state |= STATE_OBD_READY;
 
 #if 0
         // retrieve VIN
@@ -104,6 +104,7 @@ public:
         if (initGPS(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_FOUND;
           Serial.println("OK");
+          waitGPS();
         } else {
           Serial.println("NO");
         }
@@ -153,27 +154,37 @@ public:
         }
 #endif
     }
+    void waitGPS()
+    {
+        int elapsed = 0;
+        for (uint32_t t = millis(); millis() - t < 300000;) {
+          int t1 = (millis() - t) / 1000;
+          if (t1 != elapsed) {
+            Serial.print("Waiting for GPS (");
+            Serial.print(elapsed);
+            Serial.println(")");
+            elapsed = t1;
+          }
+          if (decodeGPSData()) {
+            GPS_DATA gd = {0};
+            // read parsed GPS data
+            if (getGPSData(&gd) && gd.sat != 0 && gd.sat != 255) {
+              Serial.print("SAT:");
+              Serial.println(gd.sat);
+              break;
+            }
+          }
+        }
+    }
 #endif
 #if ENABLE_DATA_LOG
     uint16_t initSD()
     {
         state &= ~STATE_SD_READY;
         pinMode(SS, OUTPUT);
-
-        Sd2Card card;
-        uint32_t volumesize = 0;
-        if (card.init(SPI_HALF_SPEED, SD_CS_PIN)) {
-            SdVolume volume;
-            if (volume.init(card)) {
-              volumesize = volume.blocksPerCluster();
-              volumesize >>= 1; // 512 bytes per block
-              volumesize *= volume.clusterCount();
-              volumesize /= 1000;
-            }
-        }
         if (SD.begin(SD_CS_PIN)) {
           state |= STATE_SD_READY;
-          return volumesize; 
+          return SD.cardSize(); 
         } else {
           return 0;
         }
@@ -196,7 +207,7 @@ public:
 #endif
     void reconnect()
     {
-        Serial.println("Reconnecting");
+        Serial.println("Disconnected");
         // try to re-connect to OBD
         if (init()) return;
 #if ENABLE_DATA_LOG
@@ -210,16 +221,14 @@ public:
         Serial.println("Standby");
         // put OBD chips into low power mode
         enterLowPowerMode();
-        
-        // calibrate MEMS for several seconds
-        for (;;) {
 #if USE_MPU6050 || USE_MPU9250
+        for (;;) {
           accSum[0] = 0;
           accSum[1] = 0;
           accSum[2] = 0;
-          for (accCount = 0; accCount < 10; ) {
+          for (accCount = 0; accCount < 50; ) {
             readMEMS();
-            sleepms(30);
+            sleep(60);
           }
           // calculate relative movement
           unsigned long motion = 0;
@@ -228,22 +237,18 @@ public:
             motion += n * n;
           }
           // check movement
-          if (motion > START_MOTION_THRESHOLD) {
+          if (motion > WAKEUP_MOTION_THRESHOLD) {
             Serial.println(motion);
-            // try OBD reading
-#endif
-            leaveLowPowerMode();
-            if (init()) {
-              // OBD is accessible
-              break;
-            }
-            enterLowPowerMode();
-#if USE_MPU6050 || USE_MPU9250
-            // calibrate MEMS again in case the device posture changed
-            calibrateMEMS();
+            break;
           }
-#endif
+          Serial.print('.');
+          calibrateMEMS();
         }
+#else
+        while (!init()) sleep(10);
+#endif
+        Serial.println("Wakeup");
+        leaveLowPowerMode();
 #ifdef ARDUINO_ARCH_AVR
         // reset device
         void(* resetFunc) (void) = 0; //declare reset function at address 0
@@ -255,10 +260,12 @@ public:
 #if USE_MPU6050 || USE_MPU9250
     void calibrateMEMS()
     {
-        // get accelerometer calibration reference data
-        accCal[0] = accSum[0] / accCount;
-        accCal[1] = accSum[1] / accCount;
-        accCal[2] = accSum[2] / accCount;
+        // store accelerometer reference data
+        if ((state & STATE_MEMS_READY) && accCount) {
+          accCal[0] = accSum[0] / accCount;
+          accCal[1] = accSum[1] / accCount;
+          accCal[2] = accSum[2] / accCount;
+        }
     }
     void readMEMS()
     {
@@ -284,7 +291,6 @@ public:
       if (state & STATE_MEMS_READY) {
         readMEMS();
       }
-      delay(10);
     }
  #endif
     byte state;
@@ -294,7 +300,9 @@ static ONE one;
 
 void setup()
 {
-    one.initSender();
+    Serial.begin(115200);
+    Serial.println("Freematics ONE");
+    delay(1000);
     one.setup();
 }
 
@@ -357,9 +365,10 @@ void loop()
     one.logData(PID_BATTERY_VOLTAGE, v);
 
 #if USE_MPU6050 || USE_MPU9250
-    if ((one.state & STATE_MEMS_READY) && accCount) {
+    if ((one.state & STATE_MEMS_READY) && accCount > 0) {
        // log the loaded MEMS data
       one.logData(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
+      accCount = 0;
     }
 #endif
 #if USE_GPS
