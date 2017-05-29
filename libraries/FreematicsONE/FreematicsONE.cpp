@@ -31,13 +31,12 @@ SIGNAL(WDT_vect) {
 #endif
 
 #ifdef ESP32
-void task_delay(unsigned int ms);
 bool gps_decode_start();
 bool gps_get_data(GPS_DATA* gdata);
 int gps_write_string(const char* string);
 void bee_start();
 int bee_write_string(const char* string);
-int bee_read(uint8_t* buffer, size_t bufsize);
+int bee_read(uint8_t* buffer, size_t bufsize, int timeout);
 void bee_flush();
 #endif
 
@@ -102,9 +101,9 @@ byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 {
 	/*
 	Response example:
-	0: 43 04 01 08 01 09 
+	0: 43 04 01 08 01 09
 	1: 01 11 01 15 00 00 00
-	*/ 
+	*/
 	byte codesRead = 0;
  	for (byte n = 0; n < 6; n++) {
 		char buffer[128];
@@ -121,7 +120,7 @@ byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 						if (*p == '\r') {
 							p = strchr(p, ':');
 							if (!p) break;
-							p += 2; 
+							p += 2;
 						}
 						uint16_t code = hex2uint16(p);
 						if (code == 0) break;
@@ -385,7 +384,7 @@ byte COBDSPI::begin()
 #ifdef ARDUINO_ARCH_AVR
 	ADCSRA &= ~(1 << ADEN);
 #endif
-	
+
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
@@ -394,7 +393,7 @@ byte COBDSPI::begin()
 	SPI.setFrequency(4000000);
 #else
 	SPI.setClockDivider(4);
-#endif	
+#endif
 	delay(50);
 	return getVersion();
 }
@@ -434,9 +433,9 @@ int COBDSPI::dumpLine(char* buffer, int len)
 			while (++i < len && (buffer[i] == '\r' || buffer[i] == '\n'));
 			bytesToDump = i;
 			break;
-		}					
+		}
 	}
-	memmove(buffer, buffer + bytesToDump, len - bytesToDump); 
+	memmove(buffer, buffer + bytesToDump, len - bytesToDump);
 	return bytesToDump;
 }
 int COBDSPI::receive(char* buffer, int bufsize, int timeout)
@@ -464,14 +463,14 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 				n = 4;
 			} else if (c != 0 && c != 0xff) {
 				if (n == bufsize - 1) {
-					int bytesDumped = dumpLine(buffer, n); 
+					int bytesDumped = dumpLine(buffer, n);
 					n -= bytesDumped;
 #ifdef DEBUG
 					debugOutput("Buffer full");
 #endif
 				}
 				buffer[n] = c;
-				if (n >= 2 && buffer[n] == 0x9 && buffer[n - 1] =='>') 
+				if (n >= 2 && buffer[n] == 0x9 && buffer[n - 1] =='>')
 					eof = true;
 				n++;
 			}
@@ -543,7 +542,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 
 byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 {
-	uint32_t t = millis();  
+	uint32_t t = millis();
 	byte n;
 	do {
 		write(cmd);
@@ -570,7 +569,7 @@ bool COBDSPI::initGPS(unsigned long baudrate)
 		// turn on GPS power
 		digitalWrite(PIN_GPS_POWER, HIGH);
 		if (gps_decode_start()) {
-			// success			
+			// success
 			return true;
 		}
 		// no external GPS detected, cut off power
@@ -598,21 +597,6 @@ bool COBDSPI::initGPS(unsigned long baudrate)
 		}
 	}
 	return success;
-}
-
-bool COBDSPI::decodeGPSData()
-{
-#if 0 //def ESP32
-	if (uartGPS.available()) {
-		if (gps.encode(uartGPS.read())) {
-			m_newGPSData = true;
-			return true;
-		}
-	}
-	return false;
-#else
-	return true;
-#endif
 }
 
 bool COBDSPI::getGPSData(GPS_DATA* gdata)
@@ -718,10 +702,10 @@ void COBDSPI::sleep(unsigned int ms)
 	unsigned int elapsed = millis() - t;
 	if (elapsed < ms) {
 #ifdef ESP32
-		task_delay(ms - elapsed);
+		Task::sleep(ms - elapsed);
 #else
 		delay(ms - elapsed);
-#endif		
+#endif
 	}
 }
 
@@ -731,7 +715,7 @@ void COBDSPI::sleepSec(unsigned int seconds)
 	if (lowPower) enterLowPowerMode();
 #ifdef ARDUINO_ARCH_AVR
 	while (seconds > 0) {
-		uint8_t wdt_period; 
+		uint8_t wdt_period;
 		if (seconds >= 8) {
 			wdt_period = WDTO_8S;
 			seconds -= 8;
@@ -774,7 +758,7 @@ bool COBDSPI::xbBegin(unsigned long baudrate)
 	}
 #endif
 }
-	
+
 void COBDSPI::xbWrite(const char* cmd)
 {
 #ifdef ESP32
@@ -793,16 +777,8 @@ void COBDSPI::xbWrite(const char* cmd)
 int COBDSPI::xbRead(char* buffer, int bufsize, int timeout)
 {
 #ifdef ESP32
-	int received = 0;
-	for (uint32_t t = millis(); millis() - t < timeout; ) {
-		int len = bee_read((uint8_t*)buffer, bufsize);
-		if (len > 0) {
-			received = len;
-			break;
-		}
-		dataIdleLoop();
-	}
-	return received;
+	int len = bee_read((uint8_t*)buffer, bufsize, timeout);
+	return len > 0 ? len : 0;
 #else
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");

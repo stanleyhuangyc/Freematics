@@ -6,13 +6,20 @@
 **************************************/
 #define ENABLE_DATA_CACHE 1
 #ifdef ESP32
-#define CACHE_SIZE 512 /* bytes */
+#define CACHE_SIZE 1024 /* bytes */
 #else
 #define CACHE_SIZE 128 /* bytes */
 #endif
+#define MIN_HTTP_PAYLOAD 64
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
+#ifdef ESP32
+#define ENABLE_MULTI_THREADING 1
+#else
+#define ENABLE_MULTI_THREADING 0
+#endif
+
 
 /**************************************
 * GPRS/network settings
@@ -51,7 +58,7 @@
 * Motion detection
 **************************************/
 #define WAKEUP_MOTION_THRESHOLD 200000 /* for wakeup on movement */
-#define CALIBRATION_TIME 1000 /* ms */ 
+#define CALIBRATION_TIME 1000 /* ms */
 
 /**************************************
 * Other options

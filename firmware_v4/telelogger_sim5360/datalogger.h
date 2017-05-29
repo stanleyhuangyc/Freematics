@@ -40,24 +40,36 @@ public:
         if (l >= 0) {
           // cache full
 #if CACHE_SHIFT
+#if ENABLE_MULTI_THREADING
+          cacheLock.lock();
+#endif
           // discard the oldest data
           for (l = CACHE_SIZE / 2; cache[l] && cache[l] != ' '; l++);
           if (cache[l]) {
             cacheBytes -= l;
             memcpy(cache, cache + l + 1, cacheBytes);
           } else {
-            cacheBytes = 0;  
+            cacheBytes = 0;
           }
+#if ENABLE_MULTI_THREADING
+          cacheLock.unlock();
+#endif
 #else
-          return;        
+          return;
 #endif
         }
+#if ENABLE_MULTI_THREADING
+        cacheLock.lock();
+#endif
         if (cacheBytes + len < CACHE_SIZE - 1) {
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
           cache[cacheBytes++] = ' ';
         }
         cache[cacheBytes] = 0;
+#if ENABLE_MULTI_THREADING
+        cacheLock.unlock();
+#endif
 #endif
 #if ENABLE_DATA_OUT
         Serial.write((uint8_t*)buf, len);
@@ -129,7 +141,7 @@ public:
         dataSize = 0;
         if (SD.exists(path)) {
             if (dateTime) {
-               // using date and time as file name 
+               // using date and time as file name
                sprintf(path + 5, "/%08lu.CSV", dateTime);
                fileIndex = 1;
             } else {
@@ -171,6 +183,9 @@ public:
     }
     char cache[CACHE_SIZE];
     unsigned int cacheBytes;
+#if ENABLE_MULTI_THREADING
+    Mutex cacheLock;
+#endif
 #endif
 private:
     byte translatePIDName(uint16_t pid, char* text)
