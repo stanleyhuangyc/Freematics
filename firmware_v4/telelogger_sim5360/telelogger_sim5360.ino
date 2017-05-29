@@ -20,9 +20,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
-#ifdef ESP32
-#include <TinyGPS.h>
-#endif
 #include "config.h"
 #include "datalogger.h"
 
@@ -63,13 +60,6 @@ typedef enum {
 class COBD3G : public COBDSPI {
 public:
     COBD3G() { buffer[0] = 0; }
-    void netReset()
-    {
-    }
-    void netDisconnect()
-    {
-       xbTogglePower();
-    }
     bool netInit()
     {
       for (byte n = 0; n < 10; n++) {
@@ -557,20 +547,21 @@ private:
             // oops, we got an error
             httpClose();
             if (++connErrors > MAX_ERRORS_RESET) {
-              state &= ~STATE_CONNECTED;
+              state &= ~(STATE_CONNECTED | STATE_NET_READY);
+              netState = NET_DISCONNECTED;
               Serial.println("Reset 3G...");
-              netDisconnect();
-              netReset();
-              sleep(2000);
-              netInit();
-              if (netSetup(APN)) {
+              xbTogglePower();
+              // check if OBD is still accessible
+              if (readSpeed() == -1) {
+                standby();
+              }
+              if (netInit() && netSetup(APN)) {
                 state |= STATE_CONNECTED;
                 connErrors = 0;
               } else {
                 standby();
               }
             }
-            netState = NET_DISCONNECTED;
         }
     }
     void processOBD()
@@ -638,6 +629,7 @@ private:
             }
         } else {
           Serial.println("No GPS data");
+          sleep(100);
         }
     }
     void waitGPS()
@@ -675,7 +667,7 @@ private:
     {
         if (state & STATE_NET_READY) {
           regDataFeed(1); // de-register
-          netDisconnect(); // turn off GSM power
+          xbTogglePower(); // turn off GSM power
         }
 #if USE_GPS
         initGPS(0); // turn off GPS power
@@ -683,31 +675,35 @@ private:
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
         Serial.println("Standby");
         enterLowPowerMode();
-        calibrateMEMS();
 #if USE_MPU6050 || USE_MPU9250
-        for (;;) {
-          sleep(1000);
-          // calculate relative movement
-          unsigned long motion = 0;
-          for (byte i = 0; i < 3; i++) {
-            long n = accSum[i] / accCount - accCal[i];
-            motion += n * n;
-          }
-          // check movement
-          if (motion > WAKEUP_MOTION_THRESHOLD) {
-            // try OBD reading
-            leaveLowPowerMode();
-            if (init()) {
-              // OBD is accessible
-              break;
+        calibrateMEMS();
+        if (state & STATE_MEMS_READY) {
+          for (;;) {
+            sleep(1000);
+            // calculate relative movement
+            unsigned long motion = 0;
+            for (byte i = 0; i < 3; i++) {
+              long n = accSum[i] / accCount - accCal[i];
+              motion += n * n;
             }
-            enterLowPowerMode();
-            // calibrate MEMS again in case the device posture changed
-            calibrateMEMS();
+            // check movement
+            if (motion > WAKEUP_MOTION_THRESHOLD) {
+              // try OBD reading
+              leaveLowPowerMode();
+              if (init()) {
+                // OBD is accessible
+                break;
+              }
+              enterLowPowerMode();
+              // calibrate MEMS again in case the device posture changed
+              calibrateMEMS();
+            }
           }
+        } else {
+          while (!init()) sleepSec(10);
         }
 #else
-        while (!init()) sleep(10);
+        while (!init()) sleepSec(10);
 #endif
         Serial.println("Wakeup");
         leaveLowPowerMode();
