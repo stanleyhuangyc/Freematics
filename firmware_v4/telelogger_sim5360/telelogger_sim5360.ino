@@ -1,6 +1,6 @@
 /******************************************************************************
-* Reference sketch for a vehicle data feed for Freematics Hub
-* Works with Freematics ONE with SIM800 GSM/GPRS module
+* Reference sketch for a vehicle telematics data feed for Freematics Hub
+* Works with Freematics ONE/ONE+ with SIM5360 3G module
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 * Distributed under BSD license
 * Visit http://freematics.com/hub/api for Freematics Hub API reference
