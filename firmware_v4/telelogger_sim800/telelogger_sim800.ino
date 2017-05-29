@@ -73,16 +73,11 @@ typedef struct {
 class COBDGSM : public COBDSPI {
 public:
     COBDGSM():connErrors(0) { buffer[0] = 0; }
-    void toggleGSM()
-    {
-        setTarget(TARGET_OBD);
-        sendCommand("ATGSMPWR\r", buffer, sizeof(buffer));
-    }
     bool initGSM()
     {
       for (byte n = 0; n < 10; n++) {
-        // try turning on module
-        toggleGSM();
+        // try turning on GSM
+        xbTogglePower();
         sleep(3000);
         // discard any stale data
         xbPurge();
@@ -294,7 +289,6 @@ public:
           // setup xBee module serial baudrate
           xbBegin(XBEE_BAUDRATE);
           // turn on power for GSM module which needs some time to boot
-          toggleGSM();
           if (initGSM()) {
             state |= STATE_GSM_READY;
             Serial.println("OK");
@@ -360,7 +354,9 @@ public:
           break;
         }
 
+#if USE_MPU6050 || USE_MPU9250
         calibrateMEMS();
+#endif
     }
     bool regDataFeed(byte action, const char* vin = 0, int csq = 0)
     {
@@ -686,7 +682,7 @@ private:
           if (state & STATE_CONNECTED) {
             regDataFeed(1); // de-register
           }
-          toggleGSM(); // turn off GSM power
+          xbTogglePower(); // turn off GSM power
           Serial.println("GSM shutdown");
         }
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GSM_READY | STATE_CONNECTED);
@@ -728,8 +724,8 @@ private:
     void readMEMS()
     {
         // load accelerometer and temperature data
-        int acc[3] = {0};
-        int temp; // device temperature (in 0.1 celcius degree)
+        int16_t acc[3] = {0};
+        int16_t temp; // device temperature (in 0.1 celcius degree)
         memsRead(acc, 0, 0, &temp);
         if (accCount >= 250) {
           accSum[0] >>= 1;
