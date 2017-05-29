@@ -1,5 +1,11 @@
-#ifdef ESP32
+/*************************************************************************
+* Freematics ESP32 helper functions
+* Distributed under BSD license
+* Visit http://freematics.com for more information
+* (C)2017 Developed by Stanley Huang <support@freematics.com.au>
+*************************************************************************/
 
+#ifdef ESP32
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,7 +19,7 @@
 #include "esp_log.h"
 #include "soc/uart_struct.h"
 #include <FreematicsONE.h>
-#include <TinyGPS.h>
+#include "TinyGPS.h"
 
 static TinyGPS gps;
 static bool newGPSData = false;
