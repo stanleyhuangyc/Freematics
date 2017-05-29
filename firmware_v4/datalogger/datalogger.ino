@@ -17,9 +17,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
-#ifdef ESP32
-#include <TinyGPS.h>
-#endif
 #include "config.h"
 #include "datalogger.h"
 
