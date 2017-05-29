@@ -5,8 +5,9 @@
 * (C)2017 Developed by Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
-#ifdef ESP32
 #include <Arduino.h>
+#include <FreematicsONE.h>
+#ifdef ESP32
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -18,11 +19,11 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "soc/uart_struct.h"
-#include <FreematicsONE.h>
 #include "TinyGPS.h"
 
 static TinyGPS gps;
 static bool newGPSData = false;
+static TaskHandle_t xGPSTaskHandle = 0;
 
 #define BEE_UART_PIN_RXD  (16)
 #define BEE_UART_PIN_TXD  (17)
@@ -36,7 +37,7 @@ static bool newGPSData = false;
 
 static void gps_decode_task(void* arg)
 {
-    while(1) {
+    for (;;) {
         uint8_t c;
         int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 1000 / portTICK_RATE_MS);
         if (len == -1) continue;
@@ -45,11 +46,6 @@ static void gps_decode_task(void* arg)
         }
         //Serial.println(gps._failed_checksum);
     }
-}
-
-void task_delay(unsigned int ms)
-{
-	vTaskDelay(ms / portTICK_PERIOD_MS);
 }
 
 bool gps_get_data(GPS_DATA* gdata)
@@ -74,6 +70,8 @@ int gps_write_string(const char* string)
 
 bool gps_decode_start()
 {
+    if (xGPSTaskHandle) return true;
+
     uart_config_t uart_config = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -105,7 +103,7 @@ bool gps_decode_start()
         return false;
     }
 
-    xTaskCreate(gps_decode_task, "gps_decode_task", 1024, NULL, 10, NULL);
+    xTaskCreate(gps_decode_task, "gps_decode_task", 1024, NULL, 10, &xGPSTaskHandle);
     return true;
 }
 
@@ -133,14 +131,79 @@ int bee_write_string(const char* string)
     return uart_write_bytes(BEE_UART_NUM, string, strlen(string));
 }
 
-int bee_read(uint8_t* buffer, size_t bufsize)
+int bee_read(uint8_t* buffer, size_t bufsize, int timeout)
 {
-    return uart_read_bytes(BEE_UART_NUM, buffer, bufsize, 0);
+    return uart_read_bytes(BEE_UART_NUM, buffer, bufsize, timeout / portTICK_RATE_MS);
 }
 
 void bee_flush()
 {
     uart_flush(BEE_UART_NUM);
+}
+
+bool Task::create(void (*task)(void*), const char* name, int priority)
+{
+    if (xHandle) return false;
+    /* Create the task, storing the handle. */
+    BaseType_t xReturned = xTaskCreate(task, name, 4096, (void*)this, priority, &xHandle);
+    return xReturned == pdPASS;
+}
+
+void Task::destroy()
+{
+  if (xHandle) {
+    vTaskDelete((TaskHandle_t)xHandle);
+    xHandle = 0;
+  }
+}
+
+void Task::sleep(uint32_t ms)
+{
+  vTaskDelay(ms / portTICK_PERIOD_MS);
+}
+
+Mutex::Mutex()
+{
+  xSemaphore = xSemaphoreCreateMutex();
+  xSemaphoreGive(xSemaphore);
+}
+
+void Mutex::lock()
+{
+  xSemaphoreTake(xSemaphore, portMAX_DELAY);
+}
+
+void Mutex::unlock()
+{
+  xSemaphoreGive(xSemaphore);
+}
+
+#else
+
+bool Task::create(void (*task)(void*), const char* name, int priority)
+{
+  return false;
+}
+
+void Task::destroy()
+{
+}
+
+void Task::sleep(uint32_t ms)
+{
+  delay(ms);
+}
+
+Mutex::Mutex()
+{
+}
+
+void Mutex::lock()
+{
+}
+
+void Mutex::unlock()
+{
 }
 
 #endif

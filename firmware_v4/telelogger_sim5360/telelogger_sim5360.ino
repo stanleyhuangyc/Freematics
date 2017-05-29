@@ -6,7 +6,7 @@
 * Visit http://freematics.com/hub/api for Freematics Hub API reference
 * Visit http://freematics.com/products/freematics-one for hardware information
 * To obtain your Freematics Hub server key, contact support@freematics.com.au
-* 
+*
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -95,7 +95,7 @@ public:
         } while (millis() - t < 60000);
         Serial.println(buffer);
         if (!success) break;
-        
+
         t = millis();
         do {
           success = netSendCommand("AT+CREG?\r", 5000, "+CREG: 0,1");
@@ -118,7 +118,7 @@ public:
 
         success = netSendCommand("AT+CIPMODE=0\r");
         if (!success) break;
-        
+
         netSendCommand("AT+NETOPEN\r");
         sleep(500);
         t = millis();
@@ -201,7 +201,7 @@ public:
       buffer[0] = 0;
       if (netSendCommand("AT+CHTTPSSEND\r")) {
         checkTimer = millis();
-        return true;        
+        return true;
       } else {
         Serial.println(buffer);
         return false;
@@ -260,7 +260,7 @@ public:
     void setup()
     {
 #if USE_MPU6050 || USE_MPU9250
-        // start I2C communication 
+        // start I2C communication
         Wire.begin();
         Serial.print("#MEMS...");
         if (memsInit()) {
@@ -284,7 +284,7 @@ public:
             continue;
           }
           state |= STATE_OBD_READY;
-  
+
 #if USE_GPS
           // start serial communication with GPS receive
           Serial.print("#GPS...");
@@ -296,8 +296,8 @@ public:
             Serial.println(')');
 #else
             Serial.println("OK");
-#endif    
-            waitGPS();  
+#endif
+            //waitGPS();
           } else {
             Serial.println("NO");
           }
@@ -314,7 +314,7 @@ public:
             standby();
             continue;
           }
-          
+
           Serial.print("#3G(APN:");
           Serial.print(APN);
           Serial.print(")...");
@@ -326,7 +326,7 @@ public:
             standby();
             continue;
           }
-  
+
           Serial.print("#HTTP...");
           if (httpOpen()) {
             Serial.println("OK");
@@ -335,17 +335,17 @@ public:
             standby();
             continue;
           }
-  
+
           // sign in server
           if (!regDataFeed(0)) {
             standby();
             continue;
           }
-  
+
   #if USE_MPU6050 || USE_MPU9250
           calibrateMEMS();
   #endif
-  
+
           if (!(state & STATE_CONNECTED)) {
             standby();
             continue;
@@ -355,7 +355,7 @@ public:
 
 #if USE_GPS
         if (state & STATE_GPS_READY) {
-          waitGPS();
+          //waitGPS();
         }
 #endif
     }
@@ -375,14 +375,14 @@ public:
           strcpy(vin, "DEFAULT_VIN");
         }
       } else {
-        if (feedid == 0) return false; 
+        if (feedid == 0) return false;
       }
 
       Serial.print("#SERVER...");
       for (byte n = 0; n < 3; n++) {
         // make sure OBD is still accessible
         if (readSpeed() == -1) {
-          reconnect(); 
+          reconnect();
         }
         // start a HTTP connection (TCP)
         httpConnect();
@@ -429,7 +429,7 @@ public:
           }
         } else {
           httpClose();
-          break; 
+          break;
         }
         Serial.println(buffer);
         httpClose();
@@ -448,7 +448,7 @@ public:
 #if CACHE_SIZE >= 256
 #if USE_MPU6050 || USE_MPU9250
         if (state & STATE_MEMS_READY) {
-            processMEMS();  
+            processMEMS();
         }
 #endif
 #endif
@@ -467,14 +467,14 @@ public:
         }
 #endif
 
-        // process HTTP transaction
-        if (state & STATE_CONNECTED) {
-          processHTTP();
-        }
+#if !ENABLE_MULTI_THREADING
+        // process HTTP transactions unless they are processed in a separate thread.
+        processHTTP();
+#endif
 
         if (errors > 10) {
           reconnect();
-        } 
+        }
 #if USE_MPU6050 || USE_MPU9250
         if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
           // device too hot, cool down
@@ -485,34 +485,47 @@ public:
         }
 #endif
     }
-private:
     void processHTTP()
     {
+        if (!(state & STATE_CONNECTED)) {
+#if ENABLE_MULTI_THREADING
+          Task::sleep(1000);
+#endif
+          return;
+        }
+
         if (netState != NET_CONNECTED) {
             xbPurge();
             if (httpConnect()) {
-              Serial.println("Reconnected");              
-              netState = NET_CONNECTED;            
+              Serial.println("Reconnected");
+              netState = NET_CONNECTED;
             }
             connCount = 0;
         }
 
-        if (cacheBytes == 0) return;
+        if (cacheBytes < MIN_HTTP_PAYLOAD) {
+            return;
+        }
 
         // and there is data in cache to send
         char path[64];
         sprintf_P(path, PSTR("/%s/post?id=%u"), SERVER_KEY, feedid);
         // send HTTP POST request with cached data as payload
+#if ENABLE_MULTI_THREADING
+        cacheLock.lock();
+#endif
         cache[cacheBytes++]='\r';
         cache[cacheBytes]=0;
+        Serial.print(cacheBytes);
+        Serial.println(" bytes to send");
+        //Serial.println(cache);
         if (httpSend(HTTP_POST, path, true, cache, cacheBytes)) {
           // success
-          Serial.println(cache);
-          Serial.print(cacheBytes);
-          Serial.println(" bytes sent");
-          //Serial.println(cache);
           purgeCache();
-          Serial.println("Receiving...");  
+#if ENABLE_MULTI_THREADING
+          cacheLock.unlock();
+#endif
+          Serial.println("Transmitting...");
           if (!httpReceive()) {
             Serial.println(buffer);
             netState = NET_HTTP_ERROR;
@@ -520,6 +533,9 @@ private:
             netState = NET_CONNECTED;
           }
         } else {
+#if ENABLE_MULTI_THREADING
+          cacheLock.unlock();
+#endif
           Serial.println("Request error");
           netState = NET_HTTP_ERROR;
         }
@@ -535,7 +551,7 @@ private:
               //Serial.println(buffer);
               if (connCount >= MAX_HTTP_CONNS) {
                 // re-establish TCP connection
-                httpClose(); 
+                httpClose();
                 netState = NET_DISCONNECTED;
               }
             } else {
@@ -551,19 +567,30 @@ private:
               netState = NET_DISCONNECTED;
               Serial.println("Reset 3G...");
               xbTogglePower();
-              // check if OBD is still accessible
-              if (readSpeed() == -1) {
-                standby();
+              sleep(3000);
+#if ENABLE_MULTI_THREADING
+              for (;;) {
+                if (netInit() && netSetup(APN)) {
+                  state |= STATE_CONNECTED;
+                  connErrors = 0;
+                  break;
+                }
+                do {
+                  sleep(5000);
+                } while (!(state & STATE_OBD_READY));
               }
+#else
               if (netInit() && netSetup(APN)) {
                 state |= STATE_CONNECTED;
                 connErrors = 0;
               } else {
                 standby();
               }
+#endif
             }
         }
     }
+private:
     void processOBD()
     {
         int speed = readSpeed();
@@ -596,7 +623,7 @@ private:
            lastSpeed = value;
            return value;
         } else {
-          return -1; 
+          return -1;
         }
     }
 #if USE_MPU6050 || USE_MPU9250
@@ -628,32 +655,30 @@ private:
               lastUTC = (uint16_t)gd.time;
             }
         } else {
-          Serial.println("No GPS data");
-          sleep(100);
+#if ENABLE_MULTI_THREADING
+          waitGPS(500);
+#endif
         }
     }
-    void waitGPS()
+    void waitGPS(int timeout)
     {
-          int elapsed = 0;
-          for (uint32_t t = millis(); millis() - t < 300000;) {
-            int t1 = (millis() - t) / 1000;
-            if (t1 != elapsed) {
-              Serial.print("Waiting for GPS (");
-              Serial.print(elapsed);
-              Serial.println(")");
-              elapsed = t1;
-            } else {
-              decodeGPSData();
-              continue;
-            }
-            GPS_DATA gd = {0};
-            // read parsed GPS data
-            if (getGPSData(&gd) && gd.sat != 0 && gd.sat != 255) {
-              Serial.print("SAT:");
-              Serial.println(gd.sat);
-              break;
-            }
-          }
+      GPS_DATA gd = {0};
+      int elapsed = 0;
+      for (uint32_t t = millis(); millis() - t < timeout;) {
+        int t1 = (millis() - t) / 1000;
+        if (t1 != elapsed) {
+          Serial.print("Waiting for GPS (");
+          Serial.print(elapsed);
+          Serial.println(")");
+          elapsed = t1;
+        }
+        // read parsed GPS data
+        if (getGPSData(&gd) && gd.sat != 0 && gd.sat != 255) {
+          Serial.print("SAT:");
+          Serial.println(gd.sat);
+          break;
+        }
+      }
     }
     void reconnect()
     {
@@ -666,7 +691,9 @@ private:
     void standby()
     {
         if (state & STATE_NET_READY) {
-          regDataFeed(1); // de-register
+          state &= ~STATE_NET_READY;
+          if (netState != NET_HTTP_ERROR)
+            regDataFeed(1); // de-register
           xbTogglePower(); // turn off GSM power
         }
 #if USE_GPS
@@ -756,6 +783,19 @@ private:
 
 CTeleLogger logger;
 
+#if ENABLE_MULTI_THREADING
+Task task;
+
+void httpLoop(void* arg)
+{
+  // process HTTP transaction
+  for (;;) {
+      logger.processHTTP();
+      Task::sleep(10);
+  }
+}
+#endif
+
 void setup()
 {
     // initialize hardware serial (for USB and BLE)
@@ -764,6 +804,9 @@ void setup()
     delay(1000);
     // perform initializations
     logger.setup();
+#if ENABLE_MULTI_THREADING
+    task.create(httpLoop, "httpLoop", 1);
+#endif
 }
 
 void loop()

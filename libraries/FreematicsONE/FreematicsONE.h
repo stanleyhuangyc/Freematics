@@ -11,7 +11,7 @@
 
 #ifndef ARDUINO_ARCH_AVR
 #define sprintf_P sprintf
-#endif 
+#endif
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
 #define OBD_TIMEOUT_LONG 10000 /* ms */
@@ -165,10 +165,9 @@ public:
 	void sendGPSCommand(const char* cmd);
 	// whether internal GPS is present
 	bool internalGPS() { return m_internalGPS; }
-	// decode GPS data
-	bool decodeGPSData();
 	// hardware sleep (timer counter will stop)
 	void sleepSec(unsigned int seconds);
+	// normal delay
 	void sleep(unsigned int ms);
 	// start xBee UART communication
 	bool xbBegin(unsigned long baudrate = 115200L);
@@ -177,7 +176,7 @@ public:
 	// send data to xBee UART
 	void xbWrite(const char* cmd);
 	// receive data from xBee UART
-	int xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);	
+	int xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);
 	// purge xBee UART buffer
 	void xbPurge();
 	// toggle xBee module power
@@ -244,4 +243,25 @@ private:
 #ifdef ESP32
 	bool m_newGPSData;
 #endif
+};
+
+class Task
+{
+public:
+  Task():xHandle(0) {}
+	bool create(void (*task)(void*), const char* name, int priority = 0);
+  void destroy();
+  static void sleep(uint32_t ms);
+private:
+	void* xHandle;
+};
+
+class Mutex
+{
+public:
+  Mutex();
+  void lock();
+  void unlock();
+private:
+  void* xSemaphore;
 };
