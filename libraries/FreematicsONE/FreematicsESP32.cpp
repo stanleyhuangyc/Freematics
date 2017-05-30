@@ -33,7 +33,7 @@ static TaskHandle_t xGPSTaskHandle = 0;
 #define GPS_UART_PIN_TXD  (33)
 #define GPS_UART_NUM UART_NUM_2
 
-#define UART_BUF_SIZE (1024)
+#define UART_BUF_SIZE (2048)
 
 static void gps_decode_task(void* arg)
 {
@@ -41,6 +41,7 @@ static void gps_decode_task(void* arg)
         uint8_t c;
         int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 1000 / portTICK_RATE_MS);
         if (len == -1) continue;
+        if (c < 0xA || c > 0x7E) continue;
         if (gps.encode(c)) {
             newGPSData = true;
         }
@@ -131,9 +132,26 @@ int bee_write_string(const char* string)
     return uart_write_bytes(BEE_UART_NUM, string, strlen(string));
 }
 
+int bee_write_data(uint8_t* data, int len)
+{
+    return uart_write_bytes(BEE_UART_NUM, (const char*)data, len);
+}
+
 int bee_read(uint8_t* buffer, size_t bufsize, int timeout)
 {
-    return uart_read_bytes(BEE_UART_NUM, buffer, bufsize, timeout / portTICK_RATE_MS);
+    int len = uart_read_bytes(BEE_UART_NUM, buffer, bufsize, timeout / portTICK_RATE_MS);
+    if (len > 0) {
+      // strip invalid characters
+      int j = 0;
+      for (int i = 0; i < len; i++) {
+        if (buffer[i] >= 0xA && buffer[i] <= 0x7E) {
+          buffer[j++] = buffer[i];
+        }
+      }
+      return j;
+    } else {
+      return 0;
+    }
 }
 
 void bee_flush()
