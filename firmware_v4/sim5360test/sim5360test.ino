@@ -1,5 +1,5 @@
 /******************************************************************************
-* Test sketch for SIM5360E (3G) module in Freematics ONE
+* Sample testing sketch for SIM5360 (WCDMA/GSM) module in Freematics ONE/ONE+
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for hardware information
@@ -25,9 +25,9 @@
 #define APN "connect"
 #define HTTP_SERVER_URL "hub.freematics.com"
 #define HTTP_SERVER_PORT 80
-#define UDP_SERVER_IP "50.116.37.146"
+#define UDP_SERVER_IP "172.104.40.203"
 #define UDP_SERVER_PORT 8081
-#define MAX_CONN_TIME 10000
+#define MAX_CONN_TIME 5000
 #define XBEE_BAUDRATE 115200
 
 typedef enum {
@@ -173,7 +173,7 @@ public:
     }
     char* udpReceive(int* pbytes = 0)
     {
-      if (netSendCommand(0, 1000, "+IPD")) {
+      if (netSendCommand(0, 3000, "+IPD")) {
         char *p = strstr(buffer, "+IPD");
         if (!p) return 0;
         int len = atoi(p + 4);
@@ -238,15 +238,23 @@ public:
     int httpReceive(char** payload)
     {
         int received = 0;
+        // wait for RECV EVENT
         checkbuffer("RECV EVENT", MAX_CONN_TIME);
+        /*
+          +CHTTPSRECV:XX\r\n
+          [XX bytes from server]\r\n
+          \r\n+CHTTPSRECV: 0\r\n
+        */
         if (netSendCommand("AT+CHTTPSRECV=384\r", MAX_CONN_TIME, "\r\n+CHTTPSRECV: 0", true)) {
           char *p = strstr(buffer, "+CHTTPSRECV:");
           if (p) {
             p = strchr(p, ',');
             if (p) {
               received = atoi(p + 1);
-              p = strchr(p, '\n');
-              if (p && payload) *payload = p + 1;
+              if (payload) {
+                char *q = strchr(p, '\n');
+                *payload = q ? (q + 1) : p;
+              }
             }
           }
         }
@@ -296,7 +304,6 @@ byte errors = 0;
 void setup()
 {
     Serial.begin(115200);
-
     delay(500);
     // this will init SPI communication
     sim.begin();
@@ -319,13 +326,6 @@ void setup()
       for (;;);
     }
 
-    int signal = sim.getSignal();
-    if (signal > 0) {
-      Serial.print("CSQ:");
-      Serial.print((float)signal / 10, 1);
-      Serial.println("dB");
-    }
-
     if (sim.getOperatorName()) {
       Serial.print("Operator:");
       Serial.println(sim.buffer);
@@ -334,9 +334,16 @@ void setup()
     Serial.print("Obtaining IP address...");
     const char *ip = sim.getIP();
     if (ip) {
-      Serial.println(ip);
+      Serial.print(ip);
     } else {
       Serial.println("failed");
+    }
+
+    int signal = sim.getSignal();
+    if (signal > 0) {
+      Serial.print("CSQ:");
+      Serial.print((float)signal / 10, 1);
+      Serial.println("dB");
     }
 
     Serial.print("Init UDP...");
@@ -352,6 +359,16 @@ void setup()
 
 void loop()
 {
+  if (errors > 0) {
+    sim.httpClose();
+    netState = NET_DISCONNECTED;
+    if (errors > 3) {
+      // re-initialize 3G module
+      setup();
+      errors = 0;
+    }
+  }
+
   // send and receive UDP datagram
   Serial.print("Sending UDP datagram...");
   uint32_t t = millis();
@@ -378,6 +395,7 @@ void loop()
     if (!sim.httpConnect()) {
       Serial.println("Error connecting");
       Serial.println(sim.buffer);
+      errors++;
       return;
     }
   }
@@ -387,10 +405,11 @@ void loop()
   if (!sim.httpSend(HTTP_GET, "/test", true)) {
     Serial.println("failed");
     sim.httpClose();
+    errors++;
     netState = NET_DISCONNECTED;
     return;
   } else {
-   Serial.println("OK");
+    Serial.println("OK");
   }
 
   Serial.print("Receiving...");
@@ -407,10 +426,6 @@ void loop()
     errors++;
   }
 
-  if (errors > 3) {
-    sim.httpClose();
-    netState = NET_DISCONNECTED;
-  }
-
+  Serial.println("Waiting 3 seconds...");
   delay(3000);
 }
