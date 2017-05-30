@@ -10,7 +10,8 @@
 #else
 #define CACHE_SIZE 128 /* bytes */
 #endif
-#define MIN_HTTP_PAYLOAD 64
+#define MIN_HTTP_PAYLOAD 128
+#define DATASET_INTERVAL 500 /* ms */
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT

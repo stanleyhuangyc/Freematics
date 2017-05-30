@@ -128,9 +128,9 @@ public:
         dispatch(buf, len);
         record(buf, len);
     }
-    void logTimestamp()
+    void logTimestamp(uint32_t ts)
     {
-        logData(0, m_dataTime = millis());
+        logData(0, m_dataTime = ts);
     }
 #if ENABLE_DATA_LOG
     uint16_t openFile(uint32_t dateTime = 0)

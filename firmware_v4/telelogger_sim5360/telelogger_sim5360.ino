@@ -80,6 +80,7 @@ public:
       uint32_t t = millis();
       bool success = false;
       netSendCommand("ATE0\r");
+      //netSendCommand("AT+CNMP=14\r"); // use WCDMA only
       do {
         do {
           Serial.print('.');
@@ -191,6 +192,7 @@ public:
       // issue HTTP send command
       sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), headerSize + payloadSize);
       if (!netSendCommand(buffer, 100, ">")) {
+        Serial.println(buffer);
         Serial.println("Connection closed");
       }
       // send HTTP header
@@ -323,7 +325,6 @@ public:
             state |= STATE_CONNECTED;
           } else {
             Serial.println("NO");
-            standby();
             continue;
           }
 
@@ -352,12 +353,6 @@ public:
           }
           break;
         }
-
-#if USE_GPS
-        if (state & STATE_GPS_READY) {
-          //waitGPS();
-        }
-#endif
     }
     bool regDataFeed(byte action)
     {
@@ -439,7 +434,8 @@ public:
     }
     void loop()
     {
-        logTimestamp();
+        uint32_t ts = millis();
+        logTimestamp(ts);
 
         if (state & STATE_OBD_READY) {
           processOBD();
@@ -484,6 +480,9 @@ public:
           sleep(10000);
         }
 #endif
+
+        int elapsed = millis() - ts;
+        if (elapsed < DATASET_INTERVAL) sleep(DATASET_INTERVAL - elapsed);
     }
     void processHTTP()
     {
@@ -562,12 +561,12 @@ public:
         if (netState == NET_HTTP_ERROR) {
             // oops, we got an error
             httpClose();
-            if (++connErrors > MAX_ERRORS_RESET) {
+            if (connErrors >= MAX_ERRORS_RESET) {
               state &= ~(STATE_CONNECTED | STATE_NET_READY);
               netState = NET_DISCONNECTED;
               Serial.println("Reset 3G...");
               xbTogglePower();
-              sleep(3000);
+              sleep(5000);
 #if ENABLE_MULTI_THREADING
               for (;;) {
                 if (netInit() && netSetup(APN)) {
@@ -587,6 +586,8 @@ public:
                 standby();
               }
 #endif
+            } else {
+              connErrors++;
             }
         }
     }
@@ -653,11 +654,13 @@ private:
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
+              Serial.print("GPS UTC:");
+              Serial.print(gd.time);
+              Serial.print(" SAT:");
+              Serial.println(gd.sat);
             }
         } else {
-#if ENABLE_MULTI_THREADING
-          waitGPS(500);
-#endif
+          //waitGPS(500);
         }
     }
     void waitGPS(int timeout)
@@ -674,11 +677,12 @@ private:
         }
         // read parsed GPS data
         if (getGPSData(&gd) && gd.sat != 0 && gd.sat != 255) {
-          Serial.print("SAT:");
+          Serial.print("GPS SAT:");
           Serial.println(gd.sat);
-          break;
+          return;
         }
       }
+      //Serial.println("No GPS data");
     }
     void reconnect()
     {
@@ -784,7 +788,7 @@ private:
 CTeleLogger logger;
 
 #if ENABLE_MULTI_THREADING
-Task task;
+Task taskNetwork;
 
 void httpLoop(void* arg)
 {
@@ -805,7 +809,7 @@ void setup()
     // perform initializations
     logger.setup();
 #if ENABLE_MULTI_THREADING
-    task.create(httpLoop, "httpLoop", 1);
+    taskNetwork.create(httpLoop, "httpLoop", 1);
 #endif
 }
 
