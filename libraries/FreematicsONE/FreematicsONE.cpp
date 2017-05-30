@@ -36,6 +36,7 @@ bool gps_get_data(GPS_DATA* gdata);
 int gps_write_string(const char* string);
 void bee_start();
 int bee_write_string(const char* string);
+int bee_write_data(uint8_t* data, int len);
 int bee_read(uint8_t* buffer, size_t bufsize, int timeout);
 void bee_flush();
 #endif
@@ -774,11 +775,19 @@ void COBDSPI::xbWrite(const char* cmd)
 #endif
 }
 
+void COBDSPI::xbWrite(const char* data, int len)
+{
+#ifdef ESP32
+	bee_write_data((uint8_t*)data, len);
+#else
+	xbWrite((const char*)data);
+#endif
+}
+
 int COBDSPI::xbRead(char* buffer, int bufsize, int timeout)
 {
 #ifdef ESP32
-	int len = bee_read((uint8_t*)buffer, bufsize, timeout);
-	return len > 0 ? len : 0;
+	return bee_read((uint8_t*)buffer, bufsize, timeout);
 #else
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");
@@ -787,7 +796,7 @@ int COBDSPI::xbRead(char* buffer, int bufsize, int timeout)
 #endif
 }
 
-int COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expected1, const char* expected2)
+byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expected1, const char* expected2)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
@@ -798,7 +807,7 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expec
 		if (bytesRecv >= bufsize - 16) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, timeout);
+		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
 #ifdef ESP32
 #ifdef XBEE_DEBUG
@@ -833,7 +842,10 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expec
 			}
 			if (timeout > 100) sleep(100);
 #endif
-		}
+		} else if (n == -1) {
+      // an erroneous reading
+      break;
+    }
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
 	return 0;

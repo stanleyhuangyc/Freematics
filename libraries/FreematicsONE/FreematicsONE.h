@@ -175,8 +175,10 @@ public:
 	int xbRead(char* buffer, int bufsize, int timeout = 1000);
 	// send data to xBee UART
 	void xbWrite(const char* cmd);
+  // send data to xBee UART
+	void xbWrite(const char* data, int len);
 	// receive data from xBee UART
-	int xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);
+	byte xbReceive(char* buffer, int bufsize, int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);
 	// purge xBee UART buffer
 	void xbPurge();
 	// toggle xBee module power
