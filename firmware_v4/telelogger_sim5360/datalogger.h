@@ -6,6 +6,8 @@
 
 // additional custom PID for data logger
 #define PID_DATA_SIZE 0x80
+#define PID_CSQ 0x81
+#define PID_DEVICE_TEMP 0x82
 
 #if ENABLE_DATA_LOG
 SDClass SD;
@@ -36,27 +38,10 @@ public:
     {
 #if ENABLE_DATA_CACHE
         // reserve some space for timestamp, ending white space and zero terminator
-        int l = cacheBytes + len + 12 - CACHE_SIZE;
+        int l = cacheBytes + len + 15 - CACHE_SIZE;
         if (l >= 0) {
           // cache full
-#if CACHE_SHIFT
-#if ENABLE_MULTI_THREADING
-          cacheLock.lock();
-#endif
-          // discard the oldest data
-          for (l = CACHE_SIZE / 2; cache[l] && cache[l] != ' '; l++);
-          if (cache[l]) {
-            cacheBytes -= l;
-            memcpy(cache, cache + l + 1, cacheBytes);
-          } else {
-            cacheBytes = 0;
-          }
-#if ENABLE_MULTI_THREADING
-          cacheLock.unlock();
-#endif
-#else
           return;
-#endif
         }
 #if ENABLE_MULTI_THREADING
         cacheLock.lock();
@@ -64,9 +49,8 @@ public:
         if (cacheBytes + len < CACHE_SIZE - 1) {
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
-          cache[cacheBytes++] = ' ';
+          cache[cacheBytes++] = ',';
         }
-        cache[cacheBytes] = 0;
 #if ENABLE_MULTI_THREADING
         cacheLock.unlock();
 #endif
@@ -78,13 +62,6 @@ public:
     }
     void logData(const char* buf, byte len)
     {
-        dispatch(buf, len);
-        record(buf, len);
-    }
-    void logData(uint16_t pid)
-    {
-        char buf[8];
-        byte len = translatePIDName(pid, buf);
         dispatch(buf, len);
         record(buf, len);
     }
@@ -179,7 +156,7 @@ public:
 #if ENABLE_DATA_CACHE
     void purgeCache()
     {
-      cacheBytes = 0;
+      cacheBytes = sprintf_P(cache, PSTR("%u#"), feedid);
     }
     char cache[CACHE_SIZE];
     unsigned int cacheBytes;
@@ -187,10 +164,12 @@ public:
     Mutex cacheLock;
 #endif
 #endif
+protected:
+    uint16_t feedid;
 private:
     byte translatePIDName(uint16_t pid, char* text)
     {
-        return sprintf_P(text, PSTR("%X:"), pid);
+        return sprintf_P(text, PSTR("%X="), pid);
     }
     uint32_t m_dataTime;
 };

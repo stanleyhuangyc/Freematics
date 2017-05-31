@@ -33,8 +33,6 @@
 
 uint16_t lastUTC = 0;
 uint8_t lastGPSDay = 0;
-uint32_t nextConnTime = 0;
-uint16_t connCount = 0;
 #if USE_MPU6050 || USE_MPU9250
 byte accCount = 0; // count of accelerometer readings
 long accSum[3] = {0}; // sum of accelerometer data
@@ -45,17 +43,8 @@ int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
 
-typedef enum {
-    NET_DISCONNECTED = 0,
-    NET_CONNECTED,
-    NET_RECEIVING,
-    NET_HTTP_ERROR,
-} NET_STATES;
-
-typedef enum {
-  HTTP_GET = 0,
-  HTTP_POST,
-} HTTP_METHOD;
+char udpIP[16] = {0};
+uint16_t udpPort = SERVER_PORT;
 
 class COBD3G : public COBDSPI {
 public:
@@ -75,12 +64,12 @@ public:
       }
       return false;
     }
-    bool netSetup(const char* apn)
+    bool netSetup(const char* apn, bool only3G = false)
     {
       uint32_t t = millis();
       bool success = false;
       netSendCommand("ATE0\r");
-      //netSendCommand("AT+CNMP=14\r"); // use WCDMA only
+      if (only3G) netSendCommand("AT+CNMP=14\r"); // use WCDMA only
       do {
         do {
           Serial.print('.');
@@ -94,7 +83,6 @@ public:
             if (strstr_P(buffer, PSTR("Off"))) break;
           }
         } while (millis() - t < 60000);
-        Serial.println(buffer);
         if (!success) break;
 
         t = millis();
@@ -121,15 +109,28 @@ public:
         if (!success) break;
 
         netSendCommand("AT+NETOPEN\r");
-        sleep(500);
-        t = millis();
-        do {
-          netSendCommand("AT+IPADDR\r", 5000);
-          success = !strstr_P(buffer, PSTR("0.0.0.0")) && !strstr_P(buffer, PSTR("ERROR"));
-        } while (!success && millis() - t < 15000);
       } while(0);
-      Serial.println(buffer);
+      if (!success) Serial.println(buffer);
       return success;
+    }
+    const char* getIP()
+    {
+      uint32_t t = millis();
+      char *ip = 0;
+      do {
+        if (netSendCommand("AT+IPADDR\r", 5000, "\r\nOK\r\n", true)) {
+          char *p = strstr(buffer, "+IPADDR:");
+          if (p) {
+            ip = p + 9;
+            if (*ip != '0') {
+              break;
+            }
+          }
+        }
+        sleep(500);
+        ip = 0;
+      } while (millis() - t < 15000);
+      return ip;
     }
     int getSignal()
     {
@@ -145,7 +146,7 @@ public:
         }
         return -1;
     }
-    bool getOperatorName()
+    char* getOperatorName()
     {
         // display operator name
         if (netSendCommand("AT+COPS?\r") == 1) {
@@ -154,100 +155,77 @@ public:
                 p += 2;
                 char *s = strchr(p, '\"');
                 if (s) *s = 0;
-                strcpy(buffer, p);
-                return true;
+                return p;
             }
         }
-        return false;
+        return 0;
     }
-    bool httpOpen()
+    bool udpInit()
     {
-        return netSendCommand("AT+CHTTPSSTART\r", 3000);
+      return netSendCommand("AT+CIPOPEN=0,\"UDP\",,,8000\r", 3000);
     }
-    void httpClose()
+    bool udpSend(const char* ip, uint16_t port, const char* data, unsigned int len)
     {
-      netSendCommand("AT+CHTTPSCLSE\r");
-    }
-    bool httpConnect()
-    {
-        sprintf_P(buffer, PSTR("AT+CHTTPSOPSE=\"%s\",%u,1\r"), SERVER_URL, SERVER_PORT);
-        //Serial.println(buffer);
-	      return netSendCommand(buffer, MAX_CONN_TIME);
-    }
-    unsigned int genHttpHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
-    {
-        // generate HTTP header
-        char *p = buffer;
-        p += sprintf_P(p, PSTR("%s %s HTTP/1.1\r\nUser-Agent: ONE\r\nHost: %s\r\nConnection: %s\r\n"),
-          method == HTTP_GET ? "GET" : "POST", path, SERVER_URL, keepAlive ? "keep-alive" : "close");
-        if (method == HTTP_POST) {
-          p += sprintf_P(p, PSTR("Content-length: %u\r\n"), payloadSize);
-        }
-        p += sprintf_P(p, PSTR("\r\n\r"));
-        return (unsigned int)(p - buffer);
-    }
-    bool httpSend(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0)
-    {
-      unsigned int headerSize = genHttpHeader(method, path, keepAlive, payload, payloadSize);
-      // issue HTTP send command
-      sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), headerSize + payloadSize);
-      if (!netSendCommand(buffer, 100, ">")) {
-        Serial.println(buffer);
-        Serial.println("Connection closed");
-      }
-      // send HTTP header
-      genHttpHeader(method, path, keepAlive, payload, payloadSize);
-      xbWrite(buffer);
-      // send POST payload if any
-      if (payload) xbWrite(payload);
-      buffer[0] = 0;
-      if (netSendCommand("AT+CHTTPSSEND\r")) {
-        checkTimer = millis();
-        return true;
+      sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, ip, port);
+      if (netSendCommand(buffer, 100, ">")) {
+        xbWrite(data, len);
+        return netSendCommand(0, 1000);
       } else {
+        Serial.print("UDP error:");
         Serial.println(buffer);
-        return false;
       }
+      return false;
     }
-    bool httpReceive()
+    char* udpReceive(int* pbytes = 0)
     {
-        checkbuffer("RECV EVENT", MAX_CONN_TIME);
-        if (netSendCommand("AT+CHTTPSRECV=384\r", MAX_CONN_TIME, "+CHTTPSRECV: 0")) {
-          return true;
-        } else {
-          //Serial.println("READ ERROR");
-          return false;
+      if (netSendCommand(0, 3000, "+IPD")) {
+        char *p = strstr(buffer, "+IPD");
+        if (!p) return 0;
+        int len = atoi(p + 4);
+        if (pbytes) *pbytes = len;
+        p = strchr(p, '\n');
+        if (p) {
+          *(++p + len) = 0;
+          return p;
         }
+      }
+      return 0;
     }
-    byte checkbuffer(const char* expected, unsigned int timeout = 2000)
+    char* queryIP(const char* host)
     {
-      // check if expected string is in reception buffer
-      if (strstr(buffer, expected)) {
-        return 1;
+      sprintf_P(buffer, PSTR("AT+CDNSGIP=\"%s\"\r"), host);
+      if (netSendCommand(buffer, 10000)) {
+        char *p = strstr(buffer, host);
+        if (p) {
+          p = strstr(p, ",\"");
+          if (p) {
+            char *ip = p + 2;
+            p = strchr(ip, '\"');
+            if (p) *p = 0;
+            return ip;
+          }
+        }
       }
-      // if not, receive a chunk of data from xBee module and look for expected string
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
-      if (ret == 0) {
-        // timeout
-        return (millis() - checkTimer < timeout) ? 0 : 2;
-      } else {
-        return ret;
-      }
+      return 0;
     }
-    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK\r\n")
+    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK\r\n", bool terminated = false)
     {
       if (cmd) {
         xbWrite(cmd);
       }
       buffer[0] = 0;
-      return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
+      byte ret = xbReceive(buffer, sizeof(buffer), timeout, expected);
+      if (ret) {
+        if (terminated) {
+          char *p = strstr(buffer, expected);
+          if (p) *p = 0;
+        }
+        return true;
+      } else {
+        return false;
+      }
     }
-#ifdef ESP32
-    char buffer[512];
-#else
-    char buffer[192];
-#endif
-    uint32_t checkTimer;
+    char buffer[128];
 };
 
 class CTeleLogger : public COBD3G, public CDataLogger
@@ -258,33 +236,38 @@ class CTeleLogger : public COBD3G, public CDataLogger
 #endif
 {
 public:
-    CTeleLogger():state(0),feedid(0),connErrors(0),connCount(0),netState(NET_DISCONNECTED) {}
+    CTeleLogger():state(0),connErrors(0),connCount(0)
+    {
+    }
     void setup()
     {
 #if USE_MPU6050 || USE_MPU9250
-        // start I2C communication
-        Wire.begin();
-        Serial.print("#MEMS...");
-        if (memsInit()) {
-          state |= STATE_MEMS_READY;
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
+        if (!(state & STATE_MEMS_READY)) {
+          // start I2C communication
+          Wire.begin();
+          Serial.print("#MEMS...");
+          if (memsInit()) {
+            state |= STATE_MEMS_READY;
+            Serial.println("OK");
+          } else {
+            Serial.println("NO");
+          }
         }
 #endif
-
-        begin();
 
         for (;;) {
           // initialize OBD communication
           Serial.print("#OBD...");
-          if (init()) {
-            Serial.println("OK");
-          } else {
-            Serial.println("NO");
-            reconnect();
-            continue;
+          if (!init()) {
+            Serial.print('.');
+            sleep(1000);
+            if (!init()) {
+              Serial.println("NO");
+              standby();
+              continue;
+            }
           }
+          Serial.println("OK");
           state |= STATE_OBD_READY;
 
 #if USE_GPS
@@ -299,7 +282,6 @@ public:
 #else
             Serial.println("OK");
 #endif
-            //waitGPS();
           } else {
             Serial.println("NO");
           }
@@ -321,114 +303,124 @@ public:
           Serial.print(APN);
           Serial.print(")...");
           if (netSetup(APN)) {
-            Serial.println("OK");
+            char *op = getOperatorName();
+            Serial.println(op ? op : "OK");
             state |= STATE_CONNECTED;
           } else {
             Serial.println("NO");
+            standby();
             continue;
           }
 
-          Serial.print("#HTTP...");
-          if (httpOpen()) {
-            Serial.println("OK");
+          Serial.print("#IP...");
+          const char *ip = getIP();
+          if (ip) {
+            Serial.print(ip);
           } else {
             Serial.println("NO");
-            standby();
-            continue;
           }
 
-          // sign in server
-          if (!regDataFeed(0)) {
+          Serial.print("#UDP...");
+          Serial.println(udpInit() ? "OK" : "NO");
+
+          purgeCache();
+          if (!regDataFeed()) {
             standby();
             continue;
           }
+          connErrors = 0;
+          connCount = 0;
 
   #if USE_MPU6050 || USE_MPU9250
-          calibrateMEMS();
+          calibrateMEMS(CALIBRATION_TIME);
   #endif
-
-          if (!(state & STATE_CONNECTED)) {
-            standby();
-            continue;
-          }
           break;
         }
     }
-    bool regDataFeed(byte action)
+    int verifyChecksum(const char* data)
     {
-      // action == 0 for registering a data feed, action == 1 for de-registering a data feed
-
+    	uint8_t sum = 0;
+    	char *s;
+    	for (s = data; *s && *s != '*'; s++) sum += *s;
+    	return (*s && hex2uint8(s + 1) == sum);
+    }
+    bool deregDataFeed()
+    {
+      for (byte n = 0; n < 3; n++) {
+        Serial.print("Dereg...");
+        // send request
+        cacheBytes = sprintf_P(cache, PSTR("%u#OFFLINE"), feedid);
+        transmitUDP();
+        // receive reply
+        int len;
+        char *data = udpReceive(&len);
+        if (!data) {
+          Serial.println("failed");
+          continue;
+        }
+        // verify checksum
+        if (!verifyChecksum(data)) {
+          Serial.println("checksum mismatch");
+          continue;
+        }
+        Serial.println("OK");
+        return true;
+      }
+      return false;
+    }
+    bool regDataFeed()
+    {
       // retrieve VIN
       char vin[20] = {0};
-      if (action == 0) {
-        // retrieve VIN
-        if (getVIN(buffer, sizeof(buffer))) {
-          strncpy(vin, buffer, sizeof(vin) - 1);
-          Serial.print("#VIN:");
-          Serial.println(vin);
-        } else {
-          strcpy(vin, "DEFAULT_VIN");
-        }
+      // retrieve VIN
+      if (getVIN(buffer, sizeof(buffer))) {
+        strncpy(vin, buffer, sizeof(vin) - 1);
+        Serial.print("#VIN:");
+        Serial.println(vin);
       } else {
-        if (feedid == 0) return false;
+        strcpy(vin, "DEFAULT_VIN");
       }
 
-      Serial.print("#SERVER...");
-      for (byte n = 0; n < 3; n++) {
-        // make sure OBD is still accessible
-        if (readSpeed() == -1) {
-          reconnect();
-        }
-        // start a HTTP connection (TCP)
-        httpConnect();
-        Serial.println(buffer);
+      Serial.print("#DTC:");
+      uint16_t dtc[6];
+      byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+      Serial.println(dtcCount);
+      if (dtcCount > 0) clearDTC();
 
-        // generate HTTP request path
-        char path[64];
-        if (action == 0) {
-          sprintf_P(path, PSTR("/%s/reg?vin=%s"), SERVER_KEY, vin);
-        } else {
-          sprintf_P(path, PSTR("/%s/reg?id=%d&off=1"), SERVER_KEY, feedid);
-        }
-        // send HTTP request
-        if (!httpSend(HTTP_GET, path, true)) {
-          Serial.println("Error sending");
-          httpClose();
-          sleep(3000);
-          continue;
-        }
+      Serial.print("#SERVER:");
+      char *ip = queryIP(SERVER_URL);
+      if (!ip) return false;
+      Serial.println(ip);
+      strncpy(udpIP, ip, sizeof(udpIP) - 1);
 
-        // receive and parse response
-        if (!httpReceive() || checkbuffer("\"id\"",MAX_CONN_TIME)!=1) {
-          httpClose();
-          continue;
-        }
-        Serial.print(buffer);
-        netState = NET_CONNECTED;
-
-        if (action == 0) {
-          // receive HTTP response
-          // grab the data we need from HTTP response payload
-          // parse feed ID
-          char *p = strstr(buffer, "\"id\"");
-          if (p) {
-            int m = atoi(p + 5);
-            if (m > 0) {
-              // keep the feed ID needed for data pushing
-              feedid = m;
-              Serial.print("#FEED ID:");
-              Serial.println(feedid);
-              state |= STATE_CONNECTED;
-              return true;
-            }
+      for (byte n = 0; n < 5; n++) {
+        Serial.print("Registering...");
+        // send request
+        cacheBytes = sprintf_P(cache, PSTR("0#SK=%s,VIN=%s"), SERVER_KEY, vin);
+        if (dtcCount > 0) {
+          cacheBytes += sprintf_P(cache + cacheBytes, PSTR(",DTC="), dtcCount);
+          for (byte i = 0; i < dtcCount; i++) {
+            cacheBytes += sprintf_P(cache + cacheBytes, PSTR("%X;"), dtc[i]);
           }
-        } else {
-          httpClose();
-          break;
+          cacheBytes--;
         }
-        Serial.println(buffer);
-        httpClose();
-        sleep(3000);
+        transmitUDP();
+        // receive reply
+        int len;
+        char *data = udpReceive(&len);
+        if (!data) {
+          Serial.println("failed");
+          continue;
+        }
+        // verify checksum
+        if (!verifyChecksum(data)) {
+          Serial.println("checksum mismatch");
+          continue;
+        }
+        feedid = atoi(data);
+        Serial.print("#ID:");
+        Serial.println(feedid);
+        return true;
       }
       return false;
     }
@@ -441,7 +433,12 @@ public:
           processOBD();
         }
 
-#if CACHE_SIZE >= 256
+        if ((connCount % 100) == 0) {
+          int csq = getSignal();
+          logData(PID_CSQ, csq);
+        }
+
+#if CACHE_SIZE > 128
 #if USE_MPU6050 || USE_MPU9250
         if (state & STATE_MEMS_READY) {
             processMEMS();
@@ -455,7 +452,7 @@ public:
 #endif
         }
 
-#if CACHE_SIZE >= 256
+#if CACHE_SIZE > 128
         // read and log car battery voltage , data in 0.01v
         {
           int v = getVoltage() * 100;
@@ -463,15 +460,10 @@ public:
         }
 #endif
 
-#if !ENABLE_MULTI_THREADING
-        // process HTTP transactions unless they are processed in a separate thread.
-        processHTTP();
-#endif
-
-        if (errors > 10) {
-          reconnect();
-        }
 #if USE_MPU6050 || USE_MPU9250
+        if ((connCount % 100) == 1) {
+          logData(PID_DEVICE_TEMP, deviceTemp);
+        }
         if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
           // device too hot, cool down
           Serial.print("Cooling (");
@@ -480,117 +472,82 @@ public:
           sleep(10000);
         }
 #endif
-
-        int elapsed = millis() - ts;
-        if (elapsed < DATASET_INTERVAL) sleep(DATASET_INTERVAL - elapsed);
     }
-    void processHTTP()
+    void transmitUDP()
     {
-        if (!(state & STATE_CONNECTED)) {
-#if ENABLE_MULTI_THREADING
-          Task::sleep(1000);
-#endif
-          return;
+      // add checksum
+      byte sum = 0;
+      if (cacheBytes > 0 && cache[cacheBytes - 1] == ',')
+        cacheBytes--; // last delimiter unneeded
+      for (int i = 0; i < cacheBytes; i++) sum += cache[i];
+      cacheBytes += sprintf_P(cache + cacheBytes, PSTR("*%X"), sum);
+      // transmit data
+      //Serial.println(cache);
+      Serial.print(connCount);
+      Serial.print('#');
+      Serial.print(cacheBytes);
+      Serial.println('B');
+      if (!udpSend(udpIP, udpPort, cache, cacheBytes)) {
+        connErrors++;
+      } else {
+        connErrors = 0;
+        connCount++;
+      }
+      purgeCache();
+    }
+    void standby()
+    {
+        if (state & STATE_NET_READY) {
+          state &= ~STATE_NET_READY;
+          deregDataFeed();
+          Serial.print("#3G:");
+          xbTogglePower(); // turn off GSM power
+          Serial.println("OFF");
         }
-
-        if (netState != NET_CONNECTED) {
-            xbPurge();
-            if (httpConnect()) {
-              Serial.println("Reconnected");
-              netState = NET_CONNECTED;
+#if USE_GPS
+        Serial.print("#GPS:");
+        initGPS(0); // turn off GPS power
+        Serial.println("OFF");
+#endif
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
+        Serial.println("Standby");
+        enterLowPowerMode();
+#if USE_MPU6050 || USE_MPU9250
+        calibrateMEMS(3000);
+        if (state & STATE_MEMS_READY) {
+          for (;;) {
+            // MEMS data collected while sleeping
+            sleep(3000);
+            // calculate relative movement
+            unsigned long motion = 0;
+            for (byte i = 0; i < 3; i++) {
+              long n = accSum[i] / accCount - accCal[i];
+              motion += n * n;
             }
-            connCount = 0;
-        }
-
-        if (cacheBytes < MIN_HTTP_PAYLOAD) {
-            return;
-        }
-
-        // and there is data in cache to send
-        char path[64];
-        sprintf_P(path, PSTR("/%s/post?id=%u"), SERVER_KEY, feedid);
-        // send HTTP POST request with cached data as payload
-#if ENABLE_MULTI_THREADING
-        cacheLock.lock();
-#endif
-        cache[cacheBytes++]='\r';
-        cache[cacheBytes]=0;
-        Serial.print(cacheBytes);
-        Serial.println(" bytes to send");
-        //Serial.println(cache);
-        if (httpSend(HTTP_POST, path, true, cache, cacheBytes)) {
-          // success
-          purgeCache();
-#if ENABLE_MULTI_THREADING
-          cacheLock.unlock();
-#endif
-          Serial.println("Transmitting...");
-          if (!httpReceive()) {
-            Serial.println(buffer);
-            netState = NET_HTTP_ERROR;
-          } else {
-            netState = NET_CONNECTED;
+            motion /= 100;
+            Serial.println(motion);
+            // check movement
+            if (motion > WAKEUP_MOTION_THRESHOLD) {
+              // try OBD reading
+              leaveLowPowerMode();
+              if (init()) {
+                // OBD is accessible
+                break;
+              }
+              enterLowPowerMode();
+              // calibrate MEMS again in case the device posture changed
+              calibrateMEMS(3000);
+            }
           }
         } else {
-#if ENABLE_MULTI_THREADING
-          cacheLock.unlock();
-#endif
-          Serial.println("Request error");
-          netState = NET_HTTP_ERROR;
+          while (!init()) sleepSec(10);
         }
-
-        if (netState != NET_HTTP_ERROR) {
-            // in the progress of data receiving
-            if (strstr(buffer, "\"result\"") || checkbuffer("\"result\"",MAX_CONN_TIME) == 1) {
-              // success
-              connCount++;
-              connErrors = 0;
-              Serial.print("Success #");
-              Serial.println(connCount);
-              //Serial.println(buffer);
-              if (connCount >= MAX_HTTP_CONNS) {
-                // re-establish TCP connection
-                httpClose();
-                netState = NET_DISCONNECTED;
-              }
-            } else {
-              Serial.println("Invalid response");
-              netState = NET_HTTP_ERROR;
-            }
-        }
-        if (netState == NET_HTTP_ERROR) {
-            // oops, we got an error
-            httpClose();
-            if (connErrors >= MAX_ERRORS_RESET) {
-              state &= ~(STATE_CONNECTED | STATE_NET_READY);
-              netState = NET_DISCONNECTED;
-              Serial.println("Reset 3G...");
-              xbTogglePower();
-              sleep(5000);
-#if ENABLE_MULTI_THREADING
-              for (;;) {
-                if (netInit() && netSetup(APN)) {
-                  state |= STATE_CONNECTED;
-                  connErrors = 0;
-                  break;
-                }
-                do {
-                  sleep(5000);
-                } while (!(state & STATE_OBD_READY));
-              }
 #else
-              if (netInit() && netSetup(APN)) {
-                state |= STATE_CONNECTED;
-                connErrors = 0;
-              } else {
-                standby();
-              }
+        while (!init()) sleepSec(10);
 #endif
-            } else {
-              connErrors++;
-            }
-        }
+        Serial.println("Wakeup");
     }
+    byte connErrors;
 private:
     void processOBD()
     {
@@ -654,94 +611,24 @@ private:
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-              Serial.print("GPS UTC:");
+              Serial.print("UTC:");
               Serial.print(gd.time);
               Serial.print(" SAT:");
               Serial.println(gd.sat);
             }
-        } else {
-          //waitGPS(500);
         }
-    }
-    void waitGPS(int timeout)
-    {
-      GPS_DATA gd = {0};
-      int elapsed = 0;
-      for (uint32_t t = millis(); millis() - t < timeout;) {
-        int t1 = (millis() - t) / 1000;
-        if (t1 != elapsed) {
-          Serial.print("Waiting for GPS (");
-          Serial.print(elapsed);
-          Serial.println(")");
-          elapsed = t1;
-        }
-        // read parsed GPS data
-        if (getGPSData(&gd) && gd.sat != 0 && gd.sat != 255) {
-          Serial.print("GPS SAT:");
-          Serial.println(gd.sat);
-          return;
-        }
-      }
-      //Serial.println("No GPS data");
-    }
-    void reconnect()
-    {
-        // try to re-connect to OBD
-        if (init()) return;
-        sleep(1000);
-        if (init()) return;
-        standby();
-    }
-    void standby()
-    {
-        if (state & STATE_NET_READY) {
-          state &= ~STATE_NET_READY;
-          if (netState != NET_HTTP_ERROR)
-            regDataFeed(1); // de-register
-          xbTogglePower(); // turn off GSM power
-        }
-#if USE_GPS
-        initGPS(0); // turn off GPS power
-#endif
-        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
-        Serial.println("Standby");
-        enterLowPowerMode();
-#if USE_MPU6050 || USE_MPU9250
-        calibrateMEMS();
-        if (state & STATE_MEMS_READY) {
-          for (;;) {
-            sleep(1000);
-            // calculate relative movement
-            unsigned long motion = 0;
-            for (byte i = 0; i < 3; i++) {
-              long n = accSum[i] / accCount - accCal[i];
-              motion += n * n;
-            }
-            // check movement
-            if (motion > WAKEUP_MOTION_THRESHOLD) {
-              // try OBD reading
-              leaveLowPowerMode();
-              if (init()) {
-                // OBD is accessible
-                break;
-              }
-              enterLowPowerMode();
-              // calibrate MEMS again in case the device posture changed
-              calibrateMEMS();
-            }
-          }
-        } else {
-          while (!init()) sleepSec(10);
-        }
-#else
-        while (!init()) sleepSec(10);
-#endif
-        Serial.println("Wakeup");
-        leaveLowPowerMode();
     }
 #if USE_MPU6050 || USE_MPU9250
-    void calibrateMEMS()
+    void calibrateMEMS(unsigned int duration)
     {
+        // MEMS data collected while sleeping
+        if (duration > 0) {
+          accCount = 0;
+          accSum[0] = 0;
+          accSum[1] = 0;
+          accSum[2] = 0;
+          sleep(duration);
+        }
         // store accelerometer reference data
         if ((state & STATE_MEMS_READY) && accCount) {
           accCal[0] = accSum[0] / accCount;
@@ -755,7 +642,7 @@ private:
         int16_t acc[3] = {0};
         int16_t temp; // device temperature (in 0.1 celcius degree)
         memsRead(acc, 0, 0, &temp);
-        if (accCount >= 250) {
+        if (accCount >= 128) {
           accSum[0] >>= 1;
           accSum[1] >>= 1;
           accSum[2] >>= 1;
@@ -777,28 +664,11 @@ private:
       }
 #endif
     }
-private:
     byte state;
-    uint16_t feedid;
     uint16_t connCount;
-    byte connErrors;
-    byte netState;
 };
 
 CTeleLogger logger;
-
-#if ENABLE_MULTI_THREADING
-Task taskNetwork;
-
-void httpLoop(void* arg)
-{
-  // process HTTP transaction
-  for (;;) {
-      logger.processHTTP();
-      Task::sleep(10);
-  }
-}
-#endif
 
 void setup()
 {
@@ -806,14 +676,32 @@ void setup()
     Serial.begin(115200);
     Serial.println("Freematics ONE");
     delay(1000);
+    logger.begin();
+    delay(1000);
     // perform initializations
     logger.setup();
-#if ENABLE_MULTI_THREADING
-    taskNetwork.create(httpLoop, "httpLoop", 1);
-#endif
 }
 
 void loop()
 {
+    // error handling
+    if (logger.errors > MAX_OBD_ERRORS) {
+        // try to re-connect to OBD
+        if (logger.init()) return;
+        logger.standby();
+        logger.setup();
+    }
+    if (logger.connErrors >= MAX_CONN_ERRORS) {
+        logger.standby();
+        logger.setup();
+    }
+
+    uint32_t t = millis();
+    // collect data
     logger.loop();
+    // transmit data
+    logger.transmitUDP();
+    // wait to reach preset data rate
+    unsigned int elapsed = millis() - t;
+    if (elapsed < DATASET_INTERVAL) logger.sleep(DATASET_INTERVAL - elapsed);
 }
