@@ -126,15 +126,17 @@ byte TinyGPS::hex2uint8(const char *p)
 	byte c2 = *(p + 1);
 	if (c1 >= 'A' && c1 <= 'F')
 		c1 -= 7;
-	else if (c1 >='a' && c1 <= 'f')
-	    c1 -= 39;
+	else if (c1 >= 'a' && c1 <= 'f')
+		c1 -= 39;
 	else if (c1 < '0' || c1 > '9')
 		return 0;
-
-	if (c2 >= 'A' && c2 <= 'F')
+	
+	if (c2 == 0)
+		return (c1 & 0xf);
+	else if (c2 >= 'A' && c2 <= 'F')
 		c2 -= 7;
 	else if (c2 >= 'a' && c2 <= 'f')
-	    c2 -= 39;
+		c2 -= 39;
 	else if (c2 < '0' || c2 > '9')
 		return 0;
 
