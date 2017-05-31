@@ -72,7 +72,9 @@ byte hex2uint8(const char *p)
 	else if (c1 < '0' || c1 > '9')
 		return 0;
 
-	if (c2 >= 'A' && c2 <= 'F')
+	if (c2 == 0)
+		return (c1 & 0xf);
+	else if (c2 >= 'A' && c2 <= 'F')
 		c2 -= 7;
 	else if (c2 >= 'a' && c2 <= 'f')
 	    c2 -= 39;
@@ -110,9 +112,7 @@ byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 		char buffer[128];
 		sprintf_P(buffer, n == 0 ? PSTR("03\r") : PSTR("03%02X\r"), n);
 		write(buffer);
-		Serial.println(buffer);
 		if (receive(buffer, sizeof(buffer)) > 0) {
-			Serial.println(buffer);
 			if (!strstr(buffer, "NO DATA")) {
 				char *p = strstr(buffer, "43");
 				if (p) {
@@ -715,14 +715,23 @@ void COBDSPI::sendGPSCommand(const char* cmd)
 void COBDSPI::sleep(unsigned int ms)
 {
 	uint32_t t = millis();
-	dataIdleLoop();
-	unsigned int elapsed = millis() - t;
-	if (elapsed < ms) {
+	for (;;) {
+		dataIdleLoop();
+		unsigned int elapsed = millis() - t;
+		if (elapsed + 50 < ms) {
 #ifdef ESP32
-		Task::sleep(ms - elapsed);
+			Task::sleep(50);
 #else
-		delay(ms - elapsed);
+			delay(50);
 #endif
+		} else {
+#ifdef ESP32
+			Task::sleep(ms - elapsed);
+#else
+			delay(ms - elapsed);
+#endif
+			break;
+		}
 	}
 }
 
