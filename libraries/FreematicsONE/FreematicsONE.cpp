@@ -67,17 +67,17 @@ byte hex2uint8(const char *p)
 	byte c2 = *(p + 1);
 	if (c1 >= 'A' && c1 <= 'F')
 		c1 -= 7;
-	else if (c1 >='a' && c1 <= 'f')
-	    c1 -= 39;
+	else if (c1 >= 'a' && c1 <= 'f')
+		c1 -= 39;
 	else if (c1 < '0' || c1 > '9')
 		return 0;
-
+	
 	if (c2 == 0)
 		return (c1 & 0xf);
 	else if (c2 >= 'A' && c2 <= 'F')
 		c2 -= 7;
 	else if (c2 >= 'a' && c2 <= 'f')
-	    c2 -= 39;
+		c2 -= 39;
 	else if (c2 < '0' || c2 > '9')
 		return 0;
 
@@ -379,6 +379,8 @@ static const char targets[][4] = {
 	{'$','G','S','M'}
 };
 
+SPISettings spiSettings(4000000, MSBFIRST, SPI_MODE1);
+
 byte COBDSPI::begin()
 {
 	// turn off ADC
@@ -389,13 +391,14 @@ byte COBDSPI::begin()
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
+	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
 #ifdef ESP32
 	SPI.setFrequency(4000000);
 #else
 	SPI.setClockDivider(SPI_CLOCK_DIV4);
 #endif
-	delay(200);
+	delay(500);
 	return getVersion();
 }
 
@@ -407,7 +410,7 @@ void COBDSPI::end()
 byte COBDSPI::getVersion()
 {
 	byte version = 0;
-  setTarget(TARGET_OBD);
+	setTarget(TARGET_OBD);
 	for (byte n = 0; n < 3; n++) {
 		write("ATI\r");
 		char buffer[32];
@@ -439,15 +442,15 @@ int COBDSPI::dumpLine(char* buffer, int len)
 	memmove(buffer, buffer + bytesToDump, len - bytesToDump);
 	return bytesToDump;
 }
+
 int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 {
 	int n = 0;
 	bool eos = false;
 	uint32_t t = millis();
 	do {
-		dataIdleLoop();
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-#ifdef ESP32
+#ifndef ESP32
 			sleep(10);
 #endif
 			if (millis() - t > timeout) {
@@ -457,21 +460,22 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 				break;
 			}
 		}
+		//SPI.beginTransaction(spiSettings);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (!eos && digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
-      if (n == 0) {
-        // match header char before we can move forward
-        if (c == '$') {
-          buffer[0] = c;
-          n = 1;
-        }
-        continue;
-      }
+			if (n == 0) {
+				// match header char before we can move forward
+				if (c == '$') {
+				buffer[0] = c;
+				n = 1;
+				}
+				continue;
+			}
 			if (n > 6 && buffer[1] == 'O' && c == '.' && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
-        // $OBDSEARCHING...
+				// $OBDSEARCHING...
 				n = 4;
-        timeout += OBD_TIMEOUT_LONG;
+				timeout += OBD_TIMEOUT_LONG;
 			} else if (c != 0 && c != 0xff) {
 				if (n == bufsize - 1) {
 					int bytesDumped = dumpLine(buffer, n);
@@ -486,8 +490,9 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 				n++;
 			}
 		}
-		digitalWrite(SPI_PIN_CS, HIGH);
 	} while (!eos && millis() - t < timeout);
+	digitalWrite(SPI_PIN_CS, HIGH);
+	//SPI.endTransaction();
 	if (m_target != TARGET_RAW) {
 		// eliminate ending char
 		if (eos) n--;
@@ -519,16 +524,10 @@ void COBDSPI::write(const char* s)
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
-#ifndef ESP32
-      delayMicroseconds(5);
-#endif
 		}
 	}
 	for (; *s ;s++) {
 		SPI.transfer((byte)*s);
-#ifndef ESP32
-    delayMicroseconds(5);
-#endif
 	}
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
