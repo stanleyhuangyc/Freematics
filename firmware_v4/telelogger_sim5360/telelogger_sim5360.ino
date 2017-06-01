@@ -254,18 +254,15 @@ public:
           }
         }
 #endif
+        delay(1000);
 
         for (;;) {
           // initialize OBD communication
           Serial.print("#OBD...");
           if (!init()) {
-            Serial.print('.');
-            sleep(1000);
-            if (!init()) {
-              Serial.println("NO");
-              standby();
-              continue;
-            }
+            Serial.println("NO");
+            standby();
+            continue;
           }
           Serial.println("OK");
           state |= STATE_OBD_READY;
@@ -385,7 +382,6 @@ public:
       uint16_t dtc[6];
       byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
       Serial.println(dtcCount);
-      if (dtcCount > 0) clearDTC();
 
       Serial.print("#SERVER:");
       char *ip = queryIP(SERVER_URL);
@@ -505,9 +501,11 @@ public:
           Serial.println("OFF");
         }
 #if USE_GPS
-        Serial.print("#GPS:");
-        initGPS(0); // turn off GPS power
-        Serial.println("OFF");
+        if (state & STATE_GPS_READY) {
+          Serial.print("#GPS:");
+          initGPS(0); // turn off GPS power
+          Serial.println("OFF");
+        }
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
         Serial.println("Standby");
@@ -516,8 +514,6 @@ public:
         calibrateMEMS(3000);
         if (state & STATE_MEMS_READY) {
           for (;;) {
-            // MEMS data collected while sleeping
-            sleep(3000);
             // calculate relative movement
             unsigned long motion = 0;
             for (byte i = 0; i < 3; i++) {
@@ -530,14 +526,10 @@ public:
             if (motion > WAKEUP_MOTION_THRESHOLD) {
               // try OBD reading
               leaveLowPowerMode();
-              if (init()) {
-                // OBD is accessible
-                break;
-              }
-              enterLowPowerMode();
-              // calibrate MEMS again in case the device posture changed
-              calibrateMEMS(3000);
+              break;
             }
+            // MEMS data collected while sleeping
+            sleep(3000);
           }
         } else {
           while (!init()) sleepSec(10);
@@ -676,8 +668,9 @@ void setup()
     Serial.begin(115200);
     Serial.println("Freematics ONE");
     delay(1000);
-    logger.begin();
-    delay(1000);
+    byte ver = logger.begin();
+    Serial.print("Version ");
+    Serial.println(ver);
     // perform initializations
     logger.setup();
 }
