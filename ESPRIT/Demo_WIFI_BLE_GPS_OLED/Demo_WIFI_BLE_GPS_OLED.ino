@@ -23,7 +23,7 @@
 #include <ESPmDNS.h>
 #include <WiFiClient.h>
 #include <TinyGPS.h>
-#include <Esprit.h>
+#include <ESPRIT.h>
 #include "SH1106.h"
 #include "images.h"
 #include "config.h"
