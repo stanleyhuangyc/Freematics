@@ -395,7 +395,7 @@ byte COBDSPI::begin()
 #else
 	SPI.setClockDivider(SPI_CLOCK_DIV4);
 #endif
-	delay(100);
+	delay(500);
 	return getVersion();
 }
 
