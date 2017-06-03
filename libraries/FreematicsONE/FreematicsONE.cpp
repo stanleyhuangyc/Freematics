@@ -398,7 +398,7 @@ byte COBDSPI::begin()
 #else
 	SPI.setClockDivider(SPI_CLOCK_DIV4);
 #endif
-	delay(500);
+	delay(100);
 	return getVersion();
 }
 
@@ -460,10 +460,9 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 				break;
 			}
 		}
-		//SPI.beginTransaction(spiSettings);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (!eos && digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
-			char c = SPI.transfer(' ');
+			char c = SPI.transfer(0);
 			if (n == 0) {
 				// match header char before we can move forward
 				if (c == '$') {
@@ -492,7 +491,6 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 		}
 	} while (!eos && millis() - t < timeout);
 	digitalWrite(SPI_PIN_CS, HIGH);
-	//SPI.endTransaction();
 	if (m_target != TARGET_RAW) {
 		// eliminate ending char
 		if (eos) n--;
@@ -588,30 +586,29 @@ bool COBDSPI::initGPS(unsigned long baudrate)
 			// success
 			return true;
 		}
-		// no external GPS detected, cut off power
-		digitalWrite(PIN_GPS_POWER, LOW);
 #endif
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf_P(buf, PSTR("ATBR2%lu\r"), baudrate);
 			sendCommand(buf, buf, sizeof(buf));
 			uint32_t t = millis();
+			delay(100);
 			do {
 				if (getGPSRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
 #ifdef ESP32
 					m_internalGPS = true;
 #endif
-					success = true;
+					return true;
 				}
-			} while (!success && millis() - t < GPS_INIT_TIMEOUT);
+			} while (millis() - t < GPS_INIT_TIMEOUT);
 		}
 	} else {
-#ifdef ESP32
-		digitalWrite(PIN_GPS_POWER, LOW);
-#endif
-		if (sendCommand("ATGPSOFF\r", buf, sizeof(buf))) {
-			success = true;
-		}
+		success = true;
 	}
+	//turn off GPS power
+#ifdef ESP32
+	digitalWrite(PIN_GPS_POWER, LOW);
+#endif
+	sendCommand("ATGPSOFF\r", buf, sizeof(buf));
 	return success;
 }
 
