@@ -6,6 +6,8 @@
 
 // additional custom PID for data logger
 #define PID_DATA_SIZE 0x80
+#define PID_CSQ 0x81
+#define PID_DEVICE_TEMP 0x82
 
 #if ENABLE_DATA_LOG
 SDClass SD;
@@ -16,9 +18,7 @@ class CDataLogger {
 public:
     CDataLogger():m_dataTime(0)
     {
-#if ENABLE_DATA_CACHE
         cacheBytes = 0;
-#endif
     }
     void record(const char* buf, byte len)
     {
@@ -34,31 +34,17 @@ public:
     }
     void dispatch(const char* buf, byte len)
     {
-#if ENABLE_DATA_CACHE
         // reserve some space for timestamp, ending white space and zero terminator
-        int l = cacheBytes + len + 12 - CACHE_SIZE;
+        int l = cacheBytes + len + 15 - CACHE_SIZE;
         if (l >= 0) {
           // cache full
-#if CACHE_SHIFT
-          // discard the oldest data
-          for (l = CACHE_SIZE / 2; cache[l] && cache[l] != ' '; l++);
-          if (cache[l]) {
-            cacheBytes -= l;
-            memcpy(cache, cache + l + 1, cacheBytes);
-          } else {
-            cacheBytes = 0;  
-          }
-#else
-          return;        
-#endif
+          return;
         }
         if (cacheBytes + len < CACHE_SIZE - 1) {
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
-          cache[cacheBytes++] = ' ';
+          cache[cacheBytes++] = ',';
         }
-        cache[cacheBytes] = 0;
-#endif
 #if ENABLE_DATA_OUT
         Serial.write((uint8_t*)buf, len);
         Serial.write('\n');
@@ -66,13 +52,6 @@ public:
     }
     void logData(const char* buf, byte len)
     {
-        dispatch(buf, len);
-        record(buf, len);
-    }
-    void logData(uint16_t pid)
-    {
-        char buf[8];
-        byte len = translatePIDName(pid, buf);
         dispatch(buf, len);
         record(buf, len);
     }
@@ -116,9 +95,9 @@ public:
         dispatch(buf, len);
         record(buf, len);
     }
-    void logTimestamp()
+    void logTimestamp(uint32_t ts)
     {
-        logData(0, m_dataTime = millis());
+        logData(0, m_dataTime = ts);
     }
 #if ENABLE_DATA_LOG
     uint16_t openFile(uint32_t dateTime = 0)
@@ -129,7 +108,7 @@ public:
         dataSize = 0;
         if (SD.exists(path)) {
             if (dateTime) {
-               // using date and time as file name 
+               // using date and time as file name
                sprintf(path + 5, "/%08lu.CSV", dateTime);
                fileIndex = 1;
             } else {
@@ -164,18 +143,13 @@ public:
         sdfile.flush();
     }
 #endif
-#if ENABLE_DATA_CACHE
-    void purgeCache()
-    {
-      cacheBytes = 0;
-    }
     char cache[CACHE_SIZE];
     unsigned int cacheBytes;
-#endif
 private:
     byte translatePIDName(uint16_t pid, char* text)
     {
-        return sprintf_P(text, PSTR("%X:"), pid);
+        return sprintf_P(text, PSTR("%X="), pid);
     }
     uint32_t m_dataTime;
 };
+
