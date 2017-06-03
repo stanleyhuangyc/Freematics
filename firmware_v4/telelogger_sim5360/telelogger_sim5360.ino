@@ -31,8 +31,6 @@
 #define STATE_NET_READY 0x10
 #define STATE_CONNECTED 0x40
 
-uint16_t lastUTC = 0;
-uint8_t lastGPSDay = 0;
 #if USE_MPU6050 || USE_MPU9250
 byte accCount = 0; // count of accelerometer readings
 long accSum[3] = {0}; // sum of accelerometer data
@@ -267,7 +265,6 @@ public:
         Serial.println("checksum mismatch");
         continue;
       }
-      Serial.println("OK");
       return true;
     }
     return false;
@@ -336,12 +333,7 @@ public:
   }
   void transmitUDP(bool wait)
   {
-    // add checksum
-    byte sum = 0;
-    if (cacheBytes > 0 && cache[cacheBytes - 1] == ',')
-      cacheBytes--; // last delimiter unneeded
-    for (unsigned int i = 0; i < cacheBytes; i++) sum += cache[i];
-    cacheBytes += sprintf_P(cache + cacheBytes, PSTR("*%X"), sum);
+    addDataChecksum();
     if (waiting) {
       // wait for last data to be sent
       if (!waitCompletion(100)) {
@@ -349,9 +341,7 @@ public:
         Serial.println(buffer);
         if (connErrors >= 3) {
           udpClose();
-          Serial.println(buffer);
           udpOpen();
-          Serial.println(buffer);
         }
       } else {
         connErrors = 0;
@@ -399,9 +389,7 @@ class CTeleLogger : public CTeleClient
 #endif
 {
 public:
-    CTeleLogger():state(0)
-    {
-    }
+    CTeleLogger():state(0) {}
     void setup()
     {
 #if USE_MPU6050 || USE_MPU9250
@@ -510,13 +498,13 @@ public:
           processOBD();
         }
 
-#if CACHE_SIZE > 128
 #if USE_MPU6050 || USE_MPU9250
+        // process MEMS data if available
         if (state & STATE_MEMS_READY) {
             processMEMS();
         }
 #endif
-#endif
+
 #if USE_GPS
         // process GPS data if connected
         if (state & STATE_GPS_READY) {
@@ -549,6 +537,7 @@ public:
         if (state & STATE_NET_READY) {
           state &= ~STATE_NET_READY;
           deregDataFeed();
+          udpClose();
           Serial.print("#3G:");
           xbTogglePower(); // turn off GSM power
           Serial.println("OFF");
@@ -561,11 +550,11 @@ public:
         }
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
-        enterLowPowerMode();
         Serial.println("Standby");
 #if USE_MPU6050 || USE_MPU9250
         calibrateMEMS(3000);
         if (state & STATE_MEMS_READY) {
+          enterLowPowerMode();
           for (;;) {
             // calculate relative movement
             unsigned long motion = 0;
@@ -577,18 +566,19 @@ public:
             Serial.println(motion);
             // check movement
             if (motion > WAKEUP_MOTION_THRESHOLD) {
-              // try OBD reading
               leaveLowPowerMode();
               break;
             }
             // MEMS data collected while sleeping
             sleep(3000);
           }
-        } else {
-          while (!init()) sleepSec(10);
         }
 #else
-        while (!init()) sleepSec(10);
+        do {
+          enterLowPowerMode();
+          sleepSec(10);
+          leaveLowPowerMode();
+        } while (!init());
 #endif
         Serial.println("Wakeup");
     }
@@ -657,7 +647,7 @@ private:
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-              Serial.print("UTC:");
+              Serial.print("#UTC:");
               Serial.print(gd.time);
               Serial.print(" SAT:");
               Serial.println(gd.sat);
