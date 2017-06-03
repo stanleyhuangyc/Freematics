@@ -5,7 +5,7 @@
 * Data logging/streaming out
 **************************************/
 #define CACHE_SIZE 160 /* bytes */
-#define DATASET_INTERVAL 1000 /* ms */
+#define DATASET_INTERVAL 0 /* ms */
 #define ENABLE_DATA_OUT 0
 
 /**************************************
