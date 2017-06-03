@@ -228,7 +228,126 @@ public:
     char buffer[128];
 };
 
-class CTeleLogger : public COBD3G, public CDataLogger
+class CTeleClient : public COBD3G, public CDataLogger
+{
+public:
+  int verifyChecksum(const char* data)
+  {
+    uint8_t sum = 0;
+    const char *s;
+    for (s = data; *s && *s != '*'; s++) sum += *s;
+    return (*s && hex2uint8(s + 1) == sum);
+  }
+  bool deregDataFeed()
+  {
+    for (byte n = 0; n < 3; n++) {
+      Serial.print("Dereg...");
+      // send request
+      cacheBytes = sprintf_P(cache, PSTR("%u#OFFLINE"), feedid);
+      transmitUDP();
+      // receive reply
+      int len;
+      char *data = udpReceive(&len);
+      if (!data) {
+        Serial.println("failed");
+        continue;
+      }
+      // verify checksum
+      if (!verifyChecksum(data)) {
+        Serial.println("checksum mismatch");
+        continue;
+      }
+      Serial.println("OK");
+      return true;
+    }
+    return false;
+  }
+  bool regDataFeed()
+  {
+    // retrieve VIN
+    char vin[20] = {0};
+    // retrieve VIN
+    if (getVIN(buffer, sizeof(buffer))) {
+      strncpy(vin, buffer, sizeof(vin) - 1);
+      Serial.print("#VIN:");
+      Serial.println(vin);
+    } else {
+      strcpy(vin, "DEFAULT_VIN");
+    }
+
+    Serial.print("#DTC:");
+    uint16_t dtc[6];
+    byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+    Serial.println(dtcCount);
+
+    connErrors = 0;
+    connCount = 0;
+    Serial.print("#SERVER:");
+    char *ip = queryIP(SERVER_URL);
+    if (!ip) return false;
+    Serial.println(ip);
+    strncpy(udpIP, ip, sizeof(udpIP) - 1);
+
+    for (byte n = 0; n < 5; n++) {
+      Serial.print("Registering...");
+      // send request
+      cacheBytes = sprintf_P(cache, PSTR("0#SK=%s,VIN=%s"), SERVER_KEY, vin);
+      if (dtcCount > 0) {
+        cacheBytes += sprintf_P(cache + cacheBytes, PSTR(",DTC="), dtcCount);
+        for (byte i = 0; i < dtcCount; i++) {
+          cacheBytes += sprintf_P(cache + cacheBytes, PSTR("%X;"), dtc[i]);
+        }
+        cacheBytes--;
+      }
+      transmitUDP();
+      // receive reply
+      int len;
+      char *data = udpReceive(&len);
+      if (!data) {
+        Serial.println("failed");
+        continue;
+      }
+      // verify checksum
+      if (!verifyChecksum(data)) {
+        Serial.println("checksum mismatch");
+        continue;
+      }
+      feedid = atoi(data);
+      Serial.print("#ID:");
+      Serial.println(feedid);
+      return true;
+    }
+    return false;
+  }
+  void transmitUDP()
+  {
+    // add checksum
+    byte sum = 0;
+    if (cacheBytes > 0 && cache[cacheBytes - 1] == ',')
+      cacheBytes--; // last delimiter unneeded
+    for (int i = 0; i < cacheBytes; i++) sum += cache[i];
+    cacheBytes += sprintf_P(cache + cacheBytes, PSTR("*%X"), sum);
+    // transmit data
+    //Serial.println(cache);
+    Serial.print(connCount);
+    Serial.print('#');
+    Serial.print(cacheBytes);
+    Serial.println('B');
+    if (!udpSend(udpIP, udpPort, cache, cacheBytes)) {
+      connErrors++;
+    } else {
+      connErrors = 0;
+      connCount++;
+    }
+    // clear cache and write header for next transmission
+    cacheBytes = sprintf_P(cache, PSTR("%u#"), feedid);
+  }
+  uint16_t feedid;
+  uint16_t connCount;
+  uint8_t connErrors;
+};
+
+class CTeleLogger : public CTeleClient
 #if USE_MPU6050
 ,public CMPU6050
 #elif USE_MPU9250
@@ -236,7 +355,7 @@ class CTeleLogger : public COBD3G, public CDataLogger
 #endif
 {
 public:
-    CTeleLogger():state(0),connErrors(0),connCount(0)
+    CTeleLogger():state(0)
     {
     }
     void setup()
@@ -320,105 +439,16 @@ public:
           Serial.print("#UDP...");
           Serial.println(udpInit() ? "OK" : "NO");
 
-          purgeCache();
           if (!regDataFeed()) {
             standby();
             continue;
           }
-          connErrors = 0;
-          connCount = 0;
 
   #if USE_MPU6050 || USE_MPU9250
           calibrateMEMS(CALIBRATION_TIME);
   #endif
           break;
         }
-    }
-    int verifyChecksum(const char* data)
-    {
-    	uint8_t sum = 0;
-    	char *s;
-    	for (s = data; *s && *s != '*'; s++) sum += *s;
-    	return (*s && hex2uint8(s + 1) == sum);
-    }
-    bool deregDataFeed()
-    {
-      for (byte n = 0; n < 3; n++) {
-        Serial.print("Dereg...");
-        // send request
-        cacheBytes = sprintf_P(cache, PSTR("%u#OFFLINE"), feedid);
-        transmitUDP();
-        // receive reply
-        int len;
-        char *data = udpReceive(&len);
-        if (!data) {
-          Serial.println("failed");
-          continue;
-        }
-        // verify checksum
-        if (!verifyChecksum(data)) {
-          Serial.println("checksum mismatch");
-          continue;
-        }
-        Serial.println("OK");
-        return true;
-      }
-      return false;
-    }
-    bool regDataFeed()
-    {
-      // retrieve VIN
-      char vin[20] = {0};
-      // retrieve VIN
-      if (getVIN(buffer, sizeof(buffer))) {
-        strncpy(vin, buffer, sizeof(vin) - 1);
-        Serial.print("#VIN:");
-        Serial.println(vin);
-      } else {
-        strcpy(vin, "DEFAULT_VIN");
-      }
-
-      Serial.print("#DTC:");
-      uint16_t dtc[6];
-      byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-      Serial.println(dtcCount);
-
-      Serial.print("#SERVER:");
-      char *ip = queryIP(SERVER_URL);
-      if (!ip) return false;
-      Serial.println(ip);
-      strncpy(udpIP, ip, sizeof(udpIP) - 1);
-
-      for (byte n = 0; n < 5; n++) {
-        Serial.print("Registering...");
-        // send request
-        cacheBytes = sprintf_P(cache, PSTR("0#SK=%s,VIN=%s"), SERVER_KEY, vin);
-        if (dtcCount > 0) {
-          cacheBytes += sprintf_P(cache + cacheBytes, PSTR(",DTC="), dtcCount);
-          for (byte i = 0; i < dtcCount; i++) {
-            cacheBytes += sprintf_P(cache + cacheBytes, PSTR("%X;"), dtc[i]);
-          }
-          cacheBytes--;
-        }
-        transmitUDP();
-        // receive reply
-        int len;
-        char *data = udpReceive(&len);
-        if (!data) {
-          Serial.println("failed");
-          continue;
-        }
-        // verify checksum
-        if (!verifyChecksum(data)) {
-          Serial.println("checksum mismatch");
-          continue;
-        }
-        feedid = atoi(data);
-        Serial.print("#ID:");
-        Serial.println(feedid);
-        return true;
-      }
-      return false;
     }
     void loop()
     {
@@ -469,28 +499,6 @@ public:
         }
 #endif
     }
-    void transmitUDP()
-    {
-      // add checksum
-      byte sum = 0;
-      if (cacheBytes > 0 && cache[cacheBytes - 1] == ',')
-        cacheBytes--; // last delimiter unneeded
-      for (int i = 0; i < cacheBytes; i++) sum += cache[i];
-      cacheBytes += sprintf_P(cache + cacheBytes, PSTR("*%X"), sum);
-      // transmit data
-      //Serial.println(cache);
-      Serial.print(connCount);
-      Serial.print('#');
-      Serial.print(cacheBytes);
-      Serial.println('B');
-      if (!udpSend(udpIP, udpPort, cache, cacheBytes)) {
-        connErrors++;
-      } else {
-        connErrors = 0;
-        connCount++;
-      }
-      purgeCache();
-    }
     void standby()
     {
         if (state & STATE_NET_READY) {
@@ -539,7 +547,6 @@ public:
 #endif
         Serial.println("Wakeup");
     }
-    byte connErrors;
 private:
     void processOBD()
     {
@@ -657,7 +664,6 @@ private:
 #endif
     }
     byte state;
-    uint16_t connCount;
 };
 
 CTeleLogger logger;

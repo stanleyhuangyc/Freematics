@@ -18,9 +18,7 @@ class CDataLogger {
 public:
     CDataLogger():m_dataTime(0)
     {
-#if ENABLE_DATA_CACHE
         cacheBytes = 0;
-#endif
     }
     void record(const char* buf, byte len)
     {
@@ -36,25 +34,17 @@ public:
     }
     void dispatch(const char* buf, byte len)
     {
-#if ENABLE_DATA_CACHE
         // reserve some space for timestamp, ending white space and zero terminator
         int l = cacheBytes + len + 15 - CACHE_SIZE;
         if (l >= 0) {
           // cache full
           return;
         }
-#if ENABLE_MULTI_THREADING
-        cacheLock.lock();
-#endif
         if (cacheBytes + len < CACHE_SIZE - 1) {
           memcpy(cache + cacheBytes, buf, len);
           cacheBytes += len;
           cache[cacheBytes++] = ',';
         }
-#if ENABLE_MULTI_THREADING
-        cacheLock.unlock();
-#endif
-#endif
 #if ENABLE_DATA_OUT
         Serial.write((uint8_t*)buf, len);
         Serial.write('\n');
@@ -153,19 +143,8 @@ public:
         sdfile.flush();
     }
 #endif
-#if ENABLE_DATA_CACHE
-    void purgeCache()
-    {
-      cacheBytes = sprintf_P(cache, PSTR("%u#"), feedid);
-    }
     char cache[CACHE_SIZE];
     unsigned int cacheBytes;
-#if ENABLE_MULTI_THREADING
-    Mutex cacheLock;
-#endif
-#endif
-protected:
-    uint16_t feedid;
 private:
     byte translatePIDName(uint16_t pid, char* text)
     {
