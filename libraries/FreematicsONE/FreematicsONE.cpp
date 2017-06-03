@@ -260,16 +260,13 @@ bool COBDSPI::getResult(byte& pid, int& result)
 
 void COBDSPI::enterLowPowerMode()
 {
-	char buf[32];
 	setTarget(TARGET_OBD);
-	sendCommand("ATLP\r", buf, sizeof(buf));
+	write("ATLP\r");
 }
 
 void COBDSPI::leaveLowPowerMode()
 {
-	// simply send any command to wake the device up
-	char buf[32];
-	sendCommand("ATI\r", buf, sizeof(buf), 1000);
+	getVersion();
 }
 
 float COBDSPI::getVoltage()
