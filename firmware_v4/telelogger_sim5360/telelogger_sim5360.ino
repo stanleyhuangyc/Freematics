@@ -160,16 +160,21 @@ public:
         }
         return 0;
     }
-    bool udpInit()
+    bool udpOpen()
     {
       return netSendCommand("AT+CIPOPEN=0,\"UDP\",,,8000\r", 3000);
     }
-    bool udpSend(const char* ip, uint16_t port, const char* data, unsigned int len)
+    void udpClose()
     {
-      sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, ip, port);
+      netSendCommand("AT+CIPCLOSE\r");
+    }
+    bool udpSend(const char* data, unsigned int len, bool wait = true)
+    {
+      sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, udpIP, udpPort);
       if (netSendCommand(buffer, 100, ">")) {
         xbWrite(data, len);
-        return netSendCommand(0, 1000);
+        if (!wait) return true;
+        return waitCompletion(1000);
       } else {
         Serial.print("UDP error:");
         Serial.println(buffer);
@@ -190,6 +195,10 @@ public:
         }
       }
       return 0;
+    }
+    bool waitCompletion(int timeout)
+    {
+      return netSendCommand(0, timeout);
     }
     char* queryIP(const char* host)
     {
@@ -213,6 +222,7 @@ public:
       if (cmd) {
         xbWrite(cmd);
       }
+      sleep(50);
       buffer[0] = 0;
       byte ret = xbReceive(buffer, sizeof(buffer), timeout, expected);
       if (ret) {
@@ -231,7 +241,7 @@ public:
 class CTeleClient : public COBD3G, public CDataLogger
 {
 public:
-  int verifyChecksum(const char* data)
+  bool verifyChecksum(const char* data)
   {
     uint8_t sum = 0;
     const char *s;
@@ -244,7 +254,7 @@ public:
       Serial.print("Dereg...");
       // send request
       cacheBytes = sprintf_P(cache, PSTR("%u#OFFLINE"), feedid);
-      transmitUDP();
+      transmitUDP(true);
       // receive reply
       int len;
       char *data = udpReceive(&len);
@@ -275,13 +285,17 @@ public:
       strcpy(vin, "DEFAULT_VIN");
     }
 
-    Serial.print("#DTC:");
     uint16_t dtc[6];
     byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-    Serial.println(dtcCount);
+    if (dtcCount > 0) {
+      Serial.print("#DTC:");
+      Serial.println(dtcCount);
+    }
 
     connErrors = 0;
     connCount = 0;
+    waiting = false;
+
     Serial.print("#SERVER:");
     char *ip = queryIP(SERVER_URL);
     if (!ip) return false;
@@ -289,9 +303,10 @@ public:
     strncpy(udpIP, ip, sizeof(udpIP) - 1);
 
     for (byte n = 0; n < 5; n++) {
-      Serial.print("Registering...");
+      Serial.println("Registering...");
+      startTick = millis();
       // send request
-      cacheBytes = sprintf_P(cache, PSTR("0#SK=%s,VIN=%s"), SERVER_KEY, vin);
+      cacheBytes = sprintf_P(cache, PSTR("0#SK=%s,VIN=%s,T=%lu"), SERVER_KEY, vin, startTick);
       if (dtcCount > 0) {
         cacheBytes += sprintf_P(cache + cacheBytes, PSTR(",DTC="), dtcCount);
         for (byte i = 0; i < dtcCount; i++) {
@@ -299,7 +314,7 @@ public:
         }
         cacheBytes--;
       }
-      transmitUDP();
+      transmitUDP(true);
       // receive reply
       int len;
       char *data = udpReceive(&len);
@@ -313,38 +328,67 @@ public:
         continue;
       }
       feedid = atoi(data);
-      Serial.print("#ID:");
+      Serial.print("#FEED ID:");
       Serial.println(feedid);
       return true;
     }
     return false;
   }
-  void transmitUDP()
+  void transmitUDP(bool wait)
   {
     // add checksum
     byte sum = 0;
     if (cacheBytes > 0 && cache[cacheBytes - 1] == ',')
       cacheBytes--; // last delimiter unneeded
-    for (int i = 0; i < cacheBytes; i++) sum += cache[i];
+    for (unsigned int i = 0; i < cacheBytes; i++) sum += cache[i];
     cacheBytes += sprintf_P(cache + cacheBytes, PSTR("*%X"), sum);
-    // transmit data
-    //Serial.println(cache);
-    Serial.print(connCount);
+    if (waiting) {
+      // wait for last data to be sent
+      if (!waitCompletion(100)) {
+        connErrors++;
+        Serial.println(buffer);
+        if (connErrors >= 3) {
+          udpClose();
+          Serial.println(buffer);
+          udpOpen();
+          Serial.println(buffer);
+        }
+      } else {
+        connErrors = 0;
+        connCount++;
+      }
+      waiting = false;
+    }
+    
+    // show stats
+    //Serial.println(cache); // output transmitted data
     Serial.print('#');
+    Serial.print(connCount);
+    Serial.print(' ');
     Serial.print(cacheBytes);
-    Serial.println('B');
-    if (!udpSend(udpIP, udpPort, cache, cacheBytes)) {
+    Serial.print(" bytes sent (");
+    Serial.print((millis() - startTick) / (connCount + 1));
+    Serial.println("ms)");
+    
+    // transmit data
+    if (!udpSend(cache, cacheBytes, wait)) {
       connErrors++;
     } else {
-      connErrors = 0;
-      connCount++;
+      if (!wait) {
+        waiting = true;
+      } else {
+        connErrors = 0;
+        connCount++;
+      }
     }
     // clear cache and write header for next transmission
     cacheBytes = sprintf_P(cache, PSTR("%u#"), feedid);
   }
   uint16_t feedid;
-  uint16_t connCount;
+  uint32_t startTick;
+  uint32_t connCount;
   uint8_t connErrors;
+  bool waiting;
 };
 
 class CTeleLogger : public CTeleClient
@@ -417,7 +461,7 @@ public:
 
           Serial.print("#3G(APN:");
           Serial.print(APN);
-          Serial.print(")...");
+          Serial.print(")");
           if (netSetup(APN)) {
             char *op = getOperatorName();
             Serial.println(op ? op : "OK");
@@ -437,12 +481,19 @@ public:
           }
 
           Serial.print("#UDP...");
-          Serial.println(udpInit() ? "OK" : "NO");
+          Serial.println(udpOpen() ? "OK" : "NO");
+
+          Serial.print("#CSQ...");
+          int csq = getSignal();
+          Serial.println(csq);
 
           if (!regDataFeed()) {
             standby();
             continue;
           }
+
+          // log signal level
+          logData(PID_CSQ, csq);
 
   #if USE_MPU6050 || USE_MPU9250
           calibrateMEMS(CALIBRATION_TIME);
@@ -452,16 +503,11 @@ public:
     }
     void loop()
     {
-        uint32_t ts = millis();
-        logTimestamp(ts);
+        logTimestamp(millis());
 
+        // process OBD data if connected
         if (state & STATE_OBD_READY) {
           processOBD();
-        }
-
-        if ((connCount % 100) == 0) {
-          int csq = getSignal();
-          logData(PID_CSQ, csq);
         }
 
 #if CACHE_SIZE > 128
@@ -471,13 +517,12 @@ public:
         }
 #endif
 #endif
-
-        if (state & STATE_GPS_READY) {
 #if USE_GPS
+        // process GPS data if connected
+        if (state & STATE_GPS_READY) {
           processGPS();
-#endif
         }
-
+#endif
 #if CACHE_SIZE > 128
         // read and log car battery voltage , data in 0.01v
         {
@@ -516,8 +561,8 @@ public:
         }
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
-        Serial.println("Standby");
         enterLowPowerMode();
+        Serial.println("Standby");
 #if USE_MPU6050 || USE_MPU9250
         calibrateMEMS(3000);
         if (state & STATE_MEMS_READY) {
@@ -594,6 +639,8 @@ private:
 #endif
     void processGPS()
     {
+        static uint16_t lastUTC = 0;
+        static uint8_t lastGPSDay = 0;
         GPS_DATA gd = {0};
         // read parsed GPS data
         if (getGPSData(&gd)) {
@@ -673,11 +720,9 @@ void setup()
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
     Serial.println("Freematics ONE");
-    delay(1000);
-    byte ver = logger.begin();
-    Serial.print("Version ");
-    Serial.println(ver);
+    delay(500);
     // perform initializations
+    logger.begin();
     logger.setup();
 }
 
@@ -694,13 +739,17 @@ void loop()
         logger.standby();
         logger.setup();
     }
-
+   
+#if DATASET_INTERVAL
     uint32_t t = millis();
+#endif
     // collect data
     logger.loop();
     // transmit data
-    logger.transmitUDP();
+    logger.transmitUDP(false);
+#if DATASET_INTERVAL
     // wait to reach preset data rate
     unsigned int elapsed = millis() - t;
     if (elapsed < DATASET_INTERVAL) logger.sleep(DATASET_INTERVAL - elapsed);
+#endif
 }
