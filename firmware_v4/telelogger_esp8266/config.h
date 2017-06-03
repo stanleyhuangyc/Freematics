@@ -4,8 +4,8 @@
 /**************************************
 * Data logging settings
 **************************************/
-#define ENABLE_DATA_CACHE 1
 #define CACHE_SIZE 128 /* bytes */
+#define DATASET_INTERVAL 0 /* ms */
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
@@ -21,12 +21,12 @@
 // change YOUR_SERVER_KEY to your server key
 #define SERVER_KEY "TEST_SERVER_KEY"
 #define SERVER_URL "hub.freematics.com"
-#define SERVER_PORT 80
+#define SERVER_PORT 8081
 
-// maximum consecutive errors before performing a reconnection
-#define MAX_ERRORS_RECONNECT 3
-// maximum consecutive errors before performing a module reset
-#define MAX_ERRORS_RESET 6
+// maximum consecutive OBD-II access errors before entering standby
+#define MAX_OBD_ERRORS 10
+// maximum consecutive communication errors before entering standby
+#define MAX_CONN_ERRORS 10
 // maximum allowed connecting time
 #define MAX_CONN_TIME 5000 /* ms */
 // maximum consecutive HTTP requests on a TCP connection (keep-alive)
