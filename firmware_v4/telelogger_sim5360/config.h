@@ -4,8 +4,7 @@
 /**************************************
 * Data logging/streaming out
 **************************************/
-#define ENABLE_DATA_CACHE 1
-#define CACHE_SIZE 192 /* bytes */
+#define CACHE_SIZE 160 /* bytes */
 #define DATASET_INTERVAL 1000 /* ms */
 #define ENABLE_DATA_OUT 0
 
@@ -45,7 +44,7 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 100 /* for wakeup on movement */
+#define WAKEUP_MOTION_THRESHOLD 50 /* for wakeup on movement */
 #define CALIBRATION_TIME 1000 /* ms */
 
 /**************************************
