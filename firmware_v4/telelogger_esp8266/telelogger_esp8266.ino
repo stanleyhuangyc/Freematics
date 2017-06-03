@@ -1,5 +1,5 @@
 /******************************************************************************
-* Reference sketch for a vehicle data feed for Freematics Hub
+* Reference sketch for a vehicle telematics data feed for Freematics Hub
 * Works with Freematics ONE with ESP8266 WIFI module
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 * Distributed under BSD license
@@ -30,11 +30,12 @@
 #define STATE_MEMS_READY 0x8
 #define STATE_NET_READY 0x10
 
-uint32_t nextConnTime = 0;
+#if USE_MPU6050 || USE_MPU9250
 byte accCount = 0; // count of accelerometer readings
 long accSum[3] = {0}; // sum of accelerometer data
 int accCal[3] = {0}; // calibrated reference accelerometer data
 byte deviceTemp = 0; // device temperature
+#endif
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
@@ -183,7 +184,7 @@ public:
         return false;
       }
     }
-    char buffer[192];
+    char buffer[128];
 };
 
 class CTeleClient : public COBDWIFI, public CDataLogger
@@ -233,10 +234,12 @@ public:
       strcpy(vin, "DEFAULT_VIN");
     }
 
-    Serial.print("#DTC:");
     uint16_t dtc[6];
     byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-    Serial.println(dtcCount);
+    if (dtcCount > 0) {
+      Serial.print("#DTC:");
+      Serial.println(dtcCount);
+    }
 
     connErrors = 0;
     connCount = 0;
@@ -336,9 +339,6 @@ public:
     CTeleLogger():state(0) {}
     void setup()
     {
-        // this will init SPI communication
-        begin();
- 
 #if USE_MPU6050 || USE_MPU9250
         // start I2C communication 
         Wire.begin();
@@ -435,27 +435,31 @@ public:
           processGPS();
         }
 #endif
-
-        // read and log car battery voltage
-        int v = getVoltage() * 100;
-        logData(PID_BATTERY_VOLTAGE, v);
+#if CACHE_SIZE > 128
+        // read and log car battery voltage , data in 0.01v
+        {
+          int v = getVoltage() * 100;
+          logData(PID_BATTERY_VOLTAGE, v);
+        }
+#endif
 
 #if USE_MPU6050 || USE_MPU9250
         if ((connCount % 100) == 1) {
           logData(PID_DEVICE_TEMP, deviceTemp);
         }
         if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
-          // device too hot, slow down communication a bit
+          // device too hot, cool down
           Serial.print("Cooling (");
           Serial.print(deviceTemp);
           Serial.println("C)");
-          sleep(5000);
+          sleep(10000);
         }
 #endif
     }
     void standby()
     {
         if (state & STATE_NET_READY) {
+          state &= ~STATE_NET_READY;
           deregDataFeed();
           udpClose();
           netDisconnect(); // disconnect from AP
@@ -565,20 +569,12 @@ private:
               logData(PID_GPS_SPEED, gd.speed);
               logData(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
+              Serial.print("UTC:");
+              Serial.print(gd.time);
+              Serial.print(" SAT:");
+              Serial.println(gd.sat);
             }
-            //Serial.print("#UTC:"); 
-            //Serial.println(gd.time);
-        } else {
-          Serial.println("No GPS data");
         }
-    }
-    void reconnect()
-    {
-        // try to re-connect to OBD
-        if (init()) return;
-        sleep(1000);
-        if (init()) return;
-        standby();
     }
     void calibrateMEMS(unsigned int duration)
     {
@@ -635,6 +631,7 @@ void setup()
     Serial.println("Freematics ONE");
     delay(500);
     // perform initializations
+    logger.begin();
     logger.setup();
 }
 
