@@ -58,7 +58,7 @@ public:
       // set xBee module serial baudrate
       bool success = false;
       // test the module by issuing AT command and confirming response of "OK"
-      for (byte n = 0; !(success = netSendCommand("ATE0\n")) && n < 10; n++) {
+      for (byte n = 0; !(success = netSendCommand("ATE0\r\n")) && n < 10; n++) {
         sleep(100);
       }
       if (success) {
@@ -74,10 +74,10 @@ public:
     {
       // generate and send AT command for joining AP
       sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
-      byte ret = netSendCommand(buffer, 10000, "OK");
+      byte ret = netSendCommand(buffer, 10000);
       if (ret == 1) {
         // get IP address
-        if (netSendCommand("AT+CIFSR\r\n", 1000, "OK") && !strstr(buffer, "0.0.0.0")) {
+        if (netSendCommand("AT+CIFSR\r\n", 5000) && !strstr(buffer, "0.0.0.0")) {
           char *p = strchr(buffer, '\r');
           if (p) *p = 0;
           Serial.println(buffer);
@@ -104,21 +104,24 @@ public:
         Serial.print(' ');
         strncpy(udpIP, ip, sizeof(udpIP) - 1);
       }
-      sprintf_P(buffer, PSTR("AT+CIPSTART=\"UDP\",\"%s\",%d,8000,0\r\n"), udpIP, udpPort);
-      if (netSendCommand(buffer, 3000)) {
-        return true;
-      } else {
-        // check if already connected
-        if (strstr(buffer, "CONN")) return true;
-        return false;
+      for (byte n = 0; n < 3; n++) {
+        sprintf_P(buffer, PSTR("AT+CIPSTART=\"UDP\",\"%s\",%d,8000,0\r\n"), udpIP, udpPort);
+        if (netSendCommand(buffer, 3000)) {
+          return true;
+        } else {
+          // check if already connected
+          if (strstr(buffer, "CONN")) return true;
+        }
       }
+      return false;
     }
-    bool udpSend(const char* data, unsigned int len)
+    bool udpSend(const char* data, unsigned int len, bool wait = true)
     {
       sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), len);
       if (netSendCommand(buffer, 100, ">")) {
         xbWrite(data, len);
-        return netSendCommand(0, 1000);
+        if (!wait) return true;
+        return waitCompletion(1000);
       } else {
         Serial.print("UDP error:");
         Serial.println(buffer);
@@ -141,6 +144,10 @@ public:
       }
       return 0;
     }
+    bool waitCompletion(int timeout)
+    {
+      return netSendCommand(0, timeout);
+    }
     char* queryIP(const char* host)
     {
       sprintf_P(buffer, PSTR("AT+CIPDOMAIN=\"%s\"\r\n"), host);
@@ -158,11 +165,12 @@ public:
       }
       return 0;
     }
-    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK\r\n", bool terminated = false)
+    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK", bool terminated = false)
     {
       if (cmd) {
         xbWrite(cmd);
       }
+      sleep(50);
       buffer[0] = 0;
       byte ret = xbReceive(buffer, sizeof(buffer), timeout, expected);
       if (ret) {
@@ -194,7 +202,7 @@ public:
       Serial.print("Dereg...");
       // send request
       cacheBytes = sprintf_P(cache, PSTR("%u#OFFLINE"), feedid);
-      transmitUDP();
+      transmitUDP(true);
       // receive reply
       int len;
       char *data = udpReceive(&len);
@@ -232,11 +240,13 @@ public:
 
     connErrors = 0;
     connCount = 0;
+    waiting = false;
 
     for (byte n = 0; n < 5; n++) {
       Serial.println("Registering...");
+      startTick = millis();
       // send request
-      cacheBytes = sprintf_P(cache, PSTR("0#SK=%s,VIN=%s"), SERVER_KEY, vin);
+      cacheBytes = sprintf_P(cache, PSTR("0#SK=%s,VIN=%s,T=%lu"), SERVER_KEY, vin, startTick);
       if (dtcCount > 0) {
         cacheBytes += sprintf_P(cache + cacheBytes, PSTR(",DTC="), dtcCount);
         for (byte i = 0; i < dtcCount; i++) {
@@ -244,7 +254,7 @@ public:
         }
         cacheBytes--;
       }
-      transmitUDP();
+      transmitUDP(true);
       // receive reply
       int len;
       char *data = udpReceive(&len);
@@ -258,13 +268,13 @@ public:
         continue;
       }
       feedid = atoi(data);
-      Serial.print("#ID:");
+      Serial.print("#FEED ID:");
       Serial.println(feedid);
       return true;
     }
     return false;
   }
-  void transmitUDP()
+  void transmitUDP(bool wait)
   {
     // add checksum
     byte sum = 0;
@@ -272,24 +282,47 @@ public:
       cacheBytes--; // last delimiter unneeded
     for (unsigned int i = 0; i < cacheBytes; i++) sum += cache[i];
     cacheBytes += sprintf_P(cache + cacheBytes, PSTR("*%X"), sum);
-    // transmit data
-    Serial.println(cache);
-    Serial.print(connCount);
+    if (waiting) {
+      // wait for last data to be sent
+      if (!waitCompletion(100)) {
+        connErrors++;
+        Serial.println(buffer);
+      } else {
+        connErrors = 0;
+        connCount++;
+      }
+      waiting = false;
+    }
+    
+    // show stats
+    //Serial.println(cache); // output transmitted data
     Serial.print('#');
+    Serial.print(connCount);
+    Serial.print(' ');
     Serial.print(cacheBytes);
-    Serial.println('B');
-    if (!udpSend(cache, cacheBytes)) {
+    Serial.print(" bytes sent (");
+    Serial.print((millis() - startTick) / (connCount + 1));
+    Serial.println("ms)");
+    
+    // transmit data
+    if (!udpSend(cache, cacheBytes, wait)) {
       connErrors++;
     } else {
-      connErrors = 0;
-      connCount++;
+      if (!wait) {
+        waiting = true;
+      } else {
+        connErrors = 0;
+        connCount++;
+      }
     }
     // clear cache and write header for next transmission
     cacheBytes = sprintf_P(cache, PSTR("%u#"), feedid);
   }
   uint16_t feedid;
-  uint16_t connCount;
+  uint32_t startTick;
+  uint32_t connCount;
   uint8_t connErrors;
+  bool waiting;
 };
 
 class CTeleLogger : public CTeleClient
@@ -356,7 +389,7 @@ public:
               standby();
               continue;
             }
-            sleep(100);
+            
             Serial.print("#WIFI(SSID:");
             Serial.print(WIFI_SSID);
             Serial.print(")...");
@@ -379,7 +412,6 @@ public:
         }
 
         Serial.println();
-        sleep(1000);
     }
     void loop()
     {
@@ -408,6 +440,10 @@ public:
         int v = getVoltage() * 100;
         logData(PID_BATTERY_VOLTAGE, v);
 
+#if USE_MPU6050 || USE_MPU9250
+        if ((connCount % 100) == 1) {
+          logData(PID_DEVICE_TEMP, deviceTemp);
+        }
         if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
           // device too hot, slow down communication a bit
           Serial.print("Cooling (");
@@ -415,6 +451,7 @@ public:
           Serial.println("C)");
           sleep(5000);
         }
+#endif
     }
     void standby()
     {
@@ -449,7 +486,6 @@ public:
             Serial.println(motion);
             // check movement
             if (motion > WAKEUP_MOTION_THRESHOLD) {
-              // try OBD reading
               leaveLowPowerMode();
               break;
             }
@@ -622,7 +658,7 @@ void loop()
     // collect data
     logger.loop();
     // transmit data
-    logger.transmitUDP();
+    logger.transmitUDP(false);
 #if DATASET_INTERVAL
     // wait to reach preset data rate
     unsigned int elapsed = millis() - t;
