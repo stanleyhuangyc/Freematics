@@ -16,8 +16,8 @@
 
 #define XBEE_BAUDRATE 9600
 // change SSID and PASSWORD to your own
-#define WIFI_SSID "HOMEWIFI"
-#define WIFI_PASSWORD "862150909018"
+#define WIFI_SSID "SSID"
+#define WIFI_PASSWORD "PASSWORD"
 // change YOUR_SERVER_KEY to your server key
 #define SERVER_KEY "TEST_SERVER_KEY"
 #define SERVER_URL "hub.freematics.com"
