@@ -154,6 +154,7 @@ public:
     void waitGPS()
     {
         int elapsed = 0;
+        GPS_DATA gd = {0};
         for (uint32_t t = millis(); millis() - t < 300000;) {
           int t1 = (millis() - t) / 1000;
           if (t1 != elapsed) {
@@ -162,14 +163,11 @@ public:
             Serial.println(")");
             elapsed = t1;
           }
-          if (decodeGPSData()) {
-            GPS_DATA gd = {0};
-            // read parsed GPS data
-            if (getGPSData(&gd) && gd.sat != 0 && gd.sat != 255) {
-              Serial.print("SAT:");
-              Serial.println(gd.sat);
-              break;
-            }
+          // read parsed GPS data
+          if (getGPSData(&gd) && gd.sat != 0 && gd.sat != 255) {
+            Serial.print("SAT:");
+            Serial.println(gd.sat);
+            break;
           }
         }
     }
