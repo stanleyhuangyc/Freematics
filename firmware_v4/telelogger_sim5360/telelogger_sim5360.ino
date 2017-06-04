@@ -29,7 +29,11 @@
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
 #define STATE_NET_READY 0x10
-#define STATE_CONNECTED 0x40
+#define STATE_CONNECTED 0x20
+#define STATE_ALL_GOOD 0x40
+
+#define EVENT_LOGIN 0
+#define EVENT_LOGOUT 1
 
 #if USE_MPU6050 || USE_MPU9250
 byte accCount = 0; // count of accelerometer readings
@@ -160,7 +164,15 @@ public:
     }
     bool udpOpen()
     {
-      return netSendCommand("AT+CIPOPEN=0,\"UDP\",,,8000\r", 3000);
+      char *ip = queryIP(SERVER_URL);
+      if (ip) {
+        Serial.println(ip);
+        strncpy(udpIP, ip, sizeof(udpIP) - 1);
+      } else {
+        return false;
+      }
+      sprintf_P(buffer, PSTR("AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r"), udpIP, udpPort);
+      return netSendCommand(buffer, 3000);
     }
     void udpClose()
     {
@@ -239,6 +251,7 @@ public:
 class CTeleClient : public COBD3G, public CDataLogger
 {
 public:
+  CTeleClient():connErrors(0) {}
   bool verifyChecksum(const char* data)
   {
     uint8_t sum = 0;
@@ -246,87 +259,61 @@ public:
     for (s = data; *s && *s != '*'; s++) sum += *s;
     return (*s && hex2uint8(s + 1) == sum);
   }
-  bool deregDataFeed()
+  bool notify(byte event)
   {
-    for (byte n = 0; n < 3; n++) {
-      Serial.print("Dereg...");
-      // send request
-      cacheBytes = sprintf_P(cache, PSTR("%u#OFFLINE"), feedid);
-      transmitUDP(true);
-      // receive reply
-      int len;
-      char *data = udpReceive(&len);
-      if (!data) {
-        Serial.println("failed");
-        continue;
-      }
-      // verify checksum
-      if (!verifyChecksum(data)) {
-        Serial.println("checksum mismatch");
-        continue;
-      }
-      return true;
-    }
-    return false;
-  }
-  bool regDataFeed()
-  {
-    // retrieve VIN
-    char vin[20] = {0};
-    // retrieve VIN
-    if (getVIN(buffer, sizeof(buffer))) {
-      strncpy(vin, buffer, sizeof(vin) - 1);
-      Serial.print("#VIN:");
-      Serial.println(vin);
-    } else {
-      strcpy(vin, "DEFAULT_VIN");
-    }
-
-    uint16_t dtc[6];
-    byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-    if (dtcCount > 0) {
-      Serial.print("#DTC:");
-      Serial.println(dtcCount);
-    }
-
     connErrors = 0;
     connCount = 0;
     waiting = false;
 
-    Serial.print("#SERVER:");
-    char *ip = queryIP(SERVER_URL);
-    if (!ip) return false;
-    Serial.println(ip);
-    strncpy(udpIP, ip, sizeof(udpIP) - 1);
+    uint16_t dtc[6];
+    byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
 
+    startTick = millis();
     for (byte n = 0; n < 5; n++) {
-      Serial.println("Registering...");
-      startTick = millis();
-      // send request
-      cacheBytes = sprintf_P(cache, PSTR("0#SK=%s,VIN=%s,T=%lu"), SERVER_KEY, vin, startTick);
-      if (dtcCount > 0) {
-        cacheBytes += sprintf_P(cache + cacheBytes, PSTR(",DTC="), dtcCount);
-        for (byte i = 0; i < dtcCount; i++) {
-          cacheBytes += sprintf_P(cache + cacheBytes, PSTR("%X;"), dtc[i]);
+      // generate request
+      if (event == EVENT_LOGIN) {
+        feedid = 0;
+        cacheBytes = sprintf_P(cache, PSTR("0#E=LOGIN,SK=%s,T=%lu"), SERVER_KEY, startTick);
+        // load DTC
+        if (dtcCount > 0) {
+          Serial.print("#DTC:");
+          Serial.println(dtcCount);
+          cacheBytes += sprintf_P(cache + cacheBytes, PSTR(",DTC="), dtcCount);
+          for (byte i = 0; i < dtcCount; i++) {
+            cacheBytes += sprintf_P(cache + cacheBytes, PSTR("%X;"), dtc[i]);
+          }
+          cacheBytes--;
         }
-        cacheBytes--;
+        // load VIN
+        cacheBytes += sprintf_P(cache + cacheBytes, PSTR(",VIN="));
+        if (getVIN(cache + cacheBytes, CACHE_SIZE - cacheBytes)) {
+          Serial.print("#VIN:");
+          Serial.println(cache + cacheBytes);
+          cacheBytes += strlen(cache + cacheBytes);
+        } else {
+          cacheBytes += sprintf_P(cache + cacheBytes, PSTR("DEFAULT_VIN"));
+        }
+      } else {
+        cacheBytes = sprintf_P(cache, PSTR("%u#E=LOGOUT,SK=%s"), feedid, SERVER_KEY);
       }
       transmitUDP(true);
       // receive reply
       int len;
       char *data = udpReceive(&len);
       if (!data) {
-        Serial.println("failed");
+        Serial.println("No server reply");
         continue;
       }
       // verify checksum
       if (!verifyChecksum(data)) {
-        Serial.println("checksum mismatch");
+        Serial.println("Checksum mismatch");
         continue;
       }
-      feedid = atoi(data);
-      Serial.print("#FEED ID:");
-      Serial.println(feedid);
+      if (event == EVENT_LOGIN) {
+        feedid = atoi(data);
+        Serial.print("#FEED ID:");
+        Serial.println(feedid);
+      }
       return true;
     }
     return false;
@@ -356,9 +343,9 @@ public:
     Serial.print(connCount);
     Serial.print(' ');
     Serial.print(cacheBytes);
-    Serial.print(" bytes sent (");
+    Serial.print(" bytes ");
     Serial.print((millis() - startTick) / (connCount + 1));
-    Serial.println("ms)");
+    Serial.println("ms");
     
     // transmit data
     if (!udpSend(cache, cacheBytes, wait)) {
@@ -389,212 +376,217 @@ class CTeleLogger : public CTeleClient
 #endif
 {
 public:
-    CTeleLogger():state(0) {}
-    void setup()
-    {
+  CTeleLogger():m_state(0) {}
+  bool setup()
+  {
+    clearState(STATE_ALL_GOOD);
 #if USE_MPU6050 || USE_MPU9250
-        if (!(state & STATE_MEMS_READY)) {
-          // start I2C communication
-          Wire.begin();
-          Serial.print("#MEMS...");
-          if (memsInit()) {
-            state |= STATE_MEMS_READY;
-            Serial.println("OK");
-          } else {
-            Serial.println("NO");
-          }
-        }
-#endif
-        delay(1000);
-
-        for (;;) {
-          // initialize OBD communication
-          Serial.print("#OBD...");
-          if (!init()) {
-            Serial.println("NO");
-            standby();
-            continue;
-          }
-          Serial.println("OK");
-          state |= STATE_OBD_READY;
-
-#if USE_GPS
-          // start serial communication with GPS receive
-          Serial.print("#GPS...");
-          if (initGPS(GPS_SERIAL_BAUDRATE)) {
-            state |= STATE_GPS_READY;
-#ifdef ESP32
-            Serial.print("OK(");
-            Serial.print(internalGPS() ? "internal" : "external");
-            Serial.println(')');
-#else
-            Serial.println("OK");
-#endif
-          } else {
-            Serial.println("NO");
-          }
-#endif
-
-          // initialize SIM5360 xBee module (if present)
-          Serial.print("#SIM5360...");
-          xbBegin(XBEE_BAUDRATE);
-          if (netInit()) {
-            Serial.println("OK");
-            state |= STATE_NET_READY;
-          } else {
-            Serial.println("NO");
-            standby();
-            continue;
-          }
-
-          Serial.print("#3G(APN:");
-          Serial.print(APN);
-          Serial.print(")");
-          if (netSetup(APN)) {
-            char *op = getOperatorName();
-            Serial.println(op ? op : "OK");
-            state |= STATE_CONNECTED;
-          } else {
-            Serial.println("NO");
-            standby();
-            continue;
-          }
-
-          Serial.print("#IP...");
-          const char *ip = getIP();
-          if (ip) {
-            Serial.print(ip);
-          } else {
-            Serial.println("NO");
-          }
-
-          Serial.print("#UDP...");
-          Serial.println(udpOpen() ? "OK" : "NO");
-
-          Serial.print("#CSQ...");
-          int csq = getSignal();
-          Serial.println(csq);
-
-          if (!regDataFeed()) {
-            standby();
-            continue;
-          }
-
-          // log signal level
-          logData(PID_CSQ, csq);
-
-  #if USE_MPU6050 || USE_MPU9250
-          calibrateMEMS(CALIBRATION_TIME);
-  #endif
-          break;
-        }
+    if (!checkState(STATE_MEMS_READY)) {
+      Serial.print("#MEMS...");
+      if (memsInit()) {
+        setState(STATE_MEMS_READY);
+        Serial.println("OK");
+      } else {
+        Serial.println("NO");
+      }
     }
-    void loop()
-    {
-        logTimestamp(millis());
+#endif
+    // initialize OBD communication
+    if (!checkState(STATE_OBD_READY)) {
+      Serial.print("#OBD...");
+      if (!init()) {
+        Serial.println("NO");
+        return false;
+      }
+      Serial.println("OK");
+      setState(STATE_OBD_READY);
+    }
 
-        // process OBD data if connected
-        if (state & STATE_OBD_READY) {
-          processOBD();
-        }
+#if USE_GPS
+    // start serial communication with GPS receiver
+    if (!checkState(STATE_GPS_READY)) {
+      Serial.print("#GPS...");
+      if (initGPS(GPS_SERIAL_BAUDRATE)) {
+        setState(STATE_GPS_READY);
+#ifdef ESP32
+        Serial.print("OK(");
+        Serial.print(internalGPS() ? "internal" : "external");
+        Serial.println(')');
+#else
+        Serial.println("OK");
+#endif
+      } else {
+        Serial.println("NO");
+      }
+    }
+#endif
+
+    if (!checkState(STATE_NET_READY)) {
+      // initialize SIM5360 xBee module (if present)
+      Serial.print("#SIM5360...");
+      xbBegin(XBEE_BAUDRATE);
+      if (netInit()) {
+        Serial.println("OK");
+        setState(STATE_NET_READY);
+      } else {
+        Serial.println("NO");
+        return false;
+      }
+      // connect to cellular network
+      Serial.print("#3G(APN:");
+      Serial.print(APN);
+      Serial.print(")");
+      if (netSetup(APN)) {
+        char *op = getOperatorName();
+        Serial.println(op ? op : "OK");
+        setState(STATE_CONNECTED);
+      } else {
+        Serial.println("NO");
+        return false;
+      }
+
+      Serial.print("#IP...");
+      const char *ip = getIP();
+      if (ip) {
+        Serial.print(ip);
+      } else {
+        Serial.println("NO");
+      }
+    }
+
+    Serial.print("#SERVER...");
+    if (!udpOpen()) {
+      Serial.println("NO");
+      return false;
+    }
+
+    Serial.print("#CSQ...");
+    int csq = getSignal();
+    Serial.println(csq);
+
+    // login Freematics Hub
+    if (!notify(EVENT_LOGIN)) {
+      return false;
+    }
+
+    // log signal level
+    logData(PID_CSQ, csq);
 
 #if USE_MPU6050 || USE_MPU9250
-        // process MEMS data if available
-        if (state & STATE_MEMS_READY) {
-            processMEMS();
-        }
+    calibrateMEMS(CALIBRATION_TIME);
+#endif
+    setState(STATE_ALL_GOOD);
+    return true;
+  }
+  void loop()
+  {
+    logTimestamp(millis());
+
+    // process OBD data if connected
+    if (checkState(STATE_OBD_READY)) {
+      processOBD();
+    }
+
+#if USE_MPU6050 || USE_MPU9250
+    // process MEMS data if available
+    if (checkState(STATE_MEMS_READY)) {
+        processMEMS();
+    }
 #endif
 
 #if USE_GPS
-        // process GPS data if connected
-        if (state & STATE_GPS_READY) {
-          processGPS();
-        }
+    // process GPS data if connected
+    if (checkState(STATE_GPS_READY)) {
+      processGPS();
+    }
 #endif
 #if CACHE_SIZE > 128
-        // read and log car battery voltage , data in 0.01v
-        {
-          int v = getVoltage() * 100;
-          logData(PID_BATTERY_VOLTAGE, v);
-        }
+    // read and log car battery voltage , data in 0.01v
+    {
+      int v = getVoltage() * 100;
+      logData(PID_BATTERY_VOLTAGE, v);
+    }
 #endif
 
 #if USE_MPU6050 || USE_MPU9250
-        if ((connCount % 100) == 1) {
-          logData(PID_DEVICE_TEMP, deviceTemp);
-        }
-        if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
-          // device too hot, cool down
-          Serial.print("Cooling (");
-          Serial.print(deviceTemp);
-          Serial.println("C)");
-          sleep(10000);
-        }
-#endif
+    if ((connCount % 100) == 1) {
+      logData(PID_DEVICE_TEMP, deviceTemp);
     }
-    void standby()
-    {
-        if (state & STATE_NET_READY) {
-          state &= ~STATE_NET_READY;
-          deregDataFeed();
-          udpClose();
-          Serial.print("#3G:");
-          xbTogglePower(); // turn off GSM power
-          Serial.println("OFF");
-        }
+    if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
+      // device too hot, cool down
+      Serial.print("Cooling (");
+      Serial.print(deviceTemp);
+      Serial.println("C)");
+      sleep(10000);
+    }
+#endif
+  }
+  void standby()
+  {
+      if (checkState(STATE_NET_READY)) {
+        clearState(STATE_NET_READY);
+        notify(EVENT_LOGOUT);
+        udpClose();
+        Serial.print("#3G:");
+        xbTogglePower(); // turn off GSM power
+        Serial.println("OFF");
+      }
 #if USE_GPS
-        if (state & STATE_GPS_READY) {
-          Serial.print("#GPS:");
-          initGPS(0); // turn off GPS power
-          Serial.println("OFF");
-        }
+      if (checkState(STATE_GPS_READY)) {
+        Serial.print("#GPS:");
+        initGPS(0); // turn off GPS power
+        Serial.println("OFF");
+      }
 #endif
-        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
-        Serial.println("Standby");
+      clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
+      Serial.println("Standby");
 #if USE_MPU6050 || USE_MPU9250
-        calibrateMEMS(3000);
-        if (state & STATE_MEMS_READY) {
-          enterLowPowerMode();
-          for (;;) {
-            // calculate relative movement
-            unsigned long motion = 0;
-            for (byte i = 0; i < 3; i++) {
-              long n = accSum[i] / accCount - accCal[i];
-              motion += n * n;
-            }
-            motion /= 100;
-            Serial.println(motion);
-            // check movement
-            if (motion > WAKEUP_MOTION_THRESHOLD) {
-              leaveLowPowerMode();
-              break;
-            }
-            // MEMS data collected while sleeping
-            sleep(3000);
+      calibrateMEMS(3000);
+      if (checkState(STATE_MEMS_READY)) {
+        enterLowPowerMode();
+        for (;;) {
+          // calculate relative movement
+          unsigned long motion = 0;
+          for (byte i = 0; i < 3; i++) {
+            long n = accSum[i] / accCount - accCal[i];
+            motion += n * n;
           }
+          motion /= 100;
+          Serial.println(motion);
+          // check movement
+          if (motion > WAKEUP_MOTION_THRESHOLD) {
+            leaveLowPowerMode();
+            break;
+          }
+          // MEMS data collected while sleeping
+          sleep(3000);
         }
+      }
 #else
-        do {
-          enterLowPowerMode();
-          sleepSec(10);
-          leaveLowPowerMode();
-        } while (!init());
+      do {
+        enterLowPowerMode();
+        sleepSec(10);
+        leaveLowPowerMode();
+      } while (!init());
 #endif
-        Serial.println("Wakeup");
-    }
+      Serial.println("Wakeup");
+  }
+  bool checkState(byte flags) { return (m_state & flags) == flags; }
+  void setState(byte flags) { m_state |= flags; }
+  void clearState(byte flags) { m_state &= ~flags; }
 private:
-    void processOBD()
-    {
-        int speed = readSpeed();
-        if (speed == -1) {
-          return;
-        }
-        logData(0x100 | PID_SPEED, speed);
-        logData(PID_TRIP_DISTANCE, distance);
-        // poll more PIDs
-        byte pids[]= {0, PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
-        const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
-        static byte index2 = 0;
+  void processOBD()
+  {
+      int speed = readSpeed();
+      if (speed == -1) {
+        return;
+      }
+      logData(0x100 | PID_SPEED, speed);
+      logData(PID_TRIP_DISTANCE, distance);
+      // poll more PIDs
+      byte pids[]= {0, PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
+      const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
+      static byte index2 = 0;
         int values[sizeof(pids)] = {0};
         // read multiple OBD-II PIDs, tier2 PIDs are less frequently read
         pids[0] = pidTier2[index2 = (index2 + 1) % sizeof(pidTier2)];
@@ -666,7 +658,7 @@ private:
           sleep(duration);
         }
         // store accelerometer reference data
-        if ((state & STATE_MEMS_READY) && accCount) {
+        if (checkState(STATE_MEMS_READY) && accCount) {
           accCal[0] = accSum[0] / accCount;
           accCal[1] = accSum[1] / accCount;
           accCal[2] = accSum[2] / accCount;
@@ -695,12 +687,12 @@ private:
     {
       // do tasks while waiting for data on SPI
 #if USE_MPU6050 || USE_MPU9250
-      if (state & STATE_MEMS_READY) {
+      if (checkState(STATE_MEMS_READY)) {
         readMEMS();
       }
 #endif
     }
-    byte state;
+    byte m_state;
 };
 
 CTeleLogger logger;
@@ -710,26 +702,23 @@ void setup()
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
     Serial.println("Freematics ONE");
-    delay(500);
+ #if USE_MPU6050 || USE_MPU9250
+    Wire.begin();
+#endif
     // perform initializations
     logger.begin();
+    delay(1000);
     logger.setup();
 }
 
 void loop()
 {
     // error handling
-    if (logger.errors > MAX_OBD_ERRORS) {
-        // try to re-connect to OBD
-        if (logger.init()) return;
+    if (!logger.checkState(STATE_ALL_GOOD) || (logger.errors > MAX_OBD_ERRORS && !logger.init()) || logger.connErrors >= MAX_CONN_ERRORS) {
+      do {
         logger.standby();
-        logger.setup();
+      } while (!logger.setup());
     }
-    if (logger.connErrors >= MAX_CONN_ERRORS) {
-        logger.standby();
-        logger.setup();
-    }
-   
 #if DATASET_INTERVAL
     uint32_t t = millis();
 #endif
