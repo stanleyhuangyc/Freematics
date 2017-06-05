@@ -32,8 +32,8 @@
 #define STATE_CONNECTED 0x20
 #define STATE_ALL_GOOD 0x40
 
-#define EVENT_LOGIN 0
-#define EVENT_LOGOUT 1
+#define EVENT_LOGIN 1
+#define EVENT_LOGOUT 2
 
 #if USE_MPU6050 || USE_MPU9250
 byte accCount = 0; // count of accelerometer readings
@@ -186,7 +186,7 @@ public:
         if (!wait) return true;
         return waitCompletion(1000);
       } else {
-        Serial.print("UDP error:");
+        Serial.print("UDP data unsent ");
         Serial.println(buffer);
       }
       return false;
@@ -251,7 +251,7 @@ public:
 class CTeleClient : public COBD3G, public CDataLogger
 {
 public:
-  CTeleClient():connErrors(0) {}
+  CTeleClient():connErrors(0),txCount(0),feedid(0) {}
   bool verifyChecksum(const char* data)
   {
     uint8_t sum = 0;
@@ -259,22 +259,16 @@ public:
     for (s = data; *s && *s != '*'; s++) sum += *s;
     return (*s && hex2uint8(s + 1) == sum);
   }
-  bool notify(byte event)
+  bool notifyUDP(byte event)
   {
-    connErrors = 0;
-    connCount = 0;
     waiting = false;
-
-    uint16_t dtc[6];
-    byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-
-    startTick = millis();
-    for (byte n = 0; n < 5; n++) {
+    for (byte attempts = 0; attempts < 3; attempts++) {
       // generate request
+      setEvent(event);
       if (event == EVENT_LOGIN) {
-        feedid = 0;
-        cacheBytes = sprintf_P(cache, PSTR("0#E=LOGIN,SK=%s,T=%lu"), SERVER_KEY, startTick);
         // load DTC
+        uint16_t dtc[6];
+        byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
         if (dtcCount > 0) {
           Serial.print("#DTC:");
           Serial.println(dtcCount);
@@ -293,20 +287,25 @@ public:
         } else {
           cacheBytes += sprintf_P(cache + cacheBytes, PSTR("DEFAULT_VIN"));
         }
-      } else {
-        cacheBytes = sprintf_P(cache, PSTR("%u#E=LOGOUT,SK=%s"), feedid, SERVER_KEY);
       }
       transmitUDP(true);
       // receive reply
       int len;
       char *data = udpReceive(&len);
       if (!data) {
-        Serial.println("No server reply");
+        Serial.println("No reply");
         continue;
       }
+      connErrors = 0;
       // verify checksum
       if (!verifyChecksum(data)) {
-        Serial.println("Checksum mismatch");
+        Serial.println("Wrong checksum");
+        continue;
+      }
+      char pattern[16];
+      sprintf_P(pattern, PSTR("EV=%u"), event);
+      if (!strstr(data, pattern)) {
+        Serial.println("Invalid reply");
         continue;
       }
       if (event == EVENT_LOGIN) {
@@ -326,27 +325,13 @@ public:
       if (!waitCompletion(100)) {
         connErrors++;
         Serial.println(buffer);
-        if (connErrors >= 3) {
-          udpClose();
-          udpOpen();
-        }
       } else {
         connErrors = 0;
-        connCount++;
+        txCount++;
       }
       waiting = false;
     }
-    
-    // show stats
-    //Serial.println(cache); // output transmitted data
-    Serial.print('#');
-    Serial.print(connCount);
-    Serial.print(' ');
-    Serial.print(cacheBytes);
-    Serial.print(" bytes ");
-    Serial.print((millis() - startTick) / (connCount + 1));
-    Serial.println("ms");
-    
+
     // transmit data
     if (!udpSend(cache, cacheBytes, wait)) {
       connErrors++;
@@ -355,15 +340,39 @@ public:
         waiting = true;
       } else {
         connErrors = 0;
-        connCount++;
+        txCount++;
       }
     }
     // clear cache and write header for next transmission
-    cacheBytes = sprintf_P(cache, PSTR("%u#"), feedid);
+    cacheBytes = sprintf_P(cache, PSTR("%X#"), feedid);
+  }
+  void setEvent(byte event)
+  {
+    cacheBytes = sprintf_P(cache, PSTR("%X#EV=%u,SK=%s,TS=%lu"), feedid, (unsigned int)event, SERVER_KEY, millis());
+  }
+  bool reconnect()
+  {
+      udpClose();
+      udpOpen();
+      return notifyUDP(EVENT_LOGIN);
+  }
+  void showStats()
+  {
+    Serial.print('#');
+    Serial.print(txCount);
+    Serial.print(' ');
+    Serial.print(cacheBytes);
+    Serial.print(" bytes ");
+    if (txCount >= 300) {
+      Serial.print(millis() / txCount);
+      Serial.print("ms");
+    }
+    Serial.println();
+    // output data in cache
+    //Serial.println(cache);
   }
   uint16_t feedid;
-  uint32_t startTick;
-  uint32_t connCount;
+  uint32_t txCount;
   uint8_t connErrors;
   bool waiting;
 };
@@ -421,8 +430,8 @@ public:
     }
 #endif
 
+    // initialize SIM5360 xBee module (if present)
     if (!checkState(STATE_NET_READY)) {
-      // initialize SIM5360 xBee module (if present)
       Serial.print("#SIM5360...");
       xbBegin(XBEE_BAUDRATE);
       if (netInit()) {
@@ -432,51 +441,55 @@ public:
         Serial.println("NO");
         return false;
       }
-      // connect to cellular network
-      Serial.print("#3G(APN:");
-      Serial.print(APN);
-      Serial.print(")");
-      if (netSetup(APN)) {
-        char *op = getOperatorName();
-        Serial.println(op ? op : "OK");
-        setState(STATE_CONNECTED);
-      } else {
-        Serial.println("NO");
-        return false;
-      }
-
-      Serial.print("#IP...");
-      const char *ip = getIP();
-      if (ip) {
-        Serial.print(ip);
-      } else {
-        Serial.println("NO");
-      }
     }
 
-    Serial.print("#SERVER...");
-    if (!udpOpen()) {
+    Serial.print("#3G(APN:");
+    Serial.print(APN);
+    Serial.print(")");
+    if (netSetup(APN)) {
+      char *op = getOperatorName();
+      Serial.println(op ? op : "OK");
+      setState(STATE_CONNECTED);
+    } else {
       Serial.println("NO");
       return false;
+    }
+
+    Serial.print("#IP...");
+    const char *ip = getIP();
+    if (ip) {
+      Serial.print(ip);
+    } else {
+      Serial.println("NO");
     }
 
     Serial.print("#CSQ...");
     int csq = getSignal();
     Serial.println(csq);
 
-    // login Freematics Hub
-    if (!notify(EVENT_LOGIN)) {
-      return false;
-    }
+    // connect to cellular network
+    for (byte attempts = 0; attempts < 3; attempts++) {
+      Serial.print("#SERVER...");
+      if (!udpOpen()) {
+        Serial.println("NO");
+        continue;
+      }
 
-    // log signal level
-    logData(PID_CSQ, csq);
+      // login Freematics Hub
+      if (!notifyUDP(EVENT_LOGIN)) {
+        continue;
+      }
+      // log signal level
+      logData(PID_CSQ, csq);
+
+      setState(STATE_ALL_GOOD);
+      break;
+    }
 
 #if USE_MPU6050 || USE_MPU9250
     calibrateMEMS(CALIBRATION_TIME);
 #endif
-    setState(STATE_ALL_GOOD);
-    return true;
+    return checkState(STATE_ALL_GOOD);
   }
   void loop()
   {
@@ -509,7 +522,7 @@ public:
 #endif
 
 #if USE_MPU6050 || USE_MPU9250
-    if ((connCount % 100) == 1) {
+    if ((txCount % 100) == 1) {
       logData(PID_DEVICE_TEMP, deviceTemp);
     }
     if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
@@ -525,11 +538,14 @@ public:
   {
       if (checkState(STATE_NET_READY)) {
         clearState(STATE_NET_READY);
-        notify(EVENT_LOGOUT);
+        notifyUDP(EVENT_LOGOUT);
         udpClose();
         Serial.print("#3G:");
         xbTogglePower(); // turn off GSM power
         Serial.println("OFF");
+      }
+      if (errors > MAX_OBD_ERRORS) {
+        feedid = 0;
       }
 #if USE_GPS
       if (checkState(STATE_GPS_READY)) {
@@ -724,8 +740,14 @@ void loop()
 #endif
     // collect data
     logger.loop();
+    // show stats info
+    logger.showStats();
     // transmit data
     logger.transmitUDP(false);
+    if (logger.connErrors >= MAX_CONN_ERRORS_RECONNECT) {
+      logger.reconnect();
+    }
+
 #if DATASET_INTERVAL
     // wait to reach preset data rate
     unsigned int elapsed = millis() - t;
