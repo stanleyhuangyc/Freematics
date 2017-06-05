@@ -16,8 +16,6 @@
 #include <avr/sleep.h>
 #endif
 #include "FreematicsONE.h"
-#ifdef ESP32
-#endif
 
 //#define XBEE_DEBUG
 //#define DEBUG Serial
@@ -138,7 +136,7 @@ byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 void COBDSPI::clearDTC()
 {
 	char buffer[32];
-       setTarget(TARGET_OBD);
+    setTarget(TARGET_OBD);
 	write("04\r");
 	receive(buffer, sizeof(buffer));
 }
@@ -395,7 +393,7 @@ byte COBDSPI::begin()
 #else
 	SPI.setClockDivider(SPI_CLOCK_DIV4);
 #endif
-	delay(500);
+	delay(1000);
 	return getVersion();
 }
 
@@ -447,9 +445,7 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-#ifndef ESP32
-			sleep(10);
-#endif
+			sleep(1);
 			if (millis() - t > timeout) {
 #ifdef DEBUG
 				debugOutput("SPI TIMEOUT");
@@ -459,7 +455,7 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 		}
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (!eos && digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
-			char c = SPI.transfer(0);
+			char c = SPI.transfer(' ');
 			if (n == 0) {
 				// match header char before we can move forward
 				if (c == '$') {
@@ -486,8 +482,8 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 				n++;
 			}
 		}
+		digitalWrite(SPI_PIN_CS, HIGH);
 	} while (!eos && millis() - t < timeout);
-	digitalWrite(SPI_PIN_CS, HIGH);
 	if (m_target != TARGET_RAW) {
 		// eliminate ending char
 		if (eos) n--;
@@ -513,9 +509,9 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-	delay(1);
+	delay(5);
 	digitalWrite(SPI_PIN_CS, LOW);
-	delay(1);
+	delay(5);
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
@@ -531,9 +527,9 @@ void COBDSPI::write(const char* s)
 
 void COBDSPI::write(byte* data, int len)
 {
-	delay(1);
+	delay(5);
 	digitalWrite(SPI_PIN_CS, LOW);
-	delay(1);
+	delay(5);
 	for (unsigned int i = 0; i < len; i++) {
 		SPI.transfer(data[i]);
 	}
