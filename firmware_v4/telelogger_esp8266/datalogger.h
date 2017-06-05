@@ -22,32 +22,28 @@ public:
     }
     void record(const char* buf, byte len)
     {
-#if ENABLE_DATA_LOG
-        char tmp[12];
-        // absolute timestamp
-        sdfile.print(m_dataTime);
-        sdfile.write(',');
-        sdfile.write(tmp, n);
-        sdfile.write(buf, len);
-        sdfile.write('\n');
-#endif
     }
     void dispatch(const char* buf, byte len)
     {
-        // reserve some space for timestamp, ending white space and zero terminator
-        int l = cacheBytes + len + 15 - CACHE_SIZE;
-        if (l >= 0) {
+#if ENABLE_DATA_OUT
+        // output data via serial
+        Serial.write((uint8_t*)buf, len);
+        Serial.write('\n');
+#endif
+        // reserve some space for checksum
+        int remain = CACHE_SIZE - cacheBytes - len - 4;
+        if (remain < 0) {
           // cache full
           return;
         }
-        if (cacheBytes + len < CACHE_SIZE - 1) {
-          memcpy(cache + cacheBytes, buf, len);
-          cacheBytes += len;
-          cache[cacheBytes++] = ',';
-        }
-#if ENABLE_DATA_OUT
-        Serial.write((uint8_t*)buf, len);
-        Serial.write('\n');
+        // store data in cache
+        memcpy(cache + cacheBytes, buf, len);
+        cacheBytes += len;
+        cache[cacheBytes++] = ',';
+#if ENABLE_DATA_LOG
+        // write data to file
+        sdfile.write(buf, len);
+        sdfile.write('\n');
 #endif
     }
     void logData(const char* buf, byte len)
@@ -58,46 +54,49 @@ public:
     void logData(uint16_t pid, int16_t value)
     {
         char buf[16];
-        byte n = translatePIDName(pid, buf);
-        byte len = sprintf_P(buf + n, PSTR("%d"), value) + n;
+        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
         dispatch(buf, len);
-        record(buf, len);
     }
     void logData(uint16_t pid, int32_t value)
     {
         char buf[20];
-        byte n = translatePIDName(pid, buf);
-        byte len = sprintf_P(buf + n, PSTR("%ld"), value) + n;
+        byte len = sprintf_P(buf, PSTR("%X=%ld"), pid, value);
         dispatch(buf, len);
-        record(buf, len);
     }
     void logData(uint16_t pid, uint32_t value)
     {
         char buf[20];
-        byte n = translatePIDName(pid, buf);
-        byte len = sprintf_P(buf + n, PSTR("%lu"), value) + n;
+        byte len = sprintf_P(buf, PSTR("%X=%lu"), pid, value);
         dispatch(buf, len);
-        record(buf, len);
     }
     void logData(uint16_t pid, int value1, int value2, int value3)
     {
         char buf[24];
-        byte n = translatePIDName(pid, buf);
-        n += sprintf_P(buf + n, PSTR("%d/%d/%d"), value1, value2, value3);
-        dispatch(buf, n);
-        record(buf, n);
+        byte len = sprintf_P(buf, PSTR("%X=%d/%d/%d"), pid, value1, value2, value3);
+        dispatch(buf, len);
     }
     void logCoordinate(uint16_t pid, int32_t value)
     {
         char buf[24];
-        byte len = translatePIDName(pid, buf);
-        len += sprintf_P(buf + len, PSTR("%d.%06lu"), (int)(value / 1000000), abs(value) % 1000000);
+        byte len = sprintf_P(buf, PSTR("%X=%d.%06lu"), pid, (int)(value / 1000000), abs(value) % 1000000);
         dispatch(buf, len);
-        record(buf, len);
     }
     void logTimestamp(uint32_t ts)
     {
         logData(0, m_dataTime = ts);
+    }
+    void addDataChecksum()
+    {
+      if (cacheBytes + 4 >= CACHE_SIZE) {
+        // remove last data
+        while (cacheBytes > 0 && cache[--cacheBytes] != ',');
+      } else if (cacheBytes > 0 && cache[cacheBytes - 1] == ',') {
+        cacheBytes--; // last delimiter unneeded
+      }
+      // calculate and add checksum
+      byte sum = 0;
+      for (unsigned int i = 0; i < cacheBytes; i++) sum += cache[i];
+      cacheBytes += sprintf_P(cache + cacheBytes, PSTR("*%X"), sum);
     }
 #if ENABLE_DATA_LOG
     uint16_t openFile(uint32_t dateTime = 0)
@@ -105,7 +104,6 @@ public:
         uint16_t fileIndex;
         char path[20] = "/DATA";
 
-        dataSize = 0;
         if (SD.exists(path)) {
             if (dateTime) {
                // using date and time as file name
@@ -146,10 +144,6 @@ public:
     char cache[CACHE_SIZE];
     unsigned int cacheBytes;
 private:
-    byte translatePIDName(uint16_t pid, char* text)
-    {
-        return sprintf_P(text, PSTR("%X="), pid);
-    }
     uint32_t m_dataTime;
 };
 
