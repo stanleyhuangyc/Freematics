@@ -23,6 +23,8 @@
 #define MAX_OBD_ERRORS 10
 // maximum consecutive communication errors before entering standby
 #define MAX_CONN_ERRORS 10
+// maximum consecutive communication errors before reconnecting
+#define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
 
