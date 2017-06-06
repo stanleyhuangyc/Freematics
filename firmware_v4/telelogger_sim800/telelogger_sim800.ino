@@ -672,7 +672,7 @@ private:
         Serial.println("Standby");
 #if USE_MPU6050 || USE_MPU9250
       calibrateMEMS(3000);
-      if (checkState(STATE_MEMS_READY)) {
+      if (!(state & STATE_MEMS_READY)) {
         enterLowPowerMode();
         for (;;) {
           // calculate relative movement
