@@ -1,8 +1,8 @@
 /*************************************************************************
-* Arduino Library for Freematics ONE
+* Arduino Library for Freematics ONE/ONE+
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
-* (C)2012-2016 Stanley Huang <support@freematics.com.au
+* (C)2012-2017 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
 #include <Arduino.h>
@@ -38,49 +38,6 @@ int bee_write_data(uint8_t* data, int len);
 int bee_read(uint8_t* buffer, size_t bufsize, int timeout);
 void bee_flush();
 #endif
-
-uint16_t hex2uint16(const char *p)
-{
-	char c = *p;
-	uint16_t i = 0;
-	for (char n = 0; c && n < 4; c = *(++p)) {
-		if (c >= 'A' && c <= 'F') {
-			c -= 7;
-		} else if (c>='a' && c<='f') {
-			c -= 39;
-        } else if (c == ' ') {
-            continue;
-        } else if (c < '0' || c > '9') {
-			break;
-        }
-		i = (i << 4) | (c & 0xF);
-		n++;
-	}
-	return i;
-}
-
-byte hex2uint8(const char *p)
-{
-	byte c1 = *p;
-	byte c2 = *(p + 1);
-	if (c1 >= 'A' && c1 <= 'F')
-		c1 -= 7;
-	else if (c1 >= 'a' && c1 <= 'f')
-		c1 -= 39;
-	else if (c1 < '0' || c1 > '9')
-		return 0;
-	
-	if (c2 == 0)
-		return (c1 & 0xf);
-	else if (c2 >= 'A' && c2 <= 'F')
-		c2 -= 7;
-	else if (c2 >= 'a' && c2 <= 'f')
-		c2 -= 39;
-	else if (c2 < '0' || c2 > '9')
-		return 0;
-
-	return c1 << 4 | (c2 & 0xf);
-}
 
 void COBDSPI::sendQuery(byte pid)
 {
@@ -422,22 +379,6 @@ byte COBDSPI::getVersion()
 	return version;
 }
 
-int COBDSPI::dumpLine(char* buffer, int len)
-{
-	int bytesToDump = len >> 1;
-	for (int i = 0; i < len; i++) {
-		// find out first line end and discard the first line
-		if (buffer[i] == '\r' || buffer[i] == '\n') {
-			// go through all following \r or \n if any
-			while (++i < len && (buffer[i] == '\r' || buffer[i] == '\n'));
-			bytesToDump = i;
-			break;
-		}
-	}
-	memmove(buffer, buffer + bytesToDump, len - bytesToDump);
-	return bytesToDump;
-}
-
 int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 {
 	int n = 0;
@@ -564,7 +505,51 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 	return n;
 }
 
-bool COBDSPI::initGPS(unsigned long baudrate)
+void COBDSPI::sleep(unsigned int ms)
+{
+	uint32_t t = millis();
+	for (;;) {
+		dataIdleLoop();
+		unsigned int elapsed = millis() - t;
+		if (elapsed + 50 < ms) {
+			delay(50);
+		} else {
+			delay(ms - elapsed);
+			break;
+		}
+	}
+}
+
+void COBDSPI::sleepSec(unsigned int seconds)
+{
+	bool lowPower = seconds >= 3;
+	if (lowPower) enterLowPowerMode();
+#ifdef ARDUINO_ARCH_AVR
+	while (seconds > 0) {
+		uint8_t wdt_period;
+		if (seconds >= 8) {
+			wdt_period = WDTO_8S;
+			seconds -= 8;
+		} else {
+			wdt_period = WDTO_1S;
+			seconds--;
+		}
+		wdt_enable(wdt_period);
+		wdt_reset();
+		WDTCSR |= _BV(WDIE);
+		set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+		sleep_mode();
+		wdt_disable();
+		WDTCSR &= ~_BV(WDIE);
+		dataIdleLoop();
+	 }
+#else
+	while (seconds-- > 0) sleep(1000);
+#endif
+	 if (lowPower) leaveLowPowerMode();
+}
+
+bool COBDSPI::gpsInit(unsigned long baudrate)
 {
 	bool success = false;
 	char buf[128];
@@ -586,7 +571,7 @@ bool COBDSPI::initGPS(unsigned long baudrate)
 			uint32_t t = millis();
 			delay(100);
 			do {
-				if (getGPSRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
+				if (gpsGetRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
 #ifdef ESP32
 					m_internalGPS = true;
 #endif
@@ -605,7 +590,7 @@ bool COBDSPI::initGPS(unsigned long baudrate)
 	return success;
 }
 
-bool COBDSPI::getGPSData(GPS_DATA* gdata)
+bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 {
 #ifdef ESP32
 	if (!m_internalGPS) {
@@ -665,7 +650,7 @@ bool COBDSPI::getGPSData(GPS_DATA* gdata)
 	return index > 7;
 }
 
-int COBDSPI::getGPSRawData(char* buf, int bufsize)
+int COBDSPI::gpsGetRawData(char* buf, int bufsize)
 {
 #if 0 //def ESP32
 	if (!m_internalGPS && uartGPS) {
@@ -688,7 +673,7 @@ int COBDSPI::getGPSRawData(char* buf, int bufsize)
 	return n;
 }
 
-void COBDSPI::sendGPSCommand(const char* cmd)
+void COBDSPI::gpsSendCommand(const char* cmd)
 {
 #ifdef ESP32
 	if (!m_internalGPS) {
@@ -698,59 +683,6 @@ void COBDSPI::sendGPSCommand(const char* cmd)
 #endif
 	setTarget(TARGET_GPS);
 	write(cmd);
-}
-
-
-void COBDSPI::sleep(unsigned int ms)
-{
-	uint32_t t = millis();
-	for (;;) {
-		dataIdleLoop();
-		unsigned int elapsed = millis() - t;
-		if (elapsed + 50 < ms) {
-#ifdef ESP32
-			Task::sleep(50);
-#else
-			delay(50);
-#endif
-		} else {
-#ifdef ESP32
-			Task::sleep(ms - elapsed);
-#else
-			delay(ms - elapsed);
-#endif
-			break;
-		}
-	}
-}
-
-void COBDSPI::sleepSec(unsigned int seconds)
-{
-	bool lowPower = seconds >= 3;
-	if (lowPower) enterLowPowerMode();
-#ifdef ARDUINO_ARCH_AVR
-	while (seconds > 0) {
-		uint8_t wdt_period;
-		if (seconds >= 8) {
-			wdt_period = WDTO_8S;
-			seconds -= 8;
-		} else {
-			wdt_period = WDTO_1S;
-			seconds--;
-		}
-		wdt_enable(wdt_period);
-		wdt_reset();
-		WDTCSR |= _BV(WDIE);
-		set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-		sleep_mode();
-		wdt_disable();
-		WDTCSR &= ~_BV(WDIE);
-		dataIdleLoop();
-	 }
-#else
-	while (seconds-- > 0) sleep(1000);
-#endif
-	 if (lowPower) leaveLowPowerMode();
 }
 
 bool COBDSPI::xbBegin(unsigned long baudrate)
@@ -811,7 +743,7 @@ int COBDSPI::xbRead(char* buffer, int bufsize, int timeout)
 #endif
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expected1, const char* expected2)
+byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
@@ -833,11 +765,10 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expe
 #endif
 			bytesRecv += n;
 			buffer[bytesRecv] = 0;
-			if (!expected1 || strstr(buffer, expected1)) {
-				return 1;
-			} else if (expected2 && strstr(buffer, expected2)) {
-				return 2;
-			}
+      for (byte i = 0; i < expectedCount; i++) {
+        // match expected string(s)
+        if (strstr(buffer, expected[i])) return i;
+      }
 #else
       if (!memcmp(buffer + bytesRecv, "$GSM", 4) && memcmp(buffer + bytesRecv + 4, "NO DATA", 7)) {
 				n -= 4;
@@ -849,11 +780,10 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char* expe
 				Serial.print(buffer + bytesRecv - n);
 				Serial.println(">>>");
 #endif
-				if (!expected1 || strstr(buffer, expected1)) {
-					return 1;
-				} else if (expected2 && strstr(buffer, expected2)) {
-					return 2;
-				}
+        for (byte i = 0; i < expectedCount; i++) {
+          // match expected string(s)
+          if (strstr(buffer, expected[i])) return i;
+        }
 			}
 			//sleep(timeout > 50 ? 50 : timeout);
 #endif
