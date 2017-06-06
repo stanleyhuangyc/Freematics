@@ -4,8 +4,11 @@
 /**************************************
 * Data logging/streaming out
 **************************************/
-#define ENABLE_DATA_CACHE 1
+#ifdef ESP32
+#define CACHE_SIZE 512 /* bytes */
+#else
 #define CACHE_SIZE 256 /* bytes */
+#endif
 #define ENABLE_DATA_OUT 0
 #define STREAM_BAUDRATE 115200
 #define STREAM_FORMAT FORMAT_TEXT
@@ -42,12 +45,11 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 20000
+#define WAKEUP_MOTION_THRESHOLD 100
 
 /**************************************
 * Other options
 **************************************/
-#define MIN_LOOP_TIME 1000 /* ms */
 #define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED

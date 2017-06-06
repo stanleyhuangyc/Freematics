@@ -20,9 +20,6 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <FreematicsONE.h>
-#ifdef ESP32
-#include <TinyGPS.h>
-#endif
 #include "config.h"
 #include "datalogger.h"
 
@@ -34,6 +31,9 @@
 #define STATE_GSM_READY 0x10
 #define STATE_CONNECTED 0x20
 #define STATE_POSITIONED 0x40
+
+#define EVENT_LOGIN 1
+#define EVENT_LOGOUT 2
 
 uint16_t lastUTC = 0;
 uint8_t lastGPSDay = 0;
@@ -92,6 +92,7 @@ public:
     {
       uint32_t t = millis();
       bool success = false;
+      sendGSMCommand("ATE0\r");
       do {
         success = sendGSMCommand("AT+CREG?\r", 5000, "+CREG: 0,") != 0;
         Serial.print('.'); 
@@ -174,12 +175,7 @@ public:
     }
     bool httpRead()
     {
-        if (sendGSMCommand("AT+HTTPREAD\r", MAX_CONN_TIME) && strstr(buffer, "+HTTPREAD:")) {
-          return true;
-        } else {
-          Serial.println("READ ERROR");
-          return false;
-        }
+        return (sendGSMCommand("AT+HTTPREAD\r", MAX_CONN_TIME) && strstr(buffer, "+HTTPREAD:"));
     }
     bool getLocation(GSM_LOCATION* loc)
     {
@@ -208,7 +204,7 @@ public:
     }
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
-      byte ret = xbReceive(buffer, sizeof(buffer), 100, expected);
+      byte ret = xbReceive(buffer, sizeof(buffer), 100, &expected, 1);
       if (ret == 0) {
         // timeout
         return (millis() - checkTimer < timeout) ? 0 : 2;
@@ -219,7 +215,7 @@ public:
     bool sendGSMCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK")
     {
       xbWrite(cmd);
-      return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
+      return xbReceive(buffer, sizeof(buffer), timeout, &expected, 16) != 0;
     }
     bool setPostPayload(const char* payload, int bytes)
     {
@@ -232,7 +228,11 @@ public:
         // send cached data
         return sendGSMCommand(payload, 1000);
     }
+#ifdef ESP32
+    char buffer[256];
+#else
     char buffer[128];
+#endif
     byte bytesRecv;
     uint32_t checkTimer;
     byte connErrors;
@@ -276,7 +276,7 @@ public:
 #if USE_GPS
           // start serial communication with GPS receive
           Serial.print("#GPS...");
-          if (initGPS(GPS_SERIAL_BAUDRATE)) {
+          if (gpsInit(GPS_SERIAL_BAUDRATE)) {
             state |= STATE_GPS_READY;
             Serial.println("OK");
           } else {
@@ -342,28 +342,28 @@ public:
             Serial.print("#VIN:");
             Serial.println(vin);
           } else {
-            strcpy(vin, "NO_VIN");            
+            strcpy(vin, "DEFAULT_VIN");            
           }
-
-          // sign in server
-          if (!regDataFeed(0, vin, signal)) {
+          
+          if (!notify(EVENT_LOGIN, vin)) {
             standby(); 
             continue;
           }
+
+          logData(PID_CSQ, signal);
 
           break;
         }
 
 #if USE_MPU6050 || USE_MPU9250
-        calibrateMEMS();
+        calibrateMEMS(1000);
 #endif
     }
-    bool regDataFeed(byte action, const char* vin = 0, int csq = 0)
+    bool notify(byte event, const char* vin = 0)
     {
-      // action == 0 for registering a data feed, action == 1 for de-registering a data feed
       gprsState = GPRS_IDLE;
       for (byte n = 0; ;n++) {
-        if (action == 0) {
+        if (event == EVENT_LOGIN) {
           // error handling
           if (readSpeed() == -1 || n >= MAX_CONN_ERRORS) {
             return false;
@@ -374,11 +374,11 @@ public:
           } 
         }
         char *p = buffer;
-        p += sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/reg?"), SERVER_URL);
-        if (action == 0) {
-          sprintf_P(p, PSTR("CSQ=%d&vin=%s\"\r"), csq, vin);
+        p += sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/notify"), SERVER_URL);
+        if (event == EVENT_LOGIN) {
+          sprintf_P(p, PSTR("?EV=1&TS=%lu&VIN=%s\"\r"), millis(), vin);
         } else {
-          sprintf_P(p, PSTR("id=%u&off=1\"\r"), feedid);
+          sprintf_P(p, PSTR("/%u?EV=2&TS=%lu\"\r"), feedid, millis());
         }
         Serial.print("#SERVER");
         if (!sendGSMCommand(buffer)) {
@@ -394,7 +394,7 @@ public:
         if (gprsState == GPRS_HTTP_ERROR) {
           continue;
         }
-        if (action != 0) {
+        if (event == EVENT_LOGOUT) {
           Serial.println(); 
           return true;
         }
@@ -416,14 +416,12 @@ public:
     }
     void loop()
     {
-        uint32_t start = millis();
-
         if (!(state & STATE_OBD_READY)) {
           setup();
           return;
         }
 
-        logTimestamp();
+        logTimestamp(millis());
         processOBD();
 
 #if USE_MPU6050 || USE_MPU9250
@@ -446,41 +444,34 @@ public:
         int v = getVoltage() * 100;
         logData(PID_BATTERY_VOLTAGE, v);
 
-        do {
-          if (millis() > nextConnTime) {
+        if (millis() > nextConnTime) {
 #if USE_GSM_LOCATION
-            if (!(state & STATE_GPS_READY)) {
-              if (gprsState == GPRS_IDLE && !(state & STATE_POSITIONED)) {
-                // get GSM location if GPS not present
-                if (getLocation(&loc)) {
-                  //Serial.print(buffer);
-                }
+          if (!(state & STATE_GPS_READY)) {
+            if (gprsState == GPRS_IDLE && !(state & STATE_POSITIONED)) {
+              // get GSM location if GPS not present
+              if (getLocation(&loc)) {
+                //Serial.print(buffer);
               }
             }
-#endif
-            // process HTTP state machine
-            processGPRS();
-
-            // continously read speed for calculating trip distance
-            if (state & STATE_OBD_READY) {
-               readSpeed();
-            }
-            // error and exception handling
-            if (gprsState == GPRS_IDLE) {
-              if (errors > 10) {
-                reconnect();
-                return;
-              } else if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
-                // device too hot, cool down
-                Serial.print("Cooling (");
-                Serial.print(deviceTemp);
-                Serial.println("C)");
-                sleep(5000);
-                break;
-              }
-            }        
           }
-        } while (millis() - start < MIN_LOOP_TIME);
+#endif
+          // process HTTP state machine
+          processGPRS();
+
+          // error and exception handling
+          if (gprsState == GPRS_IDLE) {
+            if (errors > 10) {
+              reconnect();
+              return;
+            } else if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
+              // device too hot, cool down
+              Serial.print("Cooling (");
+              Serial.print(deviceTemp);
+              Serial.println("C)");
+              sleep(5000);
+            }
+          }
+        }
 
         // error handling
         if (connErrors >= MAX_CONN_ERRORS) {
@@ -503,31 +494,23 @@ private:
         switch (gprsState) {
         case GPRS_IDLE:
             if (state & STATE_CONNECTED) {
-#if !ENABLE_DATA_CACHE
-                char cache[16];
-                int v = getVoltage() * 100;
-                byte cacheBytes = sprintf(cache, "#%lu,%u,%d ", millis(), PID_BATTERY_VOLTAGE, v);
-                Serial.println(v);
-#endif
                 // generate URL
                 sprintf_P(buffer, PSTR("AT+HTTPPARA=\"URL\",\"%s/post?id=%u\"\r"), SERVER_URL, feedid);
                 if (!sendGSMCommand(buffer)) {
                   break;
                 }
                 // replacing last space with
-                cache[cacheBytes - 1] = '\r';
-                if (setPostPayload(cache, cacheBytes - 1)) {
+                //Serial.println(cache);
+                cache[--cacheBytes] = '\r';
+                if (setPostPayload(cache, cacheBytes)) {
                   // success
                   // output payload data to serial
-                  //Serial.println(cache);
                   Serial.print("#");
                   Serial.print(++connCount);
                   Serial.print(' ');
                   Serial.print(cacheBytes - 1);
-                  Serial.print("B ");
-#if ENABLE_DATA_CACHE
-                  purgeCache();
-#endif
+                  Serial.print(" bytes ");
+                  cacheBytes = 0;
                   state &= ~STATE_POSITIONED; // to be positioned again
                   sleep(10);
                   httpConnect(HTTP_POST);
@@ -626,7 +609,7 @@ private:
     {
         GPS_DATA gd = {0};
         // read parsed GPS data
-        if (getGPSData(&gd)) {
+        if (gpsGetData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
               byte day = gd.date / 10000;
               logData(PID_GPS_TIME, gd.time);
@@ -674,52 +657,67 @@ private:
     {
 #if USE_GPS
         if (state & STATE_GPS_READY) {
-          initGPS(0); // turn off GPS power
+          gpsInit(0); // turn off GPS power
           Serial.println("GPS shutdown");
         }
 #endif
         if (state & STATE_GSM_READY) {
           if (state & STATE_CONNECTED) {
-            regDataFeed(1); // de-register
+            notify(EVENT_LOGOUT); // de-register
           }
           xbTogglePower(); // turn off GSM power
           Serial.println("GSM shutdown");
         }
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GSM_READY | STATE_CONNECTED);
         Serial.println("Standby");
-        // put OBD chips into low power mode
+#if USE_MPU6050 || USE_MPU9250
+      calibrateMEMS(3000);
+      if (checkState(STATE_MEMS_READY)) {
         enterLowPowerMode();
-        // re-calibrate MEMS sensor with past data
-        calibrateMEMS();
         for (;;) {
-          sleep(1000);
           // calculate relative movement
           unsigned long motion = 0;
           for (byte i = 0; i < 3; i++) {
             long n = accSum[i] / accCount - accCal[i];
             motion += n * n;
           }
+          motion /= 100;
+          Serial.println(motion);
           // check movement
           if (motion > WAKEUP_MOTION_THRESHOLD) {
-            // try OBD reading
             leaveLowPowerMode();
-            if (init()) {
-              // OBD is accessible
-              break;
-            }
-            enterLowPowerMode();
-            // calibrate MEMS again in case the device posture changed
-            calibrateMEMS();
+            break;
           }
+          // MEMS data collected while sleeping
+          sleep(3000);
         }
+      }
+#else
+      do {
+        enterLowPowerMode();
+        sleepSec(10);
+        leaveLowPowerMode();
+      } while (!init());
+#endif
         Serial.println("Wakeup");
     }
-    void calibrateMEMS()
+#if USE_MPU6050 || USE_MPU9250
+    void calibrateMEMS(unsigned int duration)
     {
-        // get accelerometer calibration reference data
-        accCal[0] = accSum[0] / accCount;
-        accCal[1] = accSum[1] / accCount;
-        accCal[2] = accSum[2] / accCount;
+        // MEMS data collected while sleeping
+        if (duration > 0) {
+          accCount = 0;
+          accSum[0] = 0;
+          accSum[1] = 0;
+          accSum[2] = 0;
+          sleep(duration);
+        }
+        // store accelerometer reference data
+        if ((state & STATE_MEMS_READY) && accCount) {
+          accCal[0] = accSum[0] / accCount;
+          accCal[1] = accSum[1] / accCount;
+          accCal[2] = accSum[2] / accCount;
+        }
     }
     void readMEMS()
     {
@@ -727,7 +725,7 @@ private:
         int16_t acc[3] = {0};
         int16_t temp; // device temperature (in 0.1 celcius degree)
         memsRead(acc, 0, 0, &temp);
-        if (accCount >= 250) {
+        if (accCount >= 128) {
           accSum[0] >>= 1;
           accSum[1] >>= 1;
           accSum[2] >>= 1;
@@ -746,6 +744,7 @@ private:
         readMEMS();
       }
     }
+#endif
     byte state;
     byte gprsState;
     uint16_t feedid;
@@ -763,7 +762,7 @@ void setup()
     // start I2C communication 
     Wire.begin();
 #endif
-    delay(500);
+    delay(1000);
     // this will also init SPI communication
     logger.begin();
 }
