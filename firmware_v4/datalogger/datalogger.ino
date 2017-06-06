@@ -98,10 +98,10 @@ public:
 
 #if USE_GPS
         Serial.print("GPS ");
-        if (initGPS(GPS_SERIAL_BAUDRATE)) {
+        if (gpsInit(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_FOUND;
           Serial.println("OK");
-          waitGPS();
+          //waitGPS();
         } else {
           Serial.println("NO");
         }
@@ -117,7 +117,7 @@ public:
 #if LOG_GPS_NMEA_DATA
         // issue the command to get NMEA data (one line per request)
         char buf[255];
-        byte n = getGPSRawData(buf, sizeof(buf));
+        byte n = gpsGetRawData(buf, sizeof(buf));
         if (n) {
             dataTime = millis();
             // strip heading $GPS and ending \r\n
@@ -127,8 +127,7 @@ public:
 #if LOG_GPS_PARSED_DATA
         // issue the command to get parsed GPS data
         GPS_DATA gd = {0};
-        
-        if (getGPSData(&gd)) {
+        if (gpsGetData(&gd)) {
             dataTime = millis();
             if (gd.time && gd.time != UTC) {
               byte day = gd.date / 10000;
@@ -164,7 +163,7 @@ public:
             elapsed = t1;
           }
           // read parsed GPS data
-          if (getGPSData(&gd) && gd.sat != 0 && gd.sat != 255) {
+          if (gpsGetData(&gd) && gd.sat != 0 && gd.sat != 255) {
             Serial.print("SAT:");
             Serial.println(gd.sat);
             break;
@@ -210,7 +209,7 @@ public:
 #endif
         // turn off GPS power
 #if USE_GPS
-        initGPS(0);
+        gpsInit(0);
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY);
         Serial.println("Standby");

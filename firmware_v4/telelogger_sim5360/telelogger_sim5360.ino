@@ -44,6 +44,7 @@ byte deviceTemp = 0; // device temperature
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
+uint32_t startTick = 0;
 
 char udpIP[16] = {0};
 uint16_t udpPort = SERVER_PORT;
@@ -234,7 +235,7 @@ public:
       }
       sleep(50);
       buffer[0] = 0;
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, expected);
+      byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
       if (ret) {
         if (terminated) {
           char *p = strstr(buffer, expected);
@@ -363,11 +364,8 @@ public:
     Serial.print(' ');
     Serial.print(cacheBytes);
     Serial.print(" bytes ");
-    if (txCount >= 300) {
-      Serial.print(millis() / txCount);
-      Serial.print("ms");
-    }
-    Serial.println();
+    Serial.print((millis() - startTick) / (txCount + 1));
+    Serial.println("ms");
     // output data in cache
     //Serial.println(cache);
   }
@@ -389,6 +387,7 @@ public:
   bool setup()
   {
     clearState(STATE_ALL_GOOD);
+
 #if USE_MPU6050 || USE_MPU9250
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("#MEMS...");
@@ -415,7 +414,7 @@ public:
     // start serial communication with GPS receiver
     if (!checkState(STATE_GPS_READY)) {
       Serial.print("#GPS...");
-      if (initGPS(GPS_SERIAL_BAUDRATE)) {
+      if (gpsInit(GPS_SERIAL_BAUDRATE)) {
         setState(STATE_GPS_READY);
 #ifdef ESP32
         Serial.print("OK(");
@@ -466,6 +465,9 @@ public:
     Serial.print("#CSQ...");
     int csq = getSignal();
     Serial.println(csq);
+
+    startTick = millis();
+    txCount = 0;
 
     // connect to cellular network
     for (byte attempts = 0; attempts < 3; attempts++) {
@@ -537,12 +539,12 @@ public:
   void standby()
   {
       if (checkState(STATE_NET_READY)) {
-        clearState(STATE_NET_READY);
         notifyUDP(EVENT_LOGOUT);
         udpClose();
         Serial.print("#3G:");
         xbTogglePower(); // turn off GSM power
         Serial.println("OFF");
+        clearState(STATE_NET_READY);
       }
       if (errors > MAX_OBD_ERRORS) {
         feedid = 0;
@@ -550,7 +552,7 @@ public:
 #if USE_GPS
       if (checkState(STATE_GPS_READY)) {
         Serial.print("#GPS:");
-        initGPS(0); // turn off GPS power
+        gpsInit(0); // turn off GPS power
         Serial.println("OFF");
       }
 #endif
@@ -641,7 +643,7 @@ private:
         static uint8_t lastGPSDay = 0;
         GPS_DATA gd = {0};
         // read parsed GPS data
-        if (getGPSData(&gd)) {
+        if (gpsGetData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
               byte day = gd.date / 10000;
               logData(PID_GPS_TIME, gd.time);

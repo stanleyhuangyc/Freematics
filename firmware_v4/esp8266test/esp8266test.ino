@@ -10,22 +10,22 @@
 #include <Wire.h>
 #include <FreematicsONE.h>
 
-#define WIFI_SSID "SSID"
-#define WIFI_PASSWORD "PASSWORD"
+#define WIFI_SSID "HOMEWIFI"
+#define WIFI_PASSWORD "862150909018"
 #define SERVER_URL "hub.freematics.com"
 #define SERVER_PORT 80
 
 COBDSPI one;
 
-char buffer[256];
+char buffer[384];
 
-byte sendCommand(const char* cmd, int timeout = 1000, const char* expected1 = "OK", const char* expected2 = 0)
+bool sendCommand(const char* cmd, int timeout = 1000, const char* expected = "OK\r\n")
 {
   if (cmd) {
     one.xbWrite(cmd);
-    delay(50);
+    delay(200);
   }
-  return one.xbReceive(buffer, sizeof(buffer), timeout, expected1, expected2);
+  return one.xbReceive(buffer, sizeof(buffer), timeout, &expected, 1) == 1;
 }
 
 void setup() {
@@ -53,7 +53,7 @@ void setup() {
   } else {
     Serial.println("failed"); 
   }
-  delay(100);
+  sendCommand("ATE0\r\n");
   
 /*
   Serial.print("Resetting ESP8266...");
@@ -64,35 +64,20 @@ void setup() {
   }
 */
 
-  Serial.print("Entering station mode...");
-  if (sendCommand("AT+CWMODE=1\r\n", 1000, "OK", "no change")) {
-    Serial.println("OK"); 
-  } else {
-    Serial.println("dead"); 
-  }
-  delay(100);
-
-  Serial.print("Set single link...");
-  if (sendCommand("AT+CIPMUX=0\r\n"))
-    Serial.println("OK");
-  else
-    Serial.println("failed");
+  sendCommand("AT+CWMODE=1\r\n", 1000, "OK");
+  sendCommand("AT+CIPMUX=0\r\n");
   
   Serial.print("Connecting AP (SSID:");
   Serial.print(WIFI_SSID);
   Serial.print(")...");
   sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
-  ret = sendCommand(buffer, 20000, "OK", "ERROR");
+  ret = sendCommand(buffer, 10000, "OK");
   if (ret == 1) {
     // get IP address
     if (sendCommand("AT+CIFSR\r\n", 1000, "OK")) {
-      char *s = strstr(buffer, "CIFSR");
-      if (s) {
-        s += 8;
-        char *p = strchr(s, '\r');
-        if (p) *p = 0;
-        Serial.println(s);
-      }
+      char *p = strchr(buffer, '\r');
+      if (p) *p = 0;
+      Serial.println(buffer);
     } else {
       Serial.println("N/A"); 
     }
@@ -124,7 +109,7 @@ void loop() {
     Serial.print("Sending ");
     Serial.print(len);
     Serial.print(" bytes...");
-    if (sendCommand(payload, 10000, "+IPD,", "Unlink")) {
+    if (sendCommand(payload, 10000, "+IPD,") == 1) {
       Serial.println("OK");
       char *p = strstr(buffer, "+IPD,");
       if (!p) {

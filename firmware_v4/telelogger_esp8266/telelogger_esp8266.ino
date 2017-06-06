@@ -176,7 +176,7 @@ public:
       }
       sleep(50);
       buffer[0] = 0;
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, expected);
+      byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
       if (ret) {
         if (terminated) {
           char *p = strstr(buffer, expected);
@@ -358,7 +358,7 @@ public:
     // start serial communication with GPS receiver
     if (!checkState(STATE_GPS_READY)) {
       Serial.print("#GPS...");
-      if (initGPS(GPS_SERIAL_BAUDRATE)) {
+      if (gpsInit(GPS_SERIAL_BAUDRATE)) {
         setState(STATE_GPS_READY);
 #ifdef ESP32
         Serial.print("OK(");
@@ -483,7 +483,7 @@ public:
 #if USE_GPS
       if (checkState(STATE_GPS_READY)) {
           Serial.print("#GPS:");
-          initGPS(0); // turn off GPS power
+          gpsInit(0); // turn off GPS power
           Serial.println("OFF");
         }
 #endif
@@ -574,7 +574,7 @@ private:
         static uint8_t lastGPSDay = 0;
         GPS_DATA gd = {0};
         // read parsed GPS data
-        if (getGPSData(&gd)) {
+        if (gpsGetData(&gd)) {
             if (lastUTC != (uint16_t)gd.time) {
               byte day = gd.date / 10000;
               logData(PID_GPS_TIME, gd.time);
