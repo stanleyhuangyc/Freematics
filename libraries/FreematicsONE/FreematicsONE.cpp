@@ -386,7 +386,7 @@ int COBDSPI::receive(char* buffer, int bufsize, int timeout)
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			sleep(1);
+			delay(1);
 			if (millis() - t > timeout) {
 #ifdef DEBUG
 				debugOutput("SPI TIMEOUT");
@@ -450,9 +450,9 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-	delay(5);
+	delay(1);
 	digitalWrite(SPI_PIN_CS, LOW);
-	delay(5);
+	delay(1);
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
@@ -468,9 +468,9 @@ void COBDSPI::write(const char* s)
 
 void COBDSPI::write(byte* data, int len)
 {
-	delay(5);
+	delay(1);
 	digitalWrite(SPI_PIN_CS, LOW);
-	delay(5);
+	delay(1);
 	for (unsigned int i = 0; i < len; i++) {
 		SPI.transfer(data[i]);
 	}
@@ -713,7 +713,7 @@ void COBDSPI::xbWrite(const char* cmd)
 #else
 	setTarget(TARGET_BEE);
 	write(cmd);
-  sleep(10);
+	sleep(10);
 #endif
 #ifdef XBEE_DEBUG
 	Serial.print("<<<");
