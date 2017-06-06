@@ -274,14 +274,14 @@ byte CFreematicsESP32::xbReceive(char* buffer, int bufsize, int timeout, const c
 #endif
 			bytesRecv += n;
 			buffer[bytesRecv] = 0;
-      for (byte i = 0; i < expectedCount; i++) {
-        // match expected string(s)
-        if (strstr(buffer, expected[i])) return i;
-      }
+            for (byte i = 0; i < expectedCount; i++) {
+                // match expected string(s)
+                if (expected[i] && strstr(buffer, expected[i])) return i + 1;
+            }
 		} else if (n == -1) {
-      // an erroneous reading
-      break;
-    }
+            // an erroneous reading
+            break;
+        }
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
 	return 0;

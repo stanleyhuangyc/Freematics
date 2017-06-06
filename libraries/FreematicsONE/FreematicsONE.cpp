@@ -765,12 +765,12 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char** exp
 #endif
 			bytesRecv += n;
 			buffer[bytesRecv] = 0;
-      for (byte i = 0; i < expectedCount; i++) {
-        // match expected string(s)
-        if (strstr(buffer, expected[i])) return i;
-      }
+			for (byte i = 0; i < expectedCount; i++) {
+				// match expected string(s)
+				if (expected[i] && strstr(buffer, expected[i])) return i + 1;
+			}
 #else
-      if (!memcmp(buffer + bytesRecv, "$GSM", 4) && memcmp(buffer + bytesRecv + 4, "NO DATA", 7)) {
+			if (!memcmp(buffer + bytesRecv, "$GSM", 4) && memcmp(buffer + bytesRecv + 4, "NO DATA", 7)) {
 				n -= 4;
 				memmove(buffer + bytesRecv, buffer + bytesRecv + 4, n);
 				bytesRecv += n;
@@ -780,10 +780,10 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char** exp
 				Serial.print(buffer + bytesRecv - n);
 				Serial.println(">>>");
 #endif
-        for (byte i = 0; i < expectedCount; i++) {
-          // match expected string(s)
-          if (strstr(buffer, expected[i])) return i;
-        }
+				for (byte i = 0; i < expectedCount; i++) {
+					// match expected string(s)
+					if (expected[i] && strstr(buffer, expected[i])) return i + 1;
+				}
 			}
 			//sleep(timeout > 50 ? 50 : timeout);
 #endif
