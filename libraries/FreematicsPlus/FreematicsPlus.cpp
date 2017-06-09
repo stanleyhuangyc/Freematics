@@ -1,5 +1,5 @@
 /*************************************************************************
-* Freematics ESP32 helper functions
+* Arduino library for Freematics ONE+ (ESP32)
 * Distributed under BSD license
 * Visit http://freematics.com for more information
 * (C)2017 Developed by Stanley Huang <support@freematics.com.au>

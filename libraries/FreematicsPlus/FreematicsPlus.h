@@ -1,3 +1,10 @@
+/*************************************************************************
+* Arduino library for Freematics ONE+ (ESP32)
+* Distributed under BSD license
+* Visit http://freematics.com for more information
+* (C)2017 Developed by Stanley Huang <support@freematics.com.au>
+*************************************************************************/
+
 #ifndef ESP32
 #error This library works with ESP32 targets only.
 #else
