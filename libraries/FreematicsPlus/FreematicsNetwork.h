@@ -4,180 +4,149 @@
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 *************************************************************************/
 
-#if ENABLE_DATA_LOG
-SDClass SD;
-File sdfile;
-#endif
+#include <WiFi.h>
+#include <WiFiUdp.h>
 
-class CRAMCache {
-public:
-    CRAMCache():m_dataTime(0),m_cacheBytes(0),m_cache(0) {}
-    void initCache(unsigned int cacheSize)
-    {
-      if (m_cache) delete m_cache;
-      if (cacheSize) m_cache = new char[m_cacheSize = cacheSize];
-    }
-    void logData(uint16_t pid, int16_t value)
-    {
-        char buf[16];
-        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
-        dispatch(buf, len);
-    }
-    void logData(uint16_t pid, int32_t value)
-    {
-        char buf[20];
-        byte len = sprintf_P(buf, PSTR("%X=%ld"), pid, value);
-        dispatch(buf, len);
-    }
-    void logData(uint16_t pid, uint32_t value)
-    {
-        char buf[20];
-        byte len = sprintf_P(buf, PSTR("%X=%lu"), pid, value);
-        dispatch(buf, len);
-    }
-    void logData(uint16_t pid, int value1, int value2, int value3)
-    {
-        char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d;%d;%d"), pid, value1, value2, value3);
-        dispatch(buf, len);
-    }
-    void logCoordinate(uint16_t pid, int32_t value)
-    {
-        char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d.%06lu"), pid, (int)(value / 1000000), abs(value) % 1000000);
-        dispatch(buf, len);
-    }
-    void logTimestamp(uint32_t ts)
-    {
-        logData(0, m_dataTime = ts);
-    }
-#if ENABLE_DATA_LOG
-    uint16_t openFile(uint32_t dateTime = 0)
-    {
-        uint16_t fileIndex;
-        char path[20] = "/DATA";
+#include "esp_system.h"
+#include "esp_log.h"
+#include "nvs_flash.h"
+#include "bt.h"
+#include "bta_api.h"
+#include "esp_gatt_defs.h"
+#include "esp_gap_ble_api.h"
+#include "esp_gatts_api.h"
+#include "esp_bt_defs.h"
+#include "esp_bt_main.h"
+#include "esp_bt_main.h"
 
-        if (SD.exists(path)) {
-            if (dateTime) {
-               // using date and time as file name
-               sprintf(path + 5, "/%08lu.CSV", dateTime);
-               fileIndex = 1;
-            } else {
-              // use index number as file name
-              for (fileIndex = 1; fileIndex; fileIndex++) {
-                  sprintf(path + 5, "/DAT%05u.CSV", fileIndex);
-                  if (!SD.exists(path)) {
-                      break;
-                  }
-              }
-              if (fileIndex == 0)
-                  return 0;
-            }
-        } else {
-            SD.mkdir(path);
-            fileIndex = 1;
-            sprintf(path + 5, "/DAT%05u.CSV", 1);
-        }
-
-        sdfile = SD.open(path, FILE_WRITE);
-        if (!sdfile) {
-            return 0;
-        }
-        return fileIndex;
-    }
-    void closeFile()
-    {
-        sdfile.close();
-    }
-    void flushFile()
-    {
-        sdfile.flush();
-    }
-#endif
-    unsigned int getCacheBytes() { return m_cacheBytes; }
-    char* getCache() { return m_cache; }
-protected:
-  void addHeader(int feedid)
-  {
-    if (m_cacheBytes + 4 >= m_cacheSize) {
-      m_cacheBytes = m_cacheSize - 4;
-    }
-    // clear cache and write header for next transmission
-    m_cacheBytes = sprintf_P(m_cache, PSTR("%X#"), feedid);
-  }
-  void addTail()
-  {
-    // calculate and add checksum
-    byte sum = 0;
-    for (unsigned int i = 0; i < m_cacheBytes; i++) sum += m_cache[i];
-    m_cacheBytes += sprintf_P(m_cache + m_cacheBytes, PSTR("*%X"), sum);
-  }
-  void removeTail()
-  {
-    unsigned int i;
-    for (i = m_cacheBytes - 1; m_cache[i] != '*' && i > 0; i--);
-    if (i > 0) {
-      m_cacheBytes = i;
-    }
-  }
-  unsigned int m_cacheSize;
-  unsigned int m_cacheBytes;
-  char* m_cache;
-private:
-    void dispatch(const char* buf, byte len)
-    {
-  #if ENABLE_DATA_OUT
-        // output data via serial
-        Serial.write((uint8_t*)buf, len);
-        Serial.write('\n');
-  #endif
-        // reserve some space for checksum
-        int remain = m_cacheSize - m_cacheBytes - len - 4;
-        if (remain < 0) {
-          // m_cache full
-          return;
-        }
-        // store data in m_cache
-        memcpy(m_cache + m_cacheBytes, buf, len);
-        m_cacheBytes += len;
-        m_cache[m_cacheBytes++] = ',';
-  #if ENABLE_DATA_LOG
-        // write data to file
-        sdfile.write(buf, len);
-        sdfile.write('\n');
-  #endif
-    }
-    uint32_t m_dataTime;
-};
+#define XBEE_BAUDRATE 115200
 
 class CTeleClient
 {
 public:
-  CTeleClient():connErrors(0),txCount(0),feedid(0) {}
-  bool notifyUDP(byte event, const char* serverKey, const char* vin);
-  void transmitUDP(bool wait);
-  bool reconnect();
-  void showStats();
+  CTeleClient():connErrors(0),txCount(0),m_bytesCount(0),feedid(0),m_lastSentTime(0),m_waiting(false) {}
+  virtual bool netBegin() { return true; }
+  virtual void netEnd() {}
+  virtual bool netOpen(const char* host, uint16_t port) { return false; }
+  virtual void netClose() {}
+  virtual int netSend(const char* data, unsigned int len, bool wait = true) { return false; }
+  virtual char* netReceive(int* pbytes = 0, int timeout = 3000) { return 0; }
+  bool notifyServer(byte event, const char* serverKey = 0, const char* extra = 0);
+  bool transmit(const char* data, int bytes, bool wait);
   uint8_t getConnErrors() { return connErrors; }
+  virtual String netDeviceName() { return ""; }
 protected:
-  virtual bool udpOpen(const char* host, uint16_t port) { return false; }
-  virtual void udpClose() {}
-  virtual bool udpSend(const char* data, unsigned int len, bool wait = true) { return false; }
-  virtual char* udpReceive(int* pbytes = 0) { return 0; }
-  virtual bool waitCompletion(int timeout) { return false; }
-
-  virtual unsigned int getCacheBytes() { return 0; }
-  virtual char* getCache() { return 0; }
-
-  virtual void addHeader(int feedid) {}
-  virtual void addTail() {}
-  virtual void removeTail() {}
+  byte getChecksum(const char* data, int len)
+  {
+    // calculate and add checksum
+    byte sum = 0;
+    for (unsigned int i = 0; i < len; i++) sum += data[i];
+    return sum;
+  }
+  virtual bool netWaitSent(int timeout) { return true; }
+  virtual String getServerName() { return m_serverName; }
+  uint32_t getTotalBytesSent() { return m_bytesCount; }
+  uint32_t lastSentTime() { return m_lastSentTime; }
   uint16_t feedid;
   uint32_t txCount;
   uint8_t connErrors;
+  uint32_t m_bytesCount;
+  String m_serverName;
 private:
   bool verifyChecksum(const char* data);
-  bool waiting;
+  bool m_waiting;
+  uint32_t m_lastSentTime;
+};
+
+class CTeleClientSerialUSB : public CTeleClient
+{
+public:
+    int netSend(const char* data, unsigned int len, bool wait = true)
+    {
+      Serial.write((uint8_t*)data, len);
+      Serial.write('\n');
+    }
+    String netDeviceName() { return "Serial"; }
+};
+
+class CTeleClientBLE : public CTeleClient
+{
+public:
+    bool netBegin();
+    void netEnd();
+    bool netSetup(const char* deviceName);
+    String getIP() { return ""; }
+    int getSignal() { return 0; }
+    bool netOpen(const char* host, uint16_t port) { return true; }
+    int netSend(const char* data, unsigned int len, bool wait = true);
+    char* netReceive(int* pbytes = 0, int timeout = 3000) { return 0; }
+    String netDeviceName() { return "BLE"; }
+    size_t onRequest(uint8_t* buffer, size_t len)
+    {
+      // being requested for data
+      buffer[0] = 'O';
+      buffer[1] = 'K';
+      return 2;
+    }
+    void onReceive(uint8_t* buffer, size_t len)
+    {
+      // data received is in buffer
+    }
+private:
+};
+
+class CTeleClientWIFI : public CTeleClient, public virtual CFreematics
+{
+public:
+    CTeleClientWIFI() {
+      m_buffer[0] = 0;
+      udpIP[0] = 0;
+    }
+    void netEnd();
+    bool netSetup(const char* ssid, const char* password, int timeout = 10000);
+    String getIP();
+    int getSignal() { return 0; }
+    bool netOpen(const char* host, uint16_t port);
+    int netSend(const char* data, unsigned int len, bool wait = true);
+    char* netReceive(int* pbytes = 0, int timeout = 3000);
+    String queryIP(const char* host);
+    String serverName() { return m_serverName.length() ? m_serverName : udpIP.toString(); }
+    String netDeviceName() { return "WIFI"; }
+  private:
+    char m_buffer[256];
+    IPAddress udpIP;
+    uint16_t udpPort;
+    WiFiUDP udp;
+};
+
+class CTeleClientSIM800 : public CTeleClient, public virtual CFreematics
+{
+public:
+    CTeleClientSIM800() {
+      m_buffer[0] = 0;
+      udpIP[0] = 0;
+      m_stage = 0;
+    }
+    bool netBegin();
+    void netEnd();
+    bool netSetup(const char* apn, int timeout = 60000);
+    String getIP();
+    int getSignal();
+    String getOperatorName();
+    bool netOpen(const char* host, uint16_t port);
+    int netSend(const char* data, unsigned int len, bool wait = true);
+    void netClose();
+    char* netReceive(int* pbytes = 0, int timeout = 3000);
+    String queryIP(const char* host);
+    String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
+    String netDeviceName() { return "SIM800"; }
+  private:
+    bool netWaitSent(int timeout);
+    bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "OK\r\n", bool terminated = false);
+    char m_buffer[256];
+    char udpIP[16];
+    uint16_t udpPort;
+    uint8_t m_stage;
 };
 
 class CTeleClientSIM5360 : public CTeleClient, public virtual CFreematics
@@ -186,23 +155,27 @@ public:
     CTeleClientSIM5360() {
       m_buffer[0] = 0;
       udpIP[0] = 0;
+      m_stage = 0;
     }
-    bool netInit();
-    bool netSetup(const char* apn, bool only3G = false);
-    const char* getIP();
+    bool netBegin();
+    void netEnd();
+    bool netSetup(const char* apn, bool only3G = false, int timeout = 60000);
+    String getIP();
     int getSignal();
-    char* getOperatorName();
-    bool udpOpen(const char* host, uint16_t port);
-    void udpClose();
-    bool udpSend(const char* data, unsigned int len, bool wait = true);
-    char* udpReceive(int* pbytes = 0);
-    bool waitCompletion(int timeout);
-    char* queryIP(const char* host);
-    char* getBuffer() { return m_buffer; }
+    String getOperatorName();
+    bool netOpen(const char* host, uint16_t port);
+    void netClose();
+    int netSend(const char* data, unsigned int len, bool wait = true);
+    char* netReceive(int* pbytes = 0, int timeout = 3000);
+    String queryIP(const char* host);
+    String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
+    String netDeviceName() { return "SIM5360"; }
   private:
+    bool netWaitSent(int timeout);
     // send command and check for expected response
-    virtual bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "OK\r\n", bool terminated = false);
-    char m_buffer[128];
+    bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
+    char m_buffer[256];
     char udpIP[16];
     uint16_t udpPort;
+    uint8_t m_stage;
 };
