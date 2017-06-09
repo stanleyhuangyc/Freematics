@@ -221,7 +221,8 @@ void COBDSPI::enterLowPowerMode()
 
 void COBDSPI::leaveLowPowerMode()
 {
-	getVersion();
+	char buf[16];
+	sendCommand("AT\r", buf, sizeof(buf));
 }
 
 float COBDSPI::getVoltage()
@@ -343,6 +344,8 @@ byte COBDSPI::begin()
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
+	digitalWrite(SPI_PIN_CS, LOW);
+	delay(10);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
 #ifdef ESP32
@@ -350,7 +353,7 @@ byte COBDSPI::begin()
 #else
 	SPI.setClockDivider(SPI_CLOCK_DIV4);
 #endif
-	delay(1000);
+	delay(500);
 	return getVersion();
 }
 
