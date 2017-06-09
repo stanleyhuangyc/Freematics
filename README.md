@@ -1,9 +1,9 @@
 Directories
 ===========
 
-firmware_v4 - reference Arduino sketches for ATmega328p based Freematics Telematics Data Logger V4 (Freematics ONE)
+firmware_v4 - reference Arduino sketches for ATmega328p based Freematics Vehicle Data Logger V4 (Freematics ONE)
 
-firmware_v5 - reference Arduino sketches for ESP32 based Freematics Telematics Data Logger V5 (Freematics ONE+)
+firmware_v5 - reference Arduino sketches for ESP32 based Freematics Vehicle Data Logger V5 (Freematics ONE+)
 
 ESPRIT - Arduino library and example sketches for Freematics ESPRIT (ESP32 Dev Board)
 
