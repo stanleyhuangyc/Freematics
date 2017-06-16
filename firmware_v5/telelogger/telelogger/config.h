@@ -24,6 +24,7 @@
 * Networking configurations
 **************************************/
 #ifndef NET_DEVICE
+// change the following line to change network device
 #define NET_DEVICE NET_WIFI
 // WIFI settings
 #define WIFI_SSID "HOMEWIFI"
@@ -49,6 +50,7 @@
 * Data storage configurations
 **************************************/
 #ifndef STORAGE_TYPE
+// change the following line to change storage type
 #define STORAGE_TYPE STORAGE_RAM
 #endif
 #ifndef STORAGE_SIZE
@@ -72,6 +74,7 @@
 * MEMS sensors
 **************************************/
 #ifndef MEMS_TYPE
+// change the following line to change MEMS type
 #define MEMS_TYPE MEMS_NONE
 #endif
 #define ACC_DATA_RATIO 172
@@ -82,6 +85,7 @@
 * GPS
 **************************************/
 #ifndef USE_GPS
+// change the following line to enable (1)/disable (0) GPS
 #define USE_GPS 1
 #define GPS_SERIAL_BAUDRATE 115200L
 #endif

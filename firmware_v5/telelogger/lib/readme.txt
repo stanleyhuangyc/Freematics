@@ -5,7 +5,8 @@ PlatformIO will compile them to static libraries and link to executable file.
 The source code of each library should be placed in separate directory, like
 "lib/private_lib/[here are source files]".
 
-For example, see how we can reference FreematicsPlus library from the sketch.
+For example, see how we can reference a custom copy of FreematicsPlus library
+from the sketch.
 
 |--lib
 |  |--FreematicsPlus
