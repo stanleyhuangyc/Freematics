@@ -72,7 +72,7 @@ public:
     void logData(uint16_t pid, int value1, int value2, int value3)
     {
         char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d/%d/%d"), pid, value1, value2, value3);
+        byte len = sprintf_P(buf, PSTR("%X=%d;%d;%d"), pid, value1, value2, value3);
         dispatch(buf, len);
     }
     void logCoordinate(uint16_t pid, int32_t value)
