@@ -13,8 +13,8 @@
 **************************************/
 #define XBEE_BAUDRATE 9600
 // change YOUR_SSID and YOUR_PASSWORD to your own
-#define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
+#define WIFI_SSID "HOMEWIFI"
+#define WIFI_PASSWORD "862150909018"
 
 /**************************************
 * Server settings

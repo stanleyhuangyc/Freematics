@@ -16,9 +16,6 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <SPI.h>
 #include <FreematicsONE.h>
 #include "config.h"
 #include "datalogger.h"
@@ -651,12 +648,9 @@ void setup()
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
     Serial.println("Freematics ONE");
- #if USE_MPU6050 || USE_MPU9250
-    Wire.begin();
-#endif
+    delay(1000);
     // perform initializations
     logger.begin();
-    delay(1000);
     logger.setup();
 }
 

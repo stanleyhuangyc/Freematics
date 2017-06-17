@@ -16,9 +16,6 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <SPI.h>
 #include <FreematicsONE.h>
 #include "config.h"
 #include "datalogger.h"
@@ -72,6 +69,7 @@ public:
       uint32_t t = millis();
       bool success = false;
       netSendCommand("ATE0\r");
+      netSendCommand("AT+CNAO=2\r");
       if (only3G) netSendCommand("AT+CNMP=14\r"); // use WCDMA only
       do {
         do {
@@ -720,9 +718,6 @@ void setup()
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
     Serial.println("Freematics ONE");
- #if USE_MPU6050 || USE_MPU9250
-    Wire.begin();
-#endif
     // perform initializations
     logger.begin();
     delay(1000);

@@ -13,9 +13,6 @@
 * THE SOFTWARE.
 *************************************************************************/
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <SPI.h>
 #include <FreematicsONE.h>
 #include "config.h"
 #include "datalogger.h"
@@ -53,7 +50,6 @@ public:
     void setup()
     {
 #if USE_MPU6050 || USE_MPU9250
-        Wire.begin();
         Serial.print("MEMS ");
         if (memsInit()) {
           state |= STATE_MEMS_READY;

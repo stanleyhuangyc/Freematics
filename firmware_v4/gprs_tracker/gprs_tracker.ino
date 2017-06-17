@@ -13,9 +13,6 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <Arduino.h>
-#include <SPI.h>
-#include <Wire.h>
 #include <FreematicsONE.h>
 
 /**************************************
@@ -40,6 +37,7 @@
 // device states
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_READY 0x4
+#define STATE_MEMS_READY 0x8
 #define STATE_SLEEPING 0x20
 #define STATE_CONNECTED 0x40
 
@@ -221,7 +219,7 @@ public:
     }
     byte checkbuffer(const char* expected, unsigned int timeout = 2000)
     {
-      byte ret = xbReceive(buffer, sizeof(buffer), 0, expected) != 0;
+      byte ret = xbReceive(buffer, sizeof(buffer), 0, &expected, 1) != 0;
       if (ret == 0) {
         // timeout
         return (millis() - checkTimer < timeout) ? 0 : 2;
@@ -233,7 +231,7 @@ public:
     {
       xbWrite(cmd);
       delay(10);
-      return xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
+      return xbReceive(buffer, sizeof(buffer), timeout, &expected, 1) != 0;
     }
     bool setPostPayload(const char* payload, int bytes)
     {
@@ -278,8 +276,7 @@ public:
 
         // display OBD adapter version
         if (state & STATE_OBD_READY) {
-          Serial.print("VER ");
-          Serial.println(version);
+          Serial.println("OK");
         } else {
           Serial.println("NO"); 
         }
@@ -294,7 +291,7 @@ public:
 #if USE_GPS
         // initialize GPS
         Serial.print("#GPS...");
-        if (initGPS(GPS_SERIAL_BAUDRATE)) {
+        if (gpsInit(GPS_SERIAL_BAUDRATE)) {
           state |= STATE_GPS_READY;
           Serial.println("OK");
         } else {
@@ -352,7 +349,7 @@ public:
 
 #if USE_GPS
         if (state & STATE_GPS_READY) {
-          if (!getGPSData(&gd)) {
+          if (!gpsGetData(&gd)) {
             delay(500);
           }
         }
@@ -442,7 +439,7 @@ private:
         Serial.println("Sleeping");
         toggleGSM(); // turn off GSM power
 #if USE_GPS
-        initGPS(0); // turn off GPS power
+        gpsInit(0); // turn off GPS power
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_MEMS_READY);
         state |= STATE_SLEEPING;

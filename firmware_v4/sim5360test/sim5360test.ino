@@ -14,13 +14,7 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <SPI.h>
 #include <FreematicsONE.h>
-#ifdef ESP32
-#include <TinyGPS.h>
-#endif
 
 #define APN "connect"
 #define HTTP_SERVER_URL "hub.freematics.com"
@@ -267,7 +261,7 @@ public:
         return 1;
       }
       // if not, receive a chunk of data from xBee module and look for expected string
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, expected) != 0;
+      byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1) != 0;
       if (ret == 0) {
         // timeout
         return (millis() - checkTimer < timeout) ? 0 : 2;
@@ -281,7 +275,7 @@ public:
         xbWrite(cmd);
       }
       buffer[0] = 0;
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, expected);
+      byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
       if (ret) {
         if (terminated) {
           char *p = strstr(buffer, expected);
