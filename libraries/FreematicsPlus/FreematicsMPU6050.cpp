@@ -11,6 +11,8 @@
 
 bool CMPU6050::memsInit()
 {
+	Wire.begin();
+	
 	// default at power-up:
 	//    Gyro at 250 degrees second
 	//    Acceleration at 2g
