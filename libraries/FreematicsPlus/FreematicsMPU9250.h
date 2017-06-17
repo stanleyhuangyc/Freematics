@@ -8,6 +8,9 @@
 #ifndef _MPU9250_H
 #define _MPU9250_H
 
+#include <Arduino.h>
+#include <Wire.h>
+
 // See also MPU-9250 Register Map and Descriptions, Revision 4.0,
 // RM-MPU-9250A-00, Rev. 1.4, 9/9/2013 for registers not listed in above
 // document; the MPU9250 and MPU9150 are virtually identical but the latter has
@@ -208,7 +211,7 @@ class CMPU9250
   public:
     bool memsInit();
     bool memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp);
-    
+
     void getMres();
     void getGres();
     void getAres();
