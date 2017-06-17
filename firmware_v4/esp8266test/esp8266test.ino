@@ -6,12 +6,10 @@
 * Developed by Stanley Huang <stanleyhuangyc@gmail.com>
 *************************************************************************/
 
-#include <SPI.h>
-#include <Wire.h>
 #include <FreematicsONE.h>
 
-#define WIFI_SSID "HOMEWIFI"
-#define WIFI_PASSWORD "862150909018"
+#define WIFI_SSID "WIFI_SSID"
+#define WIFI_PASSWORD "WIFI_PASSWORD"
 #define SERVER_URL "hub.freematics.com"
 #define SERVER_PORT 80
 

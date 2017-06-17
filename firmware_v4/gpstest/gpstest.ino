@@ -1,5 +1,3 @@
-#include <SPI.h>
-#include <Wire.h>
 #include <FreematicsONE.h>
 #include <TinyGPS.h>
 
@@ -17,7 +15,7 @@ void setup() {
   Serial.print("Firmware Version ");
   Serial.println(ver);
   Serial.println("Init GPS...");
-  if (one.initGPS(GPS_SERIAL_BAUDRATE)) {
+  if (one.gpsInit(GPS_SERIAL_BAUDRATE)) {
     Serial.println("OK");
     Serial.println("Waiting for signal");
   }
@@ -60,7 +58,7 @@ void showGPS()
 void loop() {
   // put your main code here, to run repeatedly:
   char buf[255];
-  byte n = one.getGPSRawData(buf, sizeof(buf));
+  byte n = one.gpsGetRawData(buf, sizeof(buf));
   if (n > 0) {
     bool updated = false;
     // need to skip heading ($GPS) and ending (>)
