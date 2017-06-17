@@ -413,6 +413,8 @@ void CMPU9250::initMPU9250()
 
 bool CMPU9250::memsInit()
 {
+  Wire.begin();
+  
   byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
   if (c != 0x71) return false;
   
