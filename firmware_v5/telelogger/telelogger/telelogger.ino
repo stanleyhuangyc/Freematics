@@ -16,9 +16,6 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <Wire.h>
-#include <SPI.h>
-#include <WiFi.h>
 #include <FreematicsPlus.h>
 #include "config.h"
 
@@ -214,13 +211,11 @@ public:
       processGPS();
     }
 #endif
-#if CACHE_SIZE > 128
     // read and log car battery voltage , data in 0.01v
     {
       int v = getVoltage() * 100;
       cache.log(PID_BATTERY_VOLTAGE, v);
     }
-#endif
 
     if (millis() - lastSentTime() >= DATA_SENDING_INTERVAL) {
       // transmit data
