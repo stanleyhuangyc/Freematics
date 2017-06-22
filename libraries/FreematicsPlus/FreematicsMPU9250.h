@@ -177,56 +177,79 @@
 #define AK8963_ADDRESS  0x0C   // Address of magnetometer
 #endif // AD0
 
+enum {
+  AFS_2G = 0,
+  AFS_4G,
+  AFS_8G,
+  AFS_16G
+};
+
+enum {
+  GFS_250DPS = 0,
+  GFS_500DPS,
+  GFS_1000DPS,
+  GFS_2000DPS
+};
+
+enum {
+  MFS_14BITS = 0, // 0.6 mG per LSB
+  MFS_16BITS      // 0.15 mG per LSB
+};
+
+// Specify sensor full scale
+#define Ascale AFS_4G
+#define Gscale GFS_250DPS
+
+#define mRes (10.*4912./32760.0)
+
+#if Ascale == AFS_2G
+  #define aRes (2.0/32768.0)
+#elif Ascale == AFS_4G:
+  #define aRes (4.0/32768.0)
+#elif Ascale == AFS_8G:
+  #define aRes (8.0/32768.0)
+#elif Ascale == AFS_16G:
+  #define aRes (16.0/32768.0)
+#endif
+
+#if Gscale == GFS_250DPS
+  #define gRes (250.0/32768.0)
+#elif Gscale == GFS_500DPS:
+  #define gRes (500.0/32768.0)
+#elif Gscale == GFS_1000DPS:
+  #define gRes (1000.0/32768.0)
+#elif Gscale == GFS_2000DPS:
+  #define gRes (2000.0/32768.0)
+#endif
+
+// 2 for 8 Hz, 6 for 100 Hz continuous magnetometer data read
+#define Mmode 0x02
+
 class CMPU9250
 {
-  protected:
-    // Set initial input parameters
-    enum Ascale {
-      AFS_2G = 0,
-      AFS_4G,
-      AFS_8G,
-      AFS_16G
-    };
+public:
+  bool memsInit();
+  bool memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp);
 
-    enum Gscale {
-      GFS_250DPS = 0,
-      GFS_500DPS,
-      GFS_1000DPS,
-      GFS_2000DPS
-    };
-
-    enum Mscale {
-      MFS_14BITS = 0, // 0.6 mG per LSB
-      MFS_16BITS      // 0.15 mG per LSB
-    };
-
-    // Specify sensor full scale
-    uint8_t Gscale = GFS_250DPS;
-    uint8_t Ascale = AFS_2G;
-    // Choose either 14-bit or 16-bit magnetometer resolution
-    uint8_t Mscale = MFS_16BITS;
-    // 2 for 8 Hz, 6 for 100 Hz continuous magnetometer data read
-    uint8_t Mmode = 0x02;
-
-  public:
-    bool memsInit();
-    bool memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp);
-
-    void getMres();
-    void getGres();
-    void getAres();
-    void readAccelData(int16_t *);
-    void readGyroData(int16_t *);
-    void readMagData(int16_t *);
-    int16_t readTempData();
-    void updateTime();
-    void initAK8963(float *);
-    void initMPU9250();
-    void calibrateMPU9250(float * gyroBias, float * accelBias);
-    void MPU9250SelfTest(float * destination);
-    void writeByte(uint8_t, uint8_t, uint8_t);
-    uint8_t readByte(uint8_t, uint8_t);
-    void readBytes(uint8_t, uint8_t, uint8_t, uint8_t *);
+  void getMres();
+  void getGres();
+  void getAres();
+  void readAccelData(int16_t *);
+  void readGyroData(int16_t *);
+  void readMagData(int16_t *);
+  int16_t readTempData();
+  void updateTime();
+  void initAK8963(float *);
+  void initMPU9250();
+  void calibrateMPU9250(float * gyroBias, float * accelBias);
+  void MPU9250SelfTest(float * destination);
+  void writeByte(uint8_t, uint8_t, uint8_t);
+  uint8_t readByte(uint8_t, uint8_t);
+  void readBytes(uint8_t, uint8_t, uint8_t, uint8_t *);
+private:
+  float gyroBias[3] = {0, 0, 0};
+  float accelBias[3] = {0, 0, 0};      // Bias corrections for gyro and accelerometer
+  float magCalibration[3] = {0, 0, 0};
 };  // class MPU9250
 
 #endif
