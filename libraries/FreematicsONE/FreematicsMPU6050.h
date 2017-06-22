@@ -8,6 +8,9 @@
 #ifndef _MPU6050_H
 #define _MPU6050_H
 
+#include <Arduino.h>
+#include <Wire.h>
+
 typedef struct
 {
     uint8_t x_accel_h;

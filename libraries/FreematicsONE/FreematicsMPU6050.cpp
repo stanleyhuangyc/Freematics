@@ -5,14 +5,12 @@
 * (C)2016 Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
-#include <Arduino.h>
-#include <Wire.h>
 #include "FreematicsMPU6050.h"
 
 bool CMPU6050::memsInit()
 {
 	Wire.begin();
-	
+
 	// default at power-up:
 	//    Gyro at 250 degrees second
 	//    Acceleration at 2g
@@ -47,14 +45,14 @@ bool CMPU6050::memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp)
 	// With the default settings of the MPU-6050,
 	// there is no filter enabled, and the values
 	// are not very stable.
-	
+
 	MPU6050_READOUT_DATA accel_t_gyro;
 	success = MPU6050_read (MPU6050_ACCEL_XOUT_H, (uint8_t *)&accel_t_gyro, sizeof(MPU6050_READOUT_DATA));
 	if (!success) return false;
-	
+
 	if (temp) {
 		// 340 per degrees Celsius, -512 at 35 degrees.
-		*temp = ((int)(((uint16_t)accel_t_gyro.t_h << 8) | accel_t_gyro.t_l) + 512) / 34 + 350; 
+		*temp = ((int)(((uint16_t)accel_t_gyro.t_h << 8) | accel_t_gyro.t_l) + 512) / 34 + 350;
 	}
 
 	if (acc) {
@@ -68,14 +66,14 @@ bool CMPU6050::memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp)
 		MPU6050_store(gyr + 1, accel_t_gyro.y_gyro_l, accel_t_gyro.y_gyro_h);
 		MPU6050_store(gyr + 2, accel_t_gyro.z_gyro_l, accel_t_gyro.z_gyro_h);
 	}
-	
+
 	if (mag) {
 		// no magnetometer
 		mag[0] = 0;
 		mag[1] = 0;
 		mag[2] = 0;
 	}
-	
+
 	return true;
 }
 
