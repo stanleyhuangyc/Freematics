@@ -388,7 +388,11 @@ private:
     {
          // log the loaded MEMS data
         if (accCount) {
-          cache.log(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
+          cache.log(PID_ACC, accSum[0] / accCount, accSum[1] / accCount, accSum[2] / accCount);
+          accCount = 0;
+          accSum[0] = 0;
+          accSum[1] = 0;
+          accSum[2] = 0;
         }
     }
 #endif
