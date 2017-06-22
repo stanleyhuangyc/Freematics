@@ -435,16 +435,16 @@ bool CMPU9250::memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp)
   if (acc) {
     int16_t accelCount[3];
     readAccelData(accelCount);
-    acc[0] = (float)accelCount[0]*aRes; // - accelBias[0];  // get actual g value, this depends on scale being set
-    acc[1] = (float)accelCount[1]*aRes; // - accelBias[1];
-    acc[2] = (float)accelCount[2]*aRes; // - accelBias[2];
+    acc[0] = (float)accelCount[0]*100*aRes; // - accelBias[0];  // get actual g value, this depends on scale being set
+    acc[1] = (float)accelCount[1]*100*aRes; // - accelBias[1];
+    acc[2] = (float)accelCount[2]*100*aRes; // - accelBias[2];
   }
   if (gyr) {
     int16_t gyroCount[3];
     readGyroData(gyroCount);
-    gyr[0] = (float)gyroCount[0]*gRes;  // get actual gyro value, this depends on scale being set
-    gyr[1] = (float)gyroCount[1]*gRes;
-    gyr[2] = (float)gyroCount[2]*gRes;
+    gyr[0] = (float)gyroCount[0]*100*gRes;  // get actual gyro value, this depends on scale being set
+    gyr[1] = (float)gyroCount[1]*100*gRes;
+    gyr[2] = (float)gyroCount[2]*100*gRes;
   }
   if (mag) {
     int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output

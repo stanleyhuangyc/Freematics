@@ -197,7 +197,7 @@ enum {
 };
 
 // Specify sensor full scale
-#define Ascale AFS_4G
+#define Ascale AFS_2G
 #define Gscale GFS_250DPS
 
 #define mRes (10.*4912./32760.0)
