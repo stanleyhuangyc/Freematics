@@ -21,6 +21,15 @@
 #define MEMS_MPU9250 2
 
 /**************************************
+* OBD-II configurations
+**************************************/
+#ifndef ENABLE_OBD
+#define ENABLE_OBD 1
+#endif
+// maximum consecutive OBD-II access errors before entering standby
+#define MAX_OBD_ERRORS 10
+
+/**************************************
 * Networking configurations
 **************************************/
 #ifndef NET_DEVICE
@@ -61,14 +70,8 @@
 #endif
 #endif
 #ifndef DATA_SENDING_INTERVAL
-#define DATA_SENDING_INTERVAL 100 /* ms */
+#define DATA_SENDING_INTERVAL 200 /* ms */
 #endif
-
-/**************************************
-* OBD-II configurations
-**************************************/
-// maximum consecutive OBD-II access errors before entering standby
-#define MAX_OBD_ERRORS 10
 
 /**************************************
 * MEMS sensors
