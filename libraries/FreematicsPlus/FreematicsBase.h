@@ -116,7 +116,11 @@ typedef struct {
 class CFreematics
 {
 public:
-  // hardware sleep (timer counter will stop)
+  // initialization routines
+  virtual byte begin() { return 1; }
+  // initialization routines
+  virtual bool init() { return true; }
+  // can implement hardware sleep (timer counter might stop)
 	virtual void sleepSec(unsigned int seconds) { delay(seconds * 1000); }
 	// normal delay
 	virtual void sleep(unsigned int ms) { delay(ms); }
@@ -130,6 +134,8 @@ public:
   virtual bool gpsGetData(GPS_DATA* gdata) = 0;
   // send command string to GPS
   virtual void gpsSendCommand(const char* cmd) {};
+  // type of GPS
+  virtual bool internalGPS() { return false; }
 	// start xBee UART communication
 	virtual bool xbBegin(unsigned long baudrate = 115200L) = 0;
 	// read data to xBee UART
