@@ -19,7 +19,7 @@
 #include "esp_log.h"
 #include "soc/uart_struct.h"
 #include "FreematicsPlus.h"
-#include "TinyGPS.h"
+#include "FreematicsGPS.h"
 
 static TinyGPS gps;
 static bool newGPSData = false;
