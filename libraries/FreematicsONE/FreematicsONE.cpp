@@ -621,7 +621,10 @@ bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 			int32_t value = atol(s);
 			switch (index) {
 			case 0:
-				gdata->date = (uint32_t)value;
+				if (value == 0)
+					valid = false;
+				else
+					gdata->date = (uint32_t)value;
 				break;
 			case 1:
 				gdata->time = (uint32_t)value;
@@ -652,7 +655,7 @@ bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 			s = p + 1;
 		}
 	}
-	return index > 7;
+	return valid && index > 7;
 }
 
 int COBDSPI::gpsGetRawData(char* buf, int bufsize)
