@@ -81,6 +81,7 @@
 
 #define EVENT_LOGIN 1
 #define EVENT_LOGOUT 2
+#define EVENT_RECONNECT 3
 
 typedef enum {
     PROTO_AUTO = 0,
