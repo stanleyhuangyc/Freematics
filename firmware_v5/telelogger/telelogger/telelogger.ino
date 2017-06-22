@@ -205,6 +205,9 @@ public:
     // process MEMS data if available
     if (checkState(STATE_MEMS_READY)) {
         processMEMS();
+        if ((txCount % 100) == 1) {
+          cache.log(PID_DEVICE_TEMP, deviceTemp);
+        }
     }
 #endif
 
@@ -214,13 +217,11 @@ public:
       processGPS();
     }
 #endif
-#if CACHE_SIZE > 128
     // read and log car battery voltage , data in 0.01v
     {
       int v = getVoltage() * 100;
       cache.log(PID_BATTERY_VOLTAGE, v);
     }
-#endif
 
     if (millis() - lastSentTime() >= DATA_SENDING_INTERVAL) {
       // transmit data
@@ -235,9 +236,6 @@ public:
     }
 
 #if MEMS_TYPE
-    if ((txCount % 100) == 1) {
-      cache.log(PID_DEVICE_TEMP, deviceTemp);
-    }
     if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
       // device too hot, cool down
       Serial.print("Cooling (");
@@ -404,7 +402,7 @@ private:
         GPS_DATA gd = {0};
         // read parsed GPS data
         if (gpsGetData(&gd)) {
-            if (lastUTC != (uint16_t)gd.time) {
+            if (gd.date && lastUTC != (uint16_t)gd.time) {
               byte day = gd.date / 10000;
               cache.log(PID_GPS_TIME, gd.time);
               if (lastGPSDay != day) {
@@ -481,10 +479,6 @@ void setup()
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
     Serial.println("Freematics ONE+ (ESP32)");
-    Serial.println();
- #if MEMS_TYPE
-    Wire.begin();
-#endif
     // perform initializations
     logger.begin();
     delay(1000);
