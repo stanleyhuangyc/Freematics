@@ -54,14 +54,14 @@
 #define STORAGE_TYPE STORAGE_RAM
 #endif
 #ifndef STORAGE_SIZE
-#if NET_BLE == NET_BLE
+#if NET_DEVICE == NET_BLE
 #define STORAGE_SIZE 160 /* bytes */
 #else
 #define STORAGE_SIZE 1020 /* bytes */
 #endif
 #endif
 #ifndef DATA_SENDING_INTERVAL
-#define DATA_SENDING_INTERVAL 1000 /* ms */
+#define DATA_SENDING_INTERVAL 100 /* ms */
 #endif
 
 /**************************************
@@ -75,7 +75,7 @@
 **************************************/
 #ifndef MEMS_TYPE
 // change the following line to change MEMS type
-#define MEMS_TYPE MEMS_NONE
+#define MEMS_TYPE MEMS_MPU9250
 #endif
 #define ACC_DATA_RATIO 172
 #define GYRO_DATA_RATIO 256
