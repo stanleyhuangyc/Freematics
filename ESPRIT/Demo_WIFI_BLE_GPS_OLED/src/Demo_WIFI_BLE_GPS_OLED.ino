@@ -23,7 +23,7 @@
 #include <ESPmDNS.h>
 #include <WiFiClient.h>
 #include <TinyGPS.h>
-#include <ESPRIT.h>
+#include <Esprit.h>
 #include "SH1106.h"
 #include "images.h"
 #include "config.h"
@@ -67,7 +67,7 @@ void showTickCross(bool yes)
 void setup(void)
 {
     Serial.begin(115200);
-    Serial1.begin(115200, SERIAL_8N1, 16, 17);
+    Serial2.begin(115200, SERIAL_8N1, 32, 33);
     Serial.println("Freematics ESPRIT Demo");
     lcd.begin();
     lcd.setFontSize(FONT_SIZE_MEDIUM);
@@ -161,7 +161,7 @@ void setup(void)
     lcd.setCursor(0, 4);
     lcd.setFontSize(FONT_SIZE_MEDIUM);
     lcd.print("GPS");
-    if (!Serial1.available()) showTickCross(false);
+    if (!Serial2.available()) showTickCross(false);
 }
 
 class CGPS
@@ -206,10 +206,10 @@ void loop(void)
             lastTick = millis();
         }
     }
-    
+
     // read GPS NMEA data from Serial1 and parse it
-    if (Serial1.available()) {
-      char c = Serial1.read();
+    if (Serial2.available()) {
+      char c = Serial2.read();
       //Serial.write(c);
       if (c == '\n') {
         lcd.setCursor(27, 4);
@@ -224,15 +224,15 @@ void loop(void)
       if (mygps.push(c)) {
         lcd.setCursor(0, 6);
         lcd.setFontSize(FONT_SIZE_SMALL);
-        lcd.print(mygps.lat);
-        lcd.print(',');
-        lcd.println(mygps.lng);
+        lcd.print((float)mygps.lat / 1000000);
+        lcd.print('/');
+        lcd.println((float)mygps.lng / 1000000);
         lcd.print(mygps.speed);
         lcd.print("kph Alt:");
         lcd.print(mygps.alt / 100);
         lcd.print("m Sat:");
         lcd.print(mygps.sat);
-        lcd.print("  ");
+        lcd.print(' ');
       }
     }
 
