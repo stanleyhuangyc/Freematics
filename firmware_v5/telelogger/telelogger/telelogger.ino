@@ -54,7 +54,11 @@ public CTeleClientSIM5360
 #else
 public CTeleClient
 #endif
+#if ENABLE_OBD
 ,public COBDSPI
+#else
+,public CFreematicsESP32
+#endif
 #if MEMS_TYPE == MEMS_MPU6050
 ,public CMPU6050
 #elif MEMS_TYPE == MEMS_MPU9250
@@ -78,6 +82,8 @@ public:
       }
     }
 #endif
+
+#if ENABLE_OBD
     // initialize OBD communication
     if (!checkState(STATE_OBD_READY)) {
       Serial.print("#OBD...");
@@ -88,6 +94,7 @@ public:
       Serial.println("OK");
       setState(STATE_OBD_READY);
     }
+#endif
 
     // initialize network module
     if (!checkState(STATE_NET_READY)) {
@@ -193,10 +200,12 @@ public:
   {
     cache.timestamp(millis());
 
+#if ENABLE_OBD
     // process OBD data if connected
     if (checkState(STATE_OBD_READY)) {
       processOBD();
     }
+#endif
 
 #if MEMS_TYPE
     // process MEMS data if available
@@ -214,11 +223,14 @@ public:
       processGPS();
     }
 #endif
+
+#if ENABLE_OBD
     // read and log car battery voltage , data in 0.01v
     {
       int v = getVoltage() * 100;
       cache.log(PID_BATTERY_VOLTAGE, v);
     }
+#endif
 
     if (millis() - lastSentTime() >= DATA_SENDING_INTERVAL) {
       // transmit data
@@ -246,6 +258,7 @@ public:
   {
     char payload[128];
     int bytes = 0;
+#if ENABLE_OBD
     // load DTC
     uint16_t dtc[6];
     byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
@@ -265,6 +278,9 @@ public:
     } else {
       sprintf(payload + bytes, "DEFAULT_VIN");
     }
+#else
+    strcpy(payload, ",VIN=DEFAULT_VIN");
+#endif
 
     // connect to telematics server
     for (byte attempts = 0; attempts < 3; attempts++) {
@@ -301,9 +317,12 @@ public:
         Serial.println("OFF");
         clearState(STATE_NET_READY);
       }
+#if ENABLE_OBD
       if (errors > MAX_OBD_ERRORS) {
+        // inaccessible OBD treated as end of trip
         feedid = 0;
       }
+#endif
 #if USE_GPS
       if (checkState(STATE_GPS_READY)) {
         Serial.print("#GPS:");
@@ -348,6 +367,7 @@ public:
   void setState(byte flags) { m_state |= flags; }
   void clearState(byte flags) { m_state &= ~flags; }
 private:
+#if ENABLE_OBD
   void processOBD()
   {
       int speed = readSpeed();
@@ -383,6 +403,7 @@ private:
           return -1;
         }
     }
+#endif
 #if MEMS_TYPE
     void processMEMS()
     {
@@ -479,7 +500,11 @@ void setup()
 {
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
+#if ENABLE_OBD
     Serial.println("Freematics ONE+ (ESP32)");
+#else
+    Serial.println("Freematics Esprit (ESP32)");
+#endif
     // perform initializations
     logger.begin();
     delay(1000);
@@ -489,7 +514,12 @@ void setup()
 void loop()
 {
     // error handling
-    if (!logger.checkState(STATE_ALL_GOOD) || (logger.errors > MAX_OBD_ERRORS && !logger.init()) || logger.getConnErrors() >= MAX_CONN_ERRORS) {
+    if (!logger.checkState(STATE_ALL_GOOD)
+#if ENABLE_OBD
+      || (logger.errors > MAX_OBD_ERRORS && !logger.init())
+      || logger.getConnErrors() >= MAX_CONN_ERRORS
+#endif
+    ) {
       do {
         logger.standby();
       } while (!logger.setup());
