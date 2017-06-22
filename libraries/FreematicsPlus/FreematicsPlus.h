@@ -35,7 +35,7 @@ private:
   void* xSemaphore;
 };
 
-class CFreematicsESP32 : public CFreematics
+class CFreematicsESP32 : public virtual CFreematics
 {
 public:
   // initialize GPS (set baudrate to 0 to power off GPS)
