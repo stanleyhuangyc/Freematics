@@ -16,9 +16,6 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <Wire.h>
-#include <SPI.h>
-#include <WiFi.h>
 #include <FreematicsPlus.h>
 #include "config.h"
 
