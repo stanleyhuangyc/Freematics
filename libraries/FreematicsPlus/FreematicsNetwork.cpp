@@ -467,7 +467,7 @@ bool CTeleClientSIM5360::netBegin()
     sleep(3000);
     // discard any stale data
     xbPurge();
-    for (byte m = 0; m < 3; m++) {
+    for (byte m = 0; m < 5; m++) {
       if (netSendCommand("AT\r")) {
         m_stage = 2;
         return true;
@@ -599,9 +599,17 @@ void CTeleClientSIM5360::netClose()
 
 int CTeleClientSIM5360::netSend(const char* data, unsigned int len, bool wait)
 {
-  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP, udpPort);
+  char head[16];
+  char tail[4];
+  int headLen = sprintf(head, "%X#", feedid);
+  byte checksum = getChecksum(head, headLen) + getChecksum(data, len);
+  int tailLen = sprintf(tail, "*%X", (int)checksum);
+  int bytesToSend = headLen + len + tailLen;
+  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", bytesToSend, udpIP, udpPort);
   if (netSendCommand(m_buffer, 100, ">")) {
+    xbWrite(head, headLen);
     xbWrite(data, len);
+    xbWrite(tail, tailLen);
     if (!wait) return len;
     return netWaitSent(1000) ? len : 0;
   } else {
