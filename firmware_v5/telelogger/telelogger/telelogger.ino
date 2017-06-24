@@ -232,7 +232,8 @@ public:
     }
 #endif
 
-    if (millis() - lastSentTime >= DATA_SENDING_INTERVAL) {
+    uint32_t t = millis()
+    if (t - lastSentTime >= DATA_SENDING_INTERVAL) {
       digitalWrite(PIN_LED, HIGH);
       Serial.print('[');
       Serial.print(txCount);
@@ -255,7 +256,7 @@ public:
         netClose();
         netOpen(SERVER_URL, SERVER_PORT);
       }
-      lastSentTime = millis();
+      lastSentTime = t;
     }
 
 #if MEMS_TYPE
@@ -557,15 +558,6 @@ void loop()
         logger.standby();
       } while (!logger.setup());
     }
-#if DATASET_INTERVAL
-    uint32_t t = millis();
-#endif
     // collect data
     logger.loop();
-
-#if DATASET_INTERVAL
-    // wait to reach preset data rate
-    unsigned int elapsed = millis() - t;
-    if (elapsed < DATASET_INTERVAL) logger.sleep(DATASET_INTERVAL - elapsed);
-#endif
 }
