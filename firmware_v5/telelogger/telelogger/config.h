@@ -34,17 +34,18 @@
 **************************************/
 #ifndef NET_DEVICE
 // change the following line to change network device
-#define NET_DEVICE NET_WIFI
+#define NET_DEVICE NET_SIM5360
 // WIFI settings
 #define WIFI_SSID "HOMEWIFI"
 #define WIFI_PASSWORD "862150909018"
 // APN settings for cellular network
 #define CELLULAR_APN "connect"
+#endif
+
 // Freematics Hub server settings
 #define SERVER_URL "hub.freematics.com"
 #define SERVER_PORT 8081
 #define SERVER_KEY "TEST_SERVER_KEY"
-#endif
 
 // xBee module serial baudrate
 #define XBEE_BAUDRATE 115200
@@ -54,6 +55,14 @@
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
+
+/**************************************
+* BLE configurations
+**************************************/
+#ifndef ENABLE_BLE
+#define ENABLE_BLE 1
+#define BLE_DEVICE_NAME "Freematics ONE+"
+#endif
 
 /**************************************
 * Data storage configurations
@@ -70,7 +79,7 @@
 #endif
 #endif
 #ifndef DATA_SENDING_INTERVAL
-#define DATA_SENDING_INTERVAL 200 /* ms */
+#define DATA_SENDING_INTERVAL 500 /* ms */
 #endif
 
 /**************************************
@@ -93,7 +102,7 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 50 /* for wakeup on movement */
+#define WAKEUP_MOTION_THRESHOLD 5 /* for wakeup on movement */
 #define CALIBRATION_TIME 1000 /* ms */
 
 /**************************************

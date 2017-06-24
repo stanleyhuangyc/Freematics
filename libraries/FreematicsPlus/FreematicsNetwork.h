@@ -24,17 +24,32 @@
 class CTeleClient
 {
 public:
-  CTeleClient():connErrors(0),txCount(0),m_bytesCount(0),feedid(0),m_lastSentTime(0),m_waiting(false) {}
+  CTeleClient():connErrors(0),txCount(0),m_bytesCount(0),feedid(0),m_waiting(false) {}
   virtual bool netBegin() { return true; }
   virtual void netEnd() {}
-  virtual bool netOpen(const char* host, uint16_t port) { return false; }
+  virtual bool netOpen(const char* host, uint16_t port) { return true; }
   virtual void netClose() {}
   virtual int netSend(const char* data, unsigned int len, bool wait = true) { return false; }
   virtual char* netReceive(int* pbytes = 0, int timeout = 3000) { return 0; }
-  bool notifyServer(byte event, const char* serverKey = 0, const char* extra = 0);
-  bool transmit(const char* data, int bytes, bool wait);
-  uint8_t getConnErrors() { return connErrors; }
   virtual String netDeviceName() { return ""; }
+  bool notifyServer(byte event, const char* serverKey = 0, const char* extra = 0);
+  int transmit(const char* data, int bytes, bool wait);
+  uint8_t getConnErrors() { return connErrors; }
+  bool bleBegin(const char* bleDeviceName);
+  void bleEnd();
+  bool bleSend(const char* data, unsigned int len);
+  bool bleSend(String s);
+  virtual size_t onRequest(uint8_t* buffer, size_t len)
+  {
+    // being requested for data
+    buffer[0] = 'O';
+    buffer[1] = 'K';
+    return 2;
+  }
+  virtual void onReceive(uint8_t* buffer, size_t len)
+  {
+    // data received is in buffer
+  }
 protected:
   byte getChecksum(const char* data, int len)
   {
@@ -46,7 +61,6 @@ protected:
   virtual bool netWaitSent(int timeout) { return true; }
   virtual String getServerName() { return m_serverName; }
   uint32_t getTotalBytesSent() { return m_bytesCount; }
-  uint32_t lastSentTime() { return m_lastSentTime; }
   uint16_t feedid;
   uint32_t txCount;
   uint8_t connErrors;
@@ -55,7 +69,6 @@ protected:
 private:
   bool verifyChecksum(const char* data);
   bool m_waiting;
-  uint32_t m_lastSentTime;
 };
 
 class CTeleClientSerialUSB : public CTeleClient
@@ -72,27 +85,12 @@ public:
 class CTeleClientBLE : public CTeleClient
 {
 public:
-    bool netBegin();
-    void netEnd();
-    bool netSetup(const char* deviceName);
-    String getIP() { return ""; }
-    int getSignal() { return 0; }
-    bool netOpen(const char* host, uint16_t port) { return true; }
-    int netSend(const char* data, unsigned int len, bool wait = true);
+    int netSend(const char* data, unsigned int len, bool wait = true)
+    {
+      return bleSend(data, len) ? len : 0;
+    }
     char* netReceive(int* pbytes = 0, int timeout = 3000) { return 0; }
     String netDeviceName() { return "BLE"; }
-    size_t onRequest(uint8_t* buffer, size_t len)
-    {
-      // being requested for data
-      buffer[0] = 'O';
-      buffer[1] = 'K';
-      return 2;
-    }
-    void onReceive(uint8_t* buffer, size_t len)
-    {
-      // data received is in buffer
-    }
-private:
 };
 
 class CTeleClientWIFI : public CTeleClient, public virtual CFreematics

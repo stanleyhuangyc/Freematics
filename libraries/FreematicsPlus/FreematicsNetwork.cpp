@@ -10,6 +10,63 @@
 #include "FreematicsONE.h"
 #include "FreematicsNetwork.h"
 
+static CTeleClient* gatts_inst = 0;
+
+extern "C" {
+
+void gatts_init(const char* device_name);
+void gatts_uninit();
+int gatts_send(uint8_t* data, size_t len);
+
+size_t gatts_read_callback(uint8_t* buffer, size_t len)
+{
+	if (gatts_inst) {
+		return gatts_inst->onRequest(buffer, len);
+	} else {
+		return 0;
+	}
+}
+
+void gatts_write_callback(uint8_t* data, size_t len)
+{
+    if (gatts_inst) gatts_inst->onReceive(data, len);
+}
+
+}
+
+bool CTeleClient::bleBegin(const char* bleDeviceName)
+{
+  btStart();
+  esp_err_t ret = esp_bluedroid_init();
+  if (ret) {
+      Serial.println("Bluetooth failed");
+      return false;
+  }
+  ret = esp_bluedroid_enable();
+  if (ret) {
+      Serial.println("Error enabling bluetooth");
+      return false;
+  }
+  gatts_inst = this;
+  gatts_init(bleDeviceName);
+  return true;
+}
+
+void CTeleClient::bleEnd()
+{
+  gatts_uninit();
+}
+
+bool CTeleClient::bleSend(const char* data, unsigned int len)
+{
+  return gatts_inst && gatts_send((uint8_t*)data, len);
+}
+
+bool CTeleClient::bleSend(String s)
+{
+  return gatts_inst && gatts_send((uint8_t*)s.c_str(), s.length());
+}
+
 bool CTeleClient::verifyChecksum(const char* data)
 {
   uint8_t sum = 0;
@@ -74,7 +131,7 @@ bool CTeleClient::notifyServer(byte event, const char* serverKey, const char* pa
   return false;
 }
 
-bool CTeleClient::transmit(const char* data, int bytes, bool wait)
+int CTeleClient::transmit(const char* data, int bytes, bool wait)
 {
   if (m_waiting) {
     // wait for last data to be sent
@@ -91,18 +148,9 @@ bool CTeleClient::transmit(const char* data, int bytes, bool wait)
   if (data[bytes - 1] == ',') bytes--;
   int bytesSent = netSend(data, bytes, wait);
 
-  // output some stats
-  Serial.print('#');
-  Serial.print(txCount);
-  Serial.print(' ');
-  Serial.print(bytesSent);
-  Serial.print(" bytes ");
-  Serial.print(millis() - m_lastSentTime);
-  Serial.println("ms");
-
   if (bytesSent == 0) {
     connErrors++;
-    return false;
+    return 0;
   } else {
     if (!wait) {
       m_waiting = true;
@@ -110,73 +158,9 @@ bool CTeleClient::transmit(const char* data, int bytes, bool wait)
       connErrors = 0;
       txCount++;
     }
-    m_lastSentTime = millis();
   }
-  return true;
+  return bytesSent;
 }
-
-/*******************************************************************************
-  Implementation for ESP32 built-in BLE (ESP-IDF)
-*******************************************************************************/
-
-static CTeleClientBLE* gatts_inst = 0;
-
-extern "C" {
-
-void gatts_init(const char* device_name);
-void gatts_uninit();
-int gatts_send(uint8_t* data, size_t len);
-
-size_t gatts_read_callback(uint8_t* buffer, size_t len)
-{
-	if (gatts_inst) {
-		return gatts_inst->onRequest(buffer, len);
-	} else {
-		return 0;
-	}
-}
-
-void gatts_write_callback(uint8_t* data, size_t len)
-{
-    if (gatts_inst) gatts_inst->onReceive(data, len);
-}
-
-}
-
-bool CTeleClientBLE::netBegin()
-{
-  btStart();
-  esp_err_t ret = esp_bluedroid_init();
-  if (ret) {
-      Serial.println("Bluetooth failed");
-      return false;
-  }
-  ret = esp_bluedroid_enable();
-  if (ret) {
-      Serial.println("Error enabling bluetooth");
-      return false;
-  }
-  gatts_inst = this;
-  return true;
-}
-
-bool CTeleClientBLE::netSetup(const char* deviceName)
-{
-  gatts_init(deviceName);
-  return true;
-}
-
-void CTeleClientBLE::netEnd()
-{
-  gatts_uninit();
-}
-
-int CTeleClientBLE::netSend(const char* data, unsigned int len, bool wait)
-{
-  return gatts_send((uint8_t*)data, len) ? len : 0;
-}
-
-const char* netDeviceName() { return "BLE"; }
 
 /*******************************************************************************
   Implementation for ESP32 built-in WIFI (Arduino WIFI library)
@@ -539,6 +523,8 @@ String CTeleClientSIM5360::getIP()
       if (p) {
         char *ip = p + 9;
         if (*ip != '0') {
+					char *q = strchr(ip, '\r');
+					if (q) *q = 0;
           return ip;
         }
       }
