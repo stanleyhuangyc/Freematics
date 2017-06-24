@@ -28,6 +28,8 @@
 #define STATE_CONNECTED 0x20
 #define STATE_ALL_GOOD 0x40
 
+#define PIN_LED 4
+
 #if MEMS_TYPE
 byte accCount = 0; // count of accelerometer readings
 long accSum[3] = {0}; // sum of accelerometer data
@@ -231,10 +233,11 @@ public:
 #endif
 
     if (millis() - lastSentTime >= DATA_SENDING_INTERVAL) {
-      // transmit data
+      digitalWrite(PIN_LED, HIGH);
       Serial.print('[');
       Serial.print(txCount);
       Serial.print(']');
+      // transmit data
       int bytesSent = transmit(cache.getBuffer(), cache.getBytes(), false);
       if (bytesSent > 0) {
         // output some stats
@@ -246,6 +249,7 @@ public:
       } else {
         Serial.println("Unsent");
       }
+      digitalWrite(PIN_LED, LOW);
 
       if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
         netClose();
@@ -520,19 +524,23 @@ CTeleLogger logger;
 
 void setup()
 {
-    // initialize hardware serial (for USB and BLE)
+    // initialize USB serial
     Serial.begin(115200);
 #if ENABLE_OBD
     Serial.println("Freematics ONE+ (ESP32)");
 #else
     Serial.println("Freematics Esprit (ESP32)");
 #endif
+    // init LED pin
+    pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_LED, HIGH);
     // perform initializations
     logger.begin();
 #if ENABLE_BLE
     logger.bleBegin(BLE_DEVICE_NAME);
 #endif
-    delay(2000);
+    delay(1000);
+    digitalWrite(PIN_LED, LOW);
     logger.setup();
 }
 
