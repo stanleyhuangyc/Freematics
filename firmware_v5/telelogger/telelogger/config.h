@@ -93,11 +93,11 @@
 /**************************************
 * GPS
 **************************************/
-#ifndef USE_GPS
+#ifndef ENABLE_GPS
 // change the following line to enable (1)/disable (0) GPS
-#define USE_GPS 1
-#define GPS_SERIAL_BAUDRATE 115200L
+#define ENABLE_GPS 1
 #endif
+#define GPS_SERIAL_BAUDRATE 115200L
 
 /**************************************
 * Motion detection
