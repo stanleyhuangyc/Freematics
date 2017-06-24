@@ -38,7 +38,7 @@ int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
 uint32_t startTick = 0;
-
+uint32_t lastSentTime = 0;
 
 class CTeleLogger :
 #if NET_DEVICE == NET_SERIAL
@@ -73,10 +73,11 @@ public:
 
 #if MEMS_TYPE
     if (!checkState(STATE_MEMS_READY)) {
-      Serial.print("#MEMS...");
+      Serial.print("MEMS...");
       if (memsInit()) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
+        bleSend("MEMS OK");
       } else {
         Serial.println("NO");
       }
@@ -86,23 +87,24 @@ public:
 #if ENABLE_OBD
     // initialize OBD communication
     if (!checkState(STATE_OBD_READY)) {
-      Serial.print("#OBD...");
-      if (!init()) {
+      Serial.print("OBD...");
+      if (!init() && !init()) {
         Serial.println("NO");
         return false;
       }
       Serial.println("OK");
+      bleSend("OBD OK");
       setState(STATE_OBD_READY);
     }
 #endif
 
     // initialize network module
     if (!checkState(STATE_NET_READY)) {
-      Serial.print('#');
       Serial.print(netDeviceName());
       Serial.print("...");
       if (netBegin()) {
         Serial.println("OK");
+        bleSend("NET OK");
         setState(STATE_NET_READY);
       } else {
         Serial.println("NO");
@@ -110,36 +112,30 @@ public:
       }
     }
 
-#if NET_DEVICE == NET_BLE
-    Serial.print("#GATTS...");
-    if (netSetup("Freematics ONE+")) {
-      Serial.println("OK");
-      setState(STATE_CONNECTED);
-    } else {
-      Serial.println("NO");
-      return false;
-    }
-#elif NET_DEVICE == NET_WIFI
-    Serial.print("#AP(SSID:");
+#if NET_DEVICE == NET_WIFI
+    Serial.print("WIFI(SSID:");
     Serial.print(WIFI_SSID);
     Serial.print(")...");
     if (netSetup(WIFI_SSID, WIFI_PASSWORD)) {
-      Serial.println(getIP());
+      bleSend("WIFI OK");
       setState(STATE_NET_READY | STATE_CONNECTED);
     } else {
       Serial.println("NO");
       return false;
     }
 #elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
-    Serial.print("#CELL(APN:");
+    Serial.print("CELL(APN:");
     Serial.print(CELLULAR_APN);
     Serial.print(")");
     if (netSetup(CELLULAR_APN)) {
+      bleSend("CELL OK");
       String op = getOperatorName();
-      if (op.length())
+      if (op.length()) {
         Serial.println(op);
-      else
+        bleSend(op);
+      } else {
         Serial.println("OK");
+      }
       setState(STATE_CONNECTED);
     } else {
       Serial.println("NO");
@@ -150,12 +146,13 @@ public:
 #if USE_GPS
     // start serial communication with GPS receiver
     if (!checkState(STATE_GPS_READY)) {
-      Serial.print("#GPS...");
+      Serial.print("GPS...");
       if (gpsInit(GPS_SERIAL_BAUDRATE)) {
         setState(STATE_GPS_READY);
         Serial.print("OK(");
         Serial.print(internalGPS() ? "internal" : "external");
         Serial.println(')');
+        bleSend("GPS OK");
       } else {
         Serial.println("NO");
       }
@@ -163,14 +160,15 @@ public:
 #endif
 
 #if NET_DEVICE == WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
-    Serial.print("#IP...");
+    Serial.print("IP...");
     String ip = getIP();
     if (ip.length()) {
       Serial.println(ip);
+      bleSend(ip);
     } else {
       Serial.println("NO");
     }
-    Serial.print("#CSQ...");
+    Serial.print("CSQ...");
     int csq = getSignal();
     Serial.println(csq);
 #endif
@@ -232,16 +230,28 @@ public:
     }
 #endif
 
-    if (millis() - lastSentTime() >= DATA_SENDING_INTERVAL) {
+    if (millis() - lastSentTime >= DATA_SENDING_INTERVAL) {
       // transmit data
-      if (transmit(cache.getBuffer(), cache.getBytes(), false)) {
+      Serial.print('[');
+      Serial.print(txCount);
+      Serial.print(']');
+      int bytesSent = transmit(cache.getBuffer(), cache.getBytes(), false);
+      if (bytesSent > 0) {
+        // output some stats
+        char buf[16];
+        sprintf(buf, "%uB sent", bytesSent);
+        Serial.println(buf);
+        bleSend(buf);
         cache.purge();
+      } else {
+        Serial.println("Unsent");
       }
 
       if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
         netClose();
         netOpen(SERVER_URL, SERVER_PORT);
       }
+      lastSentTime = millis();
     }
 
 #if MEMS_TYPE
@@ -343,15 +353,21 @@ public:
             long n = accSum[i] / accCount - accCal[i];
             motion += n * n;
           }
-          motion /= 100;
-          Serial.println(motion);
+          char buf[16];
+          sprintf(buf, "M:%u", motion);
+          Serial.println(buf);
+          bleSend(buf);
           // check movement
-          if (motion > WAKEUP_MOTION_THRESHOLD) {
+          if (motion >= WAKEUP_MOTION_THRESHOLD) {
             leaveLowPowerMode();
             break;
           }
-          // MEMS data collected while sleeping
-          sleep(3000);
+          // measure acceleration
+          clearMEMS();
+          for (int i = 0; i < 100; i++) {
+            readMEMS();
+            delay(10);
+          }
         }
       }
 #else
@@ -410,10 +426,7 @@ private:
          // log the loaded MEMS data
         if (accCount) {
           cache.log(PID_ACC, accSum[0] / accCount, accSum[1] / accCount, accSum[2] / accCount);
-          accCount = 0;
-          accSum[0] = 0;
-          accSum[1] = 0;
-          accSum[2] = 0;
+          clearMEMS();
         }
     }
 #endif
@@ -448,19 +461,28 @@ private:
     void calibrateMEMS(unsigned int duration)
     {
         // MEMS data collected while sleeping
+        clearMEMS();
         if (duration > 0) {
-          accCount = 0;
-          accSum[0] = 0;
-          accSum[1] = 0;
-          accSum[2] = 0;
-          sleep(duration);
+          for (int i = 0; i < 100; i++) {
+            readMEMS();
+            delay(10);
+          }
+        } else {
+          readMEMS();
         }
         // store accelerometer reference data
-        if (checkState(STATE_MEMS_READY) && accCount) {
+        if (accCount) {
           accCal[0] = accSum[0] / accCount;
           accCal[1] = accSum[1] / accCount;
           accCal[2] = accSum[2] / accCount;
         }
+    }
+    void clearMEMS()
+    {
+      accCount = 0;
+      accSum[0] = 0;
+      accSum[1] = 0;
+      accSum[2] = 0;
     }
     void readMEMS()
     {
@@ -507,7 +529,10 @@ void setup()
 #endif
     // perform initializations
     logger.begin();
-    delay(1000);
+#if ENABLE_BLE
+    logger.bleBegin(BLE_DEVICE_NAME);
+#endif
+    delay(2000);
     logger.setup();
 }
 

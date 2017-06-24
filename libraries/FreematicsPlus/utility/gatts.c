@@ -79,7 +79,8 @@ typedef struct {
 } GATTS_PROFILE;
 
 /* One gatt-based profile one app_id and one gatts_if, this array will store the gatts_if returned by ESP_GATTS_REG_EVT */
-static GATTS_PROFILE gl_profile_tab[PROFILE_NUM];
+static GATTS_PROFILE gl_profile_tab[PROFILE_NUM] = {0};
+static int gatt_connected = 0;
 
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
@@ -202,12 +203,14 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
                  param->add_char.status, param->add_char.attr_handle, param->add_char.service_handle);
         break;
     case ESP_GATTS_DELETE_EVT:
+        gatt_connected = 0;
         break;
     case ESP_GATTS_START_EVT:
         ESP_LOGI(GATTS_TAG, "SERVICE_START_EVT, status %d, service_handle %d\n",
                  param->start.status, param->start.service_handle);
         break;
     case ESP_GATTS_STOP_EVT:
+        gatt_connected = 0;
         break;
     case ESP_GATTS_CONNECT_EVT:
         ESP_LOGI(GATTS_TAG, "SERVICE_START_EVT, conn_id %d, remote %02x:%02x:%02x:%02x:%02x:%02x:, is_conn %d\n",
@@ -216,9 +219,11 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
                  param->connect.remote_bda[3], param->connect.remote_bda[4], param->connect.remote_bda[5],
                  param->connect.is_connected);
         gl_profile_tab[PROFILE_A_APP_ID].conn_id = param->connect.conn_id;
+        gatt_connected = 1;
         break;
     case ESP_GATTS_DISCONNECT_EVT:
         esp_ble_gap_start_advertising(&test_adv_params);
+        gatt_connected = 0;
         break;
     case ESP_GATTS_OPEN_EVT:
     case ESP_GATTS_CANCEL_OPEN_EVT:
@@ -286,6 +291,7 @@ void gatts_uninit()
 
 int gatts_send(uint8_t* data, size_t len)
 {
+  if (!gatt_connected) return 0;
   esp_gatt_rsp_t rsp = {0};
   rsp.attr_value.len = (len > ESP_GATT_MAX_ATTR_LEN) ? ESP_GATT_MAX_ATTR_LEN : len;
   memcpy(rsp.attr_value.value, data, rsp.attr_value.len);
