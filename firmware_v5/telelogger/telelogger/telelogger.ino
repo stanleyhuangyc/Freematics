@@ -145,7 +145,7 @@ public:
     }
 #endif
 
-#if USE_GPS
+#if ENABLE_GPS
     // start serial communication with GPS receiver
     if (!checkState(STATE_GPS_READY)) {
       Serial.print("GPS...");
@@ -217,7 +217,7 @@ public:
     }
 #endif
 
-#if USE_GPS
+#if ENABLE_GPS
     // process GPS data if connected
     if (checkState(STATE_GPS_READY)) {
       processGPS();
@@ -232,8 +232,7 @@ public:
     }
 #endif
 
-    uint32_t t = millis()
-    if (t - lastSentTime >= DATA_SENDING_INTERVAL) {
+    if (millis() - lastSentTime >= DATA_SENDING_INTERVAL) {
       digitalWrite(PIN_LED, HIGH);
       Serial.print('[');
       Serial.print(txCount);
@@ -256,7 +255,7 @@ public:
         netClose();
         netOpen(SERVER_URL, SERVER_PORT);
       }
-      lastSentTime = t;
+      lastSentTime = millis();
     }
 
 #if MEMS_TYPE
@@ -338,7 +337,7 @@ public:
         feedid = 0;
       }
 #endif
-#if USE_GPS
+#if ENABLE_GPS
       if (checkState(STATE_GPS_READY)) {
         Serial.print("#GPS:");
         gpsInit(0); // turn off GPS power
@@ -435,6 +434,7 @@ private:
         }
     }
 #endif
+#if ENABLE_GPS
     void processGPS()
     {
         static uint16_t lastUTC = 0;
@@ -462,6 +462,7 @@ private:
             }
         }
     }
+#endif
 #if MEMS_TYPE
     void calibrateMEMS(unsigned int duration)
     {
@@ -558,6 +559,15 @@ void loop()
         logger.standby();
       } while (!logger.setup());
     }
+#if DATASET_INTERVAL
+    uint32_t t = millis();
+#endif
     // collect data
     logger.loop();
+
+#if DATASET_INTERVAL
+    // wait to reach preset data rate
+    unsigned int elapsed = millis() - t;
+    if (elapsed < DATASET_INTERVAL) logger.sleep(DATASET_INTERVAL - elapsed);
+#endif
 }
