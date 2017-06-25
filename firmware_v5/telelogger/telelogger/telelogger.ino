@@ -100,6 +100,19 @@ public:
     }
 #endif
 
+#if NET_DEVICE == NET_WIFI
+    Serial.print("WIFI(SSID:");
+    Serial.print(WIFI_SSID);
+    Serial.print(")...");
+    if (netBegin() && netSetup(WIFI_SSID, WIFI_PASSWORD)) {
+      bleSend("WIFI OK");
+      Serial.println("OK");
+      setState(STATE_NET_READY | STATE_CONNECTED);
+    } else {
+      Serial.println("NO");
+      return false;
+    }
+#elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     // initialize network module
     if (!checkState(STATE_NET_READY)) {
       Serial.print(netDeviceName());
@@ -113,19 +126,6 @@ public:
         return false;
       }
     }
-
-#if NET_DEVICE == NET_WIFI
-    Serial.print("WIFI(SSID:");
-    Serial.print(WIFI_SSID);
-    Serial.print(")...");
-    if (netSetup(WIFI_SSID, WIFI_PASSWORD)) {
-      bleSend("WIFI OK");
-      setState(STATE_NET_READY | STATE_CONNECTED);
-    } else {
-      Serial.println("NO");
-      return false;
-    }
-#elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     Serial.print("CELL(APN:");
     Serial.print(CELLULAR_APN);
     Serial.print(")");
@@ -161,7 +161,7 @@ public:
     }
 #endif
 
-#if NET_DEVICE == WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
+#if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     Serial.print("IP...");
     String ip = getIP();
     if (ip.length()) {
