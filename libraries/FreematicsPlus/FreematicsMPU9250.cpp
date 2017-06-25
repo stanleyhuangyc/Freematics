@@ -415,8 +415,8 @@ bool CMPU9250::memsInit()
   byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
   if (c != 0x71) return false;
 
-  float SelfTest[6];
-  MPU9250SelfTest(SelfTest);
+  //float SelfTest[6];
+  //MPU9250SelfTest(SelfTest);
 
   float gyroBias[3] = {0, 0, 0};
   float accelBias[3] = {0, 0, 0};      // Bias corrections for gyro and accelerometer

@@ -217,12 +217,19 @@ void COBDSPI::enterLowPowerMode()
 {
 	setTarget(TARGET_OBD);
 	write("ATLP\r");
+#ifdef ESP32
+	end();
+#endif
 }
 
 void COBDSPI::leaveLowPowerMode()
 {
+#ifdef ESP32
+	begin();
+#else
 	char buf[16];
 	sendCommand("AT\r", buf, sizeof(buf));
+#endif
 }
 
 float COBDSPI::getVoltage()
