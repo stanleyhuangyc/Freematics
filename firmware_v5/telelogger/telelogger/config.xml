@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config>
+<target name="Freematics ONE+ (ESP32)" board="esp32">
+  <define name="Enable OBD-II" type="bool" const="ENABLE_OBD" default="true"/>
+  <define name="Enable GPS" type="bool" const="ENABLE_GPS" default="true"/>
+  <define name="Networking">
+    <option name="BLE" const="NET_DEVICE=NET_BLE"/>
+    <option name="WIFI" const="NET_DEVICE=NET_WIFI" default="true"/>
+    <option name="GSM/GPRS (SIM800)" const="NET_DEVICE=NET_SIM800"/>
+    <option name="WCDMA/GSM (SIM5360)" const="NET_DEVICE=NET_SIM5360"/>
+  </define>
+  <define name="Motion Sensor">
+    <option name="None" const="MEMS_TYPE=MEMS_NONE"/>
+    <option name="MPU-6050" const="MEMS_TYPE=MEMS_MPU6050"/>
+    <option name="MPU-9250" const="MEMS_TYPE=MEMS_MPU9250" default="true"/>
+  </define>
+  <define name="Storage">
+    <option name="RAM Cache" const="STORAGE_TYPE=STORAGE_RAM"></option>
+    <option name="Flash" const="STORAGE_TYPE=STORAGE_FLASH"></option>
+    <option name="MicroSD" const="STORAGE_TYPE=STORAGE_SD"></option>
+  </define>
+  <define name="WIFI SSID" const="WIFI_SSID" type="string" default="HOMEWIFI"/>
+  <define name="WIFI Password" const="WIFI_PASSWORD" type="string" default="862150909018"/>
+  <define name="Cellular Network APN" const="CELLULAR_APN" type="string" default="connect"/>
+  <define name="Transmission Interval (ms)" const="DATA_SENDING_INTERVAL" type="number" default="1000"/>
+  <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
+  <define name="Server Port" const="SERVER_PORT" type="number" default="8081"/>
+  <define name="Server Key" const="SERVER_KEY" type="string" default="TEST_SERVER_KEY"/>
+</target>
+</config>
