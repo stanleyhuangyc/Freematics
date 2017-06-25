@@ -30,7 +30,7 @@ public:
   virtual bool netOpen(const char* host, uint16_t port) { return true; }
   virtual void netClose() {}
   virtual int netSend(const char* data, unsigned int len, bool wait = true) { return false; }
-  virtual char* netReceive(int* pbytes = 0, int timeout = 3000) { return 0; }
+  virtual char* netReceive(int* pbytes = 0, int timeout = 5000) { return 0; }
   virtual String netDeviceName() { return ""; }
   bool notifyServer(byte event, const char* serverKey = 0, const char* extra = 0);
   int transmit(const char* data, int bytes, bool wait);

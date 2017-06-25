@@ -90,6 +90,7 @@ public:
     // initialize OBD communication
     if (!checkState(STATE_OBD_READY)) {
       Serial.print("OBD...");
+      begin();
       if (!init()) {
         Serial.println("NO");
         return false;
@@ -170,9 +171,11 @@ public:
     } else {
       Serial.println("NO");
     }
-    Serial.print("CSQ...");
     int csq = getSignal();
-    Serial.println(csq);
+    if (csq > 0) {
+      Serial.print("CSQ...");
+      Serial.println(csq);
+    }
 #endif
 
     startTick = millis();
@@ -350,7 +353,7 @@ public:
 #if MEMS_TYPE
       calibrateMEMS(3000);
       if (checkState(STATE_MEMS_READY)) {
-        //enterLowPowerMode();
+        enterLowPowerMode();
         for (;;) {
           // calculate relative movement
           unsigned long motion = 0;
@@ -364,7 +367,7 @@ public:
           bleSend(buf);
           // check movement
           if (motion >= WAKEUP_MOTION_THRESHOLD) {
-            //leaveLowPowerMode();
+            leaveLowPowerMode();
             break;
           }
           // measure acceleration
@@ -471,12 +474,10 @@ private:
         // MEMS data collected while sleeping
         clearMEMS();
         if (duration > 0) {
-          for (int i = 0; i < 100; i++) {
+          for (uint32_t t = millis(); millis() - t < duration; ) {
             readMEMS();
             delay(10);
           }
-        } else {
-          readMEMS();
         }
         // store accelerometer reference data
         if (accCount) {
@@ -538,7 +539,6 @@ void setup()
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     // perform initializations
-    logger.begin();
 #if ENABLE_BLE
     logger.bleBegin(BLE_DEVICE_NAME);
 #endif
