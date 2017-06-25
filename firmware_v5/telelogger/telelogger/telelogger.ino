@@ -90,7 +90,7 @@ public:
     // initialize OBD communication
     if (!checkState(STATE_OBD_READY)) {
       Serial.print("OBD...");
-      if (!init() && !init()) {
+      if (!init()) {
         Serial.println("NO");
         return false;
       }
@@ -253,7 +253,7 @@ public:
 
       if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
         netClose();
-        netOpen(SERVER_URL, SERVER_PORT);
+        netOpen(SERVER_HOST, SERVER_PORT);
       }
       lastSentTime = millis();
     }
@@ -299,7 +299,7 @@ public:
     // connect to telematics server
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.print("#LOGIN...");
-      if (netOpen(SERVER_URL, SERVER_PORT)) {
+      if (netOpen(SERVER_HOST, SERVER_PORT)) {
         Serial.println("OK");
       } else {
         Serial.println("NO");
@@ -346,10 +346,11 @@ public:
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
       Serial.println("Standby");
+      bleSend("Standby");
 #if MEMS_TYPE
       calibrateMEMS(3000);
       if (checkState(STATE_MEMS_READY)) {
-        enterLowPowerMode();
+        //enterLowPowerMode();
         for (;;) {
           // calculate relative movement
           unsigned long motion = 0;
@@ -363,7 +364,7 @@ public:
           bleSend(buf);
           // check movement
           if (motion >= WAKEUP_MOTION_THRESHOLD) {
-            leaveLowPowerMode();
+            //leaveLowPowerMode();
             break;
           }
           // measure acceleration
@@ -382,6 +383,7 @@ public:
       } while (!init());
 #endif
       Serial.println("Wakeup");
+      bleSend("Wakeup");
   }
   bool checkState(byte flags) { return (m_state & flags) == flags; }
   void setState(byte flags) { m_state |= flags; }
@@ -535,15 +537,15 @@ void setup()
 #endif
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
-    digitalWrite(PIN_LED, HIGH);
     // perform initializations
     logger.begin();
 #if ENABLE_BLE
     logger.bleBegin(BLE_DEVICE_NAME);
 #endif
     delay(1000);
-    digitalWrite(PIN_LED, LOW);
+    digitalWrite(PIN_LED, HIGH);
     logger.setup();
+    digitalWrite(PIN_LED, LOW);
 }
 
 void loop()
@@ -556,18 +558,12 @@ void loop()
 #endif
     ) {
       do {
+        digitalWrite(PIN_LED, LOW);
         logger.standby();
+        digitalWrite(PIN_LED, HIGH);
       } while (!logger.setup());
+      digitalWrite(PIN_LED, LOW);
     }
-#if DATASET_INTERVAL
-    uint32_t t = millis();
-#endif
-    // collect data
+    // collect and transmit data
     logger.loop();
-
-#if DATASET_INTERVAL
-    // wait to reach preset data rate
-    unsigned int elapsed = millis() - t;
-    if (elapsed < DATASET_INTERVAL) logger.sleep(DATASET_INTERVAL - elapsed);
-#endif
 }
