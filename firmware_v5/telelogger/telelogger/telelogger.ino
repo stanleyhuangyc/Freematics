@@ -128,9 +128,9 @@ public:
       }
     }
     Serial.print("CELL(APN:");
-    Serial.print(CELLULAR_APN);
     Serial.print(")");
-    if (netSetup(CELLULAR_APN)) {
+    Serial.print(CELL_APN);
+    if (netSetup(CELL_APN)) {
       bleSend("CELL OK");
       String op = getOperatorName();
       if (op.length()) {
@@ -174,7 +174,8 @@ public:
     int csq = getSignal();
     if (csq > 0) {
       Serial.print("CSQ...");
-      Serial.println(csq);
+      Serial.print((float)csq / 10, 1);
+      Serial.println("dB");
     }
 #endif
 
@@ -280,7 +281,7 @@ public:
     uint16_t dtc[6];
     byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
     if (dtcCount > 0) {
-      Serial.print("#DTC:");
+      Serial.print("DTC:");
       Serial.println(dtcCount);
       bytes += sprintf(payload + bytes, ",DTC=", dtcCount);
       for (byte i = 0; i < dtcCount; i++) {
@@ -290,7 +291,7 @@ public:
     }
     bytes += sprintf(payload + bytes, ",VIN=");
     if (getVIN(payload + bytes, sizeof(payload) - bytes)) {
-      Serial.print("#VIN:");
+      Serial.print("VIN:");
       Serial.println(payload + bytes);
     } else {
       sprintf(payload + bytes, "DEFAULT_VIN");
@@ -299,9 +300,10 @@ public:
     strcpy(payload, ",VIN=DEFAULT_VIN");
 #endif
 
+#if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     // connect to telematics server
     for (byte attempts = 0; attempts < 3; attempts++) {
-      Serial.print("#LOGIN...");
+      Serial.print("LOGIN...");
       if (netOpen(SERVER_HOST, SERVER_PORT)) {
         Serial.println("OK");
       } else {
@@ -314,15 +316,18 @@ public:
         continue;
       }
 
-      Serial.print("#SERVER:");
+      Serial.print("SERVER:");
       Serial.println(serverName());
 
-      Serial.print("#FEED ID:");
+      Serial.print("FEED ID:");
       Serial.println(feedid);
 
       return true;
     }
     return false;
+#elif NET_DEVICE == NET_BLE
+    bleSend(payload);
+#endif
   }
   void standby()
   {
@@ -529,6 +534,7 @@ CTeleLogger logger;
 
 void setup()
 {
+    delay(1000);
     // initialize USB serial
     Serial.begin(115200);
 #if ENABLE_OBD
@@ -541,11 +547,12 @@ void setup()
     // perform initializations
 #if ENABLE_BLE
     logger.bleBegin(BLE_DEVICE_NAME);
+    delay(500);
 #endif
-    delay(1000);
     digitalWrite(PIN_LED, HIGH);
     logger.setup();
     digitalWrite(PIN_LED, LOW);
+    Serial.println("Data transmission started");
 }
 
 void loop()
