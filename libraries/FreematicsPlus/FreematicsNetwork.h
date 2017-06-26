@@ -89,7 +89,7 @@ public:
     {
       return bleSend(data, len) ? len : 0;
     }
-    char* netReceive(int* pbytes = 0, int timeout = 3000) { return 0; }
+    char* netReceive(int* pbytes = 0, int timeout = 1000) { return 0; }
     String netDeviceName() { return "BLE"; }
 };
 
@@ -106,7 +106,7 @@ public:
     int getSignal() { return 0; }
     bool netOpen(const char* host, uint16_t port);
     int netSend(const char* data, unsigned int len, bool wait = true);
-    char* netReceive(int* pbytes = 0, int timeout = 3000);
+    char* netReceive(int* pbytes = 0, int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP.toString(); }
     String netDeviceName() { return "WIFI"; }
@@ -134,7 +134,7 @@ public:
     bool netOpen(const char* host, uint16_t port);
     int netSend(const char* data, unsigned int len, bool wait = true);
     void netClose();
-    char* netReceive(int* pbytes = 0, int timeout = 3000);
+    char* netReceive(int* pbytes = 0, int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     String netDeviceName() { return "SIM800"; }
@@ -164,7 +164,7 @@ public:
     bool netOpen(const char* host, uint16_t port);
     void netClose();
     int netSend(const char* data, unsigned int len, bool wait = true);
-    char* netReceive(int* pbytes = 0, int timeout = 3000);
+    char* netReceive(int* pbytes = 0, int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     String netDeviceName() { return "SIM5360"; }
