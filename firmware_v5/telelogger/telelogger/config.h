@@ -39,7 +39,7 @@
 #define WIFI_SSID "HOMEWIFI"
 #define WIFI_PASSWORD "862150909018"
 // APN settings for cellular network
-#define CELLULAR_APN "connect"
+#define CELL_APN "connect"
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 8081
@@ -60,8 +60,8 @@
 **************************************/
 #ifndef ENABLE_BLE
 #define ENABLE_BLE 1
-#define BLE_DEVICE_NAME "Freematics ONE+"
 #endif
+#define BLE_DEVICE_NAME "Freematics ONE+"
 
 /**************************************
 * Data storage configurations

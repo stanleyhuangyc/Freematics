@@ -3,6 +3,7 @@
 <target name="Freematics ONE+ (ESP32)" board="esp32">
   <define name="Enable OBD-II" type="bool" const="ENABLE_OBD" default="true"/>
   <define name="Enable GPS" type="bool" const="ENABLE_GPS" default="true"/>
+  <define name="Enable BLE" type="bool" const="ENABLE_BLE" default="true"/>
   <define name="Networking">
     <option name="BLE" const="NET_DEVICE=NET_BLE"/>
     <option name="WIFI" const="NET_DEVICE=NET_WIFI" default="true"/>
@@ -19,9 +20,9 @@
     <option name="Flash" const="STORAGE_TYPE=STORAGE_FLASH"></option>
     <option name="MicroSD" const="STORAGE_TYPE=STORAGE_SD"></option>
   </define>
-  <define name="WIFI SSID" const="WIFI_SSID" type="string" default="HOMEWIFI"/>
-  <define name="WIFI Password" const="WIFI_PASSWORD" type="string" default="862150909018"/>
-  <define name="Cellular Network APN" const="CELLULAR_APN" type="string" default="connect"/>
+  <define name="WIFI SSID" const="WIFI_SSID" type="string" default="HOMEWIFI" dep="NET_WIFI"/>
+  <define name="WIFI Password" const="WIFI_PASSWORD" type="string" default="862150909018" dep="NET_WIFI"/>
+  <define name="Cellular Network APN" const="CELL_APN" type="string" default="connect" dep="NET_SIM5360 NET_SIM800"/>
   <define name="Transmission Interval (ms)" const="DATA_SENDING_INTERVAL" type="number" default="1000"/>
   <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
   <define name="Server Port" const="SERVER_PORT" type="number" default="8081"/>
