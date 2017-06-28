@@ -62,6 +62,7 @@ public:
 
 class CStorageNull {
 public:
+    CStorageNull():m_dataTime(0) {}
     virtual bool init()
     {
       return true;
@@ -117,7 +118,7 @@ private:
 
 class CStorageRAM: public CStorageNull {
 public:
-    CStorageRAM():m_dataTime(0),m_cacheBytes(0),m_cache(0) {}
+    CStorageRAM():m_cacheBytes(0),m_cache(0) {}
     virtual bool init(unsigned int cacheSize)
     {
       if (m_cache) delete m_cache;
@@ -145,7 +146,6 @@ private:
         m_cacheBytes += len;
         m_cache[m_cacheBytes++] = ',';
     }
-    uint32_t m_dataTime;
 };
 
 class CStorageSD : public CStorageNull {
