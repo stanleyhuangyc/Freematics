@@ -351,17 +351,17 @@ byte COBDSPI::begin()
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
-	digitalWrite(SPI_PIN_CS, HIGH);
-	delay(10);
-	digitalWrite(SPI_PIN_CS, LOW);
-	delay(10);
-	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
 #ifdef ESP32
 	SPI.setFrequency(4000000);
 #else
 	SPI.setClockDivider(SPI_CLOCK_DIV4);
 #endif
+	digitalWrite(SPI_PIN_CS, HIGH);
+	delay(10);
+	digitalWrite(SPI_PIN_CS, LOW);
+	delay(10);
+	digitalWrite(SPI_PIN_CS, HIGH);
 	delay(500);
 	return getVersion();
 }
