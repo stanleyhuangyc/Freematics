@@ -220,7 +220,7 @@ float aRes, gRes, mRes;      // scale resolutions per LSB for the sensors
   
 // Pin definitions
 int intPin = 12;  // These can be changed, 2 and 3 are the Arduinos ext int pins
-int myLed = 13;
+int myLed = 4;
 
 int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
 int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
@@ -715,20 +715,20 @@ void setup()
 {
 //  TWBR = 12;  // 400 kbit/sec I2C speed
   // Setup for Master mode, pins 18/19, external pullups, 400kHz
+  delay(1000);
   Serial.begin(115200);
   Serial.println("MPU9250 TEST");
-  delay(1000);
-  
+
+  pinMode(myLed, OUTPUT);
+  digitalWrite(myLed, HIGH);
+
   Wire.begin();
 
   // Set up the interrupt pin, its set as active high, push-pull
-  pinMode(intPin, INPUT);
-  digitalWrite(intPin, LOW);
-  pinMode(myLed, OUTPUT);
-  digitalWrite(myLed, HIGH);
-  
+  //pinMode(intPin, INPUT);
+  //digitalWrite(intPin, LOW);
+
 // Start device display with ID of sensor
-  
   // Read the WHO_AM_I register, this is a good test of communication
   byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
   Serial.print("MPU9250 "); Serial.print("I AM "); Serial.print(c, HEX); Serial.print(" I should be "); Serial.println(0x71, HEX);
@@ -858,8 +858,9 @@ void loop()
       
     // Serial print and/or display at 0.5 s rate independent of data rates
     delt_t = millis() - count;
-    if (delt_t > 500) { // update once per half-second independent of read rate
+    if (delt_t > 50) { // update once per half-second independent of read rate
 
+#if 0
     if(SerialDebug) {
     Serial.print("ax = "); Serial.print((int)1000*ax);  
     Serial.print(" ay = "); Serial.print((int)1000*ay); 
@@ -876,7 +877,7 @@ void loop()
     Serial.print(" qy = "); Serial.print(q[2]); 
     Serial.print(" qz = "); Serial.println(q[3]); 
     }               
-   
+#endif
   // Define output variables from updated quaternion---these are Tait-Bryan angles, commonly used in aircraft orientation.
   // In this coordinate system, the positive z-axis is down toward Earth. 
   // Yaw is the angle between Sensor x-axis and Earth magnetic North (or true North if corrected for local declination, looking down on the sensor positive yaw is counterclockwise.
@@ -893,7 +894,8 @@ void loop()
     yaw   *= 180.0f / PI; 
     yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
     roll  *= 180.0f / PI;
-     
+
+#if 0
     if(SerialDebug) {
     Serial.print("Yaw, Pitch, Roll: ");
     Serial.print(yaw, 2);
@@ -904,7 +906,14 @@ void loop()
     
     Serial.print("rate = "); Serial.print((float)sumCount/sum, 2); Serial.println(" Hz");
     }
-   
+#endif 
+
+    Serial.print("Orientation: ");
+    Serial.print(yaw, 2);
+    Serial.print(" ");
+    Serial.print(pitch, 2);
+    Serial.print(" ");
+    Serial.println(roll, 2);
   
     // With these settings the filter is updating at a ~145 Hz rate using the Madgwick scheme and 
     // >200 Hz using the Mahony scheme even though the display refreshes at only 2 Hz.
