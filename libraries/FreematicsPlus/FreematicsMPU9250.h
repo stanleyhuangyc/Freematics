@@ -204,21 +204,21 @@ enum {
 
 #if Ascale == AFS_2G
   #define aRes (2.0/32768.0)
-#elif Ascale == AFS_4G:
+#elif Ascale == AFS_4G
   #define aRes (4.0/32768.0)
-#elif Ascale == AFS_8G:
+#elif Ascale == AFS_8G
   #define aRes (8.0/32768.0)
-#elif Ascale == AFS_16G:
+#elif Ascale == AFS_16G
   #define aRes (16.0/32768.0)
 #endif
 
 #if Gscale == GFS_250DPS
   #define gRes (250.0/32768.0)
-#elif Gscale == GFS_500DPS:
+#elif Gscale == GFS_500DPS
   #define gRes (500.0/32768.0)
-#elif Gscale == GFS_1000DPS:
+#elif Gscale == GFS_1000DPS
   #define gRes (1000.0/32768.0)
-#elif Gscale == GFS_2000DPS:
+#elif Gscale == GFS_2000DPS
   #define gRes (2000.0/32768.0)
 #endif
 
