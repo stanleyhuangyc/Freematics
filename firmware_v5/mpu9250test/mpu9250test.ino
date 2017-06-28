@@ -860,7 +860,6 @@ void loop()
     delt_t = millis() - count;
     if (delt_t > 50) { // update once per half-second independent of read rate
 
-#if 0
     if(SerialDebug) {
     Serial.print("ax = "); Serial.print((int)1000*ax);  
     Serial.print(" ay = "); Serial.print((int)1000*ay); 
@@ -877,7 +876,7 @@ void loop()
     Serial.print(" qy = "); Serial.print(q[2]); 
     Serial.print(" qz = "); Serial.println(q[3]); 
     }               
-#endif
+
   // Define output variables from updated quaternion---these are Tait-Bryan angles, commonly used in aircraft orientation.
   // In this coordinate system, the positive z-axis is down toward Earth. 
   // Yaw is the angle between Sensor x-axis and Earth magnetic North (or true North if corrected for local declination, looking down on the sensor positive yaw is counterclockwise.
@@ -895,7 +894,6 @@ void loop()
     yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
     roll  *= 180.0f / PI;
 
-#if 0
     if(SerialDebug) {
     Serial.print("Yaw, Pitch, Roll: ");
     Serial.print(yaw, 2);
@@ -906,7 +904,6 @@ void loop()
     
     Serial.print("rate = "); Serial.print((float)sumCount/sum, 2); Serial.println(" Hz");
     }
-#endif 
 
     Serial.print("Orientation: ");
     Serial.print(yaw, 2);
