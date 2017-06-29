@@ -10,10 +10,10 @@ void setup()
   size(600, 500, P3D);
 
   // if you have only ONE serial port active
-  myPort = new Serial(this, Serial.list()[1], 115200); // if you have only ONE serial port active
+  //myPort = new Serial(this, Serial.list()[0], 115200); // if you have only ONE serial port active
 
   // if you know the serial port name
-  //myPort = new Serial(this, "COM2:", 115200);                    // Windows
+  myPort = new Serial(this, "\\\\.\\COM2", 115200);              // Windows
   //myPort = new Serial(this, "/dev/ttyACM0", 9600);             // Linux
   //myPort = new Serial(this, "/dev/cu.usbmodem1217321", 9600);  // Mac
 
