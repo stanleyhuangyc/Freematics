@@ -14,7 +14,7 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <FreematicsPlus.h>
+#include <FreematicsONE.h>
 
 #define APN "connect"
 #define HTTP_SERVER_URL "hub.freematics.com"
