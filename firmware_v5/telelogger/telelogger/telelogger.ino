@@ -16,11 +16,11 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <FreematicsPlus.h>
+#include <FreematicsONE.h>
 #include "config.h"
 
 // logger states
-#define STATE_SD_READY 0x1
+#define STATE_STORAGE_READY 0x1
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
@@ -100,6 +100,21 @@ public:
       setState(STATE_OBD_READY);
     }
 #endif
+
+if (!checkState(STATE_STORAGE_READY)) {
+  // init storage
+  cache.init(RAM_CACHE_SIZE);
+#if STORAGE_TYPE != STORAGE_NONE
+  if (store.init()) {
+    setState(STATE_STORAGE_READY);
+    if (store.begin()) {
+      cache.setForward(&store);
+    }
+  }
+#else
+  setState(STATE_STORAGE_READY);
+#endif
+}
 
 #if NET_DEVICE == NET_WIFI
     Serial.print("WIFI(SSID:");
@@ -186,8 +201,6 @@ public:
       return false;
     }
 
-    cache.init(STORAGE_SIZE);
-
 #if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     // log signal level
     if (csq) cache.log(PID_CSQ, csq);
@@ -240,18 +253,27 @@ public:
       digitalWrite(PIN_LED, HIGH);
       Serial.print('[');
       Serial.print(txCount);
-      Serial.print(']');
+      Serial.print("] ");
       // transmit data
       int bytesSent = transmit(cache.getBuffer(), cache.getBytes(), false);
       if (bytesSent > 0) {
         // output some stats
         char buf[16];
         sprintf(buf, "%uB sent", bytesSent);
-        Serial.println(buf);
+        Serial.print(buf);
         bleSend(buf);
+#if STORAGE_TYPE != STORAGE_NONE
+        if (checkState(STATE_STORAGE_READY)) {
+          Serial.print(" | ");
+          Serial.print(store.size() >> 10);
+          Serial.print("KB stored");
+        }
+#endif
+        Serial.println();
         cache.purge();
       } else {
         Serial.println("Unsent");
+        bleSend("Unsent");
       }
       digitalWrite(PIN_LED, LOW);
 
@@ -329,6 +351,13 @@ public:
     bleSend(payload);
 #endif
   }
+  void resetNetwork()
+  {
+    netClose();
+    netEnd();
+    clearState(STATE_NET_READY);
+    setup();
+  }
   void standby()
   {
       if (checkState(STATE_NET_READY)) {
@@ -339,6 +368,12 @@ public:
         Serial.println("OFF");
         clearState(STATE_NET_READY);
       }
+#if STORAGE_TYPE != STORAGE_NONE
+      if (checkState(STATE_STORAGE_READY)) {
+        store.end();
+        clearState(STATE_STORAGE_READY);
+      }
+#endif
 #if ENABLE_OBD
       if (errors > MAX_OBD_ERRORS) {
         // inaccessible OBD treated as end of trip
@@ -527,6 +562,9 @@ private:
 #endif
     }
     CStorageRAM cache;
+#if STORAGE_TYPE == STORAGE_SD
+    CStorageSD store;
+#endif
     byte m_state;
 };
 
@@ -552,7 +590,6 @@ void setup()
     digitalWrite(PIN_LED, HIGH);
     logger.setup();
     digitalWrite(PIN_LED, LOW);
-    Serial.println("Data transmission started");
 }
 
 void loop()
@@ -561,7 +598,6 @@ void loop()
     if (!logger.checkState(STATE_ALL_GOOD)
 #if ENABLE_OBD
       || (logger.errors > MAX_OBD_ERRORS && !logger.init())
-      || logger.getConnErrors() >= MAX_CONN_ERRORS
 #endif
     ) {
       do {
@@ -570,6 +606,12 @@ void loop()
         digitalWrite(PIN_LED, HIGH);
       } while (!logger.setup());
       digitalWrite(PIN_LED, LOW);
+    }
+    if (logger.getConnErrors() >= MAX_CONN_ERRORS) {
+      digitalWrite(PIN_LED, HIGH);
+      logger.resetNetwork();
+      digitalWrite(PIN_LED, LOW);
+      return;
     }
     // collect and transmit data
     logger.loop();
