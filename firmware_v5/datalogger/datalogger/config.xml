@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config>
+<target name="Freematics ONE/ONE+" board="esp32 uno">
+  <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
+  <define name="Enable GPS" type="bool" const="USE_GPS" default="true"/>
+  <define name="Enable MPU-9250" type="bool" const="USE_MPU9250" default="true"/>
+  <define name="Enable Data Logging" type="bool" const="ENABLE_DATA_LOG" default="true"/>
+  <define name="Enable Data Output" type="bool" const="ENABLE_DATA_OUT" default="false"/>
+  <define name="Data File Size Limit (KB)" const="MAX_DATA_FILE_SIZE" type="number" default="1024"/>
+</target>
+</config>
