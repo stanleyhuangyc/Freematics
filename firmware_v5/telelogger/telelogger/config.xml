@@ -16,9 +16,9 @@
     <option name="MPU-9250" const="MEMS_TYPE=MEMS_MPU9250" default="true"/>
   </define>
   <define name="Storage">
-    <option name="RAM Cache" const="STORAGE_TYPE=STORAGE_RAM"></option>
-    <option name="Flash" const="STORAGE_TYPE=STORAGE_FLASH"></option>
+    <option name="None" const=""></option>
     <option name="MicroSD" const="STORAGE_TYPE=STORAGE_SD"></option>
+    <option name="Flash" const="STORAGE_TYPE=STORAGE_FLASH"></option>
   </define>
   <define name="WIFI SSID" const="WIFI_SSID" type="string" default="HOMEWIFI" dep="NET_WIFI"/>
   <define name="WIFI Password" const="WIFI_PASSWORD" type="string" default="862150909018" dep="NET_WIFI"/>
