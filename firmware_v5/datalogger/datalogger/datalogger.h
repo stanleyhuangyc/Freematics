@@ -5,9 +5,6 @@
 * Visit http://freematics.com for more information
 *************************************************************************/
 
-// additional custom PID for data logger
-#define PID_DATA_SIZE 0x80
-
 #if ENABLE_DATA_LOG
 SDClass SD;
 File sdfile;
@@ -15,173 +12,85 @@ File sdfile;
 
 class CDataLogger {
 public:
-    CDataLogger():m_lastDataTime(0),dataTime(0),dataSize(0)
-    {
-#if ENABLE_DATA_CACHE
-        cacheBytes = 0;
-#endif
-    }
-    byte genTimestamp(char* buf, bool absolute)
-    {
-      byte n;
-      if (absolute || dataTime >= m_lastDataTime + 60000) {
-        // absolute timestamp
-        n = sprintf_P(buf, PSTR("#%lu,"), dataTime);
-      } else {
-        // relative timestamp
-        uint16_t elapsed = (unsigned int)(dataTime - m_lastDataTime);
-        n = sprintf_P(buf, PSTR("%u,"), elapsed);
-      }
-      return n;
-    }
+    CDataLogger():dataTime(0),dataCount(0) {}
     void record(const char* buf, byte len)
     {
 #if ENABLE_DATA_LOG
-        char tmp[12];
-        byte n = genTimestamp(tmp, dataSize == 0);
-        dataSize += sdfile.write((uint8_t*)tmp, n);
-        dataSize += sdfile.write((uint8_t*)buf, len);
+        sdfile.write((uint8_t*)buf, len);
         sdfile.write('\n');
-        dataSize++;
-#endif
-        m_lastDataTime = dataTime;
-    }
-    void dispatch(const char* buf, byte len)
-    {
-#if ENABLE_DATA_CACHE
-        // reserve some space for timestamp, ending white space and zero terminator
-        int l = cacheBytes + len + 12 - CACHE_SIZE;
-        if (l >= 0) {
-          // cache full
-#if CACHE_SHIFT
-          // discard the oldest data
-          for (l = CACHE_SIZE / 2; cache[l] && cache[l] != ' '; l++);
-          if (cache[l]) {
-            cacheBytes -= l;
-            memcpy(cache, cache + l + 1, cacheBytes);
-          } else {
-            cacheBytes = 0;
-          }
-#else
-          return;
-#endif
-        }
-        // add new data at the end
-        byte n = genTimestamp(cache + cacheBytes, cacheBytes == 0);
-        if (n == 0) {
-          // same timestamp
-          cache[cacheBytes - 1] = ';';
-        } else {
-          cacheBytes += n;
-          cache[cacheBytes++] = ',';
-        }
-        if (cacheBytes + len < CACHE_SIZE - 1) {
-          memcpy(cache + cacheBytes, buf, len);
-          cacheBytes += len;
-          cache[cacheBytes++] = ' ';
-        }
-        cache[cacheBytes] = 0;
-#else
-        //char tmp[12];
-        //byte n = genTimestamp(tmp, dataTime >= m_lastDataTime + 100);
-        //Serial.write(tmp, n);
 #endif
 #if ENABLE_DATA_OUT
-        Serial.write((uint8_t*)buf, len);
-        Serial.println();
+        // skip timestamp
+        char *p = strchr(buf, ',');
+        if (p++) {
+          Serial.println((uint8_t*)p);
+        }
 #endif
+        dataCount++;
     }
-    void logData(const char* buf, byte len)
-    {
-        dispatch(buf, len);
-        record(buf, len);
-    }
-    void logData(uint16_t pid)
-    {
-        char buf[8];
-        byte len = translatePIDName(pid, buf);
-        dispatch(buf, len);
-        record(buf, len);
-    }
-    void logData(uint16_t pid, int16_t value)
-    {
-        char buf[16];
-        byte n = translatePIDName(pid, buf);
-        byte len = sprintf_P(buf + n, PSTR("%d"), value) + n;
-        dispatch(buf, len);
-        record(buf, len);
-    }
-    void logData(uint16_t pid, int32_t value)
-    {
-        char buf[20];
-        byte n = translatePIDName(pid, buf);
-        byte len = sprintf_P(buf + n, PSTR("%ld"), value) + n;
-        dispatch(buf, len);
-        record(buf, len);
-    }
-    void logData(uint16_t pid, uint32_t value)
-    {
-        char buf[20];
-        byte n = translatePIDName(pid, buf);
-        byte len = sprintf_P(buf + n, PSTR("%lu"), value) + n;
-        dispatch(buf, len);
-        record(buf, len);
-    }
-    void logData(uint16_t pid, int value1, int value2, int value3)
+    void log(uint16_t pid, int16_t value)
     {
         char buf[24];
-        byte n = translatePIDName(pid, buf);
-        n += sprintf_P(buf + n, PSTR("%d,%d,%d"), value1, value2, value3);
-        dispatch(buf, n);
-        record(buf, n);
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%d"), dataTime, pid, value) ;
+        record(buf, len);
+    }
+    void log(uint16_t pid, int32_t value)
+    {
+        char buf[28];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%ld"), dataTime, pid, value);
+        record(buf, len);
+    }
+    void log(uint16_t pid, uint32_t value)
+    {
+        char buf[28];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%lu"), dataTime, pid, value);
+        record(buf, len);
+    }
+    void log(uint16_t pid, int value1, int value2, int value3)
+    {
+        char buf[32];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%d;%d;%d"), dataTime, pid, value1, value2, value3);
+        record(buf, len);
     }
     void logCoordinate(uint16_t pid, int32_t value)
     {
-        char buf[24];
-        byte len = translatePIDName(pid, buf);
-        len += sprintf_P(buf + len, PSTR("%d.%06lu"), (int)(value / 1000000), abs(value) % 1000000);
-        dispatch(buf, len);
+        char buf[32];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%d.%06lu"), dataTime, pid, (int)(value / 1000000), abs(value) % 1000000);
         record(buf, len);
     }
 #if ENABLE_DATA_LOG
-    uint16_t openFile(uint32_t dateTime = 0)
+    bool openFile(uint32_t dateTime = 0)
     {
-        uint16_t fileIndex;
-        char path[20] = "DATA";
+        char path[16]; // = "/DATA";
 
-        dataSize = 0;
-        if (SD.exists(path)) {
-            if (dateTime) {
-               // using date and time as file name
-               sprintf(path + 4, "/%08lu.CSV", dateTime);
-               fileIndex = 1;
-            } else {
-              // use index number as file name
-              for (fileIndex = 1; fileIndex; fileIndex++) {
-                  sprintf(path + 4, "/DAT%05u.CSV", fileIndex);
-                  if (!SD.exists(path)) {
-                      break;
-                  }
-              }
-              if (fileIndex == 0)
-                  return 0;
-            }
+        if (dateTime) {
+           // using date and time as file name
+           sprintf_P(path, PSTR("%08lu.CSV"), dateTime);
         } else {
-            SD.mkdir(path);
-            fileIndex = 1;
-            sprintf(path + 4, "/DAT%05u.CSV", 1);
+          // use index number as file name
+          uint16_t fileIndex;
+          for (fileIndex = 1; fileIndex; fileIndex++) {
+              sprintf_P(path, PSTR("DAT%05u.CSV"), fileIndex);
+              if (!SD.exists(path)) {
+                  break;
+              }
+          }
+          if (fileIndex == 0)
+              return false;
         }
+        Serial.print("File:");
+        Serial.println(path);
         // O_READ | O_WRITE | O_CREAT = 0x13
         sdfile = SD.open(path, 0x13);
         if (!sdfile) {
-            return 0;
+            Serial.println("File error");
+            return false;
         }
-        return fileIndex;
+        return true;
     }
     void closeFile()
     {
         sdfile.close();
-        dataSize = 0;
     }
     void flushFile()
     {
@@ -189,19 +98,5 @@ public:
     }
 #endif
     uint32_t dataTime;
-    uint32_t dataSize;
-#if ENABLE_DATA_CACHE
-    void purgeCache()
-    {
-      cacheBytes = 0;
-    }
-    char cache[CACHE_SIZE];
-    int cacheBytes;
-#endif
-private:
-    byte translatePIDName(uint16_t pid, char* text)
-    {
-        return sprintf_P(text, PSTR("%X,"), pid);
-    }
-    uint32_t m_lastDataTime;
+    uint32_t dataCount;
 };
