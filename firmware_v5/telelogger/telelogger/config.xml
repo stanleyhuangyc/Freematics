@@ -16,7 +16,7 @@
     <option name="MPU-9250" const="MEMS_TYPE=MEMS_MPU9250" default="true"/>
   </define>
   <define name="Storage">
-    <option name="None" const=""></option>
+    <option name="None" const="STORAGE_TYPE=STORAGE_NONE"></option>
     <option name="MicroSD" const="STORAGE_TYPE=STORAGE_SD"></option>
     <option name="Flash" const="STORAGE_TYPE=STORAGE_FLASH"></option>
   </define>
