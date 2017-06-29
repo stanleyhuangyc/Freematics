@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifdef ESP32
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -297,3 +299,5 @@ int gatts_send(uint8_t* data, size_t len)
   memcpy(rsp.attr_value.value, data, rsp.attr_value.len);
   return esp_ble_gatts_send_indicate(gl_profile_tab[PROFILE_A_APP_ID].gatts_if, gl_profile_tab[PROFILE_A_APP_ID].conn_id, gl_profile_tab[PROFILE_A_APP_ID].char_handle, len, data, false) == ESP_OK;
 }
+
+#endif

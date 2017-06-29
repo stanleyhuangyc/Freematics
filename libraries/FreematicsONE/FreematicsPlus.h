@@ -10,9 +10,8 @@
 #else
 
 #include <Arduino.h>
-#include "FreematicsONE.h"
+#include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
-#include "SD.h"
 
 class Task
 {
@@ -60,13 +59,14 @@ public:
 	virtual void xbTogglePower();
 };
 
+class CStorageNull;
+
 class CStorageNull {
 public:
-    CStorageNull():m_dataTime(0) {}
-    virtual bool init()
-    {
-      return true;
-    }
+    CStorageNull():m_dataTime(0),m_next(0) {}
+    virtual bool init() { return true; }
+    virtual bool begin() { return true; }
+    virtual void end() {}
     virtual void log(uint16_t pid, int16_t value)
     {
         char buf[16];
@@ -100,40 +100,44 @@ public:
     virtual void timestamp(uint32_t ts)
     {
         log(0, m_dataTime = ts);
+        if (m_next) m_next->timestamp(ts);
     }
+    virtual void setForward(CStorageNull* next) { m_next = next; }
+    virtual void flush() {}
     virtual void purge() {}
-protected:
-  virtual void addHeader(int feedid) {}
-  virtual void addTail() {}
-  virtual void removeTail() {}
-  uint32_t m_dataTime;
-private:
     virtual void dispatch(const char* buf, byte len)
     {
         // output data via serial
         Serial.write((uint8_t*)buf, len);
         Serial.write('\n');
+        if (m_next) m_next->dispatch(buf, len);
     }
+protected:
+    virtual void addHeader(int feedid) {}
+    virtual void addTail() {}
+    virtual void removeTail() {}
+    uint32_t m_dataTime;
+    CStorageNull* m_next;
 };
 
 class CStorageRAM: public CStorageNull {
 public:
-    CStorageRAM():m_cacheBytes(0),m_cache(0) {}
+    CStorageRAM():m_cacheBytes(0),m_cacheSize(0),m_cache(0) {}
     virtual bool init(unsigned int cacheSize)
     {
-      if (m_cache) delete m_cache;
-      if (cacheSize) m_cache = new char[m_cacheSize = cacheSize];
+      if (m_cacheSize != cacheSize) {
+        if (m_cache) {
+          delete m_cache;
+          m_cache = 0;
+        }
+        if (cacheSize) m_cache = new char[m_cacheSize = cacheSize];
+      }
       return true;
     }
     void purge() { m_cacheBytes = 0; }
     unsigned int getBytes() { return m_cacheBytes; }
     char* getBuffer() { return m_cache; }
-protected:
-  unsigned int m_cacheSize;
-  unsigned int m_cacheBytes;
-  char* m_cache;
-private:
-    virtual void dispatch(const char* buf, byte len)
+    void dispatch(const char* buf, byte len)
     {
         // reserve some space for checksum
         int remain = m_cacheSize - m_cacheBytes - len - 2;
@@ -145,24 +149,47 @@ private:
         memcpy(m_cache + m_cacheBytes, buf, len);
         m_cacheBytes += len;
         m_cache[m_cacheBytes++] = ',';
+        if (m_next) m_next->dispatch(buf, len);
     }
+protected:
+    unsigned int m_cacheSize;
+    unsigned int m_cacheBytes;
+    char* m_cache;
+private:
 };
+
+#ifdef ESP32
+#define SD_CS_PIN 5
+#else
+#define SD_CS_PIN 10
+#endif
 
 class CStorageSD : public CStorageNull {
 public:
-  bool init(uint32_t dateTime = 0)
+  CStorageSD() {}
+  bool init()
   {
+      pinMode(SD_CS_PIN, OUTPUT);
+      if(!SD.begin(SD_CS_PIN)){
+          Serial.println("Card unmounted");
+          return false;
+      }
+      int cardSize = SD.cardSize();
+      Serial.printf("SD Card Size: %uMB\n", cardSize);
+      return true;
+    }
+    bool begin(uint32_t dateTime = 0)
+    {
       uint16_t fileIndex;
-      char path[20] = "/DATA";
-
+      char path[20] = "DATA";
       if (SD.exists(path)) {
           if (dateTime) {
              // using date and time as file name
-             sprintf(path + 5, "/%08lu.CSV", dateTime);
+             sprintf(path + 4, "/%08lu.CSV", dateTime);
           } else {
             // use index number as file name
             for (fileIndex = 1; fileIndex; fileIndex++) {
-                sprintf(path + 5, "/DAT%05u.CSV", fileIndex);
+                sprintf(path + 4, "/DAT%05u.CSV", fileIndex);
                 if (!SD.exists(path)) {
                     break;
                 }
@@ -173,24 +200,42 @@ public:
       } else {
           SD.mkdir(path);
           fileIndex = 1;
-          sprintf(path + 5, "/DAT%05u.CSV", 1);
+          sprintf(path + 4, "/DAT%05u.CSV", 1);
       }
-
-      sdfile = SD.open(path, FILE_WRITE);
+      // O_READ | O_WRITE | O_CREAT = 0x13
+      Serial.print("File:");
+      Serial.println(path);
+      sdfile = SD.open(path, 0x13);
       if (!sdfile) {
+          Serial.println("File error");
           return false;
       }
       return true;
   }
-  void closeFile()
+  void end()
   {
-      sdfile.close();
+      if (sdfile) sdfile.close();
   }
-  void flushFile()
+  void flush()
   {
-      sdfile.flush();
+      if (sdfile) sdfile.flush();
+  }
+  void dispatch(const char* buf, byte len)
+  {
+      if (sdfile) {
+        // output data via serial
+        sdfile.write((uint8_t*)buf, len);
+        sdfile.write('\n');
+
+        uint32_t logsize = sdfile.size();
+      }
+  }
+  uint32_t size()
+  {
+    return sdfile.size();
   }
 private:
+  SDClass SD;
   File sdfile;
 };
 

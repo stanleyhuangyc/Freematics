@@ -332,7 +332,7 @@ static const char targets[][4] = {
 	{'$','G','S','M'}
 };
 
-SPISettings spiSettings(4000000, MSBFIRST, SPI_MODE1);
+SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
 
 byte COBDSPI::begin()
 {
@@ -344,18 +344,18 @@ byte COBDSPI::begin()
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
+	SPI.begin();
+#ifdef ESP32
+	SPI.setFrequency(1000000);
+#else
+	SPI.setClockDivider(SPI_CLOCK_DIV16);
+#endif
 	digitalWrite(SPI_PIN_CS, HIGH);
 	delay(10);
 	digitalWrite(SPI_PIN_CS, LOW);
 	delay(10);
 	digitalWrite(SPI_PIN_CS, HIGH);
-	SPI.begin();
-#ifdef ESP32
-	SPI.setFrequency(4000000);
-#else
-	SPI.setClockDivider(SPI_CLOCK_DIV4);
-#endif
-	delay(1000);
+	delay(500);
 	return getVersion();
 }
 
@@ -469,6 +469,7 @@ void COBDSPI::write(const char* s)
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
 	digitalWrite(SPI_PIN_CS, HIGH);
+	dataIdleLoop();
 }
 
 void COBDSPI::write(byte* data, int len)
@@ -480,6 +481,7 @@ void COBDSPI::write(byte* data, int len)
 		SPI.transfer(data[i]);
 	}
 	digitalWrite(SPI_PIN_CS, HIGH);
+	dataIdleLoop();
 }
 
 byte COBDSPI::readPID(const byte pid[], byte count, int result[])

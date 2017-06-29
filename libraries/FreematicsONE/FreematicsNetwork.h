@@ -4,6 +4,7 @@
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 *************************************************************************/
 
+#ifdef ESP32
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
@@ -18,6 +19,7 @@
 #include "esp_bt_defs.h"
 #include "esp_bt_main.h"
 #include "esp_bt_main.h"
+#endif
 
 #define XBEE_BAUDRATE 115200
 
@@ -35,6 +37,7 @@ public:
   bool notifyServer(byte event, const char* serverKey = 0, const char* extra = 0);
   int transmit(const char* data, int bytes, bool wait);
   uint8_t getConnErrors() { return connErrors; }
+#ifdef ESP32
   bool bleBegin(const char* bleDeviceName);
   void bleEnd();
   bool bleSend(const char* data, unsigned int len);
@@ -50,6 +53,12 @@ public:
   {
     // data received is in buffer
   }
+#else
+  bool bleBegin(const char* bleDeviceName) { return false; }
+  void bleEnd() {}
+  bool bleSend(const char* data, unsigned int len) { return false; }
+  bool bleSend(String s) { return false; }
+#endif
 protected:
   byte getChecksum(const char* data, int len)
   {
@@ -81,6 +90,8 @@ public:
     }
     String netDeviceName() { return "Serial"; }
 };
+
+#ifdef ESP32
 
 class CTeleClientBLE : public CTeleClient
 {
@@ -116,6 +127,8 @@ public:
     uint16_t udpPort;
     WiFiUDP udp;
 };
+
+#endif
 
 class CTeleClientSIM800 : public CTeleClient, public virtual CFreematics
 {

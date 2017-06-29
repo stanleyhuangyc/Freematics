@@ -246,7 +246,7 @@ uint8_t Sd2Card::eraseSingleBlockEnable(void) {
  * can be determined by calling errorCode() and errorData().
  */
 uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
-	
+
   errorCode_ = inBlock_ = partialBlockRead_ = type_ = 0;
   chipSelectPin_ = chipSelectPin;
   // 16-bit init start time allows over a minute
@@ -274,7 +274,7 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
 #else // USE_SPI_LIB
   SPI.begin();
   #ifndef ARDUINO_ARCH_SAMD
-  settings = SPISettings(250000, MSBFIRST, SPI_MODE0);
+  settings = SPISettings(1000000, MSBFIRST, SPI_MODE0);
   #endif
 #endif // USE_SPI_LIB
 #endif // SOFTWARE_SPI
@@ -286,7 +286,7 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
 #endif
 #endif
   for (uint8_t i = 0; i < 10; i++) spiSend(0XFF);
-#ifdef USE_SPI_LIB  
+#ifdef USE_SPI_LIB
 #ifndef ARDUINO_ARCH_SAMD
   SPI.endTransaction();
 #endif
@@ -389,7 +389,6 @@ uint8_t Sd2Card::readBlock(uint32_t block, uint8_t* dst) {
  */
 uint8_t Sd2Card::readData(uint32_t block,
         uint16_t offset, uint16_t count, uint8_t* dst) {
-  uint16_t n;
   if (count == 0) return true;
   if ((count + offset) > 512) {
     goto fail;
