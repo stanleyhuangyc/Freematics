@@ -49,7 +49,7 @@ public:
 	// set SPI data target
 	void setTarget(byte target) { m_target = target; }
 	// receive data (up to 255 bytes) from SPI bus
-	int receive(char* buffer, int bufsize, int timeout = OBD_TIMEOUT_SHORT);
+	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
 	// read specified OBD-II PID value
 	bool readPID(byte pid, int& result);
 	// read multiple (up to 4) OBD-II PID value
@@ -58,7 +58,7 @@ public:
 	void write(const char* s);
 	void write(byte* data, int len);
 	// send AT command and receive response
-	byte sendCommand(const char* cmd, char* buf, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
+	byte sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
 	// initialize GPS (set baudrate to 0 to power off GPS)
 	bool gpsInit(unsigned long baudrate = 115200L);
 	// get parsed GPS data
@@ -72,13 +72,13 @@ public:
 	// start xBee UART communication
 	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
-	int xbRead(char* buffer, int bufsize, int timeout = 1000);
+	int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
 	// send data to xBee UART
 	void xbWrite(const char* cmd);
   // send data to xBee UART
 	void xbWrite(const char* data, int len);
 	// receive data from xBee UART (returns 0/1/2)
-	virtual byte xbReceive(char* buffer, int bufsize, int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
+	virtual byte xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
 	// purge xBee UART buffer
 	void xbPurge();
 	// toggle xBee module power

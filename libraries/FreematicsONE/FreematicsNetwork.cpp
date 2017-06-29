@@ -172,7 +172,7 @@ int CTeleClient::transmit(const char* data, int bytes, bool wait)
 
 #ifdef ESP32
 
-bool CTeleClientWIFI::netSetup(const char* ssid, const char* password, int timeout)
+bool CTeleClientWIFI::netSetup(const char* ssid, const char* password, unsigned int timeout)
 {
   WiFi.begin(ssid, password);
   for (uint32_t t = millis(); millis() - t < timeout;) {
@@ -218,7 +218,7 @@ int CTeleClientWIFI::netSend(const char* data, unsigned int len, bool wait)
   }
 }
 
-char* CTeleClientWIFI::netReceive(int* pbytes, int timeout)
+char* CTeleClientWIFI::netReceive(int* pbytes, unsigned int timeout)
 {
   for (uint32_t t = millis(); millis() - t < timeout;) {
     int bytes = udp.parsePacket();
@@ -277,7 +277,7 @@ void CTeleClientSIM800::netEnd()
   }
 }
 
-bool CTeleClientSIM800::netSetup(const char* apn, int timeout)
+bool CTeleClientSIM800::netSetup(const char* apn, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -389,7 +389,7 @@ int CTeleClientSIM800::netSend(const char* data, unsigned int len, bool wait)
   return 0;
 }
 
-char* CTeleClientSIM800::netReceive(int* pbytes, int timeout)
+char* CTeleClientSIM800::netReceive(int* pbytes, unsigned int timeout)
 {
   if (netSendCommand(0, timeout, "RECV FROM:")) {
     char *p = strstr(m_buffer, "RECV FROM:");
@@ -402,7 +402,7 @@ char* CTeleClientSIM800::netReceive(int* pbytes, int timeout)
   return 0;
 }
 
-bool CTeleClientSIM800::netWaitSent(int timeout)
+bool CTeleClientSIM800::netWaitSent(unsigned int timeout)
 {
   return netSendCommand(0, timeout, "SEND OK\r\n");
 }
@@ -477,9 +477,9 @@ void CTeleClientSIM5360::netEnd()
   }
 }
 
-bool CTeleClientSIM5360::netSetup(const char* apn, bool only3G, int timeout)
+bool CTeleClientSIM5360::netSetup(const char* apn, bool only3G, unsigned int timeout)
 {
-  long t = millis();
+  uint32_t t = millis();
   bool success = false;
   netSendCommand("ATE0\r");
   if (only3G) netSendCommand("AT+CNMP=14\r"); // use WCDMA only
@@ -612,7 +612,7 @@ int CTeleClientSIM5360::netSend(const char* data, unsigned int len, bool wait)
   return 0;
 }
 
-char* CTeleClientSIM5360::netReceive(int* pbytes, int timeout)
+char* CTeleClientSIM5360::netReceive(int* pbytes, unsigned int timeout)
 {
   if (netSendCommand(0, timeout, "+IPD")) {
     char *p = strstr(m_buffer, "+IPD");
@@ -628,7 +628,7 @@ char* CTeleClientSIM5360::netReceive(int* pbytes, int timeout)
   return 0;
 }
 
-bool CTeleClientSIM5360::netWaitSent(int timeout)
+bool CTeleClientSIM5360::netWaitSent(unsigned int timeout)
 {
   return netSendCommand(0, timeout);
 }

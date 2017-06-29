@@ -32,7 +32,7 @@ public:
   virtual bool netOpen(const char* host, uint16_t port) { return true; }
   virtual void netClose() {}
   virtual int netSend(const char* data, unsigned int len, bool wait = true) { return false; }
-  virtual char* netReceive(int* pbytes = 0, int timeout = 5000) { return 0; }
+  virtual char* netReceive(int* pbytes = 0, unsigned int timeout = 5000) { return 0; }
   virtual String netDeviceName() { return ""; }
   bool notifyServer(byte event, const char* serverKey = 0, const char* extra = 0);
   int transmit(const char* data, int bytes, bool wait);
@@ -67,7 +67,7 @@ protected:
     for (unsigned int i = 0; i < len; i++) sum += data[i];
     return sum;
   }
-  virtual bool netWaitSent(int timeout) { return true; }
+  virtual bool netWaitSent(unsigned int timeout) { return true; }
   virtual String getServerName() { return m_serverName; }
   uint32_t getTotalBytesSent() { return m_bytesCount; }
   uint16_t feedid;
@@ -100,7 +100,7 @@ public:
     {
       return bleSend(data, len) ? len : 0;
     }
-    char* netReceive(int* pbytes = 0, int timeout = 1000) { return 0; }
+    char* netReceive(int* pbytes = 0, unsigned int timeout = 1000) { return 0; }
     String netDeviceName() { return "BLE"; }
 };
 
@@ -112,12 +112,12 @@ public:
       udpIP[0] = 0;
     }
     void netEnd();
-    bool netSetup(const char* ssid, const char* password, int timeout = 10000);
+    bool netSetup(const char* ssid, const char* password, unsigned int timeout = 10000);
     String getIP();
     int getSignal() { return 0; }
     bool netOpen(const char* host, uint16_t port);
     int netSend(const char* data, unsigned int len, bool wait = true);
-    char* netReceive(int* pbytes = 0, int timeout = 5000);
+    char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP.toString(); }
     String netDeviceName() { return "WIFI"; }
@@ -140,19 +140,19 @@ public:
     }
     bool netBegin();
     void netEnd();
-    bool netSetup(const char* apn, int timeout = 60000);
+    bool netSetup(const char* apn, unsigned int timeout = 60000);
     String getIP();
     int getSignal();
     String getOperatorName();
     bool netOpen(const char* host, uint16_t port);
     int netSend(const char* data, unsigned int len, bool wait = true);
     void netClose();
-    char* netReceive(int* pbytes = 0, int timeout = 5000);
+    char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     String netDeviceName() { return "SIM800"; }
   private:
-    bool netWaitSent(int timeout);
+    bool netWaitSent(unsigned int timeout);
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "OK\r\n", bool terminated = false);
     char m_buffer[256];
     char udpIP[16];
@@ -170,19 +170,19 @@ public:
     }
     bool netBegin();
     void netEnd();
-    bool netSetup(const char* apn, bool only3G = false, int timeout = 60000);
+    bool netSetup(const char* apn, bool only3G = false, unsigned int timeout = 60000);
     String getIP();
     int getSignal();
     String getOperatorName();
     bool netOpen(const char* host, uint16_t port);
     void netClose();
     int netSend(const char* data, unsigned int len, bool wait = true);
-    char* netReceive(int* pbytes = 0, int timeout = 5000);
+    char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     String netDeviceName() { return "SIM5360"; }
   private:
-    bool netWaitSent(int timeout);
+    bool netWaitSent(unsigned int timeout);
     // send command and check for expected response
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
     char m_buffer[256];

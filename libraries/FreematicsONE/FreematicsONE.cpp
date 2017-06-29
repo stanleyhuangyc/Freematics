@@ -35,7 +35,7 @@ int gps_write_string(const char* string);
 void bee_start();
 int bee_write_string(const char* string);
 int bee_write_data(uint8_t* data, int len);
-int bee_read(uint8_t* buffer, size_t bufsize, int timeout);
+int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout);
 void bee_flush();
 #endif
 
@@ -245,7 +245,7 @@ bool COBDSPI::getVIN(char* buffer, byte bufsize)
 	        p += 10;
 	        do {
 	            for (++p; *p == ' '; p += 3) {
-	                if (*q = hex2uint8(p + 1)) q++;
+	                if ((*q = hex2uint8(p + 1))) q++;
 	            }
 	            p = strchr(p, ':');
 	        } while(p);
@@ -350,12 +350,13 @@ byte COBDSPI::begin()
 #else
 	SPI.setClockDivider(SPI_CLOCK_DIV16);
 #endif
+	delay(10);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	delay(10);
 	digitalWrite(SPI_PIN_CS, LOW);
 	delay(10);
 	digitalWrite(SPI_PIN_CS, HIGH);
-	delay(500);
+	delay(100);
 	return getVersion();
 }
 
@@ -384,7 +385,7 @@ byte COBDSPI::getVersion()
 	return version;
 }
 
-int COBDSPI::receive(char* buffer, int bufsize, int timeout)
+int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 {
 	int n = 0;
 	bool eos = false;
@@ -477,7 +478,7 @@ void COBDSPI::write(byte* data, int len)
 	delay(1);
 	digitalWrite(SPI_PIN_CS, LOW);
 	delay(1);
-	for (unsigned int i = 0; i < len; i++) {
+	for (int i = 0; i < len; i++) {
 		SPI.transfer(data[i]);
 	}
 	digitalWrite(SPI_PIN_CS, HIGH);
@@ -495,7 +496,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 	return results;
 }
 
-byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
+byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout)
 {
 	uint32_t t = millis();
 	byte n;
@@ -741,7 +742,7 @@ void COBDSPI::xbWrite(const char* data, int len)
 #endif
 }
 
-int COBDSPI::xbRead(char* buffer, int bufsize, int timeout)
+int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 {
 #ifdef ESP32
 	return bee_read((uint8_t*)buffer, bufsize, timeout);
@@ -753,7 +754,7 @@ int COBDSPI::xbRead(char* buffer, int bufsize, int timeout)
 #endif
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, int timeout, const char** expected, byte expectedCount)
+byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
