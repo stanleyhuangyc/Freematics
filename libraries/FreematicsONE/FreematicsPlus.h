@@ -46,13 +46,13 @@ public:
 	// start xBee UART communication
 	virtual bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
-	virtual int xbRead(char* buffer, int bufsize, int timeout = 1000);
+	virtual int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
 	// send data to xBee UART
 	virtual void xbWrite(const char* cmd);
   // send data to xBee UART
 	virtual void xbWrite(const char* data, int len);
 	// receive data from xBee UART (returns 0/1/2)
-	virtual byte xbReceive(char* buffer, int bufsize, int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
+	virtual byte xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
 	// purge xBee UART buffer
 	virtual void xbPurge();
 	// toggle xBee module power

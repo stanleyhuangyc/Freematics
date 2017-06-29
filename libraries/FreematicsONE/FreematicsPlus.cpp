@@ -138,7 +138,7 @@ int bee_write_data(uint8_t* data, int len)
     return uart_write_bytes(BEE_UART_NUM, (const char*)data, len);
 }
 
-int bee_read(uint8_t* buffer, size_t bufsize, int timeout)
+int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout)
 {
     int len = uart_read_bytes(BEE_UART_NUM, buffer, bufsize, timeout / portTICK_RATE_MS);
     if (len > 0) {
@@ -252,12 +252,12 @@ void CFreematicsESP32::xbWrite(const char* data, int len)
 	bee_write_data((uint8_t*)data, len);
 }
 
-int CFreematicsESP32::xbRead(char* buffer, int bufsize, int timeout)
+int CFreematicsESP32::xbRead(char* buffer, int bufsize, unsigned int timeout)
 {
 	return bee_read((uint8_t*)buffer, bufsize, timeout);
 }
 
-byte CFreematicsESP32::xbReceive(char* buffer, int bufsize, int timeout, const char** expected, byte expectedCount)
+byte CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
