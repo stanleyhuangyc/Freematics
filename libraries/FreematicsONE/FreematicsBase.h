@@ -5,6 +5,8 @@
 * (C)2017 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
+#ifndef FREEMATICS_BASE
+#define FREEMATICS_BASE
 // Mode 1 PIDs
 #define PID_ENGINE_LOAD 0x04
 #define PID_COOLANT_TEMP 0x05
@@ -81,6 +83,15 @@
 
 #define EVENT_LOGIN 1
 #define EVENT_LOGOUT 2
+#define EVENT_RECONNECT 3
+
+#ifdef ESP32
+#define PIN_XBEE_PWR 27
+#define PIN_GPS_POWER 15
+#endif
+
+#define GPS_READ_TIMEOUT 200 /* ms */
+#define GPS_INIT_TIMEOUT 2000 /* ms */
 
 typedef enum {
     PROTO_AUTO = 0,
@@ -112,23 +123,31 @@ typedef struct {
     int16_t heading;
 } GPS_DATA;
 
+int dumpLine(char* buffer, int len);
+uint16_t hex2uint16(const char *p);
+byte hex2uint8(const char *p);
+
 class CFreematics
 {
 public:
-  // hardware sleep (timer counter will stop)
+	virtual byte begin() { return 1; }
+	virtual bool init() { return true; }
+	// hardware sleep (timer counter will stop)
 	virtual void sleepSec(unsigned int seconds) { delay(seconds * 1000); }
 	// normal delay
 	virtual void sleep(unsigned int ms) { delay(ms); }
-  // enter low power mode
+	// enter low power mode
 	virtual void enterLowPowerMode() {}
 	// leave low power mode
 	virtual void leaveLowPowerMode() {}
-  // initialize GPS (set baudrate to 0 to power off GPS)
-  virtual bool gpsInit(unsigned long baudrate = 115200L) = 0;
-  // get parsed GPS data
-  virtual bool gpsGetData(GPS_DATA* gdata) = 0;
-  // send command string to GPS
-  virtual void gpsSendCommand(const char* cmd) {};
+	// initialize GPS (set baudrate to 0 to power off GPS)
+	virtual bool gpsInit(unsigned long baudrate = 115200L) = 0;
+	// get parsed GPS data
+	virtual bool gpsGetData(GPS_DATA* gdata) = 0;
+	// send command string to GPS
+	virtual void gpsSendCommand(const char* cmd) {};
+	// type of GPS
+	virtual bool internalGPS() { return false; }
 	// start xBee UART communication
 	virtual bool xbBegin(unsigned long baudrate = 115200L) = 0;
 	// read data to xBee UART
@@ -144,3 +163,5 @@ public:
 	// toggle xBee module power
 	virtual void xbTogglePower() = 0;
 };
+
+#endif

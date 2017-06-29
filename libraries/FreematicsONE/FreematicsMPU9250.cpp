@@ -77,7 +77,7 @@ void CMPU9250::initAK8963(float * destination)
   // Configure the magnetometer for continuous read and highest resolution
   // set Mscale bit 4 to 1 (0) to enable 16 (14) bit resolution in CNTL register,
   // and enable continuous mode data acquisition Mmode (bits [3:0]), 0010 for 8 Hz and 0110 for 100 Hz sample rates
-  writeByte(AK8963_ADDRESS, AK8963_CNTL, Mscale << 4 | Mmode); // Set magnetometer data resolution and sample ODR
+  writeByte(AK8963_ADDRESS, AK8963_CNTL, MFS_16BITS << 4 | Mmode); // Set magnetometer data resolution and sample ODR
   delay(10);
 }
 
@@ -415,8 +415,10 @@ bool CMPU9250::memsInit()
   byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
   if (c != 0x71) return false;
 
-  float SelfTest[6];
-  MPU9250SelfTest(SelfTest);
+  //float SelfTest[6];
+  //MPU9250SelfTest(SelfTest);
+
+  calibrateMPU9250(gyroBias, accelBias); // Calibrate gyro and accelerometers, load biases in bias registers
 
   initMPU9250();
 
@@ -429,13 +431,32 @@ bool CMPU9250::memsInit()
 bool CMPU9250::memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp)
 {
   if (acc) {
-    readAccelData(acc);
+    int16_t accelCount[3];
+    readAccelData(accelCount);
+    acc[0] = (float)accelCount[0]*100*aRes; // - accelBias[0];  // get actual g value, this depends on scale being set
+    acc[1] = (float)accelCount[1]*100*aRes; // - accelBias[1];
+    acc[2] = (float)accelCount[2]*100*aRes; // - accelBias[2];
   }
   if (gyr) {
-    readGyroData(gyr);
+    int16_t gyroCount[3];
+    readGyroData(gyroCount);
+    gyr[0] = (float)gyroCount[0]*100*gRes;  // get actual gyro value, this depends on scale being set
+    gyr[1] = (float)gyroCount[1]*100*gRes;
+    gyr[2] = (float)gyroCount[2]*100*gRes;
   }
   if (mag) {
-    readMagData(mag);
+    int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
+    readMagData(magCount);
+    float magbias[3];
+    magbias[0] = +470.;  // User environmental x-axis correction in milliGauss, should be automatically calculated
+    magbias[1] = +120.;  // User environmental x-axis correction in milliGauss
+    magbias[2] = +125.;  // User environmental x-axis correction in milliGauss
+
+    // Calculate the magnetometer values in milliGauss
+    // Include factory calibration per data sheet and user environmental corrections
+    mag[0] = (float)magCount[0]*mRes*magCalibration[0] - magbias[0];  // get actual magnetometer value, this depends on scale being set
+    mag[1] = (float)magCount[1]*mRes*magCalibration[1] - magbias[1];
+    mag[2] = (float)magCount[2]*mRes*magCalibration[2] - magbias[2];
   }
   if (temp) {
     int t = readTempData();

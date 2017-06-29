@@ -5,10 +5,13 @@
 * (C)2012-2017 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
+#include <SPI.h>
 #include "FreematicsBase.h"
-#include "FreematicsMPU6050.h"
 #include "FreematicsMPU9250.h"
 #include "FreematicsSD.h"
+#ifdef ESP32
+#include "FreematicsPlus.h"
+#endif
 
 #ifndef ARDUINO_ARCH_AVR
 #define sprintf_P sprintf
@@ -16,13 +19,7 @@
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
 #define OBD_TIMEOUT_LONG 10000 /* ms */
-#define GPS_READ_TIMEOUT 200 /* ms */
-#define GPS_INIT_TIMEOUT 2000 /* ms */
 #define OBD_SERIAL_BAUDRATE 38400
-
-uint16_t hex2uint16(const char *p);
-uint8_t hex2uint8(const char *p);
-int dumpLine(char* buffer, int len);
 
 #ifdef ARDUINO_ARCH_AVR
 #define SPI_PIN_CS 7
@@ -30,8 +27,6 @@ int dumpLine(char* buffer, int len);
 #else
 #define SPI_PIN_CS 2
 #define SPI_PIN_READY 13
-#define PIN_XBEE_PWR 27
-#define PIN_GPS_POWER 15
 #endif
 
 #define TARGET_OBD 0

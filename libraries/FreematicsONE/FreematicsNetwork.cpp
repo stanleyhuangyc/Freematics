@@ -7,8 +7,10 @@
 *************************************************************************/
 
 #include <Arduino.h>
-#include "FreematicsONE.h"
+#include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
+
+#ifdef ESP32
 
 static CTeleClient* gatts_inst = 0;
 
@@ -66,6 +68,8 @@ bool CTeleClient::bleSend(String s)
 {
   return gatts_inst && gatts_send((uint8_t*)s.c_str(), s.length());
 }
+
+#endif
 
 bool CTeleClient::verifyChecksum(const char* data)
 {
@@ -166,6 +170,8 @@ int CTeleClient::transmit(const char* data, int bytes, bool wait)
   Implementation for ESP32 built-in WIFI (Arduino WIFI library)
 *******************************************************************************/
 
+#ifdef ESP32
+
 bool CTeleClientWIFI::netSetup(const char* ssid, const char* password, int timeout)
 {
   WiFi.begin(ssid, password);
@@ -234,6 +240,8 @@ void CTeleClientWIFI::netEnd()
 {
   WiFi.disconnect();
 }
+
+#endif
 
 /*******************************************************************************
   Implementation for SIM800 (SIM800 AT command-set)
@@ -471,7 +479,7 @@ void CTeleClientSIM5360::netEnd()
 
 bool CTeleClientSIM5360::netSetup(const char* apn, bool only3G, int timeout)
 {
-  uint32_t t = millis();
+  long t = millis();
   bool success = false;
   netSendCommand("ATE0\r");
   if (only3G) netSendCommand("AT+CNMP=14\r"); // use WCDMA only

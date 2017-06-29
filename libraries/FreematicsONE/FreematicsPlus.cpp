@@ -18,6 +18,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "soc/uart_struct.h"
+#include "FreematicsSD.h"
 #include "FreematicsPlus.h"
 #include "FreematicsGPS.h"
 
