@@ -13,7 +13,7 @@
 //==============================================================================
 void CMPU9250::readAccelData(int16_t * destination)
 {
-  uint8_t rawData[6];  // x/y/z accel register data stored here
+  uint8_t rawData[6];   // x/y/z accel register data stored here
   readBytes(MPU9250_ADDRESS, ACCEL_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers into data array
   destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
   destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
@@ -60,7 +60,7 @@ int16_t CMPU9250::readTempData()
   return ((int16_t)rawData[0] << 8) | rawData[1];  // Turn the MSB and LSB into a 16-bit value
 }
 
-void CMPU9250::initAK8963(float * destination)
+bool CMPU9250::initAK8963(float * destination)
 {
   // First extract the factory calibration for each magnetometer axis
   uint8_t rawData[3];  // x/y/z gyro calibration data stored here
@@ -68,7 +68,10 @@ void CMPU9250::initAK8963(float * destination)
   delay(10);
   writeByte(AK8963_ADDRESS, AK8963_CNTL, 0x0F); // Enter Fuse ROM access mode
   delay(10);
-  readBytes(AK8963_ADDRESS, AK8963_ASAX, 3, &rawData[0]);  // Read the x-, y-, and z-axis calibration values
+  // Read the x-, y-, and z-axis calibration values
+  if (readBytes(AK8963_ADDRESS, AK8963_ASAX, 3, &rawData[0]) != 3) {
+    return false;
+  }
   destination[0] =  (float)(rawData[0] - 128)/256. + 1.;   // Return x-axis sensitivity adjustment values, etc.
   destination[1] =  (float)(rawData[1] - 128)/256. + 1.;
   destination[2] =  (float)(rawData[2] - 128)/256. + 1.;
@@ -79,6 +82,7 @@ void CMPU9250::initAK8963(float * destination)
   // and enable continuous mode data acquisition Mmode (bits [3:0]), 0010 for 8 Hz and 0110 for 100 Hz sample rates
   writeByte(AK8963_ADDRESS, AK8963_CNTL, MFS_16BITS << 4 | Mmode); // Set magnetometer data resolution and sample ODR
   delay(10);
+  return true;
 }
 
 // Function which accumulates gyro and accelerometer data after device
@@ -338,7 +342,7 @@ uint8_t CMPU9250::readByte(uint8_t address, uint8_t subAddress)
   return data;                             // Return data read from slave register
 }
 
-void CMPU9250::readBytes(uint8_t address, uint8_t subAddress, uint8_t count,
+bool CMPU9250::readBytes(uint8_t address, uint8_t subAddress, uint8_t count,
                         uint8_t * dest)
 {
   Wire.beginTransmission(address);   // Initialize the Tx buffer
@@ -346,8 +350,10 @@ void CMPU9250::readBytes(uint8_t address, uint8_t subAddress, uint8_t count,
   Wire.endTransmission(false);       // Send the Tx buffer, but send a restart to keep connection alive
   uint8_t i = 0;
   Wire.requestFrom(address, count);  // Read bytes from slave register address
-  while (Wire.available()) {
-    dest[i++] = Wire.read(); }         // Put read results in the Rx buffer
+  while (Wire.available() && i < count) {
+    dest[i++] = Wire.read();
+  }         // Put read results in the Rx buffer
+  return i == count;
 }
 
 void CMPU9250::initMPU9250()
@@ -408,12 +414,12 @@ void CMPU9250::initMPU9250()
    delay(100);
 }
 
-bool CMPU9250::memsInit()
+byte CMPU9250::memsInit()
 {
   Wire.begin();
 
   byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
-  if (c != 0x71) return false;
+  if (c != 0x68 && c != 0x71) return 0;
 
   //float SelfTest[6];
   //MPU9250SelfTest(SelfTest);
@@ -422,10 +428,11 @@ bool CMPU9250::memsInit()
 
   initMPU9250();
 
-  float magCalibration[3];
-  initAK8963(magCalibration);
+  if (c == 0x68 || !initAK8963(magCalibration)) {
+    return 1;
+  }
 
-  return true;
+  return 2;
 }
 
 bool CMPU9250::memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp)
