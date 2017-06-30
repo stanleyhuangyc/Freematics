@@ -5,7 +5,7 @@
 * (C)2016 Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
-#include "FreematicsMPU9250.h"
+#include "FreematicsMEMS.h"
 
 //==============================================================================
 //====== Set of useful function to access acceleration. gyroscope, magnetometer,

@@ -7,7 +7,7 @@
 
 #include <SPI.h>
 #include "FreematicsBase.h"
-#include "FreematicsMPU9250.h"
+#include "FreematicsMEMS.h"
 #include "FreematicsSD.h"
 #ifdef ESP32
 #include "FreematicsPlus.h"
