@@ -87,6 +87,7 @@ public:
     {
       Serial.write((uint8_t*)data, len);
       Serial.write('\n');
+      return len;
     }
     String netDeviceName() { return "Serial"; }
 };
