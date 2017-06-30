@@ -30,14 +30,14 @@ static uint8_t lastFileSize = 0;
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
 
-#if USE_MPU9250
+#if USE_MEMS
 int16_t acc[3] = {0};
 int16_t accCal[3] = {0}; // calibrated reference accelerometer data
 byte deviceTemp; // device temperature (celcius degree)
 #endif
 
 class ONE : public COBDSPI, public CDataLogger
-#if USE_MPU9250
+#if USE_MEMS
 ,public CMPU9250
 #endif
 {
@@ -49,14 +49,17 @@ public:
       Serial.print("Firmware Ver. ");
       Serial.println(ver);
 
-#if USE_MPU9250
+#if USE_MEMS
+      if (!(state & STATE_MEMS_READY)) {
         Serial.print("MEMS ");
-        if (memsInit()) {
+        byte ret = memsInit();
+        if (ret) {
           state |= STATE_MEMS_READY;
-          Serial.println("OK");
+          Serial.println(ret == 1 ? "6-DOF" : "9-DOF");
         } else {
           Serial.println("NO");
         }
+      }
 #endif
 
 #if USE_OBD
@@ -194,7 +197,7 @@ public:
         Serial.println("Standby");
         // put OBD chips into low power mode
         enterLowPowerMode();
-#if USE_MPU9250
+#if USE_MEMS
         for (;;) {
           unsigned long accSum[3] = {0};
           unsigned int count = 0;
@@ -221,7 +224,7 @@ public:
         leaveLowPowerMode();
         setup();
     }
-#if USE_MPU9250
+#if USE_MEMS
     void dataIdleLoop()
     {
       // do something while waiting for data on SPI
@@ -306,7 +309,7 @@ void loop()
     one.dataIdleLoop();
 #endif
 
-#if USE_MPU9250
+#if USE_MEMS
     if (one.state & STATE_MEMS_READY) {
        // log the loaded MEMS data
       one.log(PID_ACC, acc[0], acc[1], acc[2]);
