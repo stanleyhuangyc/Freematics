@@ -228,7 +228,7 @@ enum {
 class CMPU9250
 {
 public:
-  bool memsInit();
+  byte memsInit();
   bool memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp);
 
   void getMres();
@@ -239,13 +239,13 @@ public:
   void readMagData(int16_t *);
   int16_t readTempData();
   void updateTime();
-  void initAK8963(float *);
+  bool initAK8963(float *);
   void initMPU9250();
   void calibrateMPU9250(float * gyroBias, float * accelBias);
   void MPU9250SelfTest(float * destination);
   void writeByte(uint8_t, uint8_t, uint8_t);
   uint8_t readByte(uint8_t, uint8_t);
-  void readBytes(uint8_t, uint8_t, uint8_t, uint8_t *);
+  bool readBytes(uint8_t, uint8_t, uint8_t, uint8_t *);
 private:
   float gyroBias[3] = {0, 0, 0};
   float accelBias[3] = {0, 0, 0};      // Bias corrections for gyro and accelerometer
