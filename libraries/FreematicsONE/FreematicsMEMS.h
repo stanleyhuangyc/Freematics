@@ -29,6 +29,7 @@
 #define AK8963_ZOUT_H    0x08
 #define AK8963_ST2       0x09  // Data overflow bit 3 and data read error status bit 2
 #define AK8963_CNTL      0x0A  // Power down (0000), single-measurement (0001), self-test (1000) and Fuse ROM (1111) modes on bits 3:0
+#define AK8963_CNTL2      0x0B
 #define AK8963_ASTC      0x0C  // Self test control
 #define AK8963_I2CDIS    0x0F  // I2C disable
 #define AK8963_ASAX      0x10  // Fuse ROM x-axis sensitivity adjustment value
@@ -167,15 +168,8 @@
 #define ZA_OFFSET_H        0x7D
 #define ZA_OFFSET_L        0x7E
 
-// Using the MPU-9250 breakout board, ADO is set to 0
-// Seven-bit device address is 110100 for ADO = 0 and 110101 for ADO = 1
-#define ADO 0
-#if ADO
-#define MPU9250_ADDRESS 0x69  // Device address when ADO = 1
-#else
 #define MPU9250_ADDRESS 0x68  // Device address when ADO = 0
 #define AK8963_ADDRESS  0x0C   // Address of magnetometer
-#endif // AD0
 
 enum {
   AFS_2G = 0,
@@ -229,8 +223,9 @@ class CMPU9250
 {
 public:
   byte memsInit();
-  bool memsRead(int16_t* acc, int16_t* gyr, int16_t* mag, int16_t* temp);
-
+  bool memsRead(float* acc, float* gyr, float* mag, int16_t* temp, bool fusion = false);
+  void memsOrientation(float& pitch, float& yaw, float& row);
+private:
   void getMres();
   void getGres();
   void getAres();
@@ -243,13 +238,19 @@ public:
   void initMPU9250();
   void calibrateMPU9250(float * gyroBias, float * accelBias);
   void MPU9250SelfTest(float * destination);
-  void writeByte(uint8_t, uint8_t, uint8_t);
-  uint8_t readByte(uint8_t, uint8_t);
-  bool readBytes(uint8_t, uint8_t, uint8_t, uint8_t *);
-private:
-  float gyroBias[3] = {0, 0, 0};
-  float accelBias[3] = {0, 0, 0};      // Bias corrections for gyro and accelerometer
-  float magCalibration[3] = {0, 0, 0};
+  void writeByte(uint8_t, uint8_t);
+  uint8_t readByte(uint8_t);
+  void readBytes(uint8_t, uint8_t, uint8_t *);
+  void writeByteAK(uint8_t, uint8_t);
+  uint8_t readByteAK(uint8_t);
+  void readBytesAK(uint8_t, uint8_t, uint8_t *);
+  float gyroBias[3] = {0};
+  float accelBias[3] = {0};      // Bias corrections for gyro and accelerometer
+  float magCalibration[3] = {0};
+  int16_t accelCount[3] = {0};
+  int16_t gyroCount[3] = {0};
+  int16_t magCount[3] = {0};    // Stores the 16-bit signed magnetometer sensor output
+  bool hasAK;
 };  // class MPU9250
 
 #endif
