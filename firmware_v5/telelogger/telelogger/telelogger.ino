@@ -31,9 +31,9 @@
 #define PIN_LED 4
 
 #if MEMS_TYPE
-byte accCount = 0; // count of accelerometer readings
-long accSum[3] = {0}; // sum of accelerometer data
-int accCal[3] = {0}; // calibrated reference accelerometer data
+unsigned int accCount = 0; // count of accelerometer readings
+float accSum[3] = {0}; // sum of accelerometer data
+float accCal[3] = {0}; // calibrated reference accelerometer data
 byte deviceTemp = 0; // device temperature
 #endif
 int lastSpeed = 0;
@@ -363,7 +363,7 @@ if (!checkState(STATE_STORAGE_READY)) {
       if (checkState(STATE_NET_READY)) {
         notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
         netClose();
-        Serial.print("#Network:");
+        Serial.print("Network:");
         netEnd(); // turn off network module power (if supported)
         Serial.println("OFF");
         clearState(STATE_NET_READY);
@@ -382,7 +382,7 @@ if (!checkState(STATE_STORAGE_READY)) {
 #endif
 #if ENABLE_GPS
       if (checkState(STATE_GPS_READY)) {
-        Serial.print("#GPS:");
+        Serial.print("GPS:");
         gpsInit(0); // turn off GPS power
         Serial.println("OFF");
       }
@@ -398,8 +398,8 @@ if (!checkState(STATE_STORAGE_READY)) {
           // calculate relative movement
           unsigned long motion = 0;
           for (byte i = 0; i < 3; i++) {
-            long n = accSum[i] / accCount - accCal[i];
-            motion += n * n;
+            float n = accSum[i] / accCount - accCal[i];
+            motion += n * n * 10000;
           }
           char buf[16];
           sprintf(buf, "M:%u", motion);
@@ -474,7 +474,7 @@ private:
     {
          // log the loaded MEMS data
         if (accCount) {
-          cache.log(PID_ACC, accSum[0] / accCount, accSum[1] / accCount, accSum[2] / accCount);
+          cache.log(PID_ACC, (int16_t)(accSum[0] / accCount * 100), (int16_t)(accSum[1] / accCount * 100), (int16_t)(accSum[2] / accCount * 100));
           clearMEMS();
         }
     }
@@ -536,14 +536,11 @@ private:
     void readMEMS()
     {
         // load accelerometer and temperature data
-        int16_t acc[3] = {0};
+        float acc[3] = {0};
         int16_t temp; // device temperature (in 0.1 celcius degree)
         memsRead(acc, 0, 0, &temp);
-        if (accCount >= 128) {
-          accSum[0] >>= 1;
-          accSum[1] >>= 1;
-          accSum[2] >>= 1;
-          accCount >>= 1;
+        if (accCount >= 50000) {
+          clearMEMS();
         }
         accSum[0] += acc[0];
         accSum[1] += acc[1];
