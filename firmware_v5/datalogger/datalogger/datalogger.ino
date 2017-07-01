@@ -25,13 +25,16 @@
 #define STATE_MEMS_READY 0x10
 #define STATE_FILE_READY 0x20
 
-static uint8_t lastFileSize = 0;
-
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
 
 #if USE_MEMS
-int16_t acc[3] = {0};
+float acc[3] = {0};
+#if ENABLE_ORIENTATION
+float gyr[3] = {0};
+float mag[3] = {0};
+uint32_t nextOriTime = 0;
+#endif
 int16_t accCal[3] = {0}; // calibrated reference accelerometer data
 byte deviceTemp; // device temperature (celcius degree)
 #endif
@@ -55,7 +58,7 @@ public:
         byte ret = memsInit();
         if (ret) {
           state |= STATE_MEMS_READY;
-          Serial.println(ret == 1 ? "6-DOF" : "9-DOF");
+          Serial.println(ret == 1 ? "MPU6050" : "MPU9250");
         } else {
           Serial.println("NO");
         }
@@ -168,6 +171,7 @@ public:
     void flushData(uint32_t fileSize)
     {
       // flush SD data every 1KB
+        static uint8_t lastFileSize = 0;
         byte dataSizeKB = fileSize >> 10;
         if (dataSizeKB != lastFileSize) {
             flushFile();
@@ -229,9 +233,12 @@ public:
     {
       // do something while waiting for data on SPI
       if (state & STATE_MEMS_READY) {
-        // load accelerometer and temperature data
         int16_t temp; // device temperature (in 0.1 celcius degree)
-        memsRead(acc, 0, 0, &temp);
+#if ENABLE_ORIENTATION
+        memsRead(acc, gyr, mag, &temp, true);
+#else
+        memsRead(acc, 0, 0, &temp, false);
+#endif
         deviceTemp = temp / 10;
       }
     }
@@ -311,8 +318,23 @@ void loop()
 
 #if USE_MEMS
     if (one.state & STATE_MEMS_READY) {
-       // log the loaded MEMS data
-      one.log(PID_ACC, acc[0], acc[1], acc[2]);
+#if ENABLE_ORIENTATION
+      uint32_t t = millis();
+      if (t > nextOriTime) {
+        float yaw, pitch, roll;
+        one.memsOrientation(yaw, pitch, roll);
+        Serial.print("Orientation: ");
+        Serial.print(yaw, 2);
+        Serial.print(' ');
+        Serial.print(pitch, 2);
+        Serial.print(' ');
+        Serial.println(roll, 2);
+        one.log(PID_ORIENTATION, (int16_t)(yaw * 100), (int16_t)(pitch * 100), (int16_t)(roll * 100));
+        nextOriTime = t + ORIENTATION_INTERVAL;
+      }
+#endif
+      // log the loaded acceleration data
+      one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
     }
 #endif
 #if USE_GPS
@@ -321,9 +343,9 @@ void loop()
     }
 #endif
 
-#if !ENABLE_DATA_OUT
-    Serial.print(one.dataCount);
-    Serial.print(" samples ");
+#if !ENABLE_DATA_OUT && !ENABLE_ORIENTATION
+    //Serial.print(one.dataCount);
+    //Serial.print(" samples ");
 #if ENABLE_DATA_LOG
     uint32_t fileSize = sdfile.size();
     if (fileSize > 0) {
