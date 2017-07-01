@@ -11,7 +11,7 @@
 #define ENABLE_DATA_LOG 1
 
 // enable(1)/disable(0) data streaming
-#define ENABLE_DATA_OUT 0
+#define ENABLE_DATA_OUT 1
 
 // file size limit
 #define MAX_DATA_FILE_SIZE 1024 /* KB */
@@ -30,6 +30,11 @@
 #define USE_GPS 1
 
 #endif
+
+// enable(1)/disable(0) MEMS sensor fusion for orientation
+#define ENABLE_ORIENTATION 0
+
+#define ORIENTATION_INTERVAL 50
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
