@@ -74,6 +74,7 @@
 #define PID_COMPASS 0x22
 #define PID_MEMS_TEMP 0x23
 #define PID_BATTERY_VOLTAGE 0x24
+#define PID_ORIENTATION 0x25
 
 // custom PIDs for calculated data
 #define PID_TRIP_DISTANCE 0x30

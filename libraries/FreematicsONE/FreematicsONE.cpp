@@ -392,7 +392,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			delay(1);
+			dataIdleLoop();
 			if (millis() - t > timeout) {
 #ifdef DEBUG
 				debugOutput("SPI TIMEOUT");
