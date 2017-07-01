@@ -171,11 +171,11 @@ public:
   {
       pinMode(SD_CS_PIN, OUTPUT);
       if(!SD.begin(SD_CS_PIN)){
-          Serial.println("Card unmounted");
+          Serial.println("No SD card");
           return false;
       }
       int cardSize = SD.cardSize();
-      Serial.printf("SD Card Size: %uMB\n", cardSize);
+      Serial.printf("SD card size: %uMB\n", cardSize);
       return true;
     }
     bool begin(uint32_t dateTime = 0)
