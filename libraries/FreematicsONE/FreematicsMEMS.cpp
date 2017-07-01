@@ -162,7 +162,6 @@ int16_t CMPU9250::readTempData()
 bool CMPU9250::initAK8963(float * destination)
 {
   if (readByteAK(WHO_AM_I_AK8963) != 0x48) {
-      Serial.print("NO AK8963");
       return false;
   }
 
