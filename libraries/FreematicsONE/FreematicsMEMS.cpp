@@ -7,24 +7,17 @@
 
 #include "FreematicsMEMS.h"
 
-static float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
-
-// global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)
-float GyroMeasError = PI * (40.0f / 180.0f);   // gyroscope measurement error in rads/s (start at 40 deg/s)
-float GyroMeasDrift = PI * (0.0f  / 180.0f);   // gyroscope measurement drift in rad/s/s (start at 0.0 deg/s/s)
-float beta = sqrt(3.0f / 4.0f) * GyroMeasError;   // compute beta
-float zeta = sqrt(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
-#define Kp 2.0f * 5.0f // these are the free parameters in the Mahony filter and fusion scheme, Kp for proportional feedback, Ki for integral
-#define Ki 0.0f
-float deltat = 0.0f, sum = 0.0f;        // integration interval for both filter schemes
-uint32_t lastUpdate = 0, firstUpdate = 0; // used to calculate integration interval
 
 // Implementation of Sebastian Madgwick's "...efficient orientation filter for... inertial/magnetic sensor arrays"
 // (see http://www.x-io.co.uk/category/open-source/ for examples and more details)
 // which fuses acceleration, rotation rate, and magnetic moments to produce a quaternion-based estimate of absolute
 // device orientation
-static void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
+void CQuaterion::MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
 {
+  uint32_t now = millis();
+  deltat = ((float)(now - lastUpdate)/1000.0f); // set integration time by time elapsed since last filter update
+  lastUpdate = now;
+
   float q1 = q[0], q2 = q[1], q3 = q[2], q4 = q[3];   // short name local variable for readability
   float norm;
   float hx, hy, _2bx, _2bz;
@@ -112,7 +105,17 @@ static void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, flo
   q[1] = q2 * norm;
   q[2] = q3 * norm;
   q[3] = q4 * norm;
+}
 
+void CQuaterion::getOrientation(float& yaw, float& pitch, float& roll)
+{
+     yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);
+     pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
+     roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
+     pitch *= 180.0f / PI;
+     yaw   *= 180.0f / PI;
+     yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+     roll  *= 180.0f / PI;
 }
 
 //==============================================================================
@@ -140,7 +143,7 @@ void CMPU9250::readGyroData(int16_t * destination)
 
 void CMPU9250::readMagData(int16_t * destination)
 {
-  if(hasAK && readByteAK(AK8963_ST1) & 0x01) { // wait for magnetometer data ready bit to be set
+  if(readByteAK(AK8963_ST1) & 0x01) { // wait for magnetometer data ready bit to be set
     uint8_t rawData[7];  // x/y/z gyro register data, ST2 register stored here, must read ST2 at end of data acquisition
     readBytesAK(AK8963_XOUT_L, 7, &rawData[0]);  // Read the six raw data and ST2 registers sequentially into data array
     uint8_t c = rawData[6]; // End data read by reading ST2 register
@@ -553,8 +556,9 @@ void CMPU9250::initMPU9250()
 
 }
 
-byte CMPU9250::memsInit()
+byte CMPU9250::memsInit(bool fusion)
 {
+  byte ret = 0;
   Wire.begin();
   Wire.setClock(400000);
   for (byte attempt = 0; attempt < 2; attempt++) {
@@ -564,17 +568,17 @@ byte CMPU9250::memsInit()
     if (c != 0x68 && c != 0x71) continue;
     calibrateMPU9250(gyroBias, accelBias); // Calibrate gyro and accelerometers, load biases in bias registers
     initMPU9250();
-    hasAK = initAK8963(magCalibration);
-    if (c == 0x71) {
-      return 2;
-    } else {
-      return 1;
-    }
+    initAK8963(magCalibration);
+    ret = (c == 0x71) ? 2 : 1;
+    break;
   }
-  return 0;
+  if (ret && fusion && !quaterion) {
+    quaterion = new CQuaterion;
+  }
+  return ret;
 }
 
-bool CMPU9250::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, bool fusion)
+bool CMPU9250::memsRead(float* acc, float* gyr, float* mag, int16_t* temp)
 {
   if (acc) {
     readAccelData(accelCount);
@@ -605,22 +609,8 @@ bool CMPU9250::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, bool 
     *temp = (float)t / 33.387 + 210;
   }
 
-  if (fusion) {
-    uint32_t now = millis();
-    deltat = ((float)(now - lastUpdate)/1000.0f); // set integration time by time elapsed since last filter update
-    lastUpdate = now;
-    MadgwickQuaternionUpdate(acc[0], acc[1], acc[2], gyr[0]*PI/180.0f, gyr[1]*PI/180.0f, gyr[2]*PI/180.0f,  mag[0],  mag[1], mag[2]);
+  if (quaterion && acc && gyr && mag) {
+    quaterion->MadgwickQuaternionUpdate(acc[0], acc[1], acc[2], gyr[0]*PI/180.0f, gyr[1]*PI/180.0f, gyr[2]*PI/180.0f,  mag[0],  mag[1], mag[2]);
   }
   return true;
-}
-
-void CMPU9250::memsOrientation(float& yaw, float& pitch, float& roll)
-{
-     yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);
-     pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-     roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
-     pitch *= 180.0f / PI;
-     yaw   *= 180.0f / PI;
-     yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-     roll  *= 180.0f / PI;
 }

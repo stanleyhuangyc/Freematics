@@ -219,12 +219,34 @@ enum {
 // 2 for 8 Hz, 6 for 100 Hz continuous magnetometer data read
 #define Mmode 0x02
 
+#define Kp 2.0f * 5.0f // these are the free parameters in the Mahony filter and fusion scheme, Kp for proportional feedback, Ki for integral
+#define Ki 0.0f
+
+class CQuaterion
+{
+public:
+  void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz);
+  void getOrientation(float& yaw, float& pitch, float& roll);
+private:
+  float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
+  // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)
+  float GyroMeasError = PI * (40.0f / 180.0f);   // gyroscope measurement error in rads/s (start at 40 deg/s)
+  float GyroMeasDrift = PI * (0.0f  / 180.0f);   // gyroscope measurement drift in rad/s/s (start at 0.0 deg/s/s)
+  float beta = sqrt(3.0f / 4.0f) * GyroMeasError;   // compute beta
+  float zeta = sqrt(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
+  uint32_t firstUpdate = 0; // used to calculate integration interval
+  uint32_t lastUpdate = 0;
+  float deltat = 0.0f;
+};
+
 class CMPU9250
 {
 public:
-  byte memsInit();
-  bool memsRead(float* acc, float* gyr, float* mag, int16_t* temp, bool fusion = false);
-  void memsOrientation(float& pitch, float& yaw, float& row);
+  byte memsInit(bool fusion = false);
+  bool memsRead(float* acc, float* gyr, float* mag, int16_t* temp);
+  void memsOrientation(float& pitch, float& yaw, float& row) {
+    if (quaterion) quaterion->getOrientation(pitch, yaw, row);
+  }
 private:
   void getMres();
   void getGres();
@@ -250,7 +272,7 @@ private:
   int16_t accelCount[3] = {0};
   int16_t gyroCount[3] = {0};
   int16_t magCount[3] = {0};    // Stores the 16-bit signed magnetometer sensor output
-  bool hasAK;
+  CQuaterion* quaterion = 0;
 };  // class MPU9250
 
 #endif
