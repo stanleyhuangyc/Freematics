@@ -11,7 +11,7 @@
 #define ENABLE_DATA_LOG 1
 
 // enable(1)/disable(0) data streaming
-#define ENABLE_DATA_OUT 1
+#define ENABLE_DATA_OUT 0
 
 // file size limit
 #define MAX_DATA_FILE_SIZE 1024 /* KB */
@@ -32,7 +32,7 @@
 #endif
 
 // enable(1)/disable(0) MEMS sensor fusion for orientation
-#define ENABLE_ORIENTATION 0
+#define ENABLE_ORIENTATION false
 
 #define ORIENTATION_INTERVAL 50
 

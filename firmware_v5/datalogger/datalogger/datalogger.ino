@@ -31,8 +31,6 @@ uint32_t UTC = 0;
 #if USE_MEMS
 float acc[3] = {0};
 #if ENABLE_ORIENTATION
-float gyr[3] = {0};
-float mag[3] = {0};
 uint32_t nextOriTime = 0;
 #endif
 int16_t accCal[3] = {0}; // calibrated reference accelerometer data
@@ -55,7 +53,7 @@ public:
 #if USE_MEMS
       if (!(state & STATE_MEMS_READY)) {
         Serial.print("MEMS ");
-        byte ret = memsInit();
+        byte ret = memsInit(ENABLE_ORIENTATION);
         if (ret) {
           state |= STATE_MEMS_READY;
           Serial.println(ret == 1 ? "MPU6050" : "MPU9250");
@@ -66,46 +64,49 @@ public:
 #endif
 
 #if USE_OBD
-        Serial.print("OBD ");
-        if (init()) {
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
-          reconnect();
-        }
-        state |= STATE_OBD_READY;
-        // retrieve VIN
-        char buffer[128];
-        if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
-          Serial.print("VIN:");
-          Serial.println(buffer);
-        }
+      Serial.print("OBD ");
+      if (init()) {
+        Serial.println("OK");
+      } else {
+        Serial.println("NO");
+        reconnect();
+      }
+      state |= STATE_OBD_READY;
 #else
-        SPI.begin();
+      SPI.begin();
 #endif
 
 #if ENABLE_DATA_LOG
-        if (!(state & STATE_SD_READY)) {
-          Serial.print("SD ");
-          uint16_t volsize = initSD();
-          if (volsize) {
-            Serial.print(volsize);
-            Serial.println("MB");
-          } else {
-            Serial.println("NO");
-          }
-        }
-#endif
-
-#if USE_GPS
-        Serial.print("GPS ");
-        if (gpsInit(GPS_SERIAL_BAUDRATE)) {
-          state |= STATE_GPS_FOUND;
-          Serial.println("OK");
-          //waitGPS();
+      if (!(state & STATE_SD_READY)) {
+        Serial.print("SD ");
+        uint16_t volsize = initSD();
+        if (volsize) {
+          Serial.print(volsize);
+          Serial.println("MB");
         } else {
           Serial.println("NO");
         }
+      }
+#endif
+
+#if USE_GPS
+      Serial.print("GPS ");
+      if (gpsInit(GPS_SERIAL_BAUDRATE)) {
+        state |= STATE_GPS_FOUND;
+        Serial.println("OK");
+        //waitGPS();
+      } else {
+        Serial.println("NO");
+      }
+#endif
+
+#if USE_OBD
+      // retrieve VIN
+      char buffer[128];
+      if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
+        Serial.print("VIN:");
+        Serial.println(buffer);
+      }
 #endif
     }
 #if USE_GPS
@@ -235,9 +236,11 @@ public:
       if (state & STATE_MEMS_READY) {
         int16_t temp; // device temperature (in 0.1 celcius degree)
 #if ENABLE_ORIENTATION
-        memsRead(acc, gyr, mag, &temp, true);
+        float gyr[3];
+        float mag[3];
+        memsRead(acc, gyr, mag, &temp);
 #else
-        memsRead(acc, 0, 0, &temp, false);
+        memsRead(acc, 0, 0, &temp);
 #endif
         deviceTemp = temp / 10;
       }
@@ -344,8 +347,8 @@ void loop()
 #endif
 
 #if !ENABLE_DATA_OUT && !ENABLE_ORIENTATION
-    //Serial.print(one.dataCount);
-    //Serial.print(" samples ");
+    Serial.print(one.dataCount);
+    Serial.print(" samples ");
 #if ENABLE_DATA_LOG
     uint32_t fileSize = sdfile.size();
     if (fileSize > 0) {

@@ -24,12 +24,17 @@
 #define USE_OBD 1
 
 // enable(1)/disable(0) MEMS sensor
-#define USE_MPU9250 1
+#define USE_MEMS 1
 
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
 
 #endif
+
+// enable(1)/disable(0) MEMS sensor fusion for orientation
+#define ENABLE_ORIENTATION false
+
+#define ORIENTATION_INTERVAL 50
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
