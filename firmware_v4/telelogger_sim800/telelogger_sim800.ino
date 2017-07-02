@@ -236,9 +236,7 @@ public:
 };
 
 class CTeleLogger : public COBDGSM, public CDataLogger
-#if USE_MPU6050
-,public CMPU6050
-#elif USE_MPU9250
+#if USE_MEMS
 ,public CMPU9250
 #endif
 {
@@ -246,7 +244,7 @@ public:
     CTeleLogger():gprsState(GPRS_DISABLED),state(0),feedid(0) {}
     void setup()
     {
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
         if (!(state & STATE_MEMS_READY)) {
           Serial.print("#MEMS...");
           if (memsInit()) {
@@ -352,7 +350,7 @@ public:
           break;
         }
 
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
         calibrateMEMS(1000);
 #endif
     }
@@ -421,7 +419,7 @@ public:
         logTimestamp(millis());
         processOBD();
 
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
         if (state & STATE_MEMS_READY) {
             processMEMS();  
         }
@@ -593,12 +591,12 @@ private:
           return -1; 
         }
     }
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
     void processMEMS()
     {
          // log the loaded MEMS data
         if (accCount) {
-          logData(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
+          logData(PID_ACC, accSum[0] / accCount, accSum[1] / accCount, accSum[2] / accCount);
         }
     }
 #endif
@@ -667,7 +665,7 @@ private:
         }
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_GSM_READY | STATE_CONNECTED);
         Serial.println("Standby");
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
       calibrateMEMS(3000);
       if (!(state & STATE_MEMS_READY)) {
         enterLowPowerMode();
@@ -698,7 +696,7 @@ private:
 #endif
         Serial.println("Wakeup");
     }
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
     void calibrateMEMS(unsigned int duration)
     {
         // MEMS data collected while sleeping
@@ -719,18 +717,18 @@ private:
     void readMEMS()
     {
         // load accelerometer and temperature data
-        int16_t acc[3] = {0};
+        float acc[3] = {0};
         int16_t temp; // device temperature (in 0.1 celcius degree)
         memsRead(acc, 0, 0, &temp);
-        if (accCount >= 128) {
+        if (accCount >= 100) {
           accSum[0] >>= 1;
           accSum[1] >>= 1;
           accSum[2] >>= 1;
           accCount >>= 1;
         }
-        accSum[0] += acc[0];
-        accSum[1] += acc[1];
-        accSum[2] += acc[2];
+        accSum[0] += acc[0] * 100;
+        accSum[1] += acc[1] * 100;
+        accSum[2] += acc[2] * 100;
         accCount++;
         deviceTemp = temp / 10;
     }

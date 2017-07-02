@@ -4,11 +4,6 @@
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 *************************************************************************/
 
-// additional custom PID for data logger
-#define PID_DATA_SIZE 0x80
-#define PID_CSQ 0x81
-#define PID_DEVICE_TEMP 0x82
-
 #if ENABLE_DATA_LOG
 SDClass SD;
 File sdfile;

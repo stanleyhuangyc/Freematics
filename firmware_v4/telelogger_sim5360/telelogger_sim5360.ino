@@ -32,7 +32,7 @@
 #define EVENT_LOGIN 1
 #define EVENT_LOGOUT 2
 
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
 byte accCount = 0; // count of accelerometer readings
 long accSum[3] = {0}; // sum of accelerometer data
 int accCal[3] = {0}; // calibrated reference accelerometer data
@@ -374,9 +374,7 @@ public:
 };
 
 class CTeleLogger : public CTeleClient
-#if USE_MPU6050
-,public CMPU6050
-#elif USE_MPU9250
+#if USE_MEMS
 ,public CMPU9250
 #endif
 {
@@ -386,7 +384,7 @@ public:
   {
     clearState(STATE_ALL_GOOD);
 
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("#MEMS...");
       if (memsInit()) {
@@ -449,6 +447,8 @@ public:
       setState(STATE_CONNECTED);
     } else {
       Serial.println("NO");
+      Serial.print("#CSQ...");
+      Serial.println(getSignal());
       return false;
     }
 
@@ -486,7 +486,7 @@ public:
       break;
     }
 
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
     calibrateMEMS(CALIBRATION_TIME);
 #endif
     return checkState(STATE_ALL_GOOD);
@@ -500,7 +500,7 @@ public:
       processOBD();
     }
 
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
     // process MEMS data if available
     if (checkState(STATE_MEMS_READY)) {
         processMEMS();
@@ -521,7 +521,7 @@ public:
     }
 #endif
 
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
     if ((txCount % 100) == 1) {
       logData(PID_DEVICE_TEMP, deviceTemp);
     }
@@ -556,7 +556,7 @@ public:
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
       Serial.println("Standby");
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
       calibrateMEMS(3000);
       if (checkState(STATE_MEMS_READY)) {
         enterLowPowerMode();
@@ -626,12 +626,12 @@ private:
           return -1;
         }
     }
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
     void processMEMS()
     {
          // log the loaded MEMS data
         if (accCount) {
-          logData(PID_ACC, accSum[0] / accCount / ACC_DATA_RATIO, accSum[1] / accCount / ACC_DATA_RATIO, accSum[2] / accCount / ACC_DATA_RATIO);
+          logData(PID_ACC, accSum[0] / accCount, accSum[1] / accCount, accSum[2] / accCount);
         }
     }
 #endif
@@ -662,7 +662,7 @@ private:
             }
         }
     }
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
     void calibrateMEMS(unsigned int duration)
     {
         // MEMS data collected while sleeping
@@ -683,18 +683,18 @@ private:
     void readMEMS()
     {
         // load accelerometer and temperature data
-        int16_t acc[3] = {0};
+        float acc[3];
         int16_t temp; // device temperature (in 0.1 celcius degree)
         memsRead(acc, 0, 0, &temp);
-        if (accCount >= 128) {
+        if (accCount >= 100) {
           accSum[0] >>= 1;
           accSum[1] >>= 1;
           accSum[2] >>= 1;
           accCount >>= 1;
         }
-        accSum[0] += acc[0];
-        accSum[1] += acc[1];
-        accSum[2] += acc[2];
+        accSum[0] += acc[0] * 100;
+        accSum[1] += acc[1] * 100;
+        accSum[2] += acc[2] * 100;
         accCount++;
         deviceTemp = temp / 10;
     }
@@ -702,7 +702,7 @@ private:
     void dataIdleLoop()
     {
       // do tasks while waiting for data on SPI
-#if USE_MPU6050 || USE_MPU9250
+#if USE_MEMS
       if (checkState(STATE_MEMS_READY)) {
         readMEMS();
       }

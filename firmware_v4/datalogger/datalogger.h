@@ -23,7 +23,7 @@ public:
         // skip timestamp
         char *p = strchr(buf, ',');
         if (p++) {
-          Serial.println((uint8_t*)p);
+          Serial.println(p);
         }
 #endif
         dataCount++;

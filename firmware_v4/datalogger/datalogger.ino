@@ -25,19 +25,20 @@
 #define STATE_MEMS_READY 0x10
 #define STATE_FILE_READY 0x20
 
-static uint8_t lastFileSize = 0;
-
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
 
-#if USE_MPU9250
-int16_t acc[3] = {0};
+#if USE_MEMS
+float acc[3] = {0};
+#if ENABLE_ORIENTATION
+uint32_t nextOriTime = 0;
+#endif
 int16_t accCal[3] = {0}; // calibrated reference accelerometer data
 byte deviceTemp; // device temperature (celcius degree)
 #endif
 
 class ONE : public COBDSPI, public CDataLogger
-#if USE_MPU9250
+#if USE_MEMS
 ,public CMPU9250
 #endif
 {
@@ -49,57 +50,63 @@ public:
       Serial.print("Firmware Ver. ");
       Serial.println(ver);
 
-#if USE_MPU9250
+#if USE_MEMS
+      if (!(state & STATE_MEMS_READY)) {
         Serial.print("MEMS ");
-        if (memsInit()) {
+        byte ret = memsInit(ENABLE_ORIENTATION);
+        if (ret) {
           state |= STATE_MEMS_READY;
-          Serial.println("OK");
+          Serial.println(ret == 1 ? "MPU6050" : "MPU9250");
         } else {
           Serial.println("NO");
         }
+      }
 #endif
 
 #if USE_OBD
-        Serial.print("OBD ");
-        if (init()) {
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
-          reconnect();
-        }
-        state |= STATE_OBD_READY;
-        // retrieve VIN
-        char buffer[128];
-        if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
-          Serial.print("VIN:");
-          Serial.println(buffer);
-        }
+      Serial.print("OBD ");
+      if (init()) {
+        Serial.println("OK");
+      } else {
+        Serial.println("NO");
+        reconnect();
+      }
+      state |= STATE_OBD_READY;
 #else
-        SPI.begin();
+      SPI.begin();
 #endif
 
 #if ENABLE_DATA_LOG
-        if (!(state & STATE_SD_READY)) {
-          Serial.print("SD ");
-          uint16_t volsize = initSD();
-          if (volsize) {
-            Serial.print(volsize);
-            Serial.println("MB");
-          } else {
-            Serial.println("NO");
-          }
-        }
-#endif
-
-#if USE_GPS
-        Serial.print("GPS ");
-        if (gpsInit(GPS_SERIAL_BAUDRATE)) {
-          state |= STATE_GPS_FOUND;
-          Serial.println("OK");
-          //waitGPS();
+      if (!(state & STATE_SD_READY)) {
+        Serial.print("SD ");
+        uint16_t volsize = initSD();
+        if (volsize) {
+          Serial.print(volsize);
+          Serial.println("MB");
         } else {
           Serial.println("NO");
         }
+      }
+#endif
+
+#if USE_GPS
+      Serial.print("GPS ");
+      if (gpsInit(GPS_SERIAL_BAUDRATE)) {
+        state |= STATE_GPS_FOUND;
+        Serial.println("OK");
+        //waitGPS();
+      } else {
+        Serial.println("NO");
+      }
+#endif
+
+#if USE_OBD
+      // retrieve VIN
+      char buffer[128];
+      if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
+        Serial.print("VIN:");
+        Serial.println(buffer);
+      }
 #endif
     }
 #if USE_GPS
@@ -165,6 +172,7 @@ public:
     void flushData(uint32_t fileSize)
     {
       // flush SD data every 1KB
+        static uint8_t lastFileSize = 0;
         byte dataSizeKB = fileSize >> 10;
         if (dataSizeKB != lastFileSize) {
             flushFile();
@@ -194,7 +202,7 @@ public:
         Serial.println("Standby");
         // put OBD chips into low power mode
         enterLowPowerMode();
-#if USE_MPU9250
+#if USE_MEMS
         for (;;) {
           unsigned long accSum[3] = {0};
           unsigned int count = 0;
@@ -221,14 +229,19 @@ public:
         leaveLowPowerMode();
         setup();
     }
-#if USE_MPU9250
+#if USE_MEMS
     void dataIdleLoop()
     {
       // do something while waiting for data on SPI
       if (state & STATE_MEMS_READY) {
-        // load accelerometer and temperature data
         int16_t temp; // device temperature (in 0.1 celcius degree)
+#if ENABLE_ORIENTATION
+        float gyr[3];
+        float mag[3];
+        memsRead(acc, gyr, mag, &temp);
+#else
         memsRead(acc, 0, 0, &temp);
+#endif
         deviceTemp = temp / 10;
       }
     }
@@ -306,10 +319,25 @@ void loop()
     one.dataIdleLoop();
 #endif
 
-#if USE_MPU9250
+#if USE_MEMS
     if (one.state & STATE_MEMS_READY) {
-       // log the loaded MEMS data
-      one.log(PID_ACC, acc[0], acc[1], acc[2]);
+#if ENABLE_ORIENTATION
+      uint32_t t = millis();
+      if (t > nextOriTime) {
+        float yaw, pitch, roll;
+        one.memsOrientation(yaw, pitch, roll);
+        Serial.print("Orientation: ");
+        Serial.print(yaw, 2);
+        Serial.print(' ');
+        Serial.print(pitch, 2);
+        Serial.print(' ');
+        Serial.println(roll, 2);
+        one.log(PID_ORIENTATION, (int16_t)(yaw * 100), (int16_t)(pitch * 100), (int16_t)(roll * 100));
+        nextOriTime = t + ORIENTATION_INTERVAL;
+      }
+#endif
+      // log the loaded acceleration data
+      one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
     }
 #endif
 #if USE_GPS
@@ -318,7 +346,7 @@ void loop()
     }
 #endif
 
-#if !ENABLE_DATA_OUT
+#if !ENABLE_DATA_OUT && !ENABLE_ORIENTATION
     Serial.print(one.dataCount);
     Serial.print(" samples ");
 #if ENABLE_DATA_LOG
