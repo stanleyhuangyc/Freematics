@@ -18,7 +18,7 @@
 
  */
 
-#include <Arduino.h>
+#include <Wire.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiClient.h>
