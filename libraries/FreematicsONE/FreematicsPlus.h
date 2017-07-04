@@ -98,7 +98,7 @@ public:
     }
     virtual void timestamp(uint32_t ts)
     {
-        log(0, m_dataTime = ts);
+        m_dataTime = ts;
         if (m_next) m_next->timestamp(ts);
     }
     virtual void setForward(CStorageNull* next) { m_next = next; }
@@ -145,6 +145,12 @@ public:
         if (remain < 0) {
           // m_cache full
           return;
+        }
+        if (m_dataTime) {
+          // log timestamp
+          uint32_t ts = m_dataTime;
+          m_dataTime = 0;
+          log(0, ts);
         }
         // store data in m_cache
         memcpy(m_cache + m_cacheBytes, buf, len);
@@ -211,6 +217,7 @@ public:
           Serial.println("File error");
           return false;
       }
+      sdfile.print("#FREEMATICS");
       return true;
   }
   void end()
@@ -225,9 +232,13 @@ public:
   {
       if (sdfile) {
         // output data via serial
+        if (m_dataTime) {
+          sdfile.write('\n');
+          sdfile.print(m_dataTime);
+          sdfile.write(':');
+        }
         sdfile.write((uint8_t*)buf, len);
-        sdfile.write('\n');
-
+        sdfile.write(' ');
         uint32_t logsize = sdfile.size();
       }
   }
