@@ -63,7 +63,6 @@ class CStorageNull;
 
 class CStorageNull {
 public:
-    CStorageNull():m_dataTime(0),m_next(0) {}
     virtual bool init() { return true; }
     virtual bool begin() { return true; }
     virtual void end() {}
@@ -104,25 +103,27 @@ public:
     }
     virtual void setForward(CStorageNull* next) { m_next = next; }
     virtual void flush() {}
-    virtual void purge() {}
+    virtual void purge() { m_samples = 0; }
+    virtual uint16_t samples() { return m_samples; }
     virtual void dispatch(const char* buf, byte len)
     {
         // output data via serial
         Serial.write((uint8_t*)buf, len);
         Serial.write('\n');
+        m_samples++;
         if (m_next) m_next->dispatch(buf, len);
     }
 protected:
     virtual void addHeader(int feedid) {}
     virtual void addTail() {}
     virtual void removeTail() {}
-    uint32_t m_dataTime;
-    CStorageNull* m_next;
+    uint32_t m_dataTime = 0;
+    uint16_t m_samples = 0;
+    CStorageNull* m_next = 0;
 };
 
 class CStorageRAM: public CStorageNull {
 public:
-    CStorageRAM():m_cacheBytes(0),m_cacheSize(0),m_cache(0) {}
     virtual bool init(unsigned int cacheSize)
     {
       if (m_cacheSize != cacheSize) {
@@ -134,7 +135,7 @@ public:
       }
       return true;
     }
-    void purge() { m_cacheBytes = 0; }
+    void purge() { m_cacheBytes = 0; m_samples = 0; }
     unsigned int getBytes() { return m_cacheBytes; }
     char* getBuffer() { return m_cache; }
     void dispatch(const char* buf, byte len)
@@ -149,13 +150,13 @@ public:
         memcpy(m_cache + m_cacheBytes, buf, len);
         m_cacheBytes += len;
         m_cache[m_cacheBytes++] = ',';
+        m_samples++;
         if (m_next) m_next->dispatch(buf, len);
     }
 protected:
-    unsigned int m_cacheSize;
-    unsigned int m_cacheBytes;
-    char* m_cache;
-private:
+    unsigned int m_cacheSize = 0;
+    unsigned int m_cacheBytes = 0;
+    char* m_cache = 0;
 };
 
 #ifdef ESP32

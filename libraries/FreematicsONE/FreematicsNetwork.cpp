@@ -64,9 +64,9 @@ bool CTeleClient::bleSend(const char* data, unsigned int len)
   return gatts_inst && gatts_send((uint8_t*)data, len);
 }
 
-bool CTeleClient::bleSend(String s)
+void  CTeleClient::blePrint(String s)
 {
-  return gatts_inst && gatts_send((uint8_t*)s.c_str(), s.length());
+	if (gatts_inst) gatts_send((uint8_t*)s.c_str(), s.length());
 }
 
 #endif

@@ -30,7 +30,7 @@
 
 #define PIN_LED 4
 
-#if MEMS_TYPE
+#if ENABLE_MEMS
 unsigned int accCount = 0; // count of accelerometer readings
 float accSum[3] = {0}; // sum of accelerometer data
 float accCal[3] = {0}; // calibrated reference accelerometer data
@@ -62,9 +62,7 @@ public CTeleClient
 #else
 ,public CFreematicsESP32
 #endif
-#if MEMS_TYPE == MEMS_MPU6050
-,public CMPU6050
-#elif MEMS_TYPE == MEMS_MPU9250
+#if ENABLE_MEMS
 ,public CMPU9250
 #endif
 {
@@ -73,13 +71,13 @@ public:
   {
     clearState(STATE_ALL_GOOD);
 
-#if MEMS_TYPE
+#if ENABLE_MEMS
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("MEMS...");
       if (memsInit()) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
-        bleSend("MEMS OK");
+        blePrint("MEMS OK");
       } else {
         Serial.println("NO");
       }
@@ -96,7 +94,7 @@ public:
         return false;
       }
       Serial.println("OK");
-      bleSend("OBD OK");
+      blePrint("OBD OK");
       setState(STATE_OBD_READY);
     }
 #endif
@@ -121,7 +119,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     Serial.print(WIFI_SSID);
     Serial.print(")...");
     if (netBegin() && netSetup(WIFI_SSID, WIFI_PASSWORD)) {
-      bleSend("WIFI OK");
+      blePrint("WIFI OK");
       Serial.println("OK");
       setState(STATE_NET_READY | STATE_CONNECTED);
     } else {
@@ -135,7 +133,7 @@ if (!checkState(STATE_STORAGE_READY)) {
       Serial.print("...");
       if (netBegin()) {
         Serial.println("OK");
-        bleSend("NET OK");
+        blePrint("NET OK");
         setState(STATE_NET_READY);
       } else {
         Serial.println("NO");
@@ -146,11 +144,11 @@ if (!checkState(STATE_STORAGE_READY)) {
     Serial.print(")");
     Serial.print(CELL_APN);
     if (netSetup(CELL_APN)) {
-      bleSend("CELL OK");
+      blePrint("CELL OK");
       String op = getOperatorName();
       if (op.length()) {
         Serial.println(op);
-        bleSend(op);
+        blePrint(op);
       } else {
         Serial.println("OK");
       }
@@ -170,7 +168,7 @@ if (!checkState(STATE_STORAGE_READY)) {
         Serial.print("OK(");
         Serial.print(internalGPS() ? "internal" : "external");
         Serial.println(')');
-        bleSend("GPS OK");
+        blePrint("GPS OK");
       } else {
         Serial.println("NO");
       }
@@ -182,7 +180,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     String ip = getIP();
     if (ip.length()) {
       Serial.println(ip);
-      bleSend(ip);
+      blePrint(ip);
     } else {
       Serial.println("NO");
     }
@@ -208,7 +206,7 @@ if (!checkState(STATE_STORAGE_READY)) {
 
     setState(STATE_ALL_GOOD);
 
-#if MEMS_TYPE
+#if ENABLE_MEMS
     calibrateMEMS(CALIBRATION_TIME);
 #endif
     return true;
@@ -224,7 +222,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
 #endif
 
-#if MEMS_TYPE
+#if ENABLE_MEMS
     // process MEMS data if available
     if (checkState(STATE_MEMS_READY)) {
         processMEMS();
@@ -259,33 +257,37 @@ if (!checkState(STATE_STORAGE_READY)) {
         nextSyncTime = t + SERVER_SYNC_INTERVAL;
       }
     } else if (t - lastSentTime >= DATA_SENDING_INTERVAL) {
-      digitalWrite(PIN_LED, HIGH);
-      Serial.print('[');
-      Serial.print(txCount);
-      Serial.print("] ");
-      // transmit data
-      int bytesSent = transmit(cache.getBuffer(), cache.getBytes(), false);
-      if (bytesSent > 0) {
-        // output some stats
-        char buf[16];
-        sprintf(buf, "%uB sent", bytesSent);
-        Serial.print(buf);
-        bleSend(buf);
-#if STORAGE_TYPE != STORAGE_NONE
-        if (checkState(STATE_STORAGE_READY)) {
-          Serial.print(" | ");
-          Serial.print(store.size() >> 10);
-          Serial.print("KB stored");
+      if (cache.samples() > 1) {
+        digitalWrite(PIN_LED, HIGH);
+        Serial.print('[');
+        Serial.print(txCount);
+        Serial.print("] ");
+        // transmit data
+        int bytesSent = transmit(cache.getBuffer(), cache.getBytes(), false);
+        if (bytesSent > 0) {
+          // output some stats
+          char buf[16];
+          sprintf(buf, "%uB sent", bytesSent);
+          Serial.print(buf);
+          blePrint(buf);
+  #if STORAGE_TYPE != STORAGE_NONE
+          if (checkState(STATE_STORAGE_READY)) {
+            Serial.print(" | ");
+            Serial.print(store.size() >> 10);
+            Serial.print("KB stored");
+          }
+  #endif
+          Serial.println();
+          cache.purge();
+        } else {
+          Serial.println("Unsent");
+          blePrint("Unsent");
         }
-#endif
-        Serial.println();
-        cache.purge();
+        digitalWrite(PIN_LED, LOW);
       } else {
-        Serial.println("Unsent");
-        bleSend("Unsent");
+        Serial.println("No data to send");
+        cache.purge();
       }
-      digitalWrite(PIN_LED, LOW);
-
       if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
         netClose();
         netOpen(SERVER_HOST, SERVER_PORT);
@@ -293,7 +295,7 @@ if (!checkState(STATE_STORAGE_READY)) {
       lastSentTime = t;
     }
 
-#if MEMS_TYPE
+#if ENABLE_MEMS
     if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
       // device too hot, cool down
       Serial.print("Cooling (");
@@ -325,10 +327,10 @@ if (!checkState(STATE_STORAGE_READY)) {
       Serial.print("VIN:");
       Serial.println(payload + bytes);
     } else {
-      sprintf(payload + bytes, "DEFAULT_VIN");
+      strcpy(payload + bytes, DEFAULT_VIN);
     }
 #else
-    strcpy(payload, ",VIN=DEFAULT_VIN");
+    sprintf(payload, ",VIN=%s", DEFAULT_VIN);
 #endif
 
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
@@ -357,7 +359,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
     return false;
 #elif NET_DEVICE == NET_BLE
-    bleSend(payload);
+    blePrint(payload);
 #endif
   }
   bool verifyChecksum(const char* data)
@@ -517,8 +519,8 @@ if (!checkState(STATE_STORAGE_READY)) {
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
       Serial.println("Standby");
-      bleSend("Standby");
-#if MEMS_TYPE
+      blePrint("Standby");
+#if ENABLE_MEMS
       calibrateMEMS(3000);
       if (checkState(STATE_MEMS_READY)) {
         enterLowPowerMode();
@@ -532,7 +534,7 @@ if (!checkState(STATE_STORAGE_READY)) {
           char buf[16];
           sprintf(buf, "M:%u", motion);
           Serial.println(buf);
-          bleSend(buf);
+          blePrint(buf);
           // check movement
           if (motion >= WAKEUP_MOTION_THRESHOLD) {
             leaveLowPowerMode();
@@ -554,7 +556,7 @@ if (!checkState(STATE_STORAGE_READY)) {
       } while (!init());
 #endif
       Serial.println("Wakeup");
-      bleSend("Wakeup");
+      blePrint("Wakeup");
   }
   bool checkState(byte flags) { return (m_state & flags) == flags; }
   void setState(byte flags) { m_state |= flags; }
@@ -597,7 +599,7 @@ private:
         }
     }
 #endif
-#if MEMS_TYPE
+#if ENABLE_MEMS
     void processMEMS()
     {
          // log the loaded MEMS data
@@ -628,15 +630,15 @@ private:
               cache.log(PID_GPS_SPEED, gd.speed);
               cache.log(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-              Serial.print("#UTC:");
-              Serial.print(gd.time);
-              Serial.print(" SAT:");
-              Serial.println(gd.sat);
+              char buf[32];
+              sprintf(buf, "UTC:%08u SAT:%u", gd.time, (unsigned int)gd.sat);
+              Serial.println(buf);
+              blePrint(buf);
             }
         }
     }
 #endif
-#if MEMS_TYPE
+#if ENABLE_MEMS
     void calibrateMEMS(unsigned int duration)
     {
         // MEMS data collected while sleeping
@@ -680,7 +682,7 @@ private:
     void dataIdleLoop()
     {
       // do tasks while waiting for data on SPI
-#if MEMS_TYPE
+#if ENABLE_MEMS
       if (checkState(STATE_MEMS_READY)) {
         readMEMS();
       }

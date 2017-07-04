@@ -39,7 +39,7 @@ public:
   bool bleBegin(const char* bleDeviceName);
   void bleEnd();
   bool bleSend(const char* data, unsigned int len);
-  bool bleSend(String s);
+  void blePrint(String s);
   virtual size_t onRequest(uint8_t* buffer, size_t len)
   {
     // being requested for data
@@ -55,7 +55,7 @@ public:
   bool bleBegin(const char* bleDeviceName) { return false; }
   void bleEnd() {}
   bool bleSend(const char* data, unsigned int len) { return false; }
-  bool bleSend(String s) { return false; }
+  void blePrint(String s) { Serial.println(s); }
 #endif
 protected:
   byte getChecksum(const char* data, int len)
@@ -103,10 +103,6 @@ public:
 class CTeleClientWIFI : public CTeleClient, public virtual CFreematics
 {
 public:
-    CTeleClientWIFI() {
-      m_buffer[0] = 0;
-      udpIP[0] = 0;
-    }
     void netEnd();
     bool netSetup(const char* ssid, const char* password, unsigned int timeout = 10000);
     String getIP();
@@ -118,7 +114,7 @@ public:
     String serverName() { return m_serverName.length() ? m_serverName : udpIP.toString(); }
     String netDeviceName() { return "WIFI"; }
   private:
-    char m_buffer[256];
+    char m_buffer[256] = {0};
     IPAddress udpIP;
     uint16_t udpPort;
     WiFiUDP udp;

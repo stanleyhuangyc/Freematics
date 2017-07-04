@@ -15,18 +15,17 @@
 #define STORAGE_FLASH 1
 #define STORAGE_SD 2
 
-#define MEMS_NONE 0
-#define MEMS_MPU6050 1
-#define MEMS_MPU9250 2
-
 /**************************************
 * OBD-II configurations
 **************************************/
 #ifndef ENABLE_OBD
 #define ENABLE_OBD 1
+// VIN used when real one unavailable
+#define DEFAULT_VIN "DEFAULT_VIN"
 #endif
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 10
+
 
 /**************************************
 * Networking configurations
@@ -42,8 +41,9 @@
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 8081
-#define SERVER_KEY "TEST_SERVER_KEY"
 #endif
+
+#define SERVER_KEY "TEST_SERVER_KEY"
 
 // xBee module serial baudrate
 #define XBEE_BAUDRATE 115200
@@ -85,9 +85,9 @@
 /**************************************
 * MEMS sensors
 **************************************/
-#ifndef MEMS_TYPE
+#ifndef ENABLE_MEMS
 // change the following line to change MEMS type
-#define MEMS_TYPE MEMS_MPU9250
+#define ENABLE_MEMS 1
 #endif
 
 #define ENABLE_ORIENTATION 0
