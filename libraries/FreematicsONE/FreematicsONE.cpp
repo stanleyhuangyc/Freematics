@@ -217,12 +217,19 @@ void COBDSPI::enterLowPowerMode()
 {
 	setTarget(TARGET_OBD);
 	write("ATLP\r");
+#ifdef ESP32
+  end();
+#endif
 }
 
 void COBDSPI::leaveLowPowerMode()
 {
+#ifdef ESP32
+  begin();
+#else
 	char buf[16];
 	sendCommand("AT\r", buf, sizeof(buf));
+#endif
 }
 
 float COBDSPI::getVoltage()
@@ -470,7 +477,6 @@ void COBDSPI::write(const char* s)
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
 	digitalWrite(SPI_PIN_CS, HIGH);
-	dataIdleLoop();
 }
 
 void COBDSPI::write(byte* data, int len)
@@ -482,7 +488,6 @@ void COBDSPI::write(byte* data, int len)
 		SPI.transfer(data[i]);
 	}
 	digitalWrite(SPI_PIN_CS, HIGH);
-	dataIdleLoop();
 }
 
 byte COBDSPI::readPID(const byte pid[], byte count, int result[])
