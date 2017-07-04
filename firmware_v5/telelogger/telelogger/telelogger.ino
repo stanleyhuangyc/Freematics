@@ -41,6 +41,7 @@ uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
 uint32_t startTick = 0;
 uint32_t lastSentTime = 0;
+uint32_t nextSyncTime = 0;
 
 class CTeleLogger :
 #if NET_DEVICE == NET_SERIAL
@@ -68,7 +69,6 @@ public CTeleClient
 #endif
 {
 public:
-  CTeleLogger():m_state(0) {}
   bool setup()
   {
     clearState(STATE_ALL_GOOD);
@@ -249,7 +249,16 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
 #endif
 
-    if (millis() - lastSentTime >= DATA_SENDING_INTERVAL) {
+    uint32_t t = millis();
+    if (t > nextSyncTime) {
+      // sync
+      if (!syncServer()) {
+        connErrors++;
+      } else {
+        connErrors = 0;
+        nextSyncTime = t + SERVER_SYNC_INTERVAL;
+      }
+    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL) {
       digitalWrite(PIN_LED, HIGH);
       Serial.print('[');
       Serial.print(txCount);
@@ -281,7 +290,7 @@ if (!checkState(STATE_STORAGE_READY)) {
         netClose();
         netOpen(SERVER_HOST, SERVER_PORT);
       }
-      lastSentTime = millis();
+      lastSentTime = t;
     }
 
 #if MEMS_TYPE
@@ -350,6 +359,125 @@ if (!checkState(STATE_STORAGE_READY)) {
 #elif NET_DEVICE == NET_BLE
     bleSend(payload);
 #endif
+  }
+  bool verifyChecksum(const char* data)
+  {
+    uint8_t sum = 0;
+    const char *s;
+    for (s = data; *s && *s != '*'; s++) sum += *s;
+    return (*s && hex2uint8(s + 1) == sum);
+  }
+  int transmit(const char* data, int bytes, bool wait)
+  {
+    if (m_waiting) {
+      // wait for last data to be sent
+      if (!netWaitSent(100)) {
+        connErrors++;
+        //Serial.println(m_buffer);
+      } else {
+        connErrors = 0;
+        txCount++;
+      }
+      m_waiting = false;
+    }
+    // transmit data
+    if (data[bytes - 1] == ',') bytes--;
+    int bytesSent = netSend(data, bytes, wait);
+
+    if (bytesSent == 0) {
+      connErrors++;
+      return 0;
+    } else {
+      if (!wait) {
+        m_waiting = true;
+      } else {
+        connErrors = 0;
+        txCount++;
+      }
+    }
+    return bytesSent;
+  }
+  bool syncServer()
+  {
+    char buf[32];
+    Serial.print("Syncing...");
+    int len = sprintf(buf, "%X#EV=%u,TS=%lu", feedid, EVENT_SYNC, millis());
+    if (!netSend(buf, len, true)) {
+      Serial.println("Sync error");
+      return false;
+    }
+    char *data = netReceive(&len);
+    if (!data) {
+      Serial.println("no reply");
+      return false;
+    }
+    if (!verifyChecksum(data)) {
+      Serial.println("checksum mismatch");
+      return false;
+    }
+    char *p = strstr(data, "CMD=");
+    if (p) m_cmd = atoi(p + 4);
+    Serial.print("OK");
+    if (m_cmd) {
+      Serial.print(" CMD:");
+      Serial.print(m_cmd, HEX);
+    }
+    Serial.println();
+    return true;
+  }
+  bool notifyServer(byte event, const char* serverKey, const char* payload)
+  {
+    char buf[64];
+    sprintf(buf, "%X#EV=%u,TS=%lu", feedid, (unsigned int)event, millis());
+    String req = buf;
+    if (serverKey) {
+      req += ",SK=";
+      req += serverKey;
+    }
+    if (payload) {
+      req += payload;
+    }
+    for (byte attempts = 0; attempts < 3; attempts++) {
+      if (!netSend(req.c_str(), req.length(), true)) {
+        Serial.println("Data sending error");
+        continue;
+      }
+#if NET_DEVICE == NET_BLE
+        return true;
+#endif
+
+      // receive reply
+      int len;
+      char *data = netReceive(&len);
+      if (!data) {
+        Serial.println("No reply");
+        continue;
+      }
+      connErrors = 0;
+      // verify checksum
+      if (!verifyChecksum(data)) {
+        Serial.print("Checksum mismatch:");
+        Serial.println(data);
+        continue;
+      }
+      char pattern[16];
+      sprintf(pattern, "EV=%u", event);
+      if (!strstr(data, pattern)) {
+        Serial.println("Invalid reply");
+        continue;
+      }
+      if (event == EVENT_LOGIN) {
+        char *p = strstr(data, "SN=");
+        if (p) {
+          char *q = strchr(p, ',');
+          if (q) *q = 0;
+          m_serverName = p;
+        }
+        feedid = atoi(data);
+      }
+      return true;
+    }
+    return false;
   }
   void resetNetwork()
   {
@@ -562,7 +690,9 @@ private:
 #if STORAGE_TYPE == STORAGE_SD
     CStorageSD store;
 #endif
-    byte m_state;
+    byte m_state = 0;
+    bool m_waiting = false;
+    uint32_t m_cmd = 0;
 };
 
 CTeleLogger logger;
