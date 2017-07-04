@@ -84,7 +84,7 @@
 
 #define EVENT_LOGIN 1
 #define EVENT_LOGOUT 2
-#define EVENT_RECONNECT 3
+#define EVENT_SYNC 3
 
 #ifdef ESP32
 #define PIN_XBEE_PWR 27

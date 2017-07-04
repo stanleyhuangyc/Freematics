@@ -79,6 +79,8 @@
 #ifndef DATA_SENDING_INTERVAL
 #define DATA_SENDING_INTERVAL 1000 /* ms */
 #endif
+#define SERVER_SYNC_INTERVAL 60000
+
 
 /**************************************
 * MEMS sensors
@@ -87,6 +89,8 @@
 // change the following line to change MEMS type
 #define MEMS_TYPE MEMS_MPU9250
 #endif
+
+#define ENABLE_ORIENTATION 0
 
 /**************************************
 * GPS
@@ -100,7 +104,7 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 10 /* for wakeup on movement */
+#define WAKEUP_MOTION_THRESHOLD 20 /* for wakeup on movement */
 #define CALIBRATION_TIME 1000 /* ms */
 
 /**************************************
