@@ -20,12 +20,12 @@
 **************************************/
 #ifndef ENABLE_OBD
 #define ENABLE_OBD 1
-// VIN used when real one unavailable
-#define DEFAULT_VIN "DEFAULT_VIN"
 #endif
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 10
 
+// VIN used when real one unavailable
+#define DEFAULT_VIN "DEFAULT_VIN"
 
 /**************************************
 * Networking configurations
@@ -41,6 +41,10 @@
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 8081
+#endif
+
+#ifndef DEVICE_ID
+#define DEVICE_ID DEFAULT_VIN
 #endif
 
 #define SERVER_KEY "TEST_SERVER_KEY"
