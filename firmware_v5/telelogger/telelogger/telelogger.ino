@@ -256,41 +256,38 @@ if (!checkState(STATE_STORAGE_READY)) {
         connErrors = 0;
         nextSyncTime = t + SERVER_SYNC_INTERVAL;
       }
-    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL) {
-      if (cache.samples() > 1) {
-        digitalWrite(PIN_LED, HIGH);
-        Serial.print('[');
-        Serial.print(txCount);
-        Serial.print("] ");
-        // transmit data
-        int bytesSent = transmit(cache.getBuffer(), cache.getBytes(), false);
-        if (bytesSent > 0) {
-          // output some stats
-          char buf[16];
-          sprintf(buf, "%uB sent", bytesSent);
-          Serial.print(buf);
-          blePrint(buf);
-  #if STORAGE_TYPE != STORAGE_NONE
-          if (checkState(STATE_STORAGE_READY)) {
-            Serial.print(" | ");
-            Serial.print(store.size() >> 10);
-            Serial.print("KB stored");
-          }
-  #endif
-          Serial.println();
-          cache.purge();
-        } else {
-          Serial.println("Unsent");
-          blePrint("Unsent");
+    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
+      digitalWrite(PIN_LED, HIGH);
+      //Serial.println(cache.getBuffer()); // print the content to be sent
+      Serial.print('[');
+      Serial.print(txCount);
+      Serial.print("] ");
+      // transmit data
+      int bytesSent = transmit(cache.getBuffer(), cache.getBytes(), false);
+      if (bytesSent > 0) {
+        // output some stats
+        char buf[16];
+        sprintf(buf, "%uB sent", bytesSent);
+        Serial.print(buf);
+        blePrint(buf);
+#if STORAGE_TYPE != STORAGE_NONE
+        if (checkState(STATE_STORAGE_READY)) {
+          Serial.print(" | ");
+          Serial.print(store.size() >> 10);
+          Serial.print("KB stored");
         }
-        digitalWrite(PIN_LED, LOW);
-      } else {
-        Serial.println("No data to send");
+#endif
+        Serial.println();
         cache.purge();
+      } else {
+        Serial.println("Unsent");
+        blePrint("Unsent");
       }
+      digitalWrite(PIN_LED, LOW);
       if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
         netClose();
         netOpen(SERVER_HOST, SERVER_PORT);
+        nextSyncTime = 0; // sync on next time
       }
       lastSentTime = t;
     }
@@ -327,10 +324,10 @@ if (!checkState(STATE_STORAGE_READY)) {
       Serial.print("VIN:");
       Serial.println(payload + bytes);
     } else {
-      strcpy(payload + bytes, DEFAULT_VIN);
+      strcpy(payload + bytes, DEVICE_ID);
     }
 #else
-    sprintf(payload, ",VIN=%s", DEFAULT_VIN);
+    sprintf(payload, ",VIN=%s", DEVICE_ID);
 #endif
 
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
