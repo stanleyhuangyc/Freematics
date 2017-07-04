@@ -26,7 +26,6 @@
 class CTeleClient
 {
 public:
-  CTeleClient():connErrors(0),txCount(0),m_bytesCount(0),feedid(0),m_waiting(false) {}
   virtual bool netBegin() { return true; }
   virtual void netEnd() {}
   virtual bool netOpen(const char* host, uint16_t port) { return true; }
@@ -34,7 +33,6 @@ public:
   virtual int netSend(const char* data, unsigned int len, bool wait = true) { return false; }
   virtual char* netReceive(int* pbytes = 0, unsigned int timeout = 5000) { return 0; }
   virtual String netDeviceName() { return ""; }
-  bool notifyServer(byte event, const char* serverKey = 0, const char* extra = 0);
   int transmit(const char* data, int bytes, bool wait);
   uint8_t getConnErrors() { return connErrors; }
 #ifdef ESP32
@@ -70,14 +68,11 @@ protected:
   virtual bool netWaitSent(unsigned int timeout) { return true; }
   virtual String getServerName() { return m_serverName; }
   uint32_t getTotalBytesSent() { return m_bytesCount; }
-  uint16_t feedid;
-  uint32_t txCount;
-  uint8_t connErrors;
-  uint32_t m_bytesCount;
+  uint16_t feedid = 0;
+  uint32_t txCount = 0;
+  uint8_t connErrors = 0;
+  uint32_t m_bytesCount = 0;
   String m_serverName;
-private:
-  bool verifyChecksum(const char* data);
-  bool m_waiting;
 };
 
 class CTeleClientSerialUSB : public CTeleClient
@@ -152,9 +147,10 @@ public:
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     String netDeviceName() { return "SIM800"; }
-  private:
+protected:
     bool netWaitSent(unsigned int timeout);
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "OK\r\n", bool terminated = false);
+private:
     char m_buffer[256];
     char udpIP[16];
     uint16_t udpPort;
@@ -182,10 +178,11 @@ public:
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     String netDeviceName() { return "SIM5360"; }
-  private:
+  protected:
     bool netWaitSent(unsigned int timeout);
     // send command and check for expected response
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
+  private:
     char m_buffer[256];
     char udpIP[16];
     uint16_t udpPort;

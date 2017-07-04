@@ -71,101 +71,6 @@ bool CTeleClient::bleSend(String s)
 
 #endif
 
-bool CTeleClient::verifyChecksum(const char* data)
-{
-  uint8_t sum = 0;
-  const char *s;
-  for (s = data; *s && *s != '*'; s++) sum += *s;
-  return (*s && hex2uint8(s + 1) == sum);
-}
-
-bool CTeleClient::notifyServer(byte event, const char* serverKey, const char* payload)
-{
-  char buf[64];
-  String devName = netDeviceName();
-  sprintf(buf, "%X#EV=%u,TS=%lu", feedid, (unsigned int)event, millis());
-  String req = buf;
-  if (serverKey) {
-    req += ",SK=";
-    req += serverKey;
-  }
-  if (payload) {
-    req += payload;
-  }
-  m_waiting = false;
-  for (byte attempts = 0; attempts < 3; attempts++) {
-    if (!netSend(req.c_str(), req.length(), true)) {
-      Serial.println("Data sending error");
-      continue;
-    }
-    if (devName == "BLE" || devName == "Serial")
-      return true;
-
-    // receive reply
-    int len;
-    char *data = netReceive(&len);
-    if (!data) {
-      Serial.println("No reply");
-      continue;
-    }
-    connErrors = 0;
-    // verify checksum
-    if (!verifyChecksum(data)) {
-      Serial.print("Checksum mismatch:");
-      Serial.println(data);
-      continue;
-    }
-    char pattern[16];
-    sprintf(pattern, "EV=%u", event);
-    if (!strstr(data, pattern)) {
-      Serial.println("Invalid reply");
-      continue;
-    }
-    if (event == EVENT_LOGIN) {
-      char *p = strstr(data, "SN=");
-      if (p) {
-        char *q = strchr(p, ',');
-        if (q) *q = 0;
-        m_serverName = p;
-      }
-      feedid = atoi(data);
-    }
-    return true;
-  }
-  return false;
-}
-
-int CTeleClient::transmit(const char* data, int bytes, bool wait)
-{
-  if (m_waiting) {
-    // wait for last data to be sent
-    if (!netWaitSent(100)) {
-      connErrors++;
-      //Serial.println(m_buffer);
-    } else {
-      connErrors = 0;
-      txCount++;
-    }
-    m_waiting = false;
-  }
-  // transmit data
-  if (data[bytes - 1] == ',') bytes--;
-  int bytesSent = netSend(data, bytes, wait);
-
-  if (bytesSent == 0) {
-    connErrors++;
-    return 0;
-  } else {
-    if (!wait) {
-      m_waiting = true;
-    } else {
-      connErrors = 0;
-      txCount++;
-    }
-  }
-  return bytesSent;
-}
-
 /*******************************************************************************
   Implementation for ESP32 built-in WIFI (Arduino WIFI library)
 *******************************************************************************/
@@ -210,7 +115,9 @@ int CTeleClientWIFI::netSend(const char* data, unsigned int len, bool wait)
     bytesSent += udp.write((uint8_t*)data, len);
     bytesSent += udp.write('*');
     bytesSent += udp.print(checksum, HEX);
-    udp.endPacket();
+    if (!udp.endPacket()) {
+			bytesSent = 0;
+		}
     if (bytesSent > 0) m_bytesCount += bytesSent;
     return bytesSent;
   } else {
