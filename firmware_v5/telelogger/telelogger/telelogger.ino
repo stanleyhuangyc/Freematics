@@ -245,8 +245,8 @@ if (!checkState(STATE_STORAGE_READY)) {
 #endif
 
     if ((txCount % 100) == 1) {
-      deviceTemp = readChipTemperature();
-      cache.log(PID_DEVICE_TEMP, deviceTemp / 10);
+      deviceTemp = (int)readChipTemperature() * 165 / 255 - 40;
+      cache.log(PID_DEVICE_TEMP, deviceTemp);
     }
 
     uint32_t t = millis();
@@ -324,10 +324,10 @@ if (!checkState(STATE_STORAGE_READY)) {
       Serial.print("VIN:");
       Serial.println(payload + bytes);
     } else {
-      strcpy(payload + bytes, DEVICE_ID);
+      strcpy(payload + bytes, DEFAULT_VIN);
     }
 #else
-    sprintf(payload, ",VIN=%s", DEVICE_ID);
+    sprintf(payload, ",VIN=%s", DEFAULT_VIN);
 #endif
 
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
