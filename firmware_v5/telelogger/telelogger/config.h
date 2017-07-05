@@ -25,7 +25,12 @@
 #define MAX_OBD_ERRORS 10
 
 // VIN used when real one unavailable
+#ifdef DEVICE_ID
+#define DEFAULT_VIN DEVICE_ID
+#else
 #define DEFAULT_VIN "DEFAULT_VIN"
+#endif
+
 
 /**************************************
 * Networking configurations
@@ -41,10 +46,6 @@
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 8081
-#endif
-
-#ifndef DEVICE_ID
-#define DEVICE_ID DEFAULT_VIN
 #endif
 
 #define SERVER_KEY "TEST_SERVER_KEY"
@@ -64,7 +65,12 @@
 #ifndef ENABLE_BLE
 #define ENABLE_BLE 1
 #endif
+
+#ifdef DEVICE_ID
+#define BLE_DEVICE_NAME DEVICE_ID
+#else
 #define BLE_DEVICE_NAME "Freematics ONE+"
+#endif
 
 /**************************************
 * Data storage configurations
