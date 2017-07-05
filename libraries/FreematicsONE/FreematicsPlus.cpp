@@ -160,6 +160,14 @@ void bee_flush()
     uart_flush(BEE_UART_NUM);
 }
 
+extern "C" uint8_t temprature_sens_read();
+
+// get chip temperature sensor
+uint8_t readChipTemperature()
+{
+  return temprature_sens_read();
+}
+
 bool Task::create(void (*task)(void*), const char* name, int priority)
 {
     if (xHandle) return false;

@@ -13,6 +13,9 @@
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
 
+// get chip temperature sensor
+uint8_t readChipTemperature();
+
 class Task
 {
 public:

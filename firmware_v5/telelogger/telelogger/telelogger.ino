@@ -34,7 +34,6 @@
 unsigned int accCount = 0; // count of accelerometer readings
 float accSum[3] = {0}; // sum of accelerometer data
 float accCal[3] = {0}; // calibrated reference accelerometer data
-byte deviceTemp = 0; // device temperature
 #endif
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
@@ -42,6 +41,7 @@ uint32_t distance = 0;
 uint32_t startTick = 0;
 uint32_t lastSentTime = 0;
 uint32_t nextSyncTime = 0;
+uint8_t deviceTemp = 0; // device temperature
 
 class CTeleLogger :
 #if NET_DEVICE == NET_SERIAL
@@ -226,9 +226,6 @@ if (!checkState(STATE_STORAGE_READY)) {
     // process MEMS data if available
     if (checkState(STATE_MEMS_READY)) {
         processMEMS();
-        if ((txCount % 100) == 1) {
-          cache.log(PID_DEVICE_TEMP, deviceTemp);
-        }
     }
 #endif
 
@@ -246,6 +243,11 @@ if (!checkState(STATE_STORAGE_READY)) {
       cache.log(PID_BATTERY_VOLTAGE, v);
     }
 #endif
+
+    if ((txCount % 100) == 1) {
+      deviceTemp = readChipTemperature();
+      cache.log(PID_DEVICE_TEMP, deviceTemp / 10);
+    }
 
     uint32_t t = millis();
     if (t > nextSyncTime) {
@@ -292,7 +294,6 @@ if (!checkState(STATE_STORAGE_READY)) {
       lastSentTime = t;
     }
 
-#if ENABLE_MEMS
     if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
       // device too hot, cool down
       Serial.print("Cooling (");
@@ -300,7 +301,6 @@ if (!checkState(STATE_STORAGE_READY)) {
       Serial.println("C)");
       sleep(10000);
     }
-#endif
   }
   bool login()
   {
@@ -664,8 +664,7 @@ private:
     {
         // load accelerometer and temperature data
         float acc[3] = {0};
-        int16_t temp; // device temperature (in 0.1 celcius degree)
-        memsRead(acc, 0, 0, &temp);
+        memsRead(acc, 0, 0, 0);
         if (accCount >= 50000) {
           clearMEMS();
         }
@@ -673,7 +672,6 @@ private:
         accSum[1] += acc[1];
         accSum[2] += acc[2];
         accCount++;
-        deviceTemp = temp / 10;
     }
 #endif
     void dataIdleLoop()
