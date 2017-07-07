@@ -17,7 +17,7 @@
 #define sprintf_P sprintf
 #endif
 
-#define OBD_TIMEOUT_SHORT 1000 /* ms */
+#define OBD_TIMEOUT_SHORT 2000 /* ms */
 #define OBD_TIMEOUT_LONG 10000 /* ms */
 #define OBD_SERIAL_BAUDRATE 38400
 
@@ -103,8 +103,6 @@ public:
 	bool getVIN(char* buffer, byte bufsize);
 	// send query for specified PID
 	void sendQuery(byte pid);
-	// retrive and parse the response of specifie PID
-	bool getResult(byte& pid, int& result);
 	// determine if the PID is supported
 	bool isValidPID(byte pid);
 	// set current PID mode
@@ -114,7 +112,6 @@ public:
 	// bit map of supported PIDs
 	byte pidmap[4 * 4];
 protected:
-	char* getResponse(byte& pid, char* buffer, byte bufsize);
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
 	virtual void dataIdleLoop() {}
