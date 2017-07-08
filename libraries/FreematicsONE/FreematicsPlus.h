@@ -60,6 +60,8 @@ public:
 	virtual void xbPurge();
 	// toggle xBee module power
 	virtual void xbTogglePower();
+    // delay specified number of ms while receiving and processing GPS data (ought to be regularly called)
+    virtual void sleep(unsigned int ms);
 };
 
 class CStorageNull;

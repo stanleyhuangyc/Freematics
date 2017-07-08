@@ -22,9 +22,8 @@
 #include "FreematicsPlus.h"
 #include "FreematicsGPS.h"
 
-static TinyGPS gps;
+static TinyGPS* gps = 0;
 static bool newGPSData = false;
-static TaskHandle_t xGPSTaskHandle = 0;
 
 #define BEE_UART_PIN_RXD  (16)
 #define BEE_UART_PIN_TXD  (17)
@@ -36,43 +35,41 @@ static TaskHandle_t xGPSTaskHandle = 0;
 
 #define UART_BUF_SIZE (2048)
 
-static void gps_decode_task(void* arg)
+void gps_decode_task()
 {
-    for (;;) {
-        uint8_t c;
-        int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 1000 / portTICK_RATE_MS);
-        if (len == -1) continue;
-        if (c < 0xA || c > 0x7E) continue;
-        if (gps.encode(c)) {
-            newGPSData = true;
-        }
-        //Serial.println(gps._failed_checksum);
+    if (!gps) return;
+    uint8_t c;
+    int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 0 /*1000 / portTICK_RATE_MS*/);
+    if (len == 1 && gps->encode(c)) {
+        newGPSData = true;
     }
 }
 
 bool gps_get_data(GPS_DATA* gdata)
 {
-	if (!newGPSData) {
+	if (!newGPSData || !gps) {
 		return false;
 	}
-    gps.get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
-    gps.get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
-    gdata->sat = gps.satellites();
-    gdata->speed = gps.speed() * 1852 / 100000; /* km/h */
-    gdata->alt = gps.altitude();
-    gdata->heading = gps.course() / 100;
+    gps->get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
+    gps->get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
+    gdata->sat = gps->satellites();
+    gdata->speed = gps->speed() * 1852 / 100000; /* km/h */
+    gdata->alt = gps->altitude();
+    gdata->heading = gps->course() / 100;
     newGPSData = false;
     return true;
 }
 
 int gps_write_string(const char* string)
 {
+    if (!gps) return 0;
     return uart_write_bytes(BEE_UART_NUM, string, strlen(string));
 }
 
 bool gps_decode_start()
 {
-    if (xGPSTaskHandle) return true;
+    //if (xGPSTaskHandle) return true;
+    if (gps) return false;
 
     uart_config_t uart_config = {
         .baud_rate = 115200,
@@ -105,7 +102,8 @@ bool gps_decode_start()
         return false;
     }
 
-    xTaskCreate(gps_decode_task, "gps_decode_task", 1024, NULL, 10, &xGPSTaskHandle);
+    gps = new TinyGPS;
+    //xTaskCreate(gps_decode_task, "gps_decode_task", 1024, NULL, 10, &xGPSTaskHandle);
     return true;
 }
 
@@ -140,19 +138,21 @@ int bee_write_data(uint8_t* data, int len)
 
 int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout)
 {
-    int len = uart_read_bytes(BEE_UART_NUM, buffer, bufsize, timeout / portTICK_RATE_MS);
-    if (len > 0) {
-      // strip invalid characters
-      int j = 0;
-      for (int i = 0; i < len; i++) {
-        if (buffer[i] >= 0xA && buffer[i] <= 0x7E) {
-          buffer[j++] = buffer[i];
+    int recv = 0;
+    uint32_t t = millis();
+    do {
+        uint8_t c;
+        int len = uart_read_bytes(BEE_UART_NUM, &c, 1, 0);
+        gps_decode_task();
+        if (len == 1) {
+            if (c >= 0xA && c <= 0x7E) {
+                buffer[recv++] = c;
+            }
+        } else if (recv > 0) {
+            break;
         }
-      }
-      return j;
-    } else {
-      return 0;
-    }
+    } while (recv < bufsize && millis() - t < timeout);
+    return recv;
 }
 
 void bee_flush()
@@ -287,9 +287,6 @@ byte CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout
                 // match expected string(s)
                 if (expected[i] && strstr(buffer, expected[i])) return i + 1;
             }
-		} else if (n == -1) {
-            // an erroneous reading
-            break;
         }
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
@@ -314,6 +311,14 @@ void CFreematicsESP32::xbTogglePower()
 #endif
 	digitalWrite(PIN_XBEE_PWR, HIGH);
 #endif
+}
+
+void CFreematicsESP32::sleep(unsigned int ms)
+{
+	uint32_t t = millis();
+	do {
+		gps_decode_task();
+	} while (millis() - t < ms);
 }
 
 #endif

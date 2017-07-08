@@ -87,9 +87,9 @@ public:
 	void xbTogglePower();
 	// get connection state
 	OBD_STATES getState() { return m_state; }
-	// hardware sleep (timer counter will stop)
+	// hardware sleep (timer counter will stop for AVR)
 	void sleepSec(unsigned int seconds);
-	// normal delay
+	// delay specified number of ms
 	void sleep(unsigned int ms);
 	// enter low power mode
 	void enterLowPowerMode();
@@ -116,7 +116,6 @@ public:
 protected:
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
-	virtual void dataIdleLoop() { delay(1); }
 	OBD_STATES m_state;
 private:
 	// get firmware version
