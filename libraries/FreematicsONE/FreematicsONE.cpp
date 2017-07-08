@@ -32,6 +32,7 @@ SIGNAL(WDT_vect) {
 bool gps_decode_start();
 bool gps_get_data(GPS_DATA* gdata);
 int gps_write_string(const char* string);
+void gps_decode_task();
 void bee_start();
 int bee_write_string(const char* string);
 int bee_write_data(uint8_t* data, int len);
@@ -412,7 +413,6 @@ byte COBDSPI::getVersion()
 				if (version) break;
 			}
 		}
-		delay(200);
 	}
 	return version;
 }
@@ -422,10 +422,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	int n = 0;
 	bool eos = false;
 	uint32_t t = millis();
-	//sleep(10);
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			//delay(1);
+			sleep(1);
 			if (millis() - t > timeout) {
 #ifdef DEBUG
 				debugOutput("NO READY SIGNAL");
@@ -507,6 +506,7 @@ void COBDSPI::write(const char* s)
 	len += 4;
 	// add terminating byte (ESC)
 	buf[len++] = 0x1B;
+	sleep(10);
 #endif
 	digitalWrite(SPI_PIN_CS, LOW);
 	SPI.beginTransaction(spiSettings);
@@ -524,7 +524,7 @@ void COBDSPI::write(const char* s)
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
 #endif
-	delay(1);
+	sleep(1);
 	SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
@@ -540,7 +540,7 @@ void COBDSPI::write(byte* data, int len)
 		SPI.transfer(data[i]);
 	}
 #endif
-	delay(1);
+	sleep(1);
 	SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
@@ -566,7 +566,7 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 7, " DATA", 5))) {
 			// data not ready
-			delay(20);
+			sleep(20);
 		} else {
 	  		break;
 		}
@@ -577,8 +577,9 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 void COBDSPI::sleep(unsigned int ms)
 {
 	uint32_t t = millis();
-	dataIdleLoop();
-	while (millis() - t < ms) delay(1);
+	do {
+		gps_decode_task();
+	} while (millis() - t < ms);
 }
 
 void COBDSPI::sleepSec(unsigned int seconds)
@@ -600,10 +601,9 @@ void COBDSPI::sleepSec(unsigned int seconds)
 		sleep_mode();
 		wdt_disable();
 		WDTCSR &= ~_BV(WDIE);
-		dataIdleLoop();
 	 }
 #else
-	while (seconds-- > 0) sleep(1000);
+	sleep(seconds * 1000);
 #endif
 }
 
