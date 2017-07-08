@@ -24,6 +24,9 @@
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 10
 
+// maximum time allowed for re-establishing OBD-II connection
+#define MAX_OBD_RETRY_TIME 10000 /* ms */
+
 // VIN used when real one unavailable
 #ifdef DEVICE_ID
 #define DEFAULT_VIN DEVICE_ID
