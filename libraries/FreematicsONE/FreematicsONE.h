@@ -44,6 +44,8 @@ public:
 	byte begin();
   // initialize OBD-II connection
 	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
+	void uninit();
+	void reset();
 	// un-initialize OBD-II connection
 	void end();
 	// set SPI data target
@@ -114,7 +116,7 @@ public:
 protected:
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
-	virtual void dataIdleLoop() {}
+	virtual void dataIdleLoop() { delay(1); }
 	OBD_STATES m_state;
 private:
 	// get firmware version
@@ -136,6 +138,7 @@ private:
 	{
 		return (int)hex2uint8(data) - 40;
 	}
+	byte checkErrorMessage(const char* buffer);
 	byte m_target;
 	bool m_internalGPS;
 #ifdef ESP32

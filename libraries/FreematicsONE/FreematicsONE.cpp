@@ -39,50 +39,6 @@ int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout);
 void bee_flush();
 #endif
 
-void COBDSPI::sendQuery(byte pid)
-{
-	char cmd[8];
-	sprintf_P(cmd, PSTR("%02X%02X\r"), dataMode, pid);
-    setTarget(TARGET_OBD);
-	write(cmd);
-}
-
-bool COBDSPI::readPID(byte pid, int& result)
-{
-	// send a single query command
-	sendQuery(pid);
-	delay(10);
-	// receive and parse the response
-	char buffer[64];
-	char* data = 0;
-	if (receive(buffer, sizeof(buffer)) > 0) {
-		if (strstr_P(buffer, PSTR("UNABLE"))) {
-			delay(50);
-		} else {
-			char *p = buffer;
-			while ((p = strstr(p, "41 "))) {
-				p += 3;
-				byte curpid = hex2uint8(p);
-				if (pid == 0) pid = curpid;
-				if (curpid == pid) {
-					errors = 0;
-					p += 2;
-					if (*p == ' ') {
-						data = p + 1;
-						break;
-					}
-				}
-			}
-		}
-	}
-	if (!data) {
-		errors++;
-		return false;
-	}
-	result = normalizeData(pid, data);
-	return true;
-}
-
 byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 {
 	/*
@@ -124,6 +80,44 @@ void COBDSPI::clearDTC()
     setTarget(TARGET_OBD);
 	write("04\r");
 	receive(buffer, sizeof(buffer));
+}
+
+void COBDSPI::sendQuery(byte pid)
+{
+	char cmd[8];
+	sprintf_P(cmd, PSTR("%02X%02X\r"), dataMode, pid);
+    setTarget(TARGET_OBD);
+	write(cmd);
+}
+
+bool COBDSPI::readPID(byte pid, int& result)
+{
+	// send a single query command
+	sendQuery(pid);
+	// receive and parse the response
+	char buffer[64];
+	char* data = 0;
+	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
+		char *p = buffer;
+		while ((p = strstr(p, "41 "))) {
+			p += 3;
+			byte curpid = hex2uint8(p);
+			if (curpid == pid) {
+				errors = 0;
+				p += 2;
+				if (*p == ' ') {
+					data = p + 1;
+					break;
+				}
+			}
+		}
+	}
+	if (!data) {
+		errors++;
+		return false;
+	}
+	result = normalizeData(pid, data);
+	return true;
 }
 
 int COBDSPI::normalizeData(byte pid, char* data)
@@ -212,10 +206,12 @@ int COBDSPI::normalizeData(byte pid, char* data)
 
 void COBDSPI::enterLowPowerMode()
 {
+#ifdef ESP32
+	reset();
+	end();
+#else
 	setTarget(TARGET_OBD);
 	write("ATLP\r");
-#ifdef ESP32
-	end();
 #endif
 }
 
@@ -270,37 +266,64 @@ bool COBDSPI::isValidPID(byte pid)
 	return pidmap[i] & b;
 }
 
+void COBDSPI::reset()
+{
+	char buf[32];
+	sendCommand("ATR\r", buf, sizeof(buf));
+}
+
+void COBDSPI::uninit()
+{
+	char buf[32];
+	sendCommand("ATPC\r", buf, sizeof(buf));
+}
+
+byte COBDSPI::checkErrorMessage(const char* buffer)
+{
+	const char *errmsg[] = {"UNABLE", "ERROR", "TIMEOUT", "NO DATA"};
+	for (byte i = 0; i < sizeof(errmsg) / sizeof(errmsg[0]); i++) {
+		if (strstr(buffer, errmsg[i])) return i + 1;
+	}
+	return 0;
+}
+
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
 	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
 	
 	m_state = OBD_DISCONNECTED;
-	byte errs = 0;
 	for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 		if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
-			errs++;
-		}
-	}
-	if (errs != 0) return false;
-
-	if (protocol != PROTO_AUTO) {
-		sprintf_P(buffer, PSTR("ATSP %u\r"), protocol);
-		if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || !strstr(buffer, "OK")) {
+			reset();
+			delay(3000);
 			return false;
 		}
 	}
 
-	if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || strstr_P(buffer, PSTR("UNABLE"))) {
+	if (protocol != PROTO_AUTO) {
+		sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
+		if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr_P(buffer, PSTR("OK"))) {
+			return false;
+		}
+	}
+
+	if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
+		reset();
+		delay(3000);
 		return false;
 	}
+
 	// load pid map
 	memset(pidmap, 0, sizeof(pidmap));
 	bool success = false;
 	for (byte i = 0; i < 4; i++) {
 		byte pid = i * 0x20;
 		sendQuery(pid);
-		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0 && !strstr_P(buffer, PSTR("UNABLE"))) {
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0) {
+			if (checkErrorMessage(buffer)) {
+				break;
+			}
 			char *p = buffer;
 			while ((p = strstr(p, "41 "))) {
 				p += 3;
@@ -354,25 +377,24 @@ byte COBDSPI::begin()
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
+	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
 #ifdef ESP32
 	SPI.setFrequency(1000000);
 #else
 	SPI.setClockDivider(SPI_CLOCK_DIV16);
 #endif
-	delay(10);
-	digitalWrite(SPI_PIN_CS, HIGH);
-	delay(10);
-	digitalWrite(SPI_PIN_CS, LOW);
-	delay(10);
-	digitalWrite(SPI_PIN_CS, HIGH);
 	delay(100);
+	reset();
+	delay(3000);
 	return getVersion();
 }
 
 void COBDSPI::end()
 {
+#ifdef ESP32
 	SPI.end();
+#endif
 }
 
 byte COBDSPI::getVersion()
@@ -400,20 +422,26 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	int n = 0;
 	bool eos = false;
 	uint32_t t = millis();
+	//sleep(10);
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			delay(1);
+			//delay(1);
 			if (millis() - t > timeout) {
 #ifdef DEBUG
-				debugOutput("SPI TIMEOUT");
+				debugOutput("NO READY SIGNAL");
 #endif
-				break;
+				Serial.println("NO READY SIGNAL");
+				return 0;
 			}
 		}
-		//SPI.beginTransaction(spiSettings);
+#ifndef ESP32
+		SPI.beginTransaction(spiSettings);
+#endif
+		sleep(10);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
+			if (eos) continue;
 			if (n == 0) {
 				// match header char before we can move forward
 				if (c == '$') {
@@ -431,34 +459,37 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 					int bytesDumped = dumpLine(buffer, n);
 					n -= bytesDumped;
 #ifdef DEBUG
-					debugOutput("Buffer full");
+					debugOutput("BUFFER FULL");
 #endif
 				}
 				buffer[n] = c;
-				if (n >= 2 && buffer[n] == 0x9 && buffer[n - 1] =='>')
-					eos = true;
+				eos = (c == 0x9 && buffer[n - 1] =='>');
 				n++;
 			}
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
+#ifndef ESP32
+		SPI.endTransaction();
+#endif
 	} while (!eos && millis() - t < timeout);
+	if (millis() - t >= timeout) {
+		// timed out
+#ifdef DEBUG
+		debugOutput("RECV TIMEOUT");
+#endif
+		Serial.println("RECV TIMEOUT");
+		return 0;
+	}
 	if (m_target != TARGET_RAW) {
 		// eliminate ending char
 		if (eos) n--;
 	}
 	buffer[n] = 0;
+#ifdef DEBUG
 	if (m_target == TARGET_OBD) {
-		if (strstr(buffer, "TIMEOUT")) {
-			// ECU not responding
-#ifdef DEBUG
-			debugOutput("ECU TIMEOUT");
-#endif
-			return 0;
-		}
-#ifdef DEBUG
 		debugOutput(buffer);
-#endif
 	}
+#endif
 	return n;
 }
 
@@ -467,22 +498,32 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-	delay(1);
+#if ESP32
+	char buf[256];
+	int len = strlen(s);
+	if (len > sizeof(buf) - 6) len = sizeof(buf) - 6;
+	memcpy(buf, targets[m_target], 4);
+	memcpy(buf + 4, s, len);
+	len += 4;
+	// add terminating byte (ESC)
+	buf[len++] = 0x1B;
+#endif
 	digitalWrite(SPI_PIN_CS, LOW);
-	delay(1);
 	SPI.beginTransaction(spiSettings);
+#ifdef ESP32
+	SPI.writeBytes((uint8_t*)buf, len);
+#else
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
-			delay(1);
 		}
 	}
 	for (; *s ;s++) {
 		SPI.transfer((byte)*s);
-		delay(1);
 	}
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
+#endif
 	delay(1);
 	SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
@@ -490,12 +531,17 @@ void COBDSPI::write(const char* s)
 
 void COBDSPI::write(byte* data, int len)
 {
-	delay(1);
 	digitalWrite(SPI_PIN_CS, LOW);
-	delay(1);
+	SPI.beginTransaction(spiSettings);
+#ifdef ESP32
+	SPI.writeBytes((uint8_t*)data, len);
+#else
 	for (int i = 0; i < len; i++) {
 		SPI.transfer(data[i]);
 	}
+#endif
+	delay(1);
+	SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
@@ -506,6 +552,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 		if (readPID(pid[n], result[n])) {
 			results++;
 		}
+
 	}
 	return results;
 }
@@ -516,11 +563,10 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 	byte n;
 	do {
 		write(cmd);
-		delay(10);
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 7, " DATA", 5))) {
 			// data not ready
-			delay(10);
+			delay(20);
 		} else {
 	  		break;
 		}
@@ -531,16 +577,12 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 void COBDSPI::sleep(unsigned int ms)
 {
 	uint32_t t = millis();
-	do {
-		dataIdleLoop();
-		delay(1);
-	} while (millis() - t < ms);
+	dataIdleLoop();
+	while (millis() - t < ms) delay(1);
 }
 
 void COBDSPI::sleepSec(unsigned int seconds)
 {
-	bool lowPower = seconds >= 3;
-	if (lowPower) enterLowPowerMode();
 #ifdef ARDUINO_ARCH_AVR
 	while (seconds > 0) {
 		uint8_t wdt_period;
@@ -563,7 +605,6 @@ void COBDSPI::sleepSec(unsigned int seconds)
 #else
 	while (seconds-- > 0) sleep(1000);
 #endif
-	 if (lowPower) leaveLowPowerMode();
 }
 
 bool COBDSPI::gpsInit(unsigned long baudrate)
@@ -758,7 +799,6 @@ int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 #else
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");
-	sleep(10);
 	return receive(buffer, bufsize, timeout);
 #endif
 }
@@ -772,7 +812,7 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
 #ifndef ESP32
-    sleep(50);
+		sleep(50);
 #endif
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
