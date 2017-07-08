@@ -40,7 +40,7 @@ uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
 uint32_t startTick = 0;
 uint32_t lastSentTime = 0;
-uint32_t nextSyncTime = 0;
+uint32_t lastSyncTime = 0;
 uint8_t deviceTemp = 0; // device temperature
 
 class CTeleLogger :
@@ -141,8 +141,8 @@ if (!checkState(STATE_STORAGE_READY)) {
       }
     }
     Serial.print("CELL(APN:");
-    Serial.print(")");
     Serial.print(CELL_APN);
+    Serial.print(")");
     if (netSetup(CELL_APN)) {
       blePrint("CELL OK");
       String op = getOperatorName();
@@ -198,6 +198,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     if (!login()) {
       return false;
     }
+    lastSyncTime = millis();
 
 #if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     // log signal level
@@ -215,17 +216,14 @@ if (!checkState(STATE_STORAGE_READY)) {
   {
     cache.timestamp(millis());
 
+#if ENABLE_MEMS
+    readMEMS();
+#endif
+
 #if ENABLE_OBD
     // process OBD data if connected
     if (checkState(STATE_OBD_READY)) {
       processOBD();
-    }
-#endif
-
-#if ENABLE_MEMS
-    // process MEMS data if available
-    if (checkState(STATE_MEMS_READY)) {
-        processMEMS();
     }
 #endif
 
@@ -244,19 +242,27 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
 #endif
 
+#if ENABLE_MEMS
+    // process MEMS data if available
+    if (checkState(STATE_MEMS_READY)) {
+      readMEMS();
+      processMEMS();
+    }
+#endif
+
     if ((txCount % 100) == 1) {
       deviceTemp = (int)readChipTemperature() * 165 / 255 - 40;
       cache.log(PID_DEVICE_TEMP, deviceTemp);
     }
 
     uint32_t t = millis();
-    if (t > nextSyncTime) {
+    if (t - lastSyncTime > SERVER_SYNC_INTERVAL) {
       // sync
       if (!syncServer()) {
         connErrors++;
       } else {
         connErrors = 0;
-        nextSyncTime = t + SERVER_SYNC_INTERVAL;
+        lastSyncTime = t;
       }
     } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
       digitalWrite(PIN_LED, HIGH);
@@ -289,16 +295,22 @@ if (!checkState(STATE_STORAGE_READY)) {
       if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
         netClose();
         netOpen(SERVER_HOST, SERVER_PORT);
-        nextSyncTime = 0; // sync on next time
+        lastSyncTime = 0; // sync on next time
       }
       lastSentTime = t;
     }
 
-    if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
+#if ENABLE_OBD
+    if (errors > MAX_OBD_ERRORS) {
+      uninit();
+      reset();
+      clearState(STATE_OBD_READY | STATE_ALL_GOOD);
+    }
+  #endif
+
+    if (deviceTemp >= COOLING_DOWN_TEMP) {
       // device too hot, cool down
-      Serial.print("Cooling (");
-      Serial.print(deviceTemp);
-      Serial.println("C)");
+      Serial.println("Cooling down...");
       sleep(10000);
     }
   }
@@ -520,13 +532,17 @@ if (!checkState(STATE_STORAGE_READY)) {
 #if ENABLE_MEMS
       calibrateMEMS(3000);
       if (checkState(STATE_MEMS_READY)) {
-        enterLowPowerMode();
         for (;;) {
           // calculate relative movement
+          clearMEMS();
+          for (int i = 0; i < 100; i++) {
+            readMEMS();
+            delay(10);
+          }
           unsigned long motion = 0;
           for (byte i = 0; i < 3; i++) {
             float n = accSum[i] / accCount - accCal[i];
-            motion += n * n * 10000;
+            motion += n * n;
           }
           char buf[16];
           sprintf(buf, "M:%u", motion);
@@ -534,23 +550,26 @@ if (!checkState(STATE_STORAGE_READY)) {
           blePrint(buf);
           // check movement
           if (motion >= WAKEUP_MOTION_THRESHOLD) {
-            leaveLowPowerMode();
-            break;
-          }
-          // measure acceleration
-          clearMEMS();
-          for (int i = 0; i < 100; i++) {
-            readMEMS();
-            delay(10);
+            bool success = false;
+            // check if OBD can be connected
+            Serial.print("Checking OBD");
+            blePrint("Checking OBD");
+            for (uint32_t t = millis(); !success && millis() - t < MAX_OBD_RETRY_TIME;) {
+              Serial.print('.');
+              success = init();
+            }
+            Serial.println();
+            if (success) {
+              setState(STATE_OBD_READY);
+              break;
+            }
           }
         }
+      } else {
+        while (!init()) Serial.print('.');
       }
 #else
-      do {
-        //enterLowPowerMode();
-        sleepSec(10);
-        //leaveLowPowerMode();
-      } while (!init());
+      while (!init()) Serial.print('.');
 #endif
       Serial.println("Wakeup");
       blePrint("Wakeup");
@@ -569,18 +588,29 @@ private:
       cache.log(0x100 | PID_SPEED, speed);
       cache.log(PID_TRIP_DISTANCE, distance);
       // poll more PIDs
-      byte pids[]= {0, PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
-      const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP};
-      static byte index2 = 0;
-        int values[sizeof(pids)] = {0};
-        // read multiple OBD-II PIDs, tier2 PIDs are less frequently read
-        pids[0] = pidTier2[index2 = (index2 + 1) % sizeof(pidTier2)];
-        byte results = readPID(pids, sizeof(pids), values);
-        if (results == sizeof(pids)) {
-          for (byte n = 0; n < sizeof(pids); n++) {
-            cache.log(0x100 | pids[n], values[n]);
-          }
+      const byte pids[]= {PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
+      const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP, PID_ENGINE_FUEL_RATE};
+      static byte count = 0;
+      int value;
+
+      for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
+        if (readPID(pids[i], value)) {
+          cache.log(0x100 | pids[i], value);
         }
+#if ENABLE_MEMS
+        readMEMS();
+#endif
+      }
+      if ((count++ % 50) == 0) {
+        byte i = count / 50;
+        byte pid = pidTier2[i];
+        if (isValidPID(pid) && readPID(pid, value)) {
+          cache.log(0x100 | pid, value);
+        }
+#if ENABLE_MEMS
+        readMEMS();
+#endif
+      }
     }
     int readSpeed()
     {
@@ -662,27 +692,20 @@ private:
     }
     void readMEMS()
     {
+      if (checkState(STATE_MEMS_READY)) {
         // load accelerometer and temperature data
         float acc[3] = {0};
         memsRead(acc, 0, 0, 0);
         if (accCount >= 50000) {
           clearMEMS();
         }
-        accSum[0] += acc[0];
-        accSum[1] += acc[1];
-        accSum[2] += acc[2];
+        accSum[0] += acc[0] * 100;
+        accSum[1] += acc[1] * 100;
+        accSum[2] += acc[2] * 100;
         accCount++;
-    }
-#endif
-    void dataIdleLoop()
-    {
-      // do tasks while waiting for data on SPI
-#if ENABLE_MEMS
-      if (checkState(STATE_MEMS_READY)) {
-        readMEMS();
       }
-#endif
     }
+#endif
     CStorageRAM cache;
 #if STORAGE_TYPE == STORAGE_SD
     CStorageSD store;
@@ -719,11 +742,7 @@ void setup()
 void loop()
 {
     // error handling
-    if (!logger.checkState(STATE_ALL_GOOD)
-#if ENABLE_OBD
-      || (logger.errors > MAX_OBD_ERRORS && !logger.init())
-#endif
-    ) {
+    if (!logger.checkState(STATE_ALL_GOOD)) {
       do {
         digitalWrite(PIN_LED, LOW);
         logger.standby();
