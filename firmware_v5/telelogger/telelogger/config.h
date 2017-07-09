@@ -22,7 +22,9 @@
 #define ENABLE_OBD 1
 #endif
 // maximum consecutive OBD-II access errors before entering standby
-#define MAX_OBD_ERRORS 10
+#define MAX_OBD_ERRORS 3
+// maximum allowed time for re-establishing OBD connection
+#define MAX_OBD_RETRY_TIME 15000 /* ms */
 
 // VIN used when real one unavailable
 #ifdef DEVICE_ID
@@ -84,7 +86,7 @@
 #if NET_DEVICE == NET_BLE
 #define RAM_CACHE_SIZE 160 /* bytes */
 #else
-#define RAM_CACHE_SIZE 1020 /* bytes */
+#define RAM_CACHE_SIZE 2000 /* bytes */
 #endif
 #ifndef DATA_SENDING_INTERVAL
 #define DATA_SENDING_INTERVAL 1000 /* ms */
@@ -120,6 +122,6 @@
 /**************************************
 * Other options
 **************************************/
-#define COOLING_DOWN_TEMP 65 /* celsius degrees */
+#define COOLING_DOWN_TEMP 80 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED
