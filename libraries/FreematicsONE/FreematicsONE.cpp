@@ -429,7 +429,6 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #ifdef DEBUG
 				debugOutput("NO READY SIGNAL");
 #endif
-				Serial.println("NO READY SIGNAL");
 				return 0;
 			}
 		}
@@ -476,7 +475,6 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #ifdef DEBUG
 		debugOutput("RECV TIMEOUT");
 #endif
-		Serial.println("RECV TIMEOUT");
 		return 0;
 	}
 	if (m_target != TARGET_RAW) {
