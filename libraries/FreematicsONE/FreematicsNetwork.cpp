@@ -292,7 +292,6 @@ int CTeleClientSIM800::netSend(const char* data, unsigned int len, bool wait)
       return bytesToSend;
     }
   }
-  Serial.println("UDP data unsent");
   return 0;
 }
 
@@ -513,8 +512,6 @@ int CTeleClientSIM5360::netSend(const char* data, unsigned int len, bool wait)
     xbWrite(tail, tailLen);
     if (!wait) return len;
     return netWaitSent(1000) ? len : 0;
-  } else {
-    Serial.println("UDP data unsent");
   }
   return 0;
 }
