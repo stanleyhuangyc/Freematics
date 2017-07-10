@@ -86,7 +86,7 @@
 #if NET_DEVICE == NET_BLE
 #define RAM_CACHE_SIZE 160 /* bytes */
 #else
-#define RAM_CACHE_SIZE 2000 /* bytes */
+#define RAM_CACHE_SIZE 1500 /* bytes */
 #endif
 #ifndef DATA_SENDING_INTERVAL
 #define DATA_SENDING_INTERVAL 1000 /* ms */

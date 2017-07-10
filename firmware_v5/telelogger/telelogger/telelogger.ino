@@ -31,7 +31,7 @@
 #define PIN_LED 4
 
 #if ENABLE_MEMS
-unsigned int accCount = 0; // count of accelerometer readings
+byte accCount = 0; // count of accelerometer readings
 float accSum[3] = {0}; // sum of accelerometer data
 float accCal[3] = {0}; // calibrated reference accelerometer data
 #endif
@@ -216,6 +216,11 @@ if (!checkState(STATE_STORAGE_READY)) {
   {
     cache.timestamp(millis());
 
+    deviceTemp = (int)readChipTemperature() * 165 / 255 - 40;
+    if ((txCount % 100) == 1) {
+      cache.log(PID_DEVICE_TEMP, deviceTemp);
+    }
+
 #if ENABLE_MEMS
     readMEMS();
 #endif
@@ -249,11 +254,6 @@ if (!checkState(STATE_STORAGE_READY)) {
       processMEMS();
     }
 #endif
-
-    if ((txCount % 100) == 1) {
-      deviceTemp = (int)readChipTemperature() * 165 / 255 - 40;
-      cache.log(PID_DEVICE_TEMP, deviceTemp);
-    }
 
     uint32_t t = millis();
     if (t - lastSyncTime > SERVER_SYNC_INTERVAL) {
@@ -302,9 +302,10 @@ if (!checkState(STATE_STORAGE_READY)) {
 
 #if ENABLE_OBD
     if (errors > MAX_OBD_ERRORS) {
-      uninit();
       reset();
-      clearState(STATE_OBD_READY | STATE_ALL_GOOD);
+      if (!init()) {
+        clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_ALL_GOOD);
+      }
     }
   #endif
 
@@ -589,10 +590,7 @@ private:
       cache.log(PID_TRIP_DISTANCE, distance);
       // poll more PIDs
       const byte pids[]= {PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
-      const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP, PID_ENGINE_FUEL_RATE};
-      static byte count = 0;
       int value;
-
       for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
         if (readPID(pids[i], value)) {
           cache.log(0x100 | pids[i], value);
@@ -601,9 +599,10 @@ private:
         readMEMS();
 #endif
       }
+      static byte count = 0;
       if ((count++ % 50) == 0) {
-        byte i = count / 50;
-        byte pid = pidTier2[i];
+        const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP, PID_ENGINE_FUEL_RATE};
+        byte pid = pidTier2[count / 50];
         if (isValidPID(pid) && readPID(pid, value)) {
           cache.log(0x100 | pid, value);
         }
@@ -693,15 +692,15 @@ private:
     void readMEMS()
     {
       if (checkState(STATE_MEMS_READY)) {
-        // load accelerometer and temperature data
-        float acc[3] = {0};
+        // load and store accelerometer
+        float acc[3];
         memsRead(acc, 0, 0, 0);
-        if (accCount >= 50000) {
+        if (accCount >= 200) {
           clearMEMS();
         }
-        accSum[0] += acc[0] * 100;
-        accSum[1] += acc[1] * 100;
-        accSum[2] += acc[2] * 100;
+        accSum[0] += acc[0];
+        accSum[1] += acc[1];
+        accSum[2] += acc[2];
         accCount++;
       }
     }
