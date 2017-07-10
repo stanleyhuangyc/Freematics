@@ -11,7 +11,7 @@
 #define ENABLE_DATA_LOG 1
 
 // enable(1)/disable(0) data streaming
-#define ENABLE_DATA_OUT 0
+#define ENABLE_DATA_OUT 1
 
 // file size limit
 #define MAX_DATA_FILE_SIZE 1024 /* KB */
@@ -31,10 +31,17 @@
 
 #endif
 
-// enable(1)/disable(0) MEMS sensor fusion for orientation
-#define ENABLE_ORIENTATION false
+// enable(1)/disable(0) IMU DMP for MEMS reading and quaternion calculation
+#ifndef ENABLE_DMP
+#ifdef ESP32
+#define ENABLE_DMP 1
+#else
+#define ENABLE_DMP 0
+#endif
+#endif
 
-#define ORIENTATION_INTERVAL 50
+// enable(1)/disable(0) quaternion calculation to get orientation
+#define ENABLE_ORIENTATION 0
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
