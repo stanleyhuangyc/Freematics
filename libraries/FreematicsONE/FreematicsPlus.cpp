@@ -68,8 +68,7 @@ int gps_write_string(const char* string)
 
 bool gps_decode_start()
 {
-    //if (xGPSTaskHandle) return true;
-    if (gps) return false;
+    if (gps) return true;
 
     uart_config_t uart_config = {
         .baud_rate = 115200,
@@ -87,7 +86,7 @@ bool gps_decode_start()
     //In this example we don't even use a buffer for sending data.
     uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
 
-    // check input
+    // quick check of input data format
     uint32_t t = millis();
     uint8_t match[] = {'$', ',', '\n'};
     int idx = 0;
@@ -103,7 +102,6 @@ bool gps_decode_start()
     }
 
     gps = new TinyGPS;
-    //xTaskCreate(gps_decode_task, "gps_decode_task", 1024, NULL, 10, &xGPSTaskHandle);
     return true;
 }
 

@@ -107,15 +107,11 @@ void CQuaterion::MadgwickQuaternionUpdate(float ax, float ay, float az, float gx
   q[3] = q4 * norm;
 }
 
-void CQuaterion::getOrientation(float& yaw, float& pitch, float& roll)
+void CQuaterion::getOrientation(ORIENTATION* ori)
 {
-     yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);
-     pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-     roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
-     pitch *= 180.0f / PI;
-     yaw   *= 180.0f / PI;
-     yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-     roll  *= 180.0f / PI;
+     ori->yaw  = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]) * 180.0f / PI;
+     ori->pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2])) * 180.0f / PI;
+     ori->roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]) * 180.0f / PI;
 }
 
 //==============================================================================
@@ -578,7 +574,7 @@ byte CMPU9250::memsInit(bool fusion)
   return ret;
 }
 
-bool CMPU9250::memsRead(float* acc, float* gyr, float* mag, int16_t* temp)
+bool CMPU9250::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
 {
   if (acc) {
     readAccelData(accelCount);
@@ -611,6 +607,7 @@ bool CMPU9250::memsRead(float* acc, float* gyr, float* mag, int16_t* temp)
 
   if (quaterion && acc && gyr && mag) {
     quaterion->MadgwickQuaternionUpdate(acc[0], acc[1], acc[2], gyr[0]*PI/180.0f, gyr[1]*PI/180.0f, gyr[2]*PI/180.0f,  mag[0],  mag[1], mag[2]);
+    quaterion->getOrientation(ori);
   }
   return true;
 }

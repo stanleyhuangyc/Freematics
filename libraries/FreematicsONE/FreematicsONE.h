@@ -5,9 +5,10 @@
 * (C)2012-2017 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
-#include <SPI.h>
+
 #include "FreematicsBase.h"
 #include "FreematicsMEMS.h"
+#include "FreematicsDMP.h"
 #include "FreematicsSD.h"
 #ifdef ESP32
 #include "FreematicsPlus.h"

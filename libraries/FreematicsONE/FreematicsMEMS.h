@@ -8,8 +8,7 @@
 #ifndef _MPU9250_H
 #define _MPU9250_H
 
-#include <Arduino.h>
-#include <Wire.h>
+#include "FreematicsBase.h"
 
 // See also MPU-9250 Register Map and Descriptions, Revision 4.0,
 // RM-MPU-9250A-00, Rev. 1.4, 9/9/2013 for registers not listed in above
@@ -226,7 +225,7 @@ class CQuaterion
 {
 public:
   void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz);
-  void getOrientation(float& yaw, float& pitch, float& roll);
+  void getOrientation(ORIENTATION* ori);
 private:
   float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
   // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)
@@ -243,10 +242,7 @@ class CMPU9250
 {
 public:
   byte memsInit(bool fusion = false);
-  bool memsRead(float* acc, float* gyr, float* mag, int16_t* temp);
-  void memsOrientation(float& pitch, float& yaw, float& row) {
-    if (quaterion) quaterion->getOrientation(pitch, yaw, row);
-  }
+  bool memsRead(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
 private:
   void getMres();
   void getGres();

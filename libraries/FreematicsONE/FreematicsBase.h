@@ -7,6 +7,14 @@
 
 #ifndef FREEMATICS_BASE
 #define FREEMATICS_BASE
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <SPI.h>
+#ifdef ESP32
+#include <WiFi.h>
+#endif
+
 // Mode 1 PIDs
 #define PID_ENGINE_LOAD 0x04
 #define PID_COOLANT_TEMP 0x05
@@ -123,6 +131,12 @@ typedef struct {
     uint8_t sat;
     int16_t heading;
 } GPS_DATA;
+
+typedef struct {
+  float pitch;
+  float yaw;
+  float roll;
+} ORIENTATION;
 
 int dumpLine(char* buffer, int len);
 uint16_t hex2uint16(const char *p);
