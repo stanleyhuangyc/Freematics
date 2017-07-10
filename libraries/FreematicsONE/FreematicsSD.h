@@ -15,13 +15,13 @@
 #ifndef __SD_H__
 #define __SD_H__
 
-#include <Arduino.h>
-
 #include <utility/SdFat.h>
 #include <utility/SdFatUtil.h>
 
-#define FILE_READ O_READ
-#define FILE_WRITE (O_READ | O_WRITE | O_CREAT)
+#include <Arduino.h>
+
+#define FILE_READ SD_O_READ
+#define FILE_WRITE (SD_O_READ | SD_O_WRITE | SD_O_CREAT)
 
 class File : public Stream {
  private:
@@ -46,7 +46,7 @@ public:
   char * name();
 
   boolean isDirectory(void);
-  File openNextFile(uint8_t mode = O_RDONLY);
+  File openNextFile(uint8_t mode = SD_O_RDONLY);
   void rewindDirectory(void);
 
   using Print::write;
