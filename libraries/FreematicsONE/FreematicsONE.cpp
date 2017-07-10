@@ -5,9 +5,6 @@
 * (C)2012-2017 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
-#include <Arduino.h>
-#include <SPI.h>
-#include <Wire.h>
 #ifdef ARDUINO_ARCH_AVR
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -271,6 +268,7 @@ void COBDSPI::reset()
 {
 	char buf[32];
 	sendCommand("ATR\r", buf, sizeof(buf));
+	delay(2000);
 }
 
 void COBDSPI::uninit()
@@ -297,7 +295,6 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 	for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 		if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
 			reset();
-			delay(3000);
 			return false;
 		}
 	}
@@ -311,7 +308,6 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 
 	if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
 		reset();
-		delay(3000);
 		return false;
 	}
 
@@ -387,7 +383,6 @@ byte COBDSPI::begin()
 #endif
 	delay(100);
 	reset();
-	delay(3000);
 	return getVersion();
 }
 
@@ -423,7 +418,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	bool eos = false;
 	uint32_t t = millis();
 	do {
-		while (digitalRead(SPI_PIN_READY) == HIGH) {
+		do {
 			sleep(1);
 			if (millis() - t > timeout) {
 #ifdef DEBUG
@@ -431,7 +426,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #endif
 				return 0;
 			}
-		}
+		} while (digitalRead(SPI_PIN_READY) == HIGH);
 #ifndef ESP32
 		SPI.beginTransaction(spiSettings);
 #endif
@@ -550,7 +545,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 		if (readPID(pid[n], result[n])) {
 			results++;
 		}
-
+		sleep(5);
 	}
 	return results;
 }
@@ -574,10 +569,14 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 
 void COBDSPI::sleep(unsigned int ms)
 {
+#ifdef ESP32
 	uint32_t t = millis();
 	do {
 		gps_decode_task();
 	} while (millis() - t < ms);
+#else
+	delay(ms);
+#endif
 }
 
 void COBDSPI::sleepSec(unsigned int seconds)
