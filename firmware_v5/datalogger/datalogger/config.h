@@ -41,7 +41,9 @@
 #endif
 
 // enable(1)/disable(0) quaternion calculation to get orientation
+#ifndef ENABLE_ORIENTATION
 #define ENABLE_ORIENTATION 0
+#endif
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
