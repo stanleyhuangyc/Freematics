@@ -34,7 +34,6 @@
  */
 #include <Arduino.h>
 #include "arduino_mpu9250_i2c.h"
-#include "arduino_mpu9250_clk.h"
 #define i2c_write(a, b, c, d) arduino_i2c_write(a, b, c, d)
 #define i2c_read(a, b, c, d)  arduino_i2c_read(a, b, c, d)
 #define delay_ms  arduino_delay_ms
