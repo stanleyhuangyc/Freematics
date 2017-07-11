@@ -2789,12 +2789,14 @@ int mpu_load_firmware(unsigned short length, const unsigned char *firmware,
     if (!firmware)
         return -1;
     for (ii = 0; ii < length; ii += this_write) {
+        char buf[LOAD_CHUNK];
         this_write = min(LOAD_CHUNK, length - ii);
-        if (mpu_write_mem(ii, this_write, firmware + ii))
+        memcpy_P(buf, firmware + ii, this_write);
+        if (mpu_write_mem(ii, this_write, buf))
             return -1;
         if (mpu_read_mem(ii, this_write, cur))
             return -1;
-        if (memcmp(firmware + ii, cur, this_write))
+        if (memcmp(buf, cur, this_write))
             return -2;
     }
 
