@@ -47,3 +47,15 @@ int arduino_i2c_read(unsigned char slave_addr, unsigned char reg_addr,
 	
 	return 0;
 }
+
+int arduino_get_clock_ms(unsigned long *count)
+{
+	*count = millis();
+	return 0;
+}
+
+int arduino_delay_ms(unsigned long num_ms)
+{
+	delay(num_ms);
+	return 0;
+}

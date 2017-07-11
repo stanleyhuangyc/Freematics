@@ -9,6 +9,7 @@ It is based on their Emedded MotionDriver 6.12 library.
 	https://www.invensense.com/developers/software-downloads/
 
 ******************************************************************************/
+
 #include <Arduino.h>
 #include "FreematicsDMP.h"
 #include "MPU9250_RegisterMap.h"
