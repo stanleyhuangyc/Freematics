@@ -290,14 +290,19 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
 	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
+	bool success;
 	
 	m_state = OBD_DISCONNECTED;
-	for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
-		if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
-			reset();
-			return false;
+	for (byte n = 0; n < 3; n++) {
+		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
+			success = sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) != 0;
+			if (!success) {
+				reset();
+				break;
+			}
 		}
 	}
+	if (!success) return false;
 
 	if (protocol != PROTO_AUTO) {
 		sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
@@ -313,7 +318,7 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 
 	// load pid map
 	memset(pidmap, 0, sizeof(pidmap));
-	bool success = false;
+	success = false;
 	for (byte i = 0; i < 4; i++) {
 		byte pid = i * 0x20;
 		sendQuery(pid);
