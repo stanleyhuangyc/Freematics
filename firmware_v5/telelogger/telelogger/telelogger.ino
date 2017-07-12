@@ -33,7 +33,7 @@
 #if ENABLE_MEMS
 byte accCount = 0; // count of accelerometer readings
 float accSum[3] = {0}; // sum of accelerometer data
-float accCal[3] = {0}; // calibrated reference accelerometer data
+float accBias[3] = {0}; // calibrated reference accelerometer data
 #endif
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
@@ -206,10 +206,6 @@ if (!checkState(STATE_STORAGE_READY)) {
 #endif
 
     setState(STATE_ALL_GOOD);
-
-#if ENABLE_MEMS
-    calibrateMEMS(CALIBRATION_TIME);
-#endif
     return true;
   }
   void loop()
@@ -220,10 +216,6 @@ if (!checkState(STATE_STORAGE_READY)) {
     if ((txCount % 100) == 1) {
       cache.log(PID_DEVICE_TEMP, deviceTemp);
     }
-
-#if ENABLE_MEMS
-    readMEMS();
-#endif
 
 #if ENABLE_OBD
     // process OBD data if connected
@@ -531,25 +523,28 @@ if (!checkState(STATE_STORAGE_READY)) {
       Serial.println("Standby");
       blePrint("Standby");
 #if ENABLE_MEMS
-      calibrateMEMS(3000);
       if (checkState(STATE_MEMS_READY)) {
+        calibrateMEMS(CALIBRATION_TIME);
         for (;;) {
           // calculate relative movement
           clearMEMS();
-          for (int i = 0; i < 100; i++) {
+          for (byte i = 0; i < 20; i++) {
             readMEMS();
-            delay(10);
+            delay(50);
           }
-          unsigned long motion = 0;
+          float motion = 0;
+          Serial.print("ACC:");
           for (byte i = 0; i < 3; i++) {
-            float n = accSum[i] / accCount - accCal[i];
-            motion += n * n;
+            float a = accSum[i] / accCount - accBias[i];
+            Serial.print(a);
+            Serial.print(' ');
+            motion += a * a;
           }
+          motion *= 10000;
           char buf[16];
-          sprintf(buf, "M:%u", motion);
+          sprintf(buf, "M:%ld", (long)motion);
           Serial.println(buf);
           blePrint(buf);
-          // check movement
           if (motion >= WAKEUP_MOTION_THRESHOLD) {
             bool success = false;
             // check if OBD can be connected
@@ -564,6 +559,7 @@ if (!checkState(STATE_STORAGE_READY)) {
               setState(STATE_OBD_READY);
               break;
             }
+            calibrateMEMS(CALIBRATION_TIME);
           }
         }
       } else {
@@ -630,7 +626,11 @@ private:
     {
          // log the loaded MEMS data
         if (accCount) {
-          cache.log(PID_ACC, (int16_t)(accSum[0] / accCount * 100), (int16_t)(accSum[1] / accCount * 100), (int16_t)(accSum[2] / accCount * 100));
+          cache.log(PID_ACC,
+            (int16_t)(accSum[0] / accCount * 100),
+            (int16_t)(accSum[1] / accCount * 100),
+            (int16_t)(accSum[2] / accCount * 100)
+          );
           clearMEMS();
         }
     }
@@ -669,18 +669,22 @@ private:
     {
         // MEMS data collected while sleeping
         clearMEMS();
-        if (duration > 0) {
-          for (uint32_t t = millis(); millis() - t < duration; ) {
-            readMEMS();
-            delay(10);
-          }
+        for (uint32_t t = millis(); millis() - t < duration; ) {
+          readMEMS();
+          delay(20);
         }
         // store accelerometer reference data
         if (accCount) {
-          accCal[0] = accSum[0] / accCount;
-          accCal[1] = accSum[1] / accCount;
-          accCal[2] = accSum[2] / accCount;
+          accBias[0] = accSum[0] / accCount;
+          accBias[1] = accSum[1] / accCount;
+          accBias[2] = accSum[2] / accCount;
         }
+        Serial.print("ACC Bias:");
+        Serial.print(accBias[0]);
+        Serial.print('/');
+        Serial.print(accBias[1]);
+        Serial.print('/');
+        Serial.println(accBias[2]);
     }
     void clearMEMS()
     {
@@ -694,8 +698,8 @@ private:
       if (checkState(STATE_MEMS_READY)) {
         // load and store accelerometer
         float acc[3];
-        memsRead(acc, 0, 0, 0);
-        if (accCount >= 200) {
+        memsRead(acc);
+        if (accCount >= 255) {
           clearMEMS();
         }
         accSum[0] += acc[0];

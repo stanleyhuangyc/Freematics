@@ -116,8 +116,8 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 20 /* for wakeup on movement */
-#define CALIBRATION_TIME 1000 /* ms */
+#define WAKEUP_MOTION_THRESHOLD 30 /* for wakeup on movement */
+#define CALIBRATION_TIME 3000 /* ms */
 
 /**************************************
 * Other options
