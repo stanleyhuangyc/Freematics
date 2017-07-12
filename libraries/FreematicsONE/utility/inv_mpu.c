@@ -2765,6 +2765,10 @@ int mpu_read_mem(unsigned short mem_addr, unsigned short length,
     return 0;
 }
 
+#ifndef PROGMEM
+#define memcpy_P memcpy
+#endif
+
 /**
  *  @brief      Load and verify DMP image.
  *  @param[in]  length      Length of DMP image.
