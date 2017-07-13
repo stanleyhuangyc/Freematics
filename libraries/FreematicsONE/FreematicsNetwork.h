@@ -126,11 +126,6 @@ public:
 class CTeleClientSIM800 : public CTeleClient, public virtual CFreematics
 {
 public:
-    CTeleClientSIM800() {
-      m_buffer[0] = 0;
-      udpIP[0] = 0;
-      m_stage = 0;
-    }
     bool netBegin();
     void netEnd();
     bool netSetup(const char* apn, unsigned int timeout = 60000);
@@ -143,30 +138,22 @@ public:
     char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
-    String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
+    String serverName() { return m_serverName; }
     String netDeviceName() { return "SIM800"; }
 protected:
     bool netWaitSent(unsigned int timeout);
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "OK\r\n", bool terminated = false);
-private:
 #ifdef ESP32
-    char m_buffer[256];
+    char m_buffer[256] = {0};
 #else
-    char m_buffer[96];
+    char m_buffer[80] = {0};
 #endif
-    char udpIP[16];
-    uint16_t udpPort;
-    uint8_t m_stage;
+    uint8_t m_stage = 0;
 };
 
 class CTeleClientSIM5360 : public CTeleClient, public virtual CFreematics
 {
 public:
-    CTeleClientSIM5360() {
-      m_buffer[0] = 0;
-      udpIP[0] = 0;
-      m_stage = 0;
-    }
     bool netBegin();
     void netEnd();
     bool netSetup(const char* apn, bool only3G = false, unsigned int timeout = 60000);
@@ -184,13 +171,12 @@ public:
     bool netWaitSent(unsigned int timeout);
     // send command and check for expected response
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
-  private:
 #ifdef ESP32
-    char m_buffer[256];
+    char m_buffer[256] = {0};
 #else
-    char m_buffer[96];
+    char m_buffer[96] = {0};
 #endif
-    char udpIP[16];
-    uint16_t udpPort;
-    uint8_t m_stage;
+    char udpIP[16] = {0};
+    uint16_t udpPort = 0;
+    uint8_t m_stage = 0;
 };
