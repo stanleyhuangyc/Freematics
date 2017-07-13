@@ -30,7 +30,7 @@
 
 #define PIN_LED 4
 
-#if ENABLE_MEMS
+#if MEMS_MODE
 byte accCount = 0; // count of accelerometer readings
 float accSum[3] = {0}; // sum of accelerometer data
 float accBias[3] = {0}; // calibrated reference accelerometer data
@@ -62,19 +62,16 @@ public CTeleClient
 #else
 ,public CFreematicsESP32
 #endif
-#if ENABLE_MEMS
-,public CMPU9250
-#endif
 {
 public:
   bool setup()
   {
     clearState(STATE_ALL_GOOD);
 
-#if ENABLE_MEMS
+#if MEMS_MODE
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("MEMS...");
-      if (memsInit()) {
+      if (mems.memsInit()) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
         blePrint("MEMS OK");
@@ -212,7 +209,9 @@ if (!checkState(STATE_STORAGE_READY)) {
   {
     cache.timestamp(millis());
 
+#ifdef ESP32
     deviceTemp = (int)readChipTemperature() * 165 / 255 - 40;
+#endif
     if ((txCount % 100) == 1) {
       cache.log(PID_DEVICE_TEMP, deviceTemp);
     }
@@ -239,7 +238,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
 #endif
 
-#if ENABLE_MEMS
+#if MEMS_MODE
     // process MEMS data if available
     if (checkState(STATE_MEMS_READY)) {
       readMEMS();
@@ -309,7 +308,7 @@ if (!checkState(STATE_STORAGE_READY)) {
   }
   bool login()
   {
-    char payload[128];
+    char payload[256];
     int bytes = 0;
 #if ENABLE_OBD
     // load DTC
@@ -318,7 +317,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     if (dtcCount > 0) {
       Serial.print("DTC:");
       Serial.println(dtcCount);
-      bytes += sprintf(payload + bytes, ",DTC=", dtcCount);
+      bytes += sprintf(payload + bytes, ",DTC=");
       for (byte i = 0; i < dtcCount; i++) {
         bytes += sprintf(payload + bytes, "%X;", dtc[i]);
       }
@@ -362,6 +361,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     return false;
 #elif NET_DEVICE == NET_BLE
     blePrint(payload);
+    return true;
 #endif
   }
   bool verifyChecksum(const char* data)
@@ -522,7 +522,7 @@ if (!checkState(STATE_STORAGE_READY)) {
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
       Serial.println("Standby");
       blePrint("Standby");
-#if ENABLE_MEMS
+#if MEMS_MODE
       if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS(CALIBRATION_TIME);
         for (;;) {
@@ -591,7 +591,7 @@ private:
         if (readPID(pids[i], value)) {
           cache.log(0x100 | pids[i], value);
         }
-#if ENABLE_MEMS
+#if MEMS_MODE
         readMEMS();
 #endif
       }
@@ -602,7 +602,7 @@ private:
         if (isValidPID(pid) && readPID(pid, value)) {
           cache.log(0x100 | pid, value);
         }
-#if ENABLE_MEMS
+#if MEMS_MODE
         readMEMS();
 #endif
       }
@@ -621,7 +621,7 @@ private:
         }
     }
 #endif
-#if ENABLE_MEMS
+#if MEMS_MODE
     void processMEMS()
     {
          // log the loaded MEMS data
@@ -657,14 +657,14 @@ private:
               cache.log(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
               char buf[32];
-              sprintf(buf, "UTC:%08u SAT:%u", gd.time, (unsigned int)gd.sat);
+              sprintf(buf, "UTC:%08lu SAT:%u", gd.time, (unsigned int)gd.sat);
               Serial.println(buf);
               blePrint(buf);
             }
         }
     }
 #endif
-#if ENABLE_MEMS
+#if MEMS_MODE
     void calibrateMEMS(unsigned int duration)
     {
         // MEMS data collected while sleeping
@@ -698,7 +698,8 @@ private:
       if (checkState(STATE_MEMS_READY)) {
         // load and store accelerometer
         float acc[3];
-        memsRead(acc);
+        int16_t temp;
+        mems.memsRead(acc, 0, 0, &temp);
         if (accCount >= 255) {
           clearMEMS();
         }
@@ -706,8 +707,18 @@ private:
         accSum[1] += acc[1];
         accSum[2] += acc[2];
         accCount++;
+#ifndef ESP32
+        deviceTemp = temp / 10;
+#endif
       }
     }
+#endif
+#if MEMS_MODE == MEMS_ACC
+    MPU9250_ACC mems;
+#elif MEMS_MODE == MEMS_9DOF
+    MPU9250_9DOF mems;
+#elif MEMS_MODE == MEMS_DMP
+    MPU9250_DMP mems;
 #endif
     CStorageRAM cache;
 #if STORAGE_TYPE == STORAGE_SD

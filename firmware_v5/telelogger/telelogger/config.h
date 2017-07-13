@@ -11,6 +11,11 @@
 #define NET_SIM800 4
 #define NET_SIM5360 5
 
+#define MEMS_DISABLED 0
+#define MEMS_ACC 1
+#define MEMS_9DOF 2
+#define MEMS_DMP 3
+
 #define STORAGE_NONE 0
 #define STORAGE_FLASH 1
 #define STORAGE_SD 2
@@ -52,8 +57,6 @@
 
 #define SERVER_KEY "TEST_SERVER_KEY"
 
-// xBee module serial baudrate
-#define XBEE_BAUDRATE 115200
 // maximum consecutive communication errors before entering standby
 #define MAX_CONN_ERRORS 20
 // maximum consecutive communication errors before reconnecting
@@ -79,11 +82,11 @@
 **************************************/
 #ifndef STORAGE_TYPE
 // change the following line to change storage type
-#define STORAGE_TYPE STORAGE_SD
+#define STORAGE_TYPE STORAGE_NONE
 #endif
 #ifndef STORAGE_SIZE
 #endif
-#if NET_DEVICE == NET_BLE
+#if NET_DEVICE == NET_BLE || !defined(ESP32)
 #define RAM_CACHE_SIZE 160 /* bytes */
 #else
 #define RAM_CACHE_SIZE 1500 /* bytes */
@@ -97,9 +100,8 @@
 /**************************************
 * MEMS sensors
 **************************************/
-#ifndef ENABLE_MEMS
-// change the following line to change MEMS type
-#define ENABLE_MEMS 1
+#ifndef MEMS_MODE
+#define MEMS_MODE MEMS_ACC
 #endif
 
 #define ENABLE_ORIENTATION 0

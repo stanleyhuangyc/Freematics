@@ -238,7 +238,23 @@ private:
   float deltat = 0.0f;
 };
 
-class CMPU9250
+class MPU9250_ACC
+{
+public:
+  virtual byte memsInit(bool fusion = false);
+  virtual bool memsRead(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+protected:
+  void getAres();
+  void readAccelData(int16_t *);
+  int16_t readTempData();
+  void initMPU9250();
+  void writeByte(uint8_t, uint8_t);
+  uint8_t readByte(uint8_t);
+  void readBytes(uint8_t, uint8_t, uint8_t *);
+  int16_t accelCount[3] = {0};
+};
+
+class MPU9250_9DOF : public MPU9250_ACC
 {
 public:
   byte memsInit(bool fusion = false);
@@ -246,29 +262,20 @@ public:
 private:
   void getMres();
   void getGres();
-  void getAres();
-  void readAccelData(int16_t *);
   void readGyroData(int16_t *);
   void readMagData(int16_t *);
-  int16_t readTempData();
-  void updateTime();
   bool initAK8963(float *);
-  void initMPU9250();
   void calibrateMPU9250(float * gyroBias, float * accelBias);
   void MPU9250SelfTest(float * destination);
-  void writeByte(uint8_t, uint8_t);
-  uint8_t readByte(uint8_t);
-  void readBytes(uint8_t, uint8_t, uint8_t *);
   void writeByteAK(uint8_t, uint8_t);
   uint8_t readByteAK(uint8_t);
   void readBytesAK(uint8_t, uint8_t, uint8_t *);
   float gyroBias[3] = {0};
   float accelBias[3] = {0};      // Bias corrections for gyro and accelerometer
   float magCalibration[3] = {0};
-  int16_t accelCount[3] = {0};
   int16_t gyroCount[3] = {0};
   int16_t magCount[3] = {0};    // Stores the 16-bit signed magnetometer sensor output
   CQuaterion* quaterion = 0;
-};  // class MPU9250
+};
 
 #endif
