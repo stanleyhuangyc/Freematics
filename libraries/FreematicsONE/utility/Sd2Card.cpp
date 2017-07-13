@@ -24,9 +24,7 @@
 #ifndef SOFTWARE_SPI
 #ifdef USE_SPI_LIB
 #include <SPI.h>
-#ifndef ARDUINO_ARCH_SAMD
 static SPISettings settings;
-#endif
 #endif
 // functions for hardware SPI
 /** Send a byte to the card */
@@ -166,9 +164,7 @@ void Sd2Card::chipSelectHigh(void) {
 #ifdef USE_SPI_LIB
   if (chip_select_asserted) {
     chip_select_asserted = 0;
-	#ifndef ARDUINO_ARCH_SAMD
     SPI.endTransaction();
-	#endif
   }
 #endif
 }
@@ -177,10 +173,8 @@ void Sd2Card::chipSelectLow(void) {
 #ifdef USE_SPI_LIB
   if (!chip_select_asserted) {
     chip_select_asserted = 1;
-	#ifndef ARDUINO_ARCH_SAMD
-    SPI.beginTransaction(settings);
-	#endif
-  }
+	  SPI.beginTransaction(settings);
+	}
 #endif
   digitalWrite(chipSelectPin_, LOW);
 }
@@ -268,9 +262,9 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
   pinMode(SS_PIN, OUTPUT);
   digitalWrite(SS_PIN, HIGH); // disable any SPI device using hardware SS pin
   // Enable SPI, Master, clock rate f_osc/128
-  SPCR = (1 << SPE) | (1 << MSTR) | (1 << SPR1) | (1 << SPR0);
+  //SPCR = (1 << SPE) | (1 << MSTR) | (1 << SPR1) | (1 << SPR0);
   // clear double speed
-  SPSR &= ~(1 << SPI2X);
+  //SPSR &= ~(1 << SPI2X);
 #else // USE_SPI_LIB
   SPI.begin();
   #ifdef ESP32
@@ -283,15 +277,11 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
 
   // must supply min of 74 clock cycles with CS high.
 #ifdef USE_SPI_LIB
-#ifndef ARDUINO_ARCH_SAMD
   SPI.beginTransaction(settings);
-#endif
 #endif
   for (uint8_t i = 0; i < 10; i++) spiSend(0XFF);
 #ifdef USE_SPI_LIB
-#ifndef ARDUINO_ARCH_SAMD
   SPI.endTransaction();
-#endif
 #endif
 
   chipSelectLow();
@@ -338,7 +328,8 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
   chipSelectHigh();
 
 #ifndef SOFTWARE_SPI
-  return setSckRate(sckRateID);
+  //return setSckRate(sckRateID);
+  return true;
 #else  // SOFTWARE_SPI
   return true;
 #endif  // SOFTWARE_SPI
@@ -513,6 +504,8 @@ uint8_t Sd2Card::readRegister(uint8_t cmd, void* buf) {
  * false, is returned for an invalid value of \a sckRateID.
  */
 uint8_t Sd2Card::setSckRate(uint8_t sckRateID) {
+  return true;
+#if 0
   if (sckRateID > 6) {
     error(SD_CARD_ERROR_SCK_RATE);
     return false;
@@ -527,19 +520,8 @@ uint8_t Sd2Card::setSckRate(uint8_t sckRateID) {
   SPCR &= ~((1 <<SPR1) | (1 << SPR0));
   SPCR |= (sckRateID & 4 ? (1 << SPR1) : 0)
     | (sckRateID & 2 ? (1 << SPR0) : 0);
-#else // USE_SPI_LIB
-  #if defined(ARDUINO_ARCH_SAM)
-  switch (sckRateID) {
-    case 0:  settings = SPISettings(25000000, MSBFIRST, SPI_MODE0); break;
-    case 1:  settings = SPISettings(4000000, MSBFIRST, SPI_MODE0); break;
-    case 2:  settings = SPISettings(2000000, MSBFIRST, SPI_MODE0); break;
-    case 3:  settings = SPISettings(1000000, MSBFIRST, SPI_MODE0); break;
-    case 4:  settings = SPISettings(500000, MSBFIRST, SPI_MODE0); break;
-    case 5:  settings = SPISettings(250000, MSBFIRST, SPI_MODE0); break;
-    default: settings = SPISettings(125000, MSBFIRST, SPI_MODE0);
-  }
-  #endif
 #endif // USE_SPI_LIB
+#endif
   return true;
 }
 //------------------------------------------------------------------------------

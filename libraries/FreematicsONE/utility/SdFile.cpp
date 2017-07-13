@@ -473,7 +473,6 @@ uint8_t SdFile::open(SdFile* dirFile, const char* fileName, uint8_t oflag) {
   p->lastAccessDate = p->creationDate;
   p->lastWriteDate = p->creationDate;
   p->lastWriteTime = p->creationTime;
-
   // force write of entry to SD
   if (!SdVolume::cacheFlush()) return false;
 
