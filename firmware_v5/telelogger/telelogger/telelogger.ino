@@ -3,9 +3,8 @@
 * Works with Freematics ONE+
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 * Distributed under BSD license
-* Visit http://freematics.com/hub/api for Freematics Hub API reference
-* Visit http://freematics.com/products/freematics-one for hardware information
-* To obtain your Freematics Hub server key, contact support@freematics.com.au
+* Visit http://freematics.com/hub for information about Freematics Hub
+* Visit http://freematics.com/products for hardware information
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -38,7 +37,6 @@ float accBias[3] = {0}; // calibrated reference accelerometer data
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
-uint32_t startTick = 0;
 uint32_t lastSentTime = 0;
 uint32_t lastSyncTime = 0;
 uint8_t deviceTemp = 0; // device temperature
@@ -189,7 +187,6 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
 #endif
 
-    startTick = millis();
     txCount = 0;
 
     if (!login()) {
@@ -493,11 +490,13 @@ if (!checkState(STATE_STORAGE_READY)) {
   void standby()
   {
       if (checkState(STATE_NET_READY)) {
-        notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
-        netClose();
-        Serial.print("Network:");
+        if (checkState(STATE_CONNECTED)) {
+          notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
+          netClose();
+        }
+        Serial.print(netDeviceName());
         netEnd(); // turn off network module power (if supported)
-        Serial.println("OFF");
+        Serial.println(" OFF");
         clearState(STATE_NET_READY);
       }
 #if STORAGE_TYPE != STORAGE_NONE
