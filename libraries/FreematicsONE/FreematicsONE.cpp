@@ -268,7 +268,7 @@ void COBDSPI::reset()
 {
 	char buf[32];
 	sendCommand("ATR\r", buf, sizeof(buf));
-	delay(2000);
+	delay(3000);
 }
 
 void COBDSPI::uninit()
@@ -290,19 +290,19 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
 	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
-	bool success;
 	
 	m_state = OBD_DISCONNECTED;
-	for (byte n = 0; n < 3; n++) {
-		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
-			success = sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) != 0;
-			if (!success) {
-				reset();
-				break;
-			}
+
+	byte errs = 0;	
+	for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
+		if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
+			errs++;
 		}
 	}
-	if (!success) return false;
+	if (errs) {
+		reset();
+		return false;
+	}
 
 	if (protocol != PROTO_AUTO) {
 		sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
@@ -318,7 +318,7 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 
 	// load pid map
 	memset(pidmap, 0, sizeof(pidmap));
-	success = false;
+	bool success = false;
 	for (byte i = 0; i < 4; i++) {
 		byte pid = i * 0x20;
 		sendQuery(pid);
@@ -387,7 +387,6 @@ byte COBDSPI::begin()
 	SPI.setClockDivider(SPI_CLOCK_DIV16);
 #endif
 	delay(100);
-	reset();
 	return getVersion();
 }
 
@@ -403,9 +402,8 @@ byte COBDSPI::getVersion()
 	byte version = 0;
 	setTarget(TARGET_OBD);
 	for (byte n = 0; n < 3; n++) {
-		write("ATI\r");
 		char buffer[32];
-		if (receive(buffer, sizeof(buffer), 500)) {
+		if (sendCommand("ATI\r", buffer, sizeof(buffer), 500)) {
 			char *p = strstr(buffer, "OBDUART");
 			if (p) {
 				p += 9;
@@ -432,10 +430,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				return 0;
 			}
 		} while (digitalRead(SPI_PIN_READY) == HIGH);
-#ifndef ESP32
-		SPI.beginTransaction(spiSettings);
-#endif
-		sleep(10);
+		//sleep(10);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
@@ -466,11 +461,8 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			}
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
-#ifndef ESP32
-		SPI.endTransaction();
-#endif
 	} while (!eos && millis() - t < timeout);
-	if (millis() - t >= timeout) {
+	if (!eos && millis() - t >= timeout) {
 		// timed out
 #ifdef DEBUG
 		debugOutput("RECV TIMEOUT");
@@ -504,9 +496,10 @@ void COBDSPI::write(const char* s)
 	len += 4;
 	// add terminating byte (ESC)
 	buf[len++] = 0x1B;
-	sleep(10);
 #endif
+	sleep(10);
 	digitalWrite(SPI_PIN_CS, LOW);
+	sleep(1);
 	SPI.beginTransaction(spiSettings);
 #ifdef ESP32
 	SPI.writeBytes((uint8_t*)buf, len);
@@ -536,6 +529,7 @@ void COBDSPI::write(byte* data, int len)
 #else
 	for (int i = 0; i < len; i++) {
 		SPI.transfer(data[i]);
+		delay(1);
 	}
 #endif
 	sleep(1);
