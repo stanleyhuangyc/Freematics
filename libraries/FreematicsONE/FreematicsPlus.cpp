@@ -5,11 +5,12 @@
 * (C)2017 Developed by Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
-#ifdef ESP32
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+#ifdef ESP32
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
