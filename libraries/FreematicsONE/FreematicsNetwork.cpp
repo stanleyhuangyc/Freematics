@@ -252,23 +252,20 @@ String CTeleClientSIM800::getOperatorName()
 
 bool CTeleClientSIM800::netOpen(const char* host, uint16_t port)
 {
+#if 0
   if (host) {
     if (!isdigit(host[0])) {
       String ip = queryIP(host);
       if (ip.length()) {
         strncpy(udpIP, ip.c_str(), sizeof(udpIP) - 1);
-      } else {
-        return false;
       }
-    } else {
-      strncpy(udpIP, host, sizeof(udpIP) - 1);
     }
   }
-  netSendCommand("AT+CLPORT=\"UDP\",8000\r");
+#endif
+  //netSendCommand("AT+CLPORT=\"UDP\",8000\r");
   netSendCommand("AT+CIPSRIP=1\r");
-  netSendCommand("AT+CIPUDPMODE=1\r");
-  udpPort = port;
-  sprintf(m_buffer, "AT+CIPSTART=\"UDP\",\"%s\",\"%u\"\r", host, udpPort);
+  //netSendCommand("AT+CIPUDPMODE=1\r");
+  sprintf(m_buffer, "AT+CIPSTART=\"UDP\",\"%s\",\"%u\"\r", host, port);
   return netSendCommand(m_buffer, 3000);
 }
 
@@ -300,8 +297,13 @@ int CTeleClientSIM800::netSend(const char* data, unsigned int len, bool wait)
 char* CTeleClientSIM800::netReceive(int* pbytes, unsigned int timeout)
 {
   if (netSendCommand(0, timeout, "RECV FROM:")) {
-    char *p = strstr(m_buffer, "RECV FROM:");
-    if (p) p = strchr(p, '\n');
+    char *p = strstr(m_buffer, "IPD,");
+    if (p) {
+			p = strchr(p, ':');
+		} else {
+			p = strstr(m_buffer, "RECV FROM:");
+			if (p) p = strchr(p, '\n');
+		}
     if (!p) return 0;
     p++;
     if (pbytes) *pbytes = strlen(p);
@@ -352,30 +354,30 @@ bool CTeleClientSIM800::netSendCommand(const char* cmd, unsigned int timeout, co
 }
 
 bool CTeleClientSIM800::getLocation(NET_LOCATION* loc)
-    {
-      if (netSendCommand("AT+CIPGSMLOC=1,1\r", 3000)) do {
-        char *p;
-        if (!(p = strchr(m_buffer, ':'))) break;
-        if (!(p = strchr(p, ','))) break;
-        loc->lng = atof(++p);
-        if (!(p = strchr(p, ','))) break;
-        loc->lat = atof(++p);
-        if (!(p = strchr(p, ','))) break;
-        loc->year = atoi(++p) - 2000;
-        if (!(p = strchr(p, '/'))) break;
-        loc->month = atoi(++p);
-        if (!(p = strchr(p, '/'))) break;
-        loc->day = atoi(++p);
-        if (!(p = strchr(p, ','))) break;
-        loc->hour = atoi(++p);
-        if (!(p = strchr(p, ':'))) break;
-        loc->minute = atoi(++p);
-        if (!(p = strchr(p, ':'))) break;
-        loc->second = atoi(++p);
-        return true;
-      } while(0);
-      return false;
-    }
+{
+  if (netSendCommand("AT+CIPGSMLOC=1,1\r", 3000)) do {
+    char *p;
+    if (!(p = strchr(m_buffer, ':'))) break;
+    if (!(p = strchr(p, ','))) break;
+    loc->lng = atof(++p);
+    if (!(p = strchr(p, ','))) break;
+    loc->lat = atof(++p);
+    if (!(p = strchr(p, ','))) break;
+    loc->year = atoi(++p) - 2000;
+    if (!(p = strchr(p, '/'))) break;
+    loc->month = atoi(++p);
+    if (!(p = strchr(p, '/'))) break;
+    loc->day = atoi(++p);
+    if (!(p = strchr(p, ','))) break;
+    loc->hour = atoi(++p);
+    if (!(p = strchr(p, ':'))) break;
+    loc->minute = atoi(++p);
+    if (!(p = strchr(p, ':'))) break;
+    loc->second = atoi(++p);
+    return true;
+  } while(0);
+  return false;
+}
 
 /*******************************************************************************
   Implementation for SIM5360
