@@ -367,7 +367,7 @@ static const char targets[][4] = {
 	{'$','G','S','M'}
 };
 
-SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
+//SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
 
 byte COBDSPI::begin()
 {
@@ -421,7 +421,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	bool eos = false;
 	uint32_t t = millis();
 	do {
-		do {
+		while (digitalRead(SPI_PIN_READY) == HIGH) {
 			sleep(1);
 			if (millis() - t > timeout) {
 #ifdef DEBUG
@@ -429,17 +429,16 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #endif
 				return 0;
 			}
-		} while (digitalRead(SPI_PIN_READY) == HIGH);
-		//sleep(10);
+		}
+		sleep(1);
 		digitalWrite(SPI_PIN_CS, LOW);
-		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
+		while (!eos && digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
-			if (eos) continue;
 			if (n == 0) {
 				// match header char before we can move forward
 				if (c == '$') {
-				buffer[0] = c;
-				n = 1;
+					buffer[0] = c;
+					n = 1;
 				}
 				continue;
 			}
@@ -460,15 +459,16 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				n++;
 			}
 		}
+		sleep(1);
 		digitalWrite(SPI_PIN_CS, HIGH);
+		sleep(1);
 	} while (!eos && millis() - t < timeout);
+#ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
 		// timed out
-#ifdef DEBUG
 		debugOutput("RECV TIMEOUT");
-#endif
-		return 0;
 	}
+#endif
 	if (m_target != TARGET_RAW) {
 		// eliminate ending char
 		if (eos) n--;
@@ -479,6 +479,8 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		debugOutput(buffer);
 	}
 #endif
+	// wait for READY pin to restore high level so SPI bus is released
+	while (digitalRead(SPI_PIN_READY) == LOW) sleep(1);
 	return n;
 }
 
@@ -487,23 +489,10 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-#if ESP32
-	char buf[256];
-	int len = strlen(s);
-	if (len > sizeof(buf) - 6) len = sizeof(buf) - 6;
-	memcpy(buf, targets[m_target], 4);
-	memcpy(buf + 4, s, len);
-	len += 4;
-	// add terminating byte (ESC)
-	buf[len++] = 0x1B;
-#endif
-	sleep(10);
+	sleep(1);
 	digitalWrite(SPI_PIN_CS, LOW);
 	sleep(1);
-	SPI.beginTransaction(spiSettings);
-#ifdef ESP32
-	SPI.writeBytes((uint8_t*)buf, len);
-#else
+	//SPI.beginTransaction(spiSettings);
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
@@ -514,16 +503,15 @@ void COBDSPI::write(const char* s)
 	}
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
-#endif
 	sleep(1);
-	SPI.endTransaction();
+	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
 void COBDSPI::write(byte* data, int len)
 {
 	digitalWrite(SPI_PIN_CS, LOW);
-	SPI.beginTransaction(spiSettings);
+	//SPI.beginTransaction(spiSettings);
 #ifdef ESP32
 	SPI.writeBytes((uint8_t*)data, len);
 #else
@@ -533,7 +521,7 @@ void COBDSPI::write(byte* data, int len)
 	}
 #endif
 	sleep(1);
-	SPI.endTransaction();
+	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
