@@ -33,7 +33,7 @@ class ONE : public COBDSPI, public CDataLogger
 #if ENABLE_DMP
 ,public MPU9250_DMP
 #else
-,public CMPU9250
+,public MPU9250_ACC
 #endif
 #endif
 {
@@ -66,19 +66,6 @@ public:
       SPI.begin();
 #endif
 
-#if ENABLE_DATA_LOG
-      if (!(state & STATE_SD_READY)) {
-        Serial.print("SD ");
-        uint16_t volsize = initSD();
-        if (volsize) {
-          Serial.print(volsize);
-          Serial.println("MB");
-        } else {
-          Serial.println("NO");
-        }
-      }
-#endif
-
 #if USE_GPS
       Serial.print("GPS ");
       if (gpsInit(GPS_SERIAL_BAUDRATE)) {
@@ -98,6 +85,21 @@ public:
         Serial.println(buffer);
       }
 #endif
+
+#if ENABLE_DATA_LOG
+      if (!(state & STATE_SD_READY)) {
+        Serial.print("SD ");
+        uint16_t volsize = initSD();
+        if (volsize) {
+          Serial.print(volsize);
+          Serial.println("MB");
+          state |= STATE_SD_READY;
+        } else {
+          Serial.println("NO");
+        }
+      }
+#endif
+
     }
 #if USE_GPS
     void logGPSData()
@@ -150,10 +152,8 @@ public:
 #if ENABLE_DATA_LOG
     uint16_t initSD()
     {
-        state &= ~STATE_SD_READY;
         pinMode(SD_CS_PIN, OUTPUT);
         if (SD.begin(SD_CS_PIN)) {
-          state |= STATE_SD_READY;
           return SD.cardSize();
         } else {
           return 0;
@@ -178,7 +178,6 @@ public:
 #endif
     void reconnect()
     {
-        reset();
         if (init()) return;
         // try to re-connect to OBD
 #if ENABLE_DATA_LOG
@@ -193,7 +192,6 @@ public:
         // put OBD chips into low power mode
         while (!init()) {
           Serial.print('.');
-          reset();
           delay(10000);
         }
         Serial.println("Wakeup");
@@ -288,6 +286,7 @@ void loop()
 #if USE_OBD
         }
         if (one.errors >= 3) {
+            one.reset();
             one.reconnect();
         }
     } else {
