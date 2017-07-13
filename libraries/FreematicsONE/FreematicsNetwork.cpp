@@ -10,6 +10,8 @@
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
 
+#define XBEE_BAUDRATE 115200
+
 #ifdef ESP32
 
 static CTeleClient* gatts_inst = 0;
@@ -348,6 +350,32 @@ bool CTeleClientSIM800::netSendCommand(const char* cmd, unsigned int timeout, co
     return false;
   }
 }
+
+bool CTeleClientSIM800::getLocation(NET_LOCATION* loc)
+    {
+      if (netSendCommand("AT+CIPGSMLOC=1,1\r", 3000)) do {
+        char *p;
+        if (!(p = strchr(m_buffer, ':'))) break;
+        if (!(p = strchr(p, ','))) break;
+        loc->lng = atof(++p);
+        if (!(p = strchr(p, ','))) break;
+        loc->lat = atof(++p);
+        if (!(p = strchr(p, ','))) break;
+        loc->year = atoi(++p) - 2000;
+        if (!(p = strchr(p, '/'))) break;
+        loc->month = atoi(++p);
+        if (!(p = strchr(p, '/'))) break;
+        loc->day = atoi(++p);
+        if (!(p = strchr(p, ','))) break;
+        loc->hour = atoi(++p);
+        if (!(p = strchr(p, ':'))) break;
+        loc->minute = atoi(++p);
+        if (!(p = strchr(p, ':'))) break;
+        loc->second = atoi(++p);
+        return true;
+      } while(0);
+      return false;
+    }
 
 /*******************************************************************************
   Implementation for SIM5360
