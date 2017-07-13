@@ -133,6 +133,17 @@ typedef struct {
 } GPS_DATA;
 
 typedef struct {
+  float lat;
+  float lng;
+  uint8_t year; /* year past 2000, e.g. 15 for 2015 */
+  uint8_t month;
+  uint8_t day;
+  uint8_t hour;
+  uint8_t minute;
+  uint8_t second;
+} NET_LOCATION;
+
+typedef struct {
   float pitch;
   float yaw;
   float roll;

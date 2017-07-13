@@ -4,6 +4,8 @@
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 *************************************************************************/
 
+#include <Arduino.h>
+
 #ifdef ESP32
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -21,8 +23,6 @@
 #include "esp_bt_main.h"
 #endif
 
-#define XBEE_BAUDRATE 115200
-
 class CTeleClient
 {
 public:
@@ -32,6 +32,7 @@ public:
   virtual void netClose() {}
   virtual int netSend(const char* data, unsigned int len, bool wait = true) { return false; }
   virtual char* netReceive(int* pbytes = 0, unsigned int timeout = 5000) { return 0; }
+  virtual bool getLocation(NET_LOCATION* loc) { return false; }
   virtual String netDeviceName() { return ""; }
   int transmit(const char* data, int bytes, bool wait);
   uint8_t getConnErrors() { return connErrors; }
@@ -55,14 +56,14 @@ public:
   bool bleBegin(const char* bleDeviceName) { return false; }
   void bleEnd() {}
   bool bleSend(const char* data, unsigned int len) { return false; }
-  void blePrint(String s) { Serial.println(s); }
+  void blePrint(String s) {}
 #endif
 protected:
   byte getChecksum(const char* data, int len)
   {
     // calculate and add checksum
     byte sum = 0;
-    for (unsigned int i = 0; i < len; i++) sum += data[i];
+    for (int i = 0; i < len; i++) sum += data[i];
     return sum;
   }
   virtual bool netWaitSent(unsigned int timeout) { return true; }
@@ -140,6 +141,7 @@ public:
     int netSend(const char* data, unsigned int len, bool wait = true);
     void netClose();
     char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
+    bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     String netDeviceName() { return "SIM800"; }
@@ -147,7 +149,11 @@ protected:
     bool netWaitSent(unsigned int timeout);
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "OK\r\n", bool terminated = false);
 private:
+#ifdef ESP32
     char m_buffer[256];
+#else
+    char m_buffer[96];
+#endif
     char udpIP[16];
     uint16_t udpPort;
     uint8_t m_stage;
@@ -179,7 +185,11 @@ public:
     // send command and check for expected response
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
   private:
+#ifdef ESP32
     char m_buffer[256];
+#else
+    char m_buffer[96];
+#endif
     char udpIP[16];
     uint16_t udpPort;
     uint8_t m_stage;
