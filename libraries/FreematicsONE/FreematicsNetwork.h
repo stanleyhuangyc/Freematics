@@ -33,7 +33,7 @@ public:
   virtual int netSend(const char* data, unsigned int len, bool wait = true) { return false; }
   virtual char* netReceive(int* pbytes = 0, unsigned int timeout = 5000) { return 0; }
   virtual bool getLocation(NET_LOCATION* loc) { return false; }
-  virtual String netDeviceName() { return ""; }
+  virtual const char* netDeviceName() { return ""; }
   int transmit(const char* data, int bytes, bool wait);
   uint8_t getConnErrors() { return connErrors; }
 #ifdef ESP32
@@ -85,7 +85,7 @@ public:
       Serial.write('\n');
       return len;
     }
-    String netDeviceName() { return "Serial"; }
+    const char* netDeviceName() { return "Serial"; }
 };
 
 #ifdef ESP32
@@ -98,7 +98,7 @@ public:
       return bleSend(data, len) ? len : 0;
     }
     char* netReceive(int* pbytes = 0, unsigned int timeout = 1000) { return 0; }
-    String netDeviceName() { return "BLE"; }
+    const char* netDeviceName() { return "BLE"; }
 };
 
 class CTeleClientWIFI : public CTeleClient, public virtual CFreematics
@@ -113,7 +113,7 @@ public:
     char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP.toString(); }
-    String netDeviceName() { return "WIFI"; }
+    const char* netDeviceName() { return "WIFI"; }
   private:
     char m_buffer[256] = {0};
     IPAddress udpIP;
@@ -139,7 +139,7 @@ public:
     bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
     String serverName() { return m_serverName; }
-    String netDeviceName() { return "SIM800"; }
+    const char* netDeviceName() { return "SIM800"; }
 protected:
     bool netWaitSent(unsigned int timeout);
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "OK\r\n", bool terminated = false);
@@ -166,7 +166,7 @@ public:
     char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
-    String netDeviceName() { return "SIM5360"; }
+    const char* netDeviceName() { return "SIM5360"; }
   protected:
     bool netWaitSent(unsigned int timeout);
     // send command and check for expected response
