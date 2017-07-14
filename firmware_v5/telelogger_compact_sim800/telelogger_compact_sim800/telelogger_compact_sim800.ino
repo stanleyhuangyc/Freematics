@@ -45,7 +45,7 @@ public:
     void dispatch(const char* buf, byte len)
     {
         // reserve some space for checksum
-        int remain = RAM_CACHE_SIZE - m_cacheBytes - len - 2;
+        int remain = RAM_CACHE_SIZE - m_cacheBytes - len - 8;
         if (remain < 0) {
           // m_cache full
           return;
@@ -192,11 +192,14 @@ public:
     uint32_t t = millis();
     if ((txCount % SERVER_SYNC_INTERVAL) == (SERVER_SYNC_INTERVAL - 1)) {
       // sync
-      if (!syncServer()) {
+      Serial.print("Sync...");
+      if (!notifyServer(EVENT_SYNC)) {
         connErrors++;
+        Serial.println("NO");
       } else {
         connErrors = 0;
         txCount++;
+        Serial.println("OK");
       }
     } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 1) {
       digitalWrite(PIN_LED, HIGH);
@@ -205,11 +208,10 @@ public:
       Serial.print(txCount);
       Serial.print("] ");
       // transmit data
-      int bytesSent = transmit(cache.getBuffer(), cache.getBytes());
-      if (bytesSent > 0) {
+      if (transmit(cache.getBuffer(), cache.getBytes())) {
         // output some stats
-        Serial.print(bytesSent);
-        Serial.println("B sent");
+        Serial.print(cache.getBytes());
+        Serial.println(" bytes sent");
         cache.purge();
       } else {
         Serial.println("Unsent");
@@ -253,46 +255,24 @@ public:
     for (s = data; *s && *s != '*'; s++) sum += *s;
     return (*s && hex2uint8(s + 1) == sum);
   }
-  int transmit(const char* data, int bytes)
+  bool transmit(const char* data, int bytes)
   {
     // transmit data
-    //if (data[bytes - 1] == ',') bytes--;
-    int bytesSent = netSend(data, bytes, true);
-
-    if (bytesSent == 0) {
+    if (data[bytes - 1] == ',') bytes--;
+    if (!netSend(data, bytes, true)) {
       connErrors++;
-      return 0;
+      return false;
     } else {
       connErrors = 0;
       txCount++;
+      return true;
     }
-    return bytesSent;
-  }
-  bool syncServer()
-  {
-    char buf[32];
-    Serial.print("Syncing...");
-    int len = sprintf_P(buf, PSTR("%X#EV=%u,TS=%lu"), feedid, EVENT_SYNC, millis());
-    if (!netSend(buf, len, true)) {
-      Serial.println("Sync error");
-      return false;
-    }
-    char *data = netReceive(&len);
-    if (!data) {
-      Serial.println("no reply");
-      return false;
-    }
-    if (!verifyChecksum(data)) {
-      return false;
-    }
-    Serial.println("OK");
-    return true;
   }
   bool notifyServer(byte event)
   {
     for (byte attempts = 0; attempts < 3; attempts++) {
       char buf[64];
-      byte n = sprintf_P(buf, PSTR("%X#EV=%u,TS=%lu,VIN=%s"), feedid, (unsigned int)event, millis(), DEVICE_ID);
+      byte n = sprintf_P(buf, PSTR("EV=%u,TS=%lu,VIN=%s"), (unsigned int)event, millis(), DEVICE_ID);
       if (!netSend(buf, n, true)) {
         Serial.println("Unsent");
         continue;
