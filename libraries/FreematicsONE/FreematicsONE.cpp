@@ -29,7 +29,7 @@ SIGNAL(WDT_vect) {
 bool gps_decode_start();
 bool gps_get_data(GPS_DATA* gdata);
 int gps_write_string(const char* string);
-void gps_decode_task();
+void gps_decode_task(int timeout);
 void bee_start();
 int bee_write_string(const char* string);
 int bee_write_data(uint8_t* data, int len);
@@ -290,10 +290,10 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
 	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
-	
+
 	m_state = OBD_DISCONNECTED;
 
-	byte errs = 0;	
+	byte errs = 0;
 	for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 		if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
 			errs++;
@@ -427,13 +427,14 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #ifdef DEBUG
 				debugOutput("NO READY SIGNAL");
 #endif
-				return 0;
+				break;
 			}
-		}
-		sleep(1);
+		} 
+		sleep(10);
 		digitalWrite(SPI_PIN_CS, LOW);
-		while (!eos && digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
+		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
+			if (eos) continue;
 			if (n == 0) {
 				// match header char before we can move forward
 				if (c == '$') {
@@ -457,6 +458,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				buffer[n] = c;
 				eos = (c == 0x9 && buffer[n - 1] =='>');
 				n++;
+#ifndef ESP32
+				if (eos) break;
+#endif
 			}
 		}
 		sleep(1);
@@ -469,9 +473,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		debugOutput("RECV TIMEOUT");
 	}
 #endif
-	if (m_target != TARGET_RAW) {
+	if (m_target != TARGET_RAW && eos) {
 		// eliminate ending char
-		if (eos) n--;
+		n--;
 	}
 	buffer[n] = 0;
 #ifdef DEBUG
@@ -489,10 +493,25 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
+#if ESP32
+	char buf[256];
+	int len = strlen(s);
+	if (len > sizeof(buf) - 6) len = sizeof(buf) - 6;
+	memcpy(buf, targets[m_target], 4);
+	memcpy(buf + 4, s, len);
+	len += 4;
+	// add terminating byte (ESC)
+	buf[len++] = 0x1B;
+	sleep(10);
+#else
 	sleep(1);
+#endif
 	digitalWrite(SPI_PIN_CS, LOW);
 	sleep(1);
 	//SPI.beginTransaction(spiSettings);
+#ifdef ESP32
+	SPI.writeBytes((uint8_t*)buf, len);
+#else
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
@@ -503,9 +522,11 @@ void COBDSPI::write(const char* s)
 	}
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
+#endif
 	sleep(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
+	sleep(1);
 }
 
 void COBDSPI::write(byte* data, int len)
@@ -517,12 +538,12 @@ void COBDSPI::write(byte* data, int len)
 #else
 	for (int i = 0; i < len; i++) {
 		SPI.transfer(data[i]);
-		delay(1);
 	}
 #endif
 	sleep(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
+	sleep(1);
 }
 
 byte COBDSPI::readPID(const byte pid[], byte count, int result[])
@@ -558,9 +579,11 @@ void COBDSPI::sleep(unsigned int ms)
 {
 #ifdef ESP32
 	uint32_t t = millis();
-	do {
-		gps_decode_task();
-	} while (millis() - t < ms);
+	for (;;) {
+        uint32_t elapsed = millis() - t;
+        if (elapsed >= ms) break;
+		gps_decode_task(ms - elapsed);
+	}
 #else
 	delay(ms);
 #endif
