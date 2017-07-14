@@ -44,8 +44,10 @@ void gps_decode_task(int timeout)
     }
     uint8_t c;
     int len = uart_read_bytes(GPS_UART_NUM, &c, 1, timeout / portTICK_RATE_MS);
-    if (len == 1 && gps->encode(c)) {
-        newGPSData = true;
+    if (len == 1) {
+        if (gps->encode(c)) {
+            newGPSData = true;
+        }
     }
 }
 

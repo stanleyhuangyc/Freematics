@@ -816,7 +816,7 @@ int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 #endif
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
+int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
@@ -853,20 +853,27 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 				Serial.print(buffer + bytesRecv - n);
 				Serial.println(">>>");
 #endif
+				if (expectedCount == 0) {
+					Serial.print("RECV:");
+					Serial.println(bytesRecv);
+					break;
+				}
 				for (byte i = 0; i < expectedCount; i++) {
 					// match expected string(s)
 					if (expected[i] && strstr(buffer, expected[i])) return i + 1;
 				}
 			}
-			//sleep(timeout > 50 ? 50 : timeout);
 #endif
 		} else if (n == -1) {
-      // an erroneous reading
-      break;
-    }
+			// an erroneous reading
+#ifdef XBEE_DEBUG
+			Serial.print("RECV ERROR");
+#endif
+			break;
+		}
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
-	return 0;
+	return expectedCount == 0 ? bytesRecv : 0;
 }
 
 void COBDSPI::xbPurge()
