@@ -25,34 +25,17 @@
 #define STATE_MEMS_READY 0x10
 #define STATE_FILE_READY 0x20
 
+#define PIN_LED 4
+
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
 
 class ONE : public COBDSPI, public CDataLogger
-#if USE_MEMS
-#if ENABLE_DMP
-,public MPU9250_DMP
-#else
-,public MPU9250_ACC
-#endif
-#endif
 {
 public:
     ONE():state(0) {}
     void setup()
     {
-#if USE_MEMS
-      if (!(state & STATE_MEMS_READY)) {
-        Serial.print("MEMS ");
-        if (memsInit(ENABLE_ORIENTATION)) {
-          state |= STATE_MEMS_READY;
-          Serial.println("OK");
-        } else {
-          Serial.println("NO");
-        }
-      }
-#endif
-
 #if USE_OBD
       Serial.print("OBD ");
       if (init()) {
@@ -189,18 +172,28 @@ public:
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY);
         Serial.println("Standby");
+        digitalWrite(PIN_LED, LOW);
         // put OBD chips into low power mode
         while (!init()) {
           Serial.print('.');
           delay(10000);
         }
+        digitalWrite(PIN_LED, HIGH);
         Serial.println("Wakeup");
         setup();
+        digitalWrite(PIN_LED, LOW);
     }
     byte state;
 };
 
-static ONE one;
+ONE one;
+#if MEMS_MODE == MEMS_ACC
+MPU9250_ACC mems;
+#elif MEMS_MODE == MEMS_9DOF
+MPU9250_9DOF mems;
+#elif MEMS_MODE == MEMS_DMP
+MPU9250_DMP mems;
+#endif
 
 void setup()
 {
@@ -211,16 +204,32 @@ void setup()
     Serial.println("Freematics ONE");
 #endif
     delay(1000);
+    // init LED pin
+    pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_LED, HIGH);
     byte ver = one.begin();
     Serial.print("Firmware Ver. ");
     Serial.println(ver);
+
+#if MEMS_MODE
+    Serial.print("MEMS ");
+    if (mems.memsInit(ENABLE_ORIENTATION)) {
+      one.state |= STATE_MEMS_READY;
+      Serial.println("OK");
+    } else {
+      Serial.println("NO");
+    }
+#endif
+
     one.setup();
+    digitalWrite(PIN_LED, LOW);
 }
 
 void loop()
 {
 #if ENABLE_DATA_LOG
     if (!(one.state & STATE_FILE_READY) && (one.state & STATE_SD_READY)) {
+      digitalWrite(PIN_LED, HIGH);
       if (one.state & STATE_GPS_FOUND) {
         // GPS connected
         if (one.state & STATE_GPS_READY) {
@@ -229,6 +238,8 @@ void loop()
             MMDD = 0;
             one.state |= STATE_FILE_READY;
           }
+        } else {
+          Serial.println("Waiting for GPS...");
         }
       } else {
         // no GPS connected
@@ -236,7 +247,8 @@ void loop()
           one.state |= STATE_FILE_READY;
         }
       }
-      delay(1000);
+      one.sleep(1000);
+      digitalWrite(PIN_LED, LOW);
       return;
     }
 #endif
@@ -252,7 +264,7 @@ void loop()
           }
           // process MEMS data every time a PID is read to ensure data frequency
 #endif
-#if USE_MEMS
+#if MEMS_MODE
           if (one.state & STATE_MEMS_READY) {
             float acc[3];
             bool updated;
@@ -261,9 +273,9 @@ void loop()
 #if !ENABLE_DMP
             float gyr[3];
             float mag[3];
-            updated = one.memsRead(acc, gyr, mag, 0, &ori);
+            updated = mems.memsRead(acc, gyr, mag, 0, &ori);
 #else
-            updated = one.memsRead(acc, 0, 0, 0, &ori);
+            updated = mems.memsRead(acc, 0, 0, 0, &ori);
 #endif
             if (updated) {
               Serial.print("Orientation: ");
@@ -276,7 +288,7 @@ void loop()
               one.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
             }
 #else
-            updated = one.memsRead(acc);
+            updated = mems.memsRead(acc);
             if (updated) {
               one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
             }
@@ -291,9 +303,11 @@ void loop()
         }
     } else {
       if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
+        digitalWrite(PIN_LED, HIGH);
         if (one.init()) {
             one.state |= STATE_OBD_READY;
         }
+        digitalWrite(PIN_LED, LOW);
       }
     }
 
@@ -309,13 +323,16 @@ void loop()
 #endif
 
 #if !ENABLE_DATA_OUT && !ENABLE_ORIENTATION
+    uint32_t t = millis();
     Serial.print(one.dataCount);
     Serial.print(" samples ");
+    Serial.print((float)one.dataCount * 1000 / t, 1);
+    Serial.print(" sps ");
 #if ENABLE_DATA_LOG
     uint32_t fileSize = sdfile.size();
     if (fileSize > 0) {
       one.flushData(fileSize);
-      Serial.print(sdfile.size());
+      Serial.print(fileSize);
       Serial.print(" bytes");
     }
 #endif

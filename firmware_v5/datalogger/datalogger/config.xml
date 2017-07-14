@@ -3,9 +3,13 @@
 <target name="Freematics ONE/ONE+" board="esp32 uno">
   <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
   <define name="Enable GPS" type="bool" const="USE_GPS" default="true"/>
-  <define name="Enable MPU-9250" type="bool" const="USE_MEMS" default="true"/>
-  <define name="Enable MPU-9250 DMP" type="bool" const="ENABLE_DMP" default="false"/>
-  <define name="Enable MPU-9250 Quaternion" type="bool" const="ENABLE_ORIENTATION" default="false"/>
+  <define name="Motion Sensor">
+    <option name="Disabled" const="MEMS_MODE=MEMS_DISABLED"/>
+    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC" default="true"/>
+    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF"/>
+    <option name="DMP" const="MEMS_MODE=MEMS_DMP"/>
+  </define>
+  <define name="Enable Quaternion" type="bool" const="ENABLE_ORIENTATION" default="false"/>
   <define name="Enable Data Logging" type="bool" const="ENABLE_DATA_LOG" default="true"/>
   <define name="Enable Data Output" type="bool" const="ENABLE_DATA_OUT" default="false"/>
   <define name="Data File Size Limit (KB)" const="MAX_DATA_FILE_SIZE" type="number" default="1024"/>

@@ -1,6 +1,11 @@
 #ifndef CONFIG_H_INCLUDED
 #define CONFIG_H_INCLUDED
 
+#define MEMS_DISABLED 0
+#define MEMS_ACC 1
+#define MEMS_9DOF 2
+#define MEMS_DMP 3
+
 /**************************************
 * Data logging/streaming out
 **************************************/
@@ -32,12 +37,8 @@
 #endif
 
 // enable(1)/disable(0) IMU DMP for MEMS reading and quaternion calculation
-#ifndef ENABLE_DMP
-#ifdef ESP32
-#define ENABLE_DMP 1
-#else
-#define ENABLE_DMP 0
-#endif
+#ifndef MEMS_MODE
+#define MEMS_MODE MEMS_ACC
 #endif
 
 // enable(1)/disable(0) quaternion calculation to get orientation
