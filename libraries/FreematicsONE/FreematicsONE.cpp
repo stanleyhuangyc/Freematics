@@ -95,6 +95,7 @@ bool COBDSPI::readPID(byte pid, int& result)
 	// receive and parse the response
 	char buffer[64];
 	char* data = 0;
+	sleep(20);
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
 		while ((p = strstr(p, "41 "))) {
@@ -463,9 +464,13 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #endif
 			}
 		}
+#ifndef ESP32
 		sleep(1);
+#endif
 		digitalWrite(SPI_PIN_CS, HIGH);
+#ifndef ESP32
 		sleep(1);
+#endif
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -564,6 +569,7 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 	byte n;
 	do {
 		write(cmd);
+		sleep(20);
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 7, " DATA", 5))) {
 			// data not ready
@@ -617,7 +623,7 @@ void COBDSPI::sleepSec(unsigned int seconds)
 bool COBDSPI::gpsInit(unsigned long baudrate)
 {
 	bool success = false;
-	char buf[128];
+	char buf[64];
 	m_target = TARGET_OBD;
 	m_internalGPS = false;
 	if (baudrate) {

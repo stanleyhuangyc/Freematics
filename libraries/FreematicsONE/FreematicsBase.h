@@ -100,7 +100,7 @@
 #endif
 
 #define GPS_READ_TIMEOUT 200 /* ms */
-#define GPS_INIT_TIMEOUT 2000 /* ms */
+#define GPS_INIT_TIMEOUT 1000 /* ms */
 
 typedef enum {
     PROTO_AUTO = 0,
