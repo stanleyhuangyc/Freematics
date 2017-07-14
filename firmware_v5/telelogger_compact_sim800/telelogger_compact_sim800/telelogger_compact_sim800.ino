@@ -32,7 +32,6 @@
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
-uint8_t deviceTemp = 0; // device temperature
 uint32_t lastSentTime = 0;
 
 class CCache : public CStorageNull {
@@ -61,6 +60,7 @@ public:
         memcpy(m_cache + m_cacheBytes, buf, len);
         m_cacheBytes += len;
         m_cache[m_cacheBytes++] = ',';
+        m_cache[m_cacheBytes] = 0;
         m_samples++;
     }
 protected:
@@ -68,24 +68,15 @@ protected:
     char m_cache[RAM_CACHE_SIZE] = {0};
 };
 
-class CTeleLogger : public CTeleClientSIM800
-#if ENABLE_OBD
-,public COBDSPI
-#else
-,public CFreematicsESP32
-#endif
+class CTeleLogger : public CTeleClientSIM800, public COBDSPI
 {
 public:
   bool setup()
   {
     clearState(STATE_ALL_GOOD);
 
-#if ENABLE_OBD
     // initialize OBD communication
     if (!checkState(STATE_OBD_READY)) {
-      Serial.print("VER ");
-      Serial.println(begin());
-
       Serial.print("OBD...");
       if (!init()) {
         Serial.println("NO");
@@ -94,21 +85,29 @@ public:
       Serial.println("OK");
       setState(STATE_OBD_READY);
     }
-#endif
 
-#if ENABLE_GPS
     // start serial communication with GPS receiver
     if (!checkState(STATE_GPS_READY)) {
       Serial.print("GPS...");
       if (gpsInit(GPS_SERIAL_BAUDRATE)) {
         setState(STATE_GPS_READY);
-        Serial.print("OK");
-        blePrint("GPS OK");
+        Serial.println("OK");
       } else {
         Serial.println("NO");
       }
     }
-#endif
+
+/*
+    if (!checkState(STATE_MEMS_READY)) {
+      Serial.print("MEMS...");
+      if (mems.memsInit()) {
+        setState(STATE_MEMS_READY);
+        Serial.println("OK");
+      } else {
+        Serial.println("NO");
+      }
+    }
+*/
 
     // initialize network module
     Serial.print(netDeviceName());
@@ -149,25 +148,27 @@ public:
     cache.timestamp(millis());
 
 #ifdef ESP32
-    deviceTemp = (int)readChipTemperature() * 165 / 255 - 40;
-#endif
-    if ((txCount % 100) == 1) {
+    int16_t deviceTemp = (int)readChipTemperature() * 165 / 255 - 40;
+    if ((txCount % 100) == 99) {
       cache.log(PID_DEVICE_TEMP, deviceTemp);
     }
+#endif
 
-#if ENABLE_GPS
     // process GPS data if connected
     if (checkState(STATE_GPS_READY)) {
       processGPS();
     }
-#endif
 
-#if ENABLE_OBD
     // process OBD data if connected
     if (checkState(STATE_OBD_READY)) {
       processOBD();
     }
-#endif
+
+/*
+    if (checkState(STATE_MEMS_READY)) {
+      processMEMS();
+    }
+*/
 
     // check GSM location if GPS not present
     if (!checkState(STATE_GPS_READY) && (txCount % GSM_LOCATION_INTERVAL) == 0) {
@@ -182,13 +183,11 @@ public:
       }
     }
 
-#if ENABLE_OBD
     // read and log car battery voltage , data in 0.01v
     {
       int v = getVoltage() * 100;
       cache.log(PID_BATTERY_VOLTAGE, v);
     }
-#endif
 
     uint32_t t = millis();
     if ((txCount % SERVER_SYNC_INTERVAL) == (SERVER_SYNC_INTERVAL - 1)) {
@@ -199,7 +198,7 @@ public:
         connErrors = 0;
         txCount++;
       }
-    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
+    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 1) {
       digitalWrite(PIN_LED, HIGH);
       //Serial.println(cache.getBuffer()); // print the content to be sent
       Serial.print('[');
@@ -222,25 +221,9 @@ public:
       }
       lastSentTime = t;
     }
-
-#if ENABLE_OBD
-    if (errors > MAX_OBD_ERRORS) {
-      reset();
-      if (!init()) {
-        clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_ALL_GOOD);
-      }
-    }
-  #endif
-
-    if (deviceTemp >= COOLING_DOWN_TEMP) {
-      // device too hot, cool down
-      Serial.println("Cooling down...");
-      sleep(10000);
-    }
   }
   bool login()
   {
-    // connect to telematics server
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.print("LOGIN...");
       if (netOpen(SERVER_HOST, SERVER_PORT)) {
@@ -255,9 +238,6 @@ public:
         netClose();
         continue;
       }
-
-      Serial.print("SERVER:");
-      Serial.println(serverName());
 
       Serial.print("FEED ID:");
       Serial.println(feedid);
@@ -312,7 +292,7 @@ public:
   {
     for (byte attempts = 0; attempts < 3; attempts++) {
       char buf[64];
-      byte n = sprintf_P(buf, PSTR("%X#EV=%u,TS=%lu,VIN=%s"), feedid, (unsigned int)event, millis(), DEFAULT_VIN);
+      byte n = sprintf_P(buf, PSTR("%X#EV=%u,TS=%lu,VIN=%s"), feedid, (unsigned int)event, millis(), DEVICE_ID);
       if (!netSend(buf, n, true)) {
         Serial.println("Unsent");
         continue;
@@ -344,36 +324,29 @@ public:
     }
     return false;
   }
-  void resetNetwork()
+  void shutDownNet()
   {
     netClose();
     netEnd();
     clearState(STATE_NET_READY);
-    setup();
+    Serial.print(netDeviceName());
+    Serial.println(" OFF");
   }
   void standby()
   {
       if (checkState(STATE_NET_READY)) {
         if (checkState(STATE_CONNECTED)) {
           notifyServer(EVENT_LOGOUT);
-          netClose();
         }
-        Serial.print(netDeviceName());
-        netEnd(); // turn off network module power (if supported)
-        Serial.println(" OFF");
-        clearState(STATE_NET_READY);
+        shutDownNet();
       }
-#if ENABLE_OBD
       if (errors > MAX_OBD_ERRORS) {
         // inaccessible OBD treated as end of trip
         feedid = 0;
       }
-#endif
-#if ENABLE_GPS
       if (checkState(STATE_GPS_READY)) {
         gpsInit(0); // turn off GPS power
       }
-#endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
       Serial.println("Standby");
       do {
@@ -385,7 +358,6 @@ public:
   void setState(byte flags) { m_state |= flags; }
   void clearState(byte flags) { m_state &= ~flags; }
 private:
-#if ENABLE_OBD
   void processOBD()
   {
       int speed = readSpeed();
@@ -424,8 +396,6 @@ private:
           return -1;
         }
     }
-#endif
-#if ENABLE_GPS
     void processGPS()
     {
         static uint16_t lastUTC = 0;
@@ -446,66 +416,22 @@ private:
               cache.log(PID_GPS_SPEED, gd.speed);
               cache.log(PID_GPS_SAT_COUNT, gd.sat);
               lastUTC = (uint16_t)gd.time;
-              Serial.print("UTC:");
-              Serial.print(gd.time);
-              Serial.print(" SAT:");
-              Serial.println((int)gd.sat);
             }
         }
     }
-#endif
-#if MEMS_MODE
-    void calibrateMEMS(float accBias[], unsigned int duration)
+/*
+    void processMEMS()
     {
-        // MEMS data collected while sleeping
-        clearMEMS();
-        for (uint32_t t = millis(); millis() - t < duration; ) {
-          readMEMS();
-          delay(20);
-        }
-        // store accelerometer reference data
-        if (accCount) {
-          accBias[0] = accSum[0] / accCount;
-          accBias[1] = accSum[1] / accCount;
-          accBias[2] = accSum[2] / accCount;
-        }
-        Serial.print("ACC Bias:");
-        Serial.print(accBias[0]);
-        Serial.print('/');
-        Serial.print(accBias[1]);
-        Serial.print('/');
-        Serial.println(accBias[2]);
-    }
-    void clearMEMS()
-    {
-      accCount = 0;
-      accSum[0] = 0;
-      accSum[1] = 0;
-      accSum[2] = 0;
-    }
-    void readMEMS()
-    {
-      if (checkState(STATE_MEMS_READY)) {
-        // load and store accelerometer
         float acc[3];
         int16_t temp;
         mems.memsRead(acc, 0, 0, &temp);
-        if (accCount >= 255) {
-          clearMEMS();
-        }
-        accSum[0] += acc[0];
-        accSum[1] += acc[1];
-        accSum[2] += acc[2];
-        accCount++;
-#ifndef ESP32
         deviceTemp = temp / 10;
-#endif
-      }
+        cache.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
     }
-#endif
+    MPU9250_ACC mems;
+*/
     CCache cache;
     byte m_state = 0;
-    uint32_t m_cmd = 0;
 };
 
 CTeleLogger logger;
@@ -519,6 +445,8 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     // perform initializations
     digitalWrite(PIN_LED, HIGH);
+
+    logger.begin();
     logger.setup();
     digitalWrite(PIN_LED, LOW);
 }
@@ -536,10 +464,20 @@ void loop()
     }
     if (logger.getConnErrors() >= MAX_CONN_ERRORS) {
       digitalWrite(PIN_LED, HIGH);
-      logger.resetNetwork();
+      logger.shutDownNet();
+      logger.setup();
       digitalWrite(PIN_LED, LOW);
       return;
     }
+    if (logger.errors > MAX_OBD_ERRORS) {
+      digitalWrite(PIN_LED, HIGH);
+      logger.reset();
+      logger.clearState(STATE_OBD_READY | STATE_GPS_READY);
+      logger.setup();
+      digitalWrite(PIN_LED, LOW);
+      return;
+    }
+
     // collect and transmit data
     logger.loop();
 }
