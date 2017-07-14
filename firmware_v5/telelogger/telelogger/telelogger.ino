@@ -247,11 +247,10 @@ if (!checkState(STATE_STORAGE_READY)) {
       Serial.print(txCount);
       Serial.print("] ");
       // transmit data
-      int bytesSent = transmit(cache.getBuffer(), cache.getBytes(), false);
-      if (bytesSent > 0) {
+      if (transmit(cache.getBuffer(), cache.getBytes(), false)) {
         // output some stats
         char buf[16];
-        sprintf(buf, "%uB sent", bytesSent);
+        sprintf(buf, "%uB sent", cache.getBytes());
         Serial.print(buf);
         blePrint(buf);
 #if STORAGE_TYPE != STORAGE_NONE
@@ -361,7 +360,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     for (s = data; *s && *s != '*'; s++) sum += *s;
     return (*s && hex2uint8(s + 1) == sum);
   }
-  int transmit(const char* data, int bytes, bool wait)
+  bool transmit(const char* data, int bytes, bool wait)
   {
     if (m_waiting) {
       // wait for last data to be sent
@@ -376,26 +375,23 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
     // transmit data
     if (data[bytes - 1] == ',') bytes--;
-    int bytesSent = netSend(data, bytes, wait);
-
-    if (bytesSent == 0) {
+    if (!netSend(data, bytes, wait)) {
       connErrors++;
-      return 0;
-    } else {
-      if (!wait) {
-        m_waiting = true;
-      } else {
-        connErrors = 0;
-        txCount++;
-      }
+      return false;
     }
-    return bytesSent;
+    if (!wait) {
+      m_waiting = true;
+    } else {
+      connErrors = 0;
+      txCount++;
+    }
+    return true;
   }
   bool syncServer()
   {
     char buf[32];
     Serial.print("Syncing...");
-    int len = sprintf(buf, "%X#EV=%u,TS=%lu", feedid, EVENT_SYNC, millis());
+    int len = sprintf(buf, "EV=%u,TS=%lu", EVENT_SYNC, millis());
     if (!netSend(buf, len, true)) {
       Serial.println("Sync error");
       return false;
@@ -422,7 +418,7 @@ if (!checkState(STATE_STORAGE_READY)) {
   bool notifyServer(byte event, const char* serverKey, const char* payload)
   {
     char buf[64];
-    sprintf(buf, "%X#EV=%u,TS=%lu", feedid, (unsigned int)event, millis());
+    sprintf(buf, "EV=%u,TS=%lu", (unsigned int)event, millis());
     String req = buf;
     if (serverKey) {
       req += ",SK=";
