@@ -5,11 +5,12 @@
 * (C)2017 Developed by Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
-#ifdef ESP32
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+#ifdef ESP32
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
@@ -35,11 +36,14 @@ static bool newGPSData = false;
 
 #define UART_BUF_SIZE (2048)
 
-void gps_decode_task()
+void gps_decode_task(int timeout)
 {
-    if (!gps) return;
+    if (!gps) {
+        delay(timeout);
+        return;
+    }
     uint8_t c;
-    int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 0 /*1000 / portTICK_RATE_MS*/);
+    int len = uart_read_bytes(GPS_UART_NUM, &c, 1, timeout / portTICK_RATE_MS);
     if (len == 1 && gps->encode(c)) {
         newGPSData = true;
     }
@@ -68,8 +72,7 @@ int gps_write_string(const char* string)
 
 bool gps_decode_start()
 {
-    //if (xGPSTaskHandle) return true;
-    if (gps) return false;
+    if (gps) return true;
 
     uart_config_t uart_config = {
         .baud_rate = 115200,
@@ -87,7 +90,7 @@ bool gps_decode_start()
     //In this example we don't even use a buffer for sending data.
     uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
 
-    // check input
+    // quick check of input data format
     uint32_t t = millis();
     uint8_t match[] = {'$', ',', '\n'};
     int idx = 0;
@@ -103,7 +106,6 @@ bool gps_decode_start()
     }
 
     gps = new TinyGPS;
-    //xTaskCreate(gps_decode_task, "gps_decode_task", 1024, NULL, 10, &xGPSTaskHandle);
     return true;
 }
 
@@ -143,7 +145,7 @@ int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout)
     do {
         uint8_t c;
         int len = uart_read_bytes(BEE_UART_NUM, &c, 1, 0);
-        gps_decode_task();
+        gps_decode_task(0);
         if (len == 1) {
             if (c >= 0xA && c <= 0x7E) {
                 buffer[recv++] = c;
@@ -316,9 +318,11 @@ void CFreematicsESP32::xbTogglePower()
 void CFreematicsESP32::sleep(unsigned int ms)
 {
 	uint32_t t = millis();
-	do {
-		gps_decode_task();
-	} while (millis() - t < ms);
+	for (;;) {
+        uint32_t elapsed = millis() - t;
+        if (elapsed >= ms) break;
+		gps_decode_task(ms - elapsed);
+	}
 }
 
 #endif

@@ -1,6 +1,11 @@
 #ifndef CONFIG_H_INCLUDED
 #define CONFIG_H_INCLUDED
 
+#define MEMS_DISABLED 0
+#define MEMS_ACC 1
+#define MEMS_9DOF 2
+#define MEMS_DMP 3
+
 /**************************************
 * Data logging/streaming out
 **************************************/
@@ -11,7 +16,7 @@
 #define ENABLE_DATA_LOG 1
 
 // enable(1)/disable(0) data streaming
-#define ENABLE_DATA_OUT 0
+#define ENABLE_DATA_OUT 1
 
 // file size limit
 #define MAX_DATA_FILE_SIZE 1024 /* KB */
@@ -31,10 +36,15 @@
 
 #endif
 
-// enable(1)/disable(0) MEMS sensor fusion for orientation
-#define ENABLE_ORIENTATION false
+// enable(1)/disable(0) IMU DMP for MEMS reading and quaternion calculation
+#ifndef MEMS_MODE
+#define MEMS_MODE MEMS_ACC
+#endif
 
-#define ORIENTATION_INTERVAL 50
+// enable(1)/disable(0) quaternion calculation to get orientation
+#ifndef ENABLE_ORIENTATION
+#define ENABLE_ORIENTATION 0
+#endif
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
