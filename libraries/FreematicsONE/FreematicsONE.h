@@ -74,7 +74,7 @@ public:
   // send data to xBee UART
 	void xbWrite(const char* data, int len);
 	// receive data from xBee UART (returns 0/1/2)
-	virtual byte xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
+	virtual int xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
 	// purge xBee UART buffer
 	void xbPurge();
 	// toggle xBee module power
