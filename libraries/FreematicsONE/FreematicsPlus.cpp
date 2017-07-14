@@ -36,11 +36,14 @@ static bool newGPSData = false;
 
 #define UART_BUF_SIZE (2048)
 
-void gps_decode_task()
+void gps_decode_task(int timeout)
 {
-    if (!gps) return;
+    if (!gps) {
+        delay(timeout);
+        return;
+    }
     uint8_t c;
-    int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 0 /*1000 / portTICK_RATE_MS*/);
+    int len = uart_read_bytes(GPS_UART_NUM, &c, 1, timeout / portTICK_RATE_MS);
     if (len == 1 && gps->encode(c)) {
         newGPSData = true;
     }
@@ -142,7 +145,7 @@ int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout)
     do {
         uint8_t c;
         int len = uart_read_bytes(BEE_UART_NUM, &c, 1, 0);
-        gps_decode_task();
+        gps_decode_task(0);
         if (len == 1) {
             if (c >= 0xA && c <= 0x7E) {
                 buffer[recv++] = c;
@@ -315,9 +318,11 @@ void CFreematicsESP32::xbTogglePower()
 void CFreematicsESP32::sleep(unsigned int ms)
 {
 	uint32_t t = millis();
-	do {
-		gps_decode_task();
-	} while (millis() - t < ms);
+	for (;;) {
+        uint32_t elapsed = millis() - t;
+        if (elapsed >= ms) break;
+		gps_decode_task(ms - elapsed);
+	}
 }
 
 #endif
