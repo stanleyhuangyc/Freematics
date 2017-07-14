@@ -232,6 +232,7 @@ void loop()
       digitalWrite(PIN_LED, HIGH);
       if (one.state & STATE_GPS_FOUND) {
         // GPS connected
+        one.logGPSData();
         if (one.state & STATE_GPS_READY) {
           uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
           if (one.openFile(dateTime)) {
