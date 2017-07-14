@@ -94,6 +94,10 @@ public:
     }
 #endif
 
+#ifdef ENABLE_GPS
+    initGPS();
+#endif
+
 if (!checkState(STATE_STORAGE_READY)) {
   // init storage
   cache.init(RAM_CACHE_SIZE);
@@ -151,22 +155,6 @@ if (!checkState(STATE_STORAGE_READY)) {
     } else {
       Serial.println("NO");
       return false;
-    }
-#endif
-
-#if ENABLE_GPS
-    // start serial communication with GPS receiver
-    if (!checkState(STATE_GPS_READY)) {
-      Serial.print("GPS...");
-      if (gpsInit(GPS_SERIAL_BAUDRATE)) {
-        setState(STATE_GPS_READY);
-        Serial.print("OK(");
-        Serial.print(internalGPS() ? "internal" : "external");
-        Serial.println(')');
-        blePrint("GPS OK");
-      } else {
-        Serial.println("NO");
-      }
     }
 #endif
 
@@ -291,8 +279,13 @@ if (!checkState(STATE_STORAGE_READY)) {
 #if ENABLE_OBD
     if (errors > MAX_OBD_ERRORS) {
       reset();
+      clearState(STATE_GPS_READY);
       if (!init()) {
-        clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_ALL_GOOD);
+        clearState(STATE_OBD_READY | STATE_ALL_GOOD);
+      } else {
+#if ENABLE_GPS
+        initGPS();
+#endif
       }
     }
   #endif
@@ -480,24 +473,21 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
     return false;
   }
-  void resetNetwork()
+  void shutDownNet()
   {
+    Serial.print(netDeviceName());
     netClose();
     netEnd();
     clearState(STATE_NET_READY);
-    setup();
+    Serial.println(" OFF");
   }
   void standby()
   {
       if (checkState(STATE_NET_READY)) {
         if (checkState(STATE_CONNECTED)) {
           notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
-          netClose();
         }
-        Serial.print(netDeviceName());
-        netEnd(); // turn off network module power (if supported)
-        Serial.println(" OFF");
-        clearState(STATE_NET_READY);
+        shutDownNet();
       }
 #if STORAGE_TYPE != STORAGE_NONE
       if (checkState(STATE_STORAGE_READY)) {
@@ -635,6 +625,22 @@ private:
     }
 #endif
 #if ENABLE_GPS
+    void initGPS()
+    {
+      // start serial communication with GPS receiver
+      if (!checkState(STATE_GPS_READY)) {
+        Serial.print("GPS...");
+        if (gpsInit(GPS_SERIAL_BAUDRATE)) {
+          setState(STATE_GPS_READY);
+          Serial.print("OK(");
+          Serial.print(internalGPS() ? "internal" : "external");
+          Serial.println(')');
+          blePrint("GPS OK");
+        } else {
+          Serial.println("NO");
+        }
+      }
+    }
     void processGPS()
     {
         static uint16_t lastUTC = 0;
@@ -765,7 +771,8 @@ void loop()
     }
     if (logger.getConnErrors() >= MAX_CONN_ERRORS) {
       digitalWrite(PIN_LED, HIGH);
-      logger.resetNetwork();
+      logger.shutDownNet();
+      logger.setup();
       digitalWrite(PIN_LED, LOW);
       return;
     }
