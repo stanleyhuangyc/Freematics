@@ -107,22 +107,18 @@ void CQuaterion::MadgwickQuaternionUpdate(float ax, float ay, float az, float gx
   q[3] = q4 * norm;
 }
 
-void CQuaterion::getOrientation(float& yaw, float& pitch, float& roll)
+void CQuaterion::getOrientation(ORIENTATION* ori)
 {
-     yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);
-     pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-     roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
-     pitch *= 180.0f / PI;
-     yaw   *= 180.0f / PI;
-     yaw   -= 13.8; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-     roll  *= 180.0f / PI;
+     ori->yaw  = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]) * 180.0f / PI;
+     ori->pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2])) * 180.0f / PI;
+     ori->roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]) * 180.0f / PI;
 }
 
 //==============================================================================
 //====== Set of useful function to access acceleration. gyroscope, magnetometer,
 //====== and temperature data
 //==============================================================================
-void CMPU9250::readAccelData(int16_t * destination)
+void MPU9250_ACC::readAccelData(int16_t * destination)
 {
   uint8_t rawData[6];   // x/y/z accel register data stored here
   readBytes(ACCEL_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers into data array
@@ -132,7 +128,7 @@ void CMPU9250::readAccelData(int16_t * destination)
 }
 
 
-void CMPU9250::readGyroData(int16_t * destination)
+void MPU9250_9DOF::readGyroData(int16_t * destination)
 {
   uint8_t rawData[6];  // x/y/z gyro register data stored here
   readBytes(GYRO_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers sequentially into data array
@@ -141,7 +137,7 @@ void CMPU9250::readGyroData(int16_t * destination)
   destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
 }
 
-void CMPU9250::readMagData(int16_t * destination)
+void MPU9250_9DOF::readMagData(int16_t * destination)
 {
   if(readByteAK(AK8963_ST1) & 0x01) { // wait for magnetometer data ready bit to be set
     uint8_t rawData[7];  // x/y/z gyro register data, ST2 register stored here, must read ST2 at end of data acquisition
@@ -155,14 +151,14 @@ void CMPU9250::readMagData(int16_t * destination)
  }
 }
 
-int16_t CMPU9250::readTempData()
+int16_t MPU9250_ACC::readTempData()
 {
   uint8_t rawData[2];  // x/y/z gyro register data stored here
   readBytes(TEMP_OUT_H, 2, &rawData[0]);  // Read the two raw data registers sequentially into data array
   return ((int16_t)rawData[0] << 8) | rawData[1];  // Turn the MSB and LSB into a 16-bit value
 }
 
-bool CMPU9250::initAK8963(float * destination)
+bool MPU9250_9DOF::initAK8963(float * destination)
 {
   if (readByteAK(WHO_AM_I_AK8963) != 0x48) {
       return false;
@@ -199,7 +195,7 @@ bool CMPU9250::initAK8963(float * destination)
 // Function which accumulates gyro and accelerometer data after device
 // initialization. It calculates the average of the at-rest readings and then
 // loads the resulting offsets into accelerometer and gyro bias registers.
-void CMPU9250::calibrateMPU9250(float * gyroBias, float * accelBias)
+void MPU9250_9DOF::calibrateMPU9250(float * gyroBias, float * accelBias)
 {
   uint8_t data[12]; // data array to hold accelerometer and gyro x, y, z, data
   uint16_t ii, packet_count, fifo_count;
@@ -349,7 +345,7 @@ void CMPU9250::calibrateMPU9250(float * gyroBias, float * accelBias)
 
 
 // Accelerometer and gyroscope self test; check calibration wrt factory settings
-void CMPU9250::MPU9250SelfTest(float * destination) // Should return percent deviation from factory trim values, +/- 14 or less deviation is a pass
+void MPU9250_9DOF::MPU9250SelfTest(float * destination) // Should return percent deviation from factory trim values, +/- 14 or less deviation is a pass
 {
   uint8_t rawData[6] = {0, 0, 0, 0, 0, 0};
   uint8_t selfTest[6];
@@ -435,7 +431,7 @@ void CMPU9250::MPU9250SelfTest(float * destination) // Should return percent dev
 
 
 // Wire.h read and write protocols
-void CMPU9250::writeByte(uint8_t subAddress, uint8_t data)
+void MPU9250_ACC::writeByte(uint8_t subAddress, uint8_t data)
 {
   Wire.beginTransmission(MPU9250_ADDRESS);  // Initialize the Tx buffer
   Wire.write(subAddress);           // Put slave register address in Tx buffer
@@ -443,30 +439,30 @@ void CMPU9250::writeByte(uint8_t subAddress, uint8_t data)
   Wire.endTransmission();           // Send the Tx buffer
 }
 
-uint8_t CMPU9250::readByte(uint8_t subAddress)
+uint8_t MPU9250_ACC::readByte(uint8_t subAddress)
 {
   uint8_t data; // `data` will store the register data
   Wire.beginTransmission(MPU9250_ADDRESS);         // Initialize the Tx buffer
   Wire.write(subAddress);                  // Put slave register address in Tx buffer
   Wire.endTransmission(false);             // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom(MPU9250_ADDRESS, (uint8_t) 1);  // Read one byte from slave register address
+  Wire.requestFrom((uint8_t)MPU9250_ADDRESS, (uint8_t) 1);  // Read one byte from slave register address
   data = Wire.read();                      // Fill Rx buffer with result
   return data;                             // Return data read from slave register
 }
 
-void CMPU9250::readBytes(uint8_t subAddress, uint8_t count, uint8_t * dest)
+void MPU9250_ACC::readBytes(uint8_t subAddress, uint8_t count, uint8_t * dest)
 {
   Wire.beginTransmission(MPU9250_ADDRESS);   // Initialize the Tx buffer
   Wire.write(subAddress);            // Put slave register address in Tx buffer
   Wire.endTransmission(false);       // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom(MPU9250_ADDRESS, count);  // Read bytes from slave register address
+  Wire.requestFrom((uint8_t)MPU9250_ADDRESS, count);  // Read bytes from slave register address
   uint8_t i = 0;
   while (Wire.available() && i < count) {
         dest[i++] = Wire.read();
   }
 }
 
-void CMPU9250::writeByteAK(uint8_t subAddress, uint8_t data)
+void MPU9250_9DOF::writeByteAK(uint8_t subAddress, uint8_t data)
 {
   Wire.beginTransmission(MPU9250_ADDRESS);  // Initialize the Tx buffer
   Wire.write(subAddress);           // Put slave register address in Tx buffer
@@ -474,30 +470,30 @@ void CMPU9250::writeByteAK(uint8_t subAddress, uint8_t data)
   Wire.endTransmission();           // Send the Tx buffer
 }
 
-uint8_t CMPU9250::readByteAK(uint8_t subAddress)
+uint8_t MPU9250_9DOF::readByteAK(uint8_t subAddress)
 {
   uint8_t data; // `data` will store the register data
   Wire.beginTransmission(AK8963_ADDRESS);         // Initialize the Tx buffer
   Wire.write(subAddress);                  // Put slave register address in Tx buffer
   Wire.endTransmission(false);             // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom(AK8963_ADDRESS, (uint8_t) 1);  // Read one byte from slave register address
+  Wire.requestFrom((uint8_t)AK8963_ADDRESS, (uint8_t) 1);  // Read one byte from slave register address
   data = Wire.read();                      // Fill Rx buffer with result
   return data;                             // Return data read from slave register
 }
 
-void CMPU9250::readBytesAK(uint8_t subAddress, uint8_t count, uint8_t * dest)
+void MPU9250_9DOF::readBytesAK(uint8_t subAddress, uint8_t count, uint8_t * dest)
 {
   Wire.beginTransmission(AK8963_ADDRESS);   // Initialize the Tx buffer
   Wire.write(subAddress);            // Put slave register address in Tx buffer
   Wire.endTransmission(false);       // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom(AK8963_ADDRESS, count);  // Read bytes from slave register address
+  Wire.requestFrom((uint8_t)AK8963_ADDRESS, count);  // Read bytes from slave register address
   uint8_t i = 0;
   while (Wire.available() && i < count) {
         dest[i++] = Wire.read();
   }
 }
 
-void CMPU9250::initMPU9250()
+void MPU9250_ACC::initMPU9250()
 {
  // wake up device
   writeByte(PWR_MGMT_1, 0x00); // Clear sleep mode bit (6), enable all sensors
@@ -556,7 +552,34 @@ void CMPU9250::initMPU9250()
 
 }
 
-byte CMPU9250::memsInit(bool fusion)
+byte MPU9250_ACC::memsInit(bool fusion)
+{
+  Wire.begin();
+  Wire.setClock(400000);
+  //float SelfTest[6];
+  //MPU9250SelfTest(SelfTest);
+  byte c = readByte(WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
+  if (c != 0x68 && c != 0x71) return 0;
+  initMPU9250();
+  return (c == 0x71) ? 2 : 1;
+}
+
+bool MPU9250_ACC::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
+{
+  if (acc) {
+    readAccelData(accelCount);
+    acc[0] = (float)accelCount[0]*aRes; // - accelBias[0];  // get actual g value, this depends on scale being set
+    acc[1] = (float)accelCount[1]*aRes; // - accelBias[1];
+    acc[2] = (float)accelCount[2]*aRes; // - accelBias[2];
+  }
+  if (temp) {
+    int t = readTempData();
+    *temp = (float)t / 33.387 + 210;
+  }
+  return true;
+}
+
+byte MPU9250_9DOF::memsInit(bool fusion)
 {
   byte ret = 0;
   Wire.begin();
@@ -578,7 +601,7 @@ byte CMPU9250::memsInit(bool fusion)
   return ret;
 }
 
-bool CMPU9250::memsRead(float* acc, float* gyr, float* mag, int16_t* temp)
+bool MPU9250_9DOF::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
 {
   if (acc) {
     readAccelData(accelCount);
@@ -611,6 +634,7 @@ bool CMPU9250::memsRead(float* acc, float* gyr, float* mag, int16_t* temp)
 
   if (quaterion && acc && gyr && mag) {
     quaterion->MadgwickQuaternionUpdate(acc[0], acc[1], acc[2], gyr[0]*PI/180.0f, gyr[1]*PI/180.0f, gyr[2]*PI/180.0f,  mag[0],  mag[1], mag[2]);
+    quaterion->getOrientation(ori);
   }
   return true;
 }

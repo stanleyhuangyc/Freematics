@@ -5,9 +5,6 @@
 * (C)2012-2017 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
-#include <Arduino.h>
-#include <SPI.h>
-#include <Wire.h>
 #ifdef ARDUINO_ARCH_AVR
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -32,7 +29,7 @@ SIGNAL(WDT_vect) {
 bool gps_decode_start();
 bool gps_get_data(GPS_DATA* gdata);
 int gps_write_string(const char* string);
-void gps_decode_task();
+void gps_decode_task(int timeout);
 void bee_start();
 int bee_write_string(const char* string);
 int bee_write_data(uint8_t* data, int len);
@@ -271,6 +268,7 @@ void COBDSPI::reset()
 {
 	char buf[32];
 	sendCommand("ATR\r", buf, sizeof(buf));
+	delay(3000);
 }
 
 void COBDSPI::uninit()
@@ -292,14 +290,18 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
 	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
-	
+
 	m_state = OBD_DISCONNECTED;
+
+	byte errs = 0;
 	for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 		if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
-			reset();
-			delay(3000);
-			return false;
+			errs++;
 		}
+	}
+	if (errs) {
+		reset();
+		return false;
 	}
 
 	if (protocol != PROTO_AUTO) {
@@ -311,7 +313,6 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 
 	if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
 		reset();
-		delay(3000);
 		return false;
 	}
 
@@ -366,7 +367,7 @@ static const char targets[][4] = {
 	{'$','G','S','M'}
 };
 
-SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
+//SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
 
 byte COBDSPI::begin()
 {
@@ -386,8 +387,6 @@ byte COBDSPI::begin()
 	SPI.setClockDivider(SPI_CLOCK_DIV16);
 #endif
 	delay(100);
-	reset();
-	delay(3000);
 	return getVersion();
 }
 
@@ -403,9 +402,8 @@ byte COBDSPI::getVersion()
 	byte version = 0;
 	setTarget(TARGET_OBD);
 	for (byte n = 0; n < 3; n++) {
-		write("ATI\r");
 		char buffer[32];
-		if (receive(buffer, sizeof(buffer), 500)) {
+		if (sendCommand("ATI\r", buffer, sizeof(buffer), 500)) {
 			char *p = strstr(buffer, "OBDUART");
 			if (p) {
 				p += 9;
@@ -429,13 +427,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #ifdef DEBUG
 				debugOutput("NO READY SIGNAL");
 #endif
-				Serial.println("NO READY SIGNAL");
-				return 0;
+				break;
 			}
-		}
-#ifndef ESP32
-		SPI.beginTransaction(spiSettings);
-#endif
+		} 
 		sleep(10);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
@@ -444,8 +438,8 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			if (n == 0) {
 				// match header char before we can move forward
 				if (c == '$') {
-				buffer[0] = c;
-				n = 1;
+					buffer[0] = c;
+					n = 1;
 				}
 				continue;
 			}
@@ -464,24 +458,24 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				buffer[n] = c;
 				eos = (c == 0x9 && buffer[n - 1] =='>');
 				n++;
+#ifndef ESP32
+				if (eos) break;
+#endif
 			}
 		}
+		sleep(1);
 		digitalWrite(SPI_PIN_CS, HIGH);
-#ifndef ESP32
-		SPI.endTransaction();
-#endif
+		sleep(1);
 	} while (!eos && millis() - t < timeout);
-	if (millis() - t >= timeout) {
-		// timed out
 #ifdef DEBUG
+	if (!eos && millis() - t >= timeout) {
+		// timed out
 		debugOutput("RECV TIMEOUT");
-#endif
-		Serial.println("RECV TIMEOUT");
-		return 0;
 	}
-	if (m_target != TARGET_RAW) {
+#endif
+	if (m_target != TARGET_RAW && eos) {
 		// eliminate ending char
-		if (eos) n--;
+		n--;
 	}
 	buffer[n] = 0;
 #ifdef DEBUG
@@ -489,6 +483,8 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		debugOutput(buffer);
 	}
 #endif
+	// wait for READY pin to restore high level so SPI bus is released
+	while (digitalRead(SPI_PIN_READY) == LOW) sleep(1);
 	return n;
 }
 
@@ -507,9 +503,12 @@ void COBDSPI::write(const char* s)
 	// add terminating byte (ESC)
 	buf[len++] = 0x1B;
 	sleep(10);
+#else
+	sleep(1);
 #endif
 	digitalWrite(SPI_PIN_CS, LOW);
-	SPI.beginTransaction(spiSettings);
+	sleep(1);
+	//SPI.beginTransaction(spiSettings);
 #ifdef ESP32
 	SPI.writeBytes((uint8_t*)buf, len);
 #else
@@ -525,14 +524,15 @@ void COBDSPI::write(const char* s)
 	SPI.transfer(0x1B);
 #endif
 	sleep(1);
-	SPI.endTransaction();
+	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
+	sleep(1);
 }
 
 void COBDSPI::write(byte* data, int len)
 {
 	digitalWrite(SPI_PIN_CS, LOW);
-	SPI.beginTransaction(spiSettings);
+	//SPI.beginTransaction(spiSettings);
 #ifdef ESP32
 	SPI.writeBytes((uint8_t*)data, len);
 #else
@@ -541,8 +541,9 @@ void COBDSPI::write(byte* data, int len)
 	}
 #endif
 	sleep(1);
-	SPI.endTransaction();
+	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
+	sleep(1);
 }
 
 byte COBDSPI::readPID(const byte pid[], byte count, int result[])
@@ -552,7 +553,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 		if (readPID(pid[n], result[n])) {
 			results++;
 		}
-
+		sleep(5);
 	}
 	return results;
 }
@@ -576,10 +577,16 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 
 void COBDSPI::sleep(unsigned int ms)
 {
+#ifdef ESP32
 	uint32_t t = millis();
-	do {
-		gps_decode_task();
-	} while (millis() - t < ms);
+	for (;;) {
+        uint32_t elapsed = millis() - t;
+        if (elapsed >= ms) break;
+		gps_decode_task(ms - elapsed);
+	}
+#else
+	delay(ms);
+#endif
 }
 
 void COBDSPI::sleepSec(unsigned int seconds)

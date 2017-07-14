@@ -50,48 +50,48 @@ uint8_t const LS_R = 4;
 
 // use the gnu style oflag in open()
 /** open() oflag for reading */
-uint8_t const O_READ = 0X01;
-/** open() oflag - same as O_READ */
-uint8_t const O_RDONLY = O_READ;
+#define SD_O_READ 0X01
+/** open() oflag - same as SD_O_READ */
+#define SD_O_RDONLY SD_O_READ
 /** open() oflag for write */
-uint8_t const O_WRITE = 0X02;
-/** open() oflag - same as O_WRITE */
-uint8_t const O_WRONLY = O_WRITE;
+#define SD_O_WRITE 0X02
+/** open() oflag - same as SD_O_WRITE */
+#define SD_O_WRONLY SD_O_WRITE
 /** open() oflag for reading and writing */
-uint8_t const O_RDWR = (O_READ | O_WRITE);
+#define SD_O_RDWR (SD_O_READ | SD_O_WRITE)
 /** open() oflag mask for access modes */
-uint8_t const O_ACCMODE = (O_READ | O_WRITE);
+#define SD_O_ACCMODE (SD_O_READ | SD_O_WRITE)
 /** The file offset shall be set to the end of the file prior to each write. */
-uint8_t const O_APPEND = 0X04;
+#define SD_O_APPEND 0X04
 /** synchronous writes - call sync() after each write */
-uint8_t const O_SYNC = 0X08;
+#define SD_O_SYNC 0X08
 /** create the file if nonexistent */
-uint8_t const O_CREAT = 0X10;
-/** If O_CREAT and O_EXCL are set, open() shall fail if the file exists */
-uint8_t const O_EXCL = 0X20;
+#define SD_O_CREAT 0X10
+/** If SD_O_CREAT and SD_O_EXCL are set, open() shall fail if the file exists */
+#define SD_O_EXCL 0X20
 /** truncate the file to zero length */
-uint8_t const O_TRUNC = 0X40;
+#define SD_O_TRUNC 0X40
 
 // flags for timestamp
 /** set the file's last access date */
-uint8_t const T_ACCESS = 1;
+#define T_ACCESS 1
 /** set the file's creation date and time */
-uint8_t const T_CREATE = 2;
+#define T_CREATE 2
 /** Set the file's write date and time */
-uint8_t const T_WRITE = 4;
+#define T_WRITE 4
 // values for type_
 /** This SdFile has not been opened. */
-uint8_t const FAT_FILE_TYPE_CLOSED = 0;
+#define FAT_FILE_TYPE_CLOSED 0
 /** SdFile for a file */
-uint8_t const FAT_FILE_TYPE_NORMAL = 1;
+#define FAT_FILE_TYPE_NORMAL 1
 /** SdFile for a FAT16 root directory */
-uint8_t const FAT_FILE_TYPE_ROOT16 = 2;
+#define FAT_FILE_TYPE_ROOT16 2
 /** SdFile for a FAT32 root directory */
-uint8_t const FAT_FILE_TYPE_ROOT32 = 3;
+#define FAT_FILE_TYPE_ROOT32 3
 /** SdFile for a subdirectory */
-uint8_t const FAT_FILE_TYPE_SUBDIR = 4;
+#define FAT_FILE_TYPE_SUBDIR 4
 /** Test value for directory type */
-uint8_t const FAT_FILE_TYPE_MIN_DIR = FAT_FILE_TYPE_ROOT16;
+#define FAT_FILE_TYPE_MIN_DIR FAT_FILE_TYPE_ROOT16
 
 /** date field for FAT directory entry */
 static inline uint16_t FAT_DATE(uint16_t year, uint8_t month, uint8_t day) {
@@ -337,7 +337,7 @@ class SdFile : public Print {
   }
   /** \deprecated  Do not use in new apps */
   uint8_t open(SdFile& dirFile, const char* fileName) {  // NOLINT
-    return open(dirFile, fileName, O_RDWR);
+    return open(dirFile, fileName, SD_O_RDWR);
   }
   /** \deprecated Use:
    * uint8_t SdFile::open(SdFile* dirFile, uint16_t index, uint8_t oflag);
@@ -371,7 +371,7 @@ class SdFile : public Print {
  private:
   // bits defined in flags_
   // should be 0XF
-  static uint8_t const F_OFLAG = (O_ACCMODE | O_APPEND | O_SYNC);
+  static uint8_t const F_OFLAG = (SD_O_ACCMODE | SD_O_APPEND | SD_O_SYNC);
   // available bits
   static uint8_t const F_UNUSED = 0X30;
   // use unbuffered SD read

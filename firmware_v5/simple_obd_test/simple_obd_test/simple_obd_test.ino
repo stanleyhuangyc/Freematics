@@ -1,3 +1,5 @@
+#include <Arduino.h>
+
 /******************************************************************************
 * Simple OBD-II test sketch for Freematics ONE/ONE+
 * Written by Stanley Huang https://www.facebook.com/stanleyhuangyc
@@ -15,12 +17,18 @@
 
 #include <FreematicsONE.h>
 
+#define PIN_LED 4
+
 COBDSPI obd;
 bool connected = false;
+unsigned long count = 0;
 
 void setup() {
   // put your setup code here, to run once:
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, HIGH);
   delay(1000);
+  digitalWrite(PIN_LED, LOW);
   Serial.begin(115200);
   byte ver = obd.begin();
   Serial.print("OBD Firmware Version ");
@@ -30,19 +38,22 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   if (!connected) {
+    digitalWrite(PIN_LED, HIGH);
     Serial.print("Connecting to OBD...");
     if (obd.init()) {
       Serial.println("OK");
       connected = true;
     } else {
       Serial.println();
-      return;
     }
+    digitalWrite(PIN_LED, LOW);
+    return;
   }
   int value;
   Serial.print('[');
   Serial.print(millis());
-  Serial.print(']');
+  Serial.print("] #");
+  Serial.print(count++);
   if (obd.readPID(PID_RPM, value)) {
     Serial.print(" RPM=");
     Serial.print(value);
@@ -61,10 +72,14 @@ void loop() {
   Serial.print(temp);
 #endif
   Serial.println();
-  if (obd.errors > 3) {
+  if (obd.errors > 2) {
     Serial.println("OBD disconnected");
     connected = false;
-    obd.uninit();
+    obd.reset();
   }
-  delay(500);
+  //delay(500);
+  if (count == 1000) {
+    count = 0;
+    obd.reset();
+  }
 }

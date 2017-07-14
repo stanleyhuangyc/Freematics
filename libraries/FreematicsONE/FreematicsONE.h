@@ -5,13 +5,11 @@
 * (C)2012-2017 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
-#include <SPI.h>
 #include "FreematicsBase.h"
 #include "FreematicsMEMS.h"
+#include "FreematicsDMP.h"
 #include "FreematicsSD.h"
-#ifdef ESP32
 #include "FreematicsPlus.h"
-#endif
 
 #ifndef ARDUINO_ARCH_AVR
 #define sprintf_P sprintf
@@ -34,11 +32,7 @@
 #define TARGET_BEE 2
 #define TARGET_RAW 3
 
-#ifdef ESP32
 class COBDSPI : public virtual CFreematics {
-#else
-class COBDSPI {
-#endif
 public:
 	COBDSPI():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	byte begin();

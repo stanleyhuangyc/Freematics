@@ -5,13 +5,11 @@
 * (C)2017 Developed by Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
-#ifndef ESP32
-#error This library works with ESP32 targets only.
-#else
-
 #include <Arduino.h>
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
+
+#ifdef ESP32
 
 // get chip temperature sensor
 uint8_t readChipTemperature();
@@ -63,6 +61,8 @@ public:
     // delay specified number of ms while receiving and processing GPS data (ought to be regularly called)
     virtual void sleep(unsigned int ms);
 };
+
+#endif
 
 class CStorageNull;
 
@@ -187,7 +187,9 @@ public:
           return false;
       }
       int cardSize = SD.cardSize();
-      Serial.printf("SD card size: %uMB\n", cardSize);
+      Serial.print("SD card size:");
+      Serial.print(cardSize);
+      Serial.println("MB");
       return true;
     }
     bool begin(uint32_t dateTime = 0)
@@ -244,7 +246,6 @@ public:
         }
         sdfile.write((uint8_t*)buf, len);
         sdfile.write(' ');
-        uint32_t logsize = sdfile.size();
       }
   }
   uint32_t size()
@@ -255,5 +256,3 @@ private:
   SDClass SD;
   File sdfile;
 };
-
-#endif

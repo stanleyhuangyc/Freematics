@@ -8,8 +8,7 @@
 #ifndef _MPU9250_H
 #define _MPU9250_H
 
-#include <Arduino.h>
-#include <Wire.h>
+#include "FreematicsBase.h"
 
 // See also MPU-9250 Register Map and Descriptions, Revision 4.0,
 // RM-MPU-9250A-00, Rev. 1.4, 9/9/2013 for registers not listed in above
@@ -226,7 +225,7 @@ class CQuaterion
 {
 public:
   void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz);
-  void getOrientation(float& yaw, float& pitch, float& roll);
+  void getOrientation(ORIENTATION* ori);
 private:
   float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
   // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)
@@ -239,40 +238,44 @@ private:
   float deltat = 0.0f;
 };
 
-class CMPU9250
+class MPU9250_ACC
 {
 public:
-  byte memsInit(bool fusion = false);
-  bool memsRead(float* acc, float* gyr, float* mag, int16_t* temp);
-  void memsOrientation(float& pitch, float& yaw, float& row) {
-    if (quaterion) quaterion->getOrientation(pitch, yaw, row);
-  }
-private:
-  void getMres();
-  void getGres();
+  virtual byte memsInit(bool fusion = false);
+  virtual bool memsRead(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+protected:
   void getAres();
   void readAccelData(int16_t *);
-  void readGyroData(int16_t *);
-  void readMagData(int16_t *);
   int16_t readTempData();
-  void updateTime();
-  bool initAK8963(float *);
   void initMPU9250();
-  void calibrateMPU9250(float * gyroBias, float * accelBias);
-  void MPU9250SelfTest(float * destination);
   void writeByte(uint8_t, uint8_t);
   uint8_t readByte(uint8_t);
   void readBytes(uint8_t, uint8_t, uint8_t *);
+  int16_t accelCount[3] = {0};
+};
+
+class MPU9250_9DOF : public MPU9250_ACC
+{
+public:
+  byte memsInit(bool fusion = false);
+  bool memsRead(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+private:
+  void getMres();
+  void getGres();
+  void readGyroData(int16_t *);
+  void readMagData(int16_t *);
+  bool initAK8963(float *);
+  void calibrateMPU9250(float * gyroBias, float * accelBias);
+  void MPU9250SelfTest(float * destination);
   void writeByteAK(uint8_t, uint8_t);
   uint8_t readByteAK(uint8_t);
   void readBytesAK(uint8_t, uint8_t, uint8_t *);
   float gyroBias[3] = {0};
   float accelBias[3] = {0};      // Bias corrections for gyro and accelerometer
   float magCalibration[3] = {0};
-  int16_t accelCount[3] = {0};
   int16_t gyroCount[3] = {0};
   int16_t magCount[3] = {0};    // Stores the 16-bit signed magnetometer sensor output
   CQuaterion* quaterion = 0;
-};  // class MPU9250
+};
 
 #endif
