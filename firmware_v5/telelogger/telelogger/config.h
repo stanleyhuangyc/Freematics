@@ -31,6 +31,9 @@
 // maximum allowed time for re-establishing OBD connection
 #define MAX_OBD_RETRY_TIME 15000 /* ms */
 
+// maximum time allowed for re-establishing OBD-II connection
+#define MAX_OBD_RETRY_TIME 10000 /* ms */
+
 // VIN used when real one unavailable
 #ifdef DEVICE_ID
 #define DEFAULT_VIN DEVICE_ID
