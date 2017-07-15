@@ -278,11 +278,11 @@ bool CTeleClientSIM800::netSend(const char* data, unsigned int len, bool wait)
 {
   char head[16];
   int headLen = sprintf(head, "%X#", feedid);
-  memmove(data + headLen, data, len);
-  memcpy(data, head, headLen);
+  memmove((void*)data + headLen, data, len);
+  memcpy((void*)data, head, headLen);
   len += headLen;
   byte checksum = getChecksum(data, len);
-  len += sprintf(data + len, "*%X\r", (int)checksum);
+  len += sprintf((char*)data + len, "*%X\r", (int)checksum);
   sprintf(m_buffer, "AT+CIPSEND=%u\r", len - 1);
   if (netSendCommand(m_buffer, 200, ">")) {
     xbWrite(data, len);
