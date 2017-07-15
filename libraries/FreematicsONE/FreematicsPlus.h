@@ -69,6 +69,7 @@ class CStorageNull;
 class CStorageNull {
 public:
     virtual bool init() { return true; }
+    virtual void uninit() {}
     virtual bool begin() { return true; }
     virtual void end() {}
     virtual void log(uint16_t pid, int16_t value)
@@ -134,16 +135,21 @@ protected:
 
 class CStorageRAM: public CStorageNull {
 public:
-    virtual bool init(unsigned int cacheSize)
+    bool init(unsigned int cacheSize)
     {
       if (m_cacheSize != cacheSize) {
-        if (m_cache) {
-          delete m_cache;
-          m_cache = 0;
-        }
-        if (cacheSize) m_cache = new char[m_cacheSize = cacheSize];
+        uninit();
+        m_cache = new char[m_cacheSize = cacheSize];
       }
       return true;
+    }
+    void uninit()
+    {
+        if (m_cache) {
+            delete m_cache;
+            m_cache = 0;
+            m_cacheSize = 0;
+        }
     }
     void purge() { m_cacheBytes = 0; m_samples = 0; }
     unsigned int length() { return m_cacheBytes; }
@@ -169,6 +175,7 @@ public:
         m_samples++;
         if (m_next) m_next->dispatch(buf, len);
     }
+
     void header(uint16_t feedid)
     {
         m_cacheBytes = sprintf(m_cache, "%X#", (unsigned int)feedid);
