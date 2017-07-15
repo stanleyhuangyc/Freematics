@@ -247,10 +247,10 @@ public:
     char buffer[128];
 };
 
-class CTeleClient : public COBD3G, public CDataLogger
+class CTeleClient2 : public COBD3G, public CDataLogger
 {
 public:
-  CTeleClient():connErrors(0),txCount(0),feedid(0) {}
+  CTeleClient2():connErrors(0),txCount(0),feedid(0) {}
   bool verifyChecksum(const char* data)
   {
     uint8_t sum = 0;
@@ -308,7 +308,7 @@ public:
         continue;
       }
       if (event == EVENT_LOGIN) {
-        feedid = atoi(data);
+        feedid = hex2uint16(data);
         Serial.print("#FEED ID:");
         Serial.println(feedid);
       }
@@ -373,10 +373,7 @@ public:
   bool waiting;
 };
 
-class CTeleLogger : public CTeleClient
-#if USE_MEMS
-,public CMPU9250
-#endif
+class CTeleLogger : public CTeleClient2
 {
 public:
   CTeleLogger():m_state(0) {}
@@ -387,7 +384,7 @@ public:
 #if USE_MEMS
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("#MEMS...");
-      if (memsInit()) {
+      if (mems.memsInit()) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
       } else {
@@ -685,7 +682,7 @@ private:
         // load accelerometer and temperature data
         float acc[3];
         int16_t temp; // device temperature (in 0.1 celcius degree)
-        memsRead(acc, 0, 0, &temp);
+        mems.memsRead(acc, 0, 0, &temp);
         if (accCount >= 100) {
           accSum[0] >>= 1;
           accSum[1] >>= 1;
@@ -708,6 +705,8 @@ private:
       }
 #endif
     }
+    MPU9250_ACC mems;
+
     byte m_state;
 };
 
