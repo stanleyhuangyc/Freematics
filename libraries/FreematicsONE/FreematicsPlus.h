@@ -119,9 +119,14 @@ public:
         if (m_next) m_next->dispatch(buf, len);
     }
 protected:
-    virtual void addHeader(int feedid) {}
-    virtual void addTail() {}
-    virtual void removeTail() {}
+    byte checksum(const char* data, int len)
+    {
+        byte sum = 0;
+        for (int i = 0; i < len; i++) sum += data[i];
+        return sum;
+    }
+    virtual void header(uint16_t feedid) {}
+    virtual void tailer() {}
     uint32_t m_dataTime = 0;
     uint16_t m_samples = 0;
     CStorageNull* m_next = 0;
@@ -141,12 +146,12 @@ public:
       return true;
     }
     void purge() { m_cacheBytes = 0; m_samples = 0; }
-    unsigned int getBytes() { return m_cacheBytes; }
-    char* getBuffer() { return m_cache; }
+    unsigned int length() { return m_cacheBytes; }
+    char* buffer() { return m_cache; }
     void dispatch(const char* buf, byte len)
     {
         // reserve some space for checksum
-        int remain = m_cacheSize - m_cacheBytes - len - 2;
+        int remain = m_cacheSize - m_cacheBytes - len - 3;
         if (remain < 0) {
           // m_cache full
           return;
@@ -163,6 +168,15 @@ public:
         m_cache[m_cacheBytes++] = ',';
         m_samples++;
         if (m_next) m_next->dispatch(buf, len);
+    }
+    void header(uint16_t feedid)
+    {
+        m_cacheBytes = sprintf(m_cache, "%X#", (unsigned int)feedid);
+    }
+    void tailer()
+    {
+        if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
+        m_cacheBytes += sprintf(m_cache + m_cacheBytes, "*%X", (unsigned int)checksum(m_cache, m_cacheBytes));
     }
 protected:
     unsigned int m_cacheSize = 0;

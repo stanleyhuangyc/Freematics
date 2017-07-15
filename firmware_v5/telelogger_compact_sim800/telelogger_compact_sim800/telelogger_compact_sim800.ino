@@ -40,8 +40,8 @@ public:
       m_cacheBytes = 0;
       m_samples = 0;
     }
-    char* getBuffer() { return m_cache; }
-    unsigned int getBytes() { return m_cacheBytes; }
+    char* buffer() { return m_cache; }
+    unsigned int length() { return m_cacheBytes; }
     void dispatch(const char* buf, byte len)
     {
         // reserve some space for checksum
@@ -62,6 +62,15 @@ public:
         m_cache[m_cacheBytes++] = ',';
         m_cache[m_cacheBytes] = 0;
         m_samples++;
+    }
+    void header(uint16_t feedid)
+    {
+        m_cacheBytes = sprintf(m_cache, "%X#", (unsigned int)feedid);
+    }
+    void tailer()
+    {
+        if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
+        m_cacheBytes += sprintf(m_cache + m_cacheBytes, "*%X", (unsigned int)checksum(m_cache, m_cacheBytes));
     }
 protected:
     unsigned int m_cacheBytes = 0;
@@ -145,6 +154,9 @@ public:
 #if RAM_CACHE_SIZE <= 128
     cache.purge();
 #endif
+    if (cache.length() == 0) {
+      cache.header(feedid);
+    }
     cache.timestamp(millis());
 
 #ifdef ESP32
@@ -190,27 +202,17 @@ public:
     }
 
     uint32_t t = millis();
-    if ((txCount % SERVER_SYNC_INTERVAL) == (SERVER_SYNC_INTERVAL - 1)) {
-      // sync
-      Serial.print("Sync...");
-      if (!notifyServer(EVENT_SYNC)) {
-        connErrors++;
-        Serial.println("NO");
-      } else {
-        connErrors = 0;
-        txCount++;
-        Serial.println("OK");
-      }
-    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 1) {
+    if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 1) {
       digitalWrite(PIN_LED, HIGH);
       //Serial.println(cache.getBuffer()); // print the content to be sent
       Serial.print('[');
       Serial.print(txCount);
       Serial.print("] ");
+      cache.tailer();
       // transmit data
-      if (transmit(cache.getBuffer(), cache.getBytes())) {
+      if (transmit(cache.buffer(), cache.length())) {
         // output some stats
-        Serial.print(cache.getBytes());
+        Serial.print(cache.length());
         Serial.println(" bytes sent");
         cache.purge();
       } else {
@@ -222,6 +224,19 @@ public:
         netOpen(SERVER_HOST, SERVER_PORT);
       }
       lastSentTime = t;
+
+      if ((txCount % SERVER_SYNC_INTERVAL) == (SERVER_SYNC_INTERVAL - 1)) {
+        // sync
+        Serial.print("Sync...");
+        if (!notifyServer(EVENT_SYNC)) {
+          connErrors++;
+          Serial.println("NO");
+        } else {
+          connErrors = 0;
+          txCount++;
+          Serial.println("OK");
+        }
+      }        
     }
   }
   bool login()
@@ -259,7 +274,7 @@ public:
   {
     // transmit data
     if (data[bytes - 1] == ',') bytes--;
-    if (!netSend(data, bytes, true)) {
+    if (!netSend(data, bytes)) {
       connErrors++;
       return false;
     } else {
@@ -272,8 +287,11 @@ public:
   {
     for (byte attempts = 0; attempts < 3; attempts++) {
       char buf[64];
+      cache.header(feedid);
       byte n = sprintf_P(buf, PSTR("EV=%u,TS=%lu,VIN=%s"), (unsigned int)event, millis(), DEVICE_ID);
-      if (!netSend(buf, n, true)) {
+      cache.dispatch(buf, n);
+      cache.tailer();
+      if (!netSend(cache.buffer(), cache.length())) {
         Serial.println("Unsent");
         continue;
       }
