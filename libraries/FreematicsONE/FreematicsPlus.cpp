@@ -269,7 +269,7 @@ int CFreematicsESP32::xbRead(char* buffer, int bufsize, unsigned int timeout)
 	return bee_read((uint8_t*)buffer, bufsize, timeout);
 }
 
-byte CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
+int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
