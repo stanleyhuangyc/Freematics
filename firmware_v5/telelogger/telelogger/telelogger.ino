@@ -180,6 +180,8 @@ if (!checkState(STATE_STORAGE_READY)) {
     if (!login()) {
       return false;
     }
+    cache.header(feedid);
+
     lastSyncTime = millis();
 
 #if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
@@ -232,37 +234,30 @@ if (!checkState(STATE_STORAGE_READY)) {
 #endif
 
     uint32_t t = millis();
-    if (t - lastSyncTime > SERVER_SYNC_INTERVAL) {
-      // sync
-      if (!syncServer()) {
-        connErrors++;
-      } else {
-        connErrors = 0;
-        lastSyncTime = t;
-      }
-    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
+    if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
       digitalWrite(PIN_LED, HIGH);
-      //Serial.println(cache.getBuffer()); // print the content to be sent
+      //Serial.println(cache.buffer()); // print the content to be sent
       Serial.print('[');
       Serial.print(txCount);
       Serial.print("] ");
+      cache.tailer();
       // transmit data
-      if (transmit(cache.getBuffer(), cache.getBytes(), false)) {
+      if (netSend(cache.buffer(), cache.length())) {
+        connErrors = 0;
+        txCount++;
         // output some stats
-        char buf[16];
-        sprintf(buf, "%uB sent", cache.getBytes());
-        Serial.print(buf);
-        blePrint(buf);
-#if STORAGE_TYPE != STORAGE_NONE
-        if (checkState(STATE_STORAGE_READY)) {
-          Serial.print(" | ");
-          Serial.print(store.size() >> 10);
-          Serial.print("KB stored");
-        }
+        char buf[64];
+#if STORAGE_TYPE == STORAGE_NONE
+        sprintf(buf, "%u bytes sent", cache.length());
+#else
+        sprintf(buf, "%uB sent %lu KB saved", cache.length(), store.size() >> 10);
 #endif
-        Serial.println();
-        cache.purge();
+        blePrint(buf);
+        Serial.println(buf);
+        // this will clear the cache buffer and add a header
+        cache.header(feedid);
       } else {
+        connErrors++;
         Serial.println("Unsent");
         blePrint("Unsent");
       }
@@ -273,6 +268,19 @@ if (!checkState(STATE_STORAGE_READY)) {
         lastSyncTime = 0; // sync on next time
       }
       lastSentTime = t;
+
+      if (t - lastSyncTime >= SERVER_SYNC_INTERVAL) {
+        // sync
+        Serial.print("Sync...");
+        if (!notifyServer(EVENT_SYNC, SERVER_KEY)) {
+          connErrors++;
+          Serial.println("NO");
+        } else {
+          connErrors = 0;
+          Serial.println("OK");
+          lastSyncTime = t;
+        }
+      }
     }
 
 #if ENABLE_OBD
@@ -297,32 +305,6 @@ if (!checkState(STATE_STORAGE_READY)) {
   }
   bool login()
   {
-    char payload[256];
-    int bytes = 0;
-#if ENABLE_OBD
-    // load DTC
-    uint16_t dtc[6];
-    byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-    if (dtcCount > 0) {
-      Serial.print("DTC:");
-      Serial.println(dtcCount);
-      bytes += sprintf(payload + bytes, ",DTC=");
-      for (byte i = 0; i < dtcCount; i++) {
-        bytes += sprintf(payload + bytes, "%X;", dtc[i]);
-      }
-      bytes--;
-    }
-    bytes += sprintf(payload + bytes, ",VIN=");
-    if (getVIN(payload + bytes, sizeof(payload) - bytes)) {
-      Serial.print("VIN:");
-      Serial.println(payload + bytes);
-    } else {
-      strcpy(payload + bytes, DEFAULT_VIN);
-    }
-#else
-    sprintf(payload, ",VIN=%s", DEFAULT_VIN);
-#endif
-
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     // connect to telematics server
     for (byte attempts = 0; attempts < 3; attempts++) {
@@ -334,7 +316,7 @@ if (!checkState(STATE_STORAGE_READY)) {
         continue;
       }
       // login Freematics Hub
-      if (!notifyServer(EVENT_LOGIN, SERVER_KEY, payload)) {
+      if (!notifyServer(EVENT_LOGIN, SERVER_KEY)) {
         netClose();
         continue;
       }
@@ -360,75 +342,48 @@ if (!checkState(STATE_STORAGE_READY)) {
     for (s = data; *s && *s != '*'; s++) sum += *s;
     return (*s && hex2uint8(s + 1) == sum);
   }
-  bool transmit(const char* data, int bytes, bool wait)
+  bool notifyServer(byte event, const char* serverKey)
   {
-    if (m_waiting) {
-      // wait for last data to be sent
-      if (!netWaitSent(100)) {
-        connErrors++;
-        //Serial.println(m_buffer);
-      } else {
-        connErrors = 0;
-        txCount++;
-      }
-      m_waiting = false;
-    }
-    // transmit data
-    if (data[bytes - 1] == ',') bytes--;
-    if (!netSend(data, bytes, wait)) {
-      connErrors++;
-      return false;
-    }
-    if (!wait) {
-      m_waiting = true;
-    } else {
-      connErrors = 0;
-      txCount++;
-    }
-    return true;
-  }
-  bool syncServer()
-  {
-    char buf[32];
-    Serial.print("Syncing...");
-    int len = sprintf(buf, "EV=%u,TS=%lu", EVENT_SYNC, millis());
-    if (!netSend(buf, len, true)) {
-      Serial.println("Sync error");
-      return false;
-    }
-    char *data = netReceive(&len);
-    if (!data) {
-      Serial.println("no reply");
-      return false;
-    }
-    if (!verifyChecksum(data)) {
-      Serial.println("checksum mismatch");
-      return false;
-    }
-    char *p = strstr(data, "CMD=");
-    if (p) m_cmd = atoi(p + 4);
-    Serial.print("OK");
-    if (m_cmd) {
-      Serial.print(" CMD:");
-      Serial.print(m_cmd, HEX);
-    }
-    Serial.println();
-    return true;
-  }
-  bool notifyServer(byte event, const char* serverKey, const char* payload)
-  {
-    char buf[64];
-    sprintf(buf, "EV=%u,TS=%lu", (unsigned int)event, millis());
-    String req = buf;
+    cache.header(feedid);
+    String req = "EV=";
+    req += (unsigned int)event;
+    req += ",TS=";
+    req += millis();
     if (serverKey) {
       req += ",SK=";
       req += serverKey;
     }
-    if (payload) {
-      req += payload;
+    req += ",VIN=";
+#if ENABLE_OBD
+    char buf[128];
+    if (getVIN(buf, sizeof(buf))) {
+      Serial.print("VIN:");
+      Serial.println(buf);
+      req += buf;
+    } else {
+      req += DEFAULT_VIN;
     }
+    // load DTC
+    uint16_t dtc[6];
+    byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+    if (dtcCount > 0) {
+      Serial.print("DTC:");
+      Serial.println(dtcCount);
+      req += ",DTC=";
+      int bytes = 0;
+      for (byte i = 0; i < dtcCount; i++) {
+        bytes += sprintf(buf + bytes, "%X;", dtc[i]);
+      }
+      buf[bytes - 1] = 0;
+      req += buf;
+    }
+#else
+    req += DEFAULT_VIN;
+#endif
+    cache.dispatch(req.c_str(), req.length());
+    cache.tailer();
     for (byte attempts = 0; attempts < 3; attempts++) {
-      if (!netSend(req.c_str(), req.length(), true)) {
+      if (!netSend(cache.buffer(), cache.length())) {
         Serial.println("Data sending error");
         continue;
       }
@@ -465,6 +420,13 @@ if (!checkState(STATE_STORAGE_READY)) {
         }
         feedid = atoi(data);
       }
+      char *p = strstr(data, "CMD=");
+      if (p) m_cmd = atoi(p + 4);
+      Serial.print("OK");
+      if (m_cmd) {
+        Serial.print(" CMD:");
+        Serial.print(m_cmd, HEX);
+      }
       return true;
     }
     return false;
@@ -481,7 +443,7 @@ if (!checkState(STATE_STORAGE_READY)) {
   {
       if (checkState(STATE_NET_READY)) {
         if (checkState(STATE_CONNECTED)) {
-          notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
+          notifyServer(EVENT_LOGOUT, SERVER_KEY);
         }
         shutDownNet();
       }

@@ -106,25 +106,15 @@ bool CTeleClientWIFI::netOpen(const char* host, uint16_t port)
   }
 }
 
-bool CTeleClientWIFI::netSend(const char* data, unsigned int len, bool wait)
+bool CTeleClientWIFI::netSend(const char* data, unsigned int len)
 {
   if (udp.beginPacket(udpIP, udpPort)) {
-    char buf[16];
-    int l = sprintf(buf, "%X#", feedid);
-    byte checksum = getChecksum(buf, l) + getChecksum(data, len);
-    int bytesSent = 0;
-    bytesSent += udp.write((uint8_t*)buf, l);
-    bytesSent += udp.write((uint8_t*)data, len);
-    bytesSent += udp.write('*');
-    bytesSent += udp.print(checksum, HEX);
-    if (!udp.endPacket()) {
-			bytesSent = 0;
-		}
-    if (bytesSent > 0) m_bytesCount += bytesSent;
-    return true;
-  } else {
-    return false;
+    if (udp.write((uint8_t*)data, len) == len && udp.endPacket()) {
+      m_bytesCount += len;
+      return true;
+    }
   }
+  return false;
 }
 
 char* CTeleClientWIFI::netReceive(int* pbytes, unsigned int timeout)
@@ -274,19 +264,13 @@ void CTeleClientSIM800::netClose()
   netSendCommand("AT+CIPCLOSE\r");
 }
 
-bool CTeleClientSIM800::netSend(const char* data, unsigned int len, bool wait)
+bool CTeleClientSIM800::netSend(const char* data, unsigned int len)
 {
-  char head[16];
-  int headLen = sprintf(head, "%X#", feedid);
-  memmove((void*)data + headLen, data, len);
-  memcpy((void*)data, head, headLen);
-  len += headLen;
-  byte checksum = getChecksum(data, len);
-  len += sprintf((char*)data + len, "*%X\r", (int)checksum);
-  sprintf(m_buffer, "AT+CIPSEND=%u\r", len - 1);
+  sprintf(m_buffer, "AT+CIPSEND=%u\r", len);
   if (netSendCommand(m_buffer, 200, ">")) {
     xbWrite(data, len);
-    if (!wait || netWaitSent(5000)) {
+    xbWrite("\r", 1);
+    if (netSendCommand(0, 5000, "\r\nSEND OK")) {
       return true;
     }
   }
@@ -314,11 +298,6 @@ char* CTeleClientSIM800::netReceive(int* pbytes, unsigned int timeout)
     }
   }
   return 0;
-}
-
-bool CTeleClientSIM800::netWaitSent(unsigned int timeout)
-{
-  return netSendCommand(0, timeout, "\r\nSEND OK");
 }
 
 String CTeleClientSIM800::queryIP(const char* host)
@@ -531,21 +510,12 @@ void CTeleClientSIM5360::netClose()
   netSendCommand("AT+CIPCLOSE\r");
 }
 
-bool CTeleClientSIM5360::netSend(const char* data, unsigned int len, bool wait)
+bool CTeleClientSIM5360::netSend(const char* data, unsigned int len)
 {
-  char head[16];
-  char tail[4];
-  int headLen = sprintf(head, "%X#", feedid);
-  byte checksum = getChecksum(head, headLen) + getChecksum(data, len);
-  int tailLen = sprintf(tail, "*%X", (int)checksum);
-  int bytesToSend = headLen + len + tailLen;
-  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", bytesToSend, udpIP, udpPort);
+  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP, udpPort);
   if (netSendCommand(m_buffer, 100, ">")) {
-    xbWrite(head, headLen);
     xbWrite(data, len);
-    xbWrite(tail, tailLen);
-    if (!wait) return true;
-    return netWaitSent(1000);
+    return netSendCommand(0, 1000);
   }
   return false;
 }
@@ -564,11 +534,6 @@ char* CTeleClientSIM5360::netReceive(int* pbytes, unsigned int timeout)
     }
   }
   return 0;
-}
-
-bool CTeleClientSIM5360::netWaitSent(unsigned int timeout)
-{
-  return netSendCommand(0, timeout);
 }
 
 String CTeleClientSIM5360::queryIP(const char* host)

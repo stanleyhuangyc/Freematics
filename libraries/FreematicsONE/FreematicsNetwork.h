@@ -30,7 +30,7 @@ public:
   virtual void netEnd() {}
   virtual bool netOpen(const char* host, uint16_t port) { return true; }
   virtual void netClose() {}
-  virtual bool netSend(const char* data, unsigned int len, bool wait = true) { return false; }
+  virtual bool netSend(const char* data, unsigned int len) { return false; }
   virtual char* netReceive(int* pbytes = 0, unsigned int timeout = 5000) { return 0; }
   virtual bool getLocation(NET_LOCATION* loc) { return false; }
   virtual const char* netDeviceName() { return ""; }
@@ -59,14 +59,13 @@ public:
   void blePrint(String s) {}
 #endif
 protected:
-  byte getChecksum(const char* data, int len)
+  byte checksum(const char* data, int len)
   {
     // calculate and add checksum
     byte sum = 0;
     for (int i = 0; i < len; i++) sum += data[i];
     return sum;
   }
-  virtual bool netWaitSent(unsigned int timeout) { return true; }
   virtual String getServerName() { return m_serverName; }
   uint32_t getTotalBytesSent() { return m_bytesCount; }
   uint16_t feedid = 0;
@@ -79,7 +78,7 @@ protected:
 class CTeleClientSerialUSB : public CTeleClient
 {
 public:
-    bool netSend(const char* data, unsigned int len, bool wait = true)
+    bool netSend(const char* data, unsigned int len)
     {
       Serial.write((uint8_t*)data, len);
       Serial.write('\n');
@@ -93,7 +92,7 @@ public:
 class CTeleClientBLE : public CTeleClient
 {
 public:
-    bool netSend(const char* data, unsigned int len, bool wait = true)
+    bool netSend(const char* data, unsigned int len)
     {
       return bleSend(data, len);
     }
@@ -109,7 +108,7 @@ public:
     String getIP();
     int getSignal() { return 0; }
     bool netOpen(const char* host, uint16_t port);
-    bool netSend(const char* data, unsigned int len, bool wait = true);
+    bool netSend(const char* data, unsigned int len);
     char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP.toString(); }
@@ -133,7 +132,7 @@ public:
     int getSignal();
     String getOperatorName();
     bool netOpen(const char* host, uint16_t port);
-    bool netSend(const char* data, unsigned int len, bool wait = true);
+    bool netSend(const char* data, unsigned int len);
     void netClose();
     char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     bool getLocation(NET_LOCATION* loc);
@@ -141,7 +140,6 @@ public:
     String serverName() { return m_serverName; }
     const char* netDeviceName() { return "SIM800"; }
 protected:
-    bool netWaitSent(unsigned int timeout);
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
 #ifdef ESP32
     char m_buffer[256] = {0};
@@ -162,13 +160,12 @@ public:
     String getOperatorName();
     bool netOpen(const char* host, uint16_t port);
     void netClose();
-    bool netSend(const char* data, unsigned int len, bool wait = true);
+    bool netSend(const char* data, unsigned int len);
     char* netReceive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     const char* netDeviceName() { return "SIM5360"; }
   protected:
-    bool netWaitSent(unsigned int timeout);
     // send command and check for expected response
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
 #ifdef ESP32
