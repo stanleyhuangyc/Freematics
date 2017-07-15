@@ -65,6 +65,7 @@ public:
   bool setup()
   {
     clearState(STATE_ALL_GOOD);
+    distance = 0;
 
 #if MEMS_MODE
     if (!checkState(STATE_MEMS_READY)) {
@@ -318,6 +319,7 @@ if (!checkState(STATE_STORAGE_READY)) {
       // login Freematics Hub
       if (!notifyServer(EVENT_LOGIN, SERVER_KEY)) {
         netClose();
+        Serial.println("NO");
         continue;
       }
 
@@ -418,7 +420,7 @@ if (!checkState(STATE_STORAGE_READY)) {
           if (q) *q = 0;
           m_serverName = p;
         }
-        feedid = atoi(data);
+        feedid = hex2uint16(data);
       }
       char *p = strstr(data, "CMD=");
       if (p) m_cmd = atoi(p + 4);
@@ -449,6 +451,7 @@ if (!checkState(STATE_STORAGE_READY)) {
       }
 #if STORAGE_TYPE != STORAGE_NONE
       if (checkState(STATE_STORAGE_READY)) {
+        cache.uninit();
         store.end();
         clearState(STATE_STORAGE_READY);
       }
