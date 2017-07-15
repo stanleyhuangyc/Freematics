@@ -236,9 +236,6 @@ public:
 };
 
 class CTeleLogger : public COBDGSM, public CDataLogger
-#if USE_MEMS
-,public CMPU9250
-#endif
 {
 public:
     CTeleLogger():gprsState(GPRS_DISABLED),state(0),feedid(0) {}
@@ -247,7 +244,7 @@ public:
 #if USE_MEMS
         if (!(state & STATE_MEMS_READY)) {
           Serial.print("#MEMS...");
-          if (memsInit()) {
+          if (mems.memsInit()) {
             state |= STATE_MEMS_READY;
             Serial.println("OK");
           } else {
@@ -396,7 +393,7 @@ public:
         if (httpRead()) {
           char *p = strstr(buffer, "\"id\":");
           if (p) {
-            int m = atoi(p + 5);
+            int m = hex2uint16(p + 5);
             if (m > 0) {
               feedid = m;
               Serial.println(m);
@@ -719,7 +716,7 @@ private:
         // load accelerometer and temperature data
         float acc[3] = {0};
         int16_t temp; // device temperature (in 0.1 celcius degree)
-        memsRead(acc, 0, 0, &temp);
+        mems.memsRead(acc, 0, 0, &temp);
         if (accCount >= 100) {
           accSum[0] >>= 1;
           accSum[1] >>= 1;
@@ -739,6 +736,9 @@ private:
         readMEMS();
       }
     }
+#endif
+#if USE_MEMS
+    MPU9250_ACC mems;
 #endif
     byte state;
     byte gprsState;
