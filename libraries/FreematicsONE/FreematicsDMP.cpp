@@ -12,7 +12,7 @@ It is based on their Emedded MotionDriver 6.12 library.
 
 #include <Arduino.h>
 #include "FreematicsDMP.h"
-#include "MPU9250_RegisterMap.h"
+#include "utility/MPU9250_RegisterMap.h"
 
 static unsigned char mpu9250_orientation;
 static unsigned char tap_count;
