@@ -69,8 +69,8 @@ public:
 	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
 	int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
-	// send data to xBee UART
-	void xbWrite(const char* cmd);
+	// send string data to xBee UART
+	void xbWrite(const char* data);
   // send data to xBee UART
 	void xbWrite(const char* data, int len);
 	// receive data from xBee UART (returns 0/1/2)

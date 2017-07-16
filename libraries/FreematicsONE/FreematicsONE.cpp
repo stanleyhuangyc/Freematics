@@ -780,19 +780,19 @@ bool COBDSPI::xbBegin(unsigned long baudrate)
 #endif
 }
 
-void COBDSPI::xbWrite(const char* cmd)
+void COBDSPI::xbWrite(const char* data)
 {
 #ifdef ESP32
-	bee_write_string(cmd);
+	bee_write_string(data);
 #else
 	setTarget(TARGET_BEE);
-	write(cmd);
+	write(data);
 	sleep(10);
 #endif
 #ifdef XBEE_DEBUG
-	Serial.print("<<<");
-	Serial.print(cmd);
-	Serial.println("<<<");
+	Serial.print("[SENT]");
+	Serial.print(data);
+	Serial.println("[/SENT]");
 #endif
 }
 
@@ -825,7 +825,7 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
 #ifndef ESP32
-		sleep(50);
+		sleep(20);
 #endif
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
@@ -849,13 +849,11 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 				bytesRecv += n;
 				buffer[bytesRecv] = 0;
 #ifdef XBEE_DEBUG
-				Serial.print(">>>");
+				Serial.print("[RECV]");
 				Serial.print(buffer + bytesRecv - n);
-				Serial.println(">>>");
+				Serial.println("[/RECV]");
 #endif
 				if (expectedCount == 0) {
-					Serial.print("RECV:");
-					Serial.println(bytesRecv);
 					break;
 				}
 				for (byte i = 0; i < expectedCount; i++) {
