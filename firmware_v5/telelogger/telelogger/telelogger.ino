@@ -278,7 +278,6 @@ if (!checkState(STATE_STORAGE_READY)) {
           Serial.println("NO");
         } else {
           connErrors = 0;
-          Serial.println("OK");
           lastSyncTime = t;
         }
       }
