@@ -230,6 +230,7 @@ void loop()
 #if ENABLE_DATA_LOG
     if (!(one.state & STATE_FILE_READY) && (one.state & STATE_SD_READY)) {
       digitalWrite(PIN_LED, HIGH);
+#if USE_GPS
       if (one.state & STATE_GPS_FOUND) {
         // GPS connected
         one.logGPSData();
@@ -242,7 +243,10 @@ void loop()
         } else {
           Serial.println("Waiting for GPS...");
         }
-      } else {
+      }
+      else
+#endif
+      {
         // no GPS connected
         if (one.openFile(0)) {
           one.state |= STATE_FILE_READY;
@@ -323,7 +327,7 @@ void loop()
     }
 #endif
 
-#if !ENABLE_DATA_OUT && !ENABLE_ORIENTATION
+#if !ENABLE_DATA_OUT
     uint32_t t = millis();
     Serial.print(one.dataCount);
     Serial.print(" samples ");
