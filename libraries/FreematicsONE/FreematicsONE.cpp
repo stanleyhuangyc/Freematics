@@ -831,10 +831,10 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 		if (n > 0) {
 #ifdef ESP32
 #ifdef XBEE_DEBUG
-			Serial.print(">>>");
+			Serial.print("[RECV]");
 			buffer[bytesRecv + n] = 0;
 			Serial.print(buffer + bytesRecv);
-			Serial.println(">>>");
+			Serial.println("[/RECV]");
 #endif
 			bytesRecv += n;
 			buffer[bytesRecv] = 0;
