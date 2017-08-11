@@ -54,6 +54,10 @@
 //
 #ifndef SOFTWARE_SPI
 // hardware pin defs
+
+// include pins_arduino.h or variant.h depending on architecture, via Arduino.h
+#include <Arduino.h>
+
 /**
  * SD Chip Select pin
  *
@@ -61,15 +65,27 @@
  * as an output by init().  An avr processor will not function as an SPI
  * master unless SS is set to output mode.
  */
+#ifndef SDCARD_SS_PIN
 /** The default chip select pin for the SD card is SS. */
 #define SD_CHIP_SELECT_PIN SS_PIN
-// The following three pins must not be redefined for hardware SPI.
+#else
+#define SD_CHIP_SELECT_PIN SDCARD_SS_PIN
+#endif
+
+// The following three pins must not be redefined for hardware SPI,
+// so ensure that they are taken from pins_arduino.h or variant.h, depending on architecture.
+#ifndef SDCARD_MOSI_PIN
 /** SPI Master Out Slave In pin */
-#define SPI_MOSI_PIN MOSI_PIN
+#define SPI_MOSI_PIN MOSI
 /** SPI Master In Slave Out pin */
-#define SPI_MISO_PIN MISO_PIN
+#define SPI_MISO_PIN MISO
 /** SPI Clock pin */
-#define SPI_SCK_PIN SCK_PIN
+#define SPI_SCK_PIN SCK
+#else
+#define SPI_MOSI_PIN SDCARD_MOSI_PIN
+#define SPI_MISO_PIN SDCARD_MISO_PIN
+#define SPI_SCK_PIN SDCARD_SCK_PIN
+#endif
 /** optimize loops for hardware SPI */
 #ifndef USE_SPI_LIB
 #define OPTIMIZE_HARDWARE_SPI
@@ -206,6 +222,9 @@ class Sd2Card {
   }
   void readEnd(void);
   uint8_t setSckRate(uint8_t sckRateID);
+#ifdef USE_SPI_LIB
+  uint8_t setSpiClock(uint32_t clock);
+#endif
   /** Return the card type: SD V1, SD V2 or SDHC */
   uint8_t type(void) const {return type_;}
   uint8_t writeBlock(uint32_t blockNumber, const uint8_t* src);

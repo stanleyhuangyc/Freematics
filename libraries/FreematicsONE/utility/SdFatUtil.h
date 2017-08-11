@@ -69,11 +69,7 @@ static NOINLINE void SerialPrint_P(PGM_P str) {
  */
 static NOINLINE void SerialPrintln_P(PGM_P str) {
   SerialPrint_P(str);
-  #if defined(ARDUINO_SAM_ZERO)
-  SerialUSB.println()
-  #else
   Serial.println();
-  #endif
 }
 #endif  // __AVR__
 #endif  // #define SdFatUtil_h

@@ -202,20 +202,20 @@ void SdFile::dirName(const dir_t& dir, char* name) {
  */
 void SdFile::ls(uint8_t flags, uint8_t indent) {
   dir_t* p;
+
   rewind();
   while ((p = readDirCache())) {
     // done if past last used entry
     if (p->name[0] == DIR_NAME_FREE) break;
+
     // skip deleted entry and entries for . and  ..
     if (p->name[0] == DIR_NAME_DELETED || p->name[0] == '.') continue;
+
     // only list subdirectories and files
     if (!DIR_IS_FILE_OR_SUBDIR(p)) continue;
+
     // print any indent spaces
-	#if defined(ARDUINO_SAM_ZERO)
-    for (int8_t i = 0; i < indent; i++) SerialUSB.print(' ');
-	#else
-	for (int8_t i = 0; i < indent; i++) Serial.print(' ');
-	#endif
+    for (int8_t i = 0; i < indent; i++) Serial.print(' ');
 
     // print file name with possible blank fill
     printDirName(*p, flags & (LS_DATE | LS_SIZE) ? 14 : 0);
@@ -223,29 +223,15 @@ void SdFile::ls(uint8_t flags, uint8_t indent) {
     // print modify date/time if requested
     if (flags & LS_DATE) {
        printFatDate(p->lastWriteDate);
-	   #if defined(ARDUINO_SAM_ZERO)
-       SerialUSB.print(' ');
-	   #else
-	   Serial.print(' ');
-       #endif
+       Serial.print(' ');
        printFatTime(p->lastWriteTime);
-	   
     }
     // print size if requested
     if (!DIR_IS_SUBDIR(p) && (flags & LS_SIZE)) {
-	  #if defined(ARDUINO_SAM_ZERO)
-      SerialUSB.print(' ');
-      SerialUSB.print(p->fileSize);
-	  #else
-	  Serial.print(' ');
-      Serial.print(p->fileSize);  
-	  #endif
+      Serial.print(' ');
+      Serial.print(p->fileSize);
     }
-	#if defined(ARDUINO_SAM_ZERO)
-    SerialUSB.println();
-	#else
-	Serial.println();
-	#endif
+    Serial.println();
 
     // list subdirectory content if requested
     if ((flags & LS_R) && DIR_IS_SUBDIR(p)) {
@@ -473,6 +459,7 @@ uint8_t SdFile::open(SdFile* dirFile, const char* fileName, uint8_t oflag) {
   p->lastAccessDate = p->creationDate;
   p->lastWriteDate = p->creationDate;
   p->lastWriteTime = p->creationTime;
+
   // force write of entry to SD
   if (!SdVolume::cacheFlush()) return false;
 
@@ -608,34 +595,18 @@ void SdFile::printDirName(const dir_t& dir, uint8_t width) {
   for (uint8_t i = 0; i < 11; i++) {
     if (dir.name[i] == ' ')continue;
     if (i == 8) {
-	  #if defined(ARDUINO_SAM_ZERO)
-      SerialUSB.print('.');
-	  #else
-	   Serial.print('.');
-	  #endif
+      Serial.print('.');
       w++;
     }
-	#if defined(ARDUINO_SAM_ZERO)
-    SerialUSB.write(dir.name[i]);
-	#else
-	Serial.write(dir.name[i]);
-	#endif
+    Serial.write(dir.name[i]);
     w++;
   }
   if (DIR_IS_SUBDIR(&dir)) {
-	#if defined(ARDUINO_SAM_ZERO)
-    SerialUSB.print('/');
-	#else
-	Serial.print('/');
-	#endif
+    Serial.print('/');
     w++;
   }
   while (w < width) {
-	#if defined(ARDUINO_SAM_ZERO)
-    SerialUSB.print(' ');
-	#else
-	Serial.print(' ');
-	#endif
+    Serial.print(' ');
     w++;
   }
 }
@@ -647,20 +618,10 @@ void SdFile::printDirName(const dir_t& dir, uint8_t width) {
  * \param[in] fatDate The date field from a directory entry.
  */
 void SdFile::printFatDate(uint16_t fatDate) {
-  
-  #if defined(ARDUINO_SAM_ZERO)
-  SerialUSB.print(FAT_YEAR(fatDate));
-  SerialUSB.print('-');
-  #else
   Serial.print(FAT_YEAR(fatDate));
   Serial.print('-');
-  #endif
   printTwoDigits(FAT_MONTH(fatDate));
-  #if defined(ARDUINO_SAM_ZERO)
-  SerialUSB.print('-');
-  #else
   Serial.print('-');
-  #endif
   printTwoDigits(FAT_DAY(fatDate));
 }
 //------------------------------------------------------------------------------
@@ -672,17 +633,9 @@ void SdFile::printFatDate(uint16_t fatDate) {
  */
 void SdFile::printFatTime(uint16_t fatTime) {
   printTwoDigits(FAT_HOUR(fatTime));
-  #if defined(ARDUINO_SAM_ZERO)
-  SerialUSB.print(':');
-  #else
   Serial.print(':');
-  #endif
   printTwoDigits(FAT_MINUTE(fatTime));
-  #if defined(ARDUINO_SAM_ZERO)
-  SerialUSB.print(':');
-  #else
   Serial.print(':');
-  #endif
   printTwoDigits(FAT_SECOND(fatTime));
 }
 //------------------------------------------------------------------------------
@@ -695,12 +648,7 @@ void SdFile::printTwoDigits(uint8_t v) {
   str[0] = '0' + v/10;
   str[1] = '0' + v % 10;
   str[2] = 0;
-  #if defined(ARDUINO_SAM_ZERO)
-  SerialUSB.print(str);
-  #else
   Serial.print(str);
-  #endif
-
 }
 //------------------------------------------------------------------------------
 /**
@@ -956,8 +904,8 @@ uint8_t SdFile::rmRfStar(void) {
       if (!f.remove()) return false;
     }
     // position to next entry if required
-    if (curPosition_ != (32*(index + 1))) {
-      if (!seekSet(32*(index + 1))) return false;
+    if (curPosition_ != (32u*(index + 1))) {
+      if (!seekSet(32u*(index + 1))) return false;
     }
   }
   // don't try to delete root
@@ -1176,7 +1124,7 @@ uint8_t SdFile::truncate(uint32_t length) {
  * \param[in] nbyte Number of bytes to write.
  *
  * \return For success write() returns the number of bytes written, always
- * \a nbyte.  If an error occurs, write() returns -1.  Possible errors
+ * \a nbyte.  If an error occurs, write() returns 0.  Possible errors
  * include write() is called before a file has been opened, write is called
  * for a read-only file, device is full, a corrupt file system or an I/O error.
  *
