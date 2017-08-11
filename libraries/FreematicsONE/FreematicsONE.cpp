@@ -430,7 +430,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #endif
 				break;
 			}
-		} 
+		}
 		sleep(10);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {

@@ -52,11 +52,13 @@
 
 #include "FreematicsSD.h"
 
+namespace SDLib {
+
 // Used by `getNextPathComponent`
 #define MAX_COMPONENT_LEN 12 // What is max length?
 #define PATH_COMPONENT_BUFFER_LEN MAX_COMPONENT_LEN+1
 
-bool getNextPathComponent(char *path, unsigned int *p_offset,
+bool getNextPathComponent(const char *path, unsigned int *p_offset,
 			  char *buffer) {
   /*
 
@@ -115,9 +117,9 @@ bool getNextPathComponent(char *path, unsigned int *p_offset,
 
 
 
-boolean walkPath(char *filepath, SdFile& parentDir,
+boolean walkPath(const char *filepath, SdFile& parentDir,
 		 boolean (*callback)(SdFile& parentDir,
-				     char *filePathComponent,
+				     const char *filePathComponent,
 				     boolean isLastComponent,
 				     void *object),
 		 void *object = NULL) {
@@ -230,8 +232,8 @@ boolean walkPath(char *filepath, SdFile& parentDir,
 
  */
 
-boolean callback_pathExists(SdFile& parentDir, char *filePathComponent,
-			    boolean isLastComponent, void *object) {
+boolean callback_pathExists(SdFile& parentDir, const char *filePathComponent,
+			    boolean /* isLastComponent */, void * /* object */) {
   /*
 
     Callback used to determine if a file/directory exists in parent
@@ -253,7 +255,7 @@ boolean callback_pathExists(SdFile& parentDir, char *filePathComponent,
 
 
 
-boolean callback_makeDirPath(SdFile& parentDir, char *filePathComponent,
+boolean callback_makeDirPath(SdFile& parentDir, const char *filePathComponent,
 			     boolean isLastComponent, void *object) {
   /*
 
@@ -308,16 +310,16 @@ boolean callback_openPath(SdFile& parentDir, char *filePathComponent,
 
 
 
-boolean callback_remove(SdFile& parentDir, char *filePathComponent,
-			boolean isLastComponent, void *object) {
+boolean callback_remove(SdFile& parentDir, const char *filePathComponent,
+			boolean isLastComponent, void * /* object */) {
   if (isLastComponent) {
     return SdFile::remove(parentDir, filePathComponent);
   }
   return true;
 }
 
-boolean callback_rmdir(SdFile& parentDir, char *filePathComponent,
-			boolean isLastComponent, void *object) {
+boolean callback_rmdir(SdFile& parentDir, const char *filePathComponent,
+			boolean isLastComponent, void * /* object */) {
   if (isLastComponent) {
     SdFile f;
     if (!f.open(parentDir, filePathComponent, SD_O_READ)) return false;
@@ -345,7 +347,12 @@ boolean SDClass::begin(uint8_t csPin) {
          root.openRoot(volume);
 }
 
-
+boolean SDClass::begin(uint32_t clock, uint8_t csPin) {
+  return card.init(SPI_HALF_SPEED, csPin) &&
+         card.setSpiClock(clock) &&
+         volume.init(card) &&
+         root.openRoot(volume);
+}
 
 // this little helper is used to traverse paths
 SdFile SDClass::getParentDir(const char *filepath, int *index) {
@@ -515,7 +522,7 @@ File SDClass::open(char *filepath, uint8_t mode) {
 //}
 
 
-boolean SDClass::exists(char *filepath) {
+boolean SDClass::exists(const char *filepath) {
   /*
 
      Returns true if the supplied file path exists.
@@ -536,7 +543,7 @@ boolean SDClass::exists(char *filepath) {
 //}
 
 
-boolean SDClass::mkdir(char *filepath) {
+boolean SDClass::mkdir(const char *filepath) {
   /*
 
     Makes a single directory or a heirarchy of directories.
@@ -547,7 +554,7 @@ boolean SDClass::mkdir(char *filepath) {
   return walkPath(filepath, root, callback_makeDirPath);
 }
 
-boolean SDClass::rmdir(char *filepath) {
+boolean SDClass::rmdir(const char *filepath) {
   /*
 
     Remove a single directory or a heirarchy of directories.
@@ -558,7 +565,7 @@ boolean SDClass::rmdir(char *filepath) {
   return walkPath(filepath, root, callback_rmdir);
 }
 
-boolean SDClass::remove(char *filepath) {
+boolean SDClass::remove(const char *filepath) {
   return walkPath(filepath, root, callback_remove);
 }
 
@@ -613,19 +620,23 @@ void File::rewindDirectory(void) {
     _file->rewind();
 }
 
+SDClass SD;
+
+};
+
 /* for debugging file open/close leaks
    uint8_t nfilecount=0;
 */
 
 File::File(SdFile f, const char *n) {
   // oh man you are kidding me, new() doesnt exist? Ok we do it by hand!
-  _file = (SdFile *)malloc(sizeof(SdFile)); 
+  _file = (SdFile *)malloc(sizeof(SdFile));
   if (_file) {
     memcpy(_file, &f, sizeof(SdFile));
-    
+
     strncpy(_name, n, 12);
     _name[12] = 0;
-    
+
     /* for debugging file open/close leaks
        nfilecount++;
        Serial.print("Created \"");
@@ -673,7 +684,7 @@ size_t File::write(const uint8_t *buf, size_t size) {
 }
 
 int File::peek() {
-  if (! _file) 
+  if (! _file)
     return 0;
 
   int c = _file->read();
@@ -682,14 +693,14 @@ int File::peek() {
 }
 
 int File::read() {
-  if (_file) 
+  if (_file)
     return _file->read();
   return -1;
 }
 
 // buffered read for more efficient, high speed reading
 int File::read(void *buf, uint16_t nbyte) {
-  if (_file) 
+  if (_file)
     return _file->read(buf, nbyte);
   return 0;
 }
@@ -726,7 +737,7 @@ uint32_t File::size() {
 void File::close() {
   if (_file) {
     _file->close();
-    free(_file); 
+    free(_file);
     _file = 0;
 
     /* for debugging file open/close leaks
@@ -738,8 +749,7 @@ void File::close() {
 }
 
 File::operator bool() {
-  if (_file) 
+  if (_file)
     return  _file->isOpen();
   return false;
 }
-
