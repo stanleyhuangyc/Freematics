@@ -11,9 +11,6 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
-#ifdef ESP32
-#include <WiFi.h>
-#endif
 
 // Mode 1 PIDs
 #define PID_ENGINE_LOAD 0x04
