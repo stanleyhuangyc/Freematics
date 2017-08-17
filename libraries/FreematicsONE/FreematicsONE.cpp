@@ -888,6 +888,8 @@ void COBDSPI::xbPurge()
 void COBDSPI::xbTogglePower()
 {
 #ifdef PIN_XBEE_PWR
+	digitalWrite(PIN_XBEE_PWR, HIGH);
+	sleep(50);
 #ifdef XBEE_DEBUG
 	Serial.println("xBee power pin set to low");
 #endif
@@ -897,6 +899,8 @@ void COBDSPI::xbTogglePower()
 	Serial.println("xBee power pin set to high");
 #endif
 	digitalWrite(PIN_XBEE_PWR, HIGH);
+	sleep(1000);
+	digitalWrite(PIN_XBEE_PWR, LOW);
 #else
 	setTarget(TARGET_OBD);
 	char buffer[64];

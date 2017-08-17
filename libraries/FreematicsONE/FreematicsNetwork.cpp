@@ -170,10 +170,8 @@ bool CTeleClientSIM800::netBegin()
 
 void CTeleClientSIM800::netEnd()
 {
-  if (m_stage == 2) {
-    xbTogglePower();
-    m_stage = 1;
-  }
+  netSendCommand("AT+CPOWD=1\r");
+  m_stage = 1;
 }
 
 bool CTeleClientSIM800::netSetup(const char* apn, unsigned int timeout)
