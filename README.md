@@ -12,7 +12,8 @@ libraries - Arduino libraries for Freematics ONE, ONE+ and ESPRIT
 Links
 =====
  
-Freematics ESPRIT http://freematics.com/products/freematics-esprit
+Freematics ONE https://freematics.com/products/freematics-one
 
-Freematics ONE http://freematics.com/products/freematics-one
+Freematics ONE+ https://freematics.com/products/freematics-one-plus
 
+Freematics Esprit https://freematics.com/products/freematics-esprit
