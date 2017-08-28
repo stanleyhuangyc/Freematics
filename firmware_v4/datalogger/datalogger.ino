@@ -13,6 +13,8 @@
 * THE SOFTWARE.
 *************************************************************************/
 
+#include <SPI.h>
+#include <SD.h>
 #include <FreematicsONE.h>
 #include "config.h"
 #include "datalogger.h"
@@ -20,12 +22,11 @@
 // states
 #define STATE_SD_READY 0x1
 #define STATE_OBD_READY 0x2
+
 #define STATE_GPS_FOUND 0x4
 #define STATE_GPS_READY 0x8
 #define STATE_MEMS_READY 0x10
 #define STATE_FILE_READY 0x20
-
-#define PIN_LED 4
 
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
@@ -36,18 +37,14 @@ public:
     ONE():state(0) {}
     void setup()
     {
-#if USE_OBD
       Serial.print("OBD ");
-      if (init()) {
+      if (init(PROTO_CAN_11B_500K)) {
         Serial.println("OK");
       } else {
         Serial.println("NO");
         reconnect();
       }
       state |= STATE_OBD_READY;
-#else
-      SPI.begin();
-#endif
 
 #if USE_GPS
       Serial.print("GPS ");
@@ -60,22 +57,12 @@ public:
       }
 #endif
 
-#if USE_OBD
-      // retrieve VIN
-      char buffer[128];
-      if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
-        Serial.print("VIN:");
-        Serial.println(buffer);
-      }
-#endif
-
 #if ENABLE_DATA_LOG
       if (!(state & STATE_SD_READY)) {
         Serial.print("SD ");
-        uint16_t volsize = initSD();
-        if (volsize) {
-          Serial.print(volsize);
-          Serial.println("MB");
+        pinMode(SD_CS_PIN, OUTPUT);
+        if (SD.begin(SD_CS_PIN)) {
+          Serial.println("OK");
           state |= STATE_SD_READY;
         } else {
           Serial.println("NO");
@@ -83,6 +70,12 @@ public:
       }
 #endif
 
+      // retrieve VIN
+      char buffer[128];
+      if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
+        Serial.print("VIN:");
+        Serial.println(buffer);
+      }
     }
 #if USE_GPS
     void logGPSData()
@@ -133,15 +126,6 @@ public:
     }
 #endif
 #if ENABLE_DATA_LOG
-    uint16_t initSD()
-    {
-        pinMode(SD_CS_PIN, OUTPUT);
-        if (SD.begin(SD_CS_PIN)) {
-          return SD.cardSize();
-        } else {
-          return 0;
-        }
-    }
     void flushData(uint32_t fileSize)
     {
       // flush SD data every 1KB
@@ -161,6 +145,7 @@ public:
 #endif
     void reconnect()
     {
+        Serial.println("Reconnect");
         if (init()) return;
         // try to re-connect to OBD
 #if ENABLE_DATA_LOG
@@ -172,48 +157,34 @@ public:
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY);
         Serial.println("Standby");
-        digitalWrite(PIN_LED, LOW);
         // put OBD chips into low power mode
         while (!init()) {
           Serial.print('.');
           delay(10000);
         }
-        digitalWrite(PIN_LED, HIGH);
         Serial.println("Wakeup");
         setup();
-        digitalWrite(PIN_LED, LOW);
     }
     byte state;
 };
 
 ONE one;
-#if MEMS_MODE == MEMS_ACC
+#if USE_MEMS
 MPU9250_ACC mems;
-#elif MEMS_MODE == MEMS_9DOF
-MPU9250_9DOF mems;
-#elif MEMS_MODE == MEMS_DMP
-MPU9250_DMP mems;
 #endif
 
 void setup()
 {
     Serial.begin(115200);
-#ifdef ESP32
-    Serial.println("Freematics ONE+");
-#else
     Serial.println("Freematics ONE");
-#endif
     delay(1000);
-    // init LED pin
-    pinMode(PIN_LED, OUTPUT);
-    digitalWrite(PIN_LED, HIGH);
     byte ver = one.begin();
     Serial.print("Firmware Ver. ");
     Serial.println(ver);
 
-#if MEMS_MODE
+#if USE_MEMS
     Serial.print("MEMS ");
-    if (mems.memsInit(ENABLE_ORIENTATION)) {
+    if (mems.memsInit()) {
       one.state |= STATE_MEMS_READY;
       Serial.println("OK");
     } else {
@@ -222,14 +193,12 @@ void setup()
 #endif
 
     one.setup();
-    digitalWrite(PIN_LED, LOW);
 }
 
 void loop()
 {
 #if ENABLE_DATA_LOG
     if (!(one.state & STATE_FILE_READY) && (one.state & STATE_SD_READY)) {
-      digitalWrite(PIN_LED, HIGH);
 #if USE_GPS
       if (one.state & STATE_GPS_FOUND) {
         // GPS connected
@@ -253,11 +222,9 @@ void loop()
         }
       }
       one.sleep(1000);
-      digitalWrite(PIN_LED, LOW);
       return;
     }
 #endif
-#if USE_OBD
     if (one.state & STATE_OBD_READY) {
         byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
         one.dataTime = millis();
@@ -267,40 +234,14 @@ void loop()
           if (one.readPID(pid, value)) {
             one.log((uint16_t)pids[i] | 0x100, value);
           }
+#if USE_MEMS
           // process MEMS data every time a PID is read to ensure data frequency
-#endif
-#if MEMS_MODE
-          if (one.state & STATE_MEMS_READY) {
-            float acc[3];
-            bool updated;
-#if ENABLE_ORIENTATION
-            ORIENTATION ori;
-#if !ENABLE_DMP
-            float gyr[3];
-            float mag[3];
-            updated = mems.memsRead(acc, gyr, mag, 0, &ori);
-#else
-            updated = mems.memsRead(acc, 0, 0, 0, &ori);
-#endif
-            if (updated) {
-              Serial.print("Orientation: ");
-              Serial.print(ori.yaw, 2);
-              Serial.print(' ');
-              Serial.print(ori.pitch, 2);
-              Serial.print(' ');
-              Serial.println(ori.roll, 2);
-              one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-              one.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
-            }
-#else
-            updated = mems.memsRead(acc);
-            if (updated) {
-              one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-            }
-#endif
+          float acc[3];
+          bool updated = mems.memsRead(acc);
+          if (updated) {
+            one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
           }
 #endif
-#if USE_OBD
         }
         if (one.errors >= 3) {
             one.reset();
@@ -308,19 +249,16 @@ void loop()
         }
     } else {
       if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
-        digitalWrite(PIN_LED, HIGH);
         if (one.init()) {
             one.state |= STATE_OBD_READY;
         }
-        digitalWrite(PIN_LED, LOW);
       }
     }
 
     // log battery voltage (from voltmeter), data in 0.01v
     int v = one.getVoltage() * 100;
     one.log(PID_BATTERY_VOLTAGE, v);
-#endif
-
+    
 #if USE_GPS
     if (one.state & STATE_GPS_FOUND) {
       one.logGPSData();
@@ -335,11 +273,9 @@ void loop()
     Serial.print(" sps ");
 #if ENABLE_DATA_LOG
     uint32_t fileSize = sdfile.size();
-    if (fileSize > 0) {
-      one.flushData(fileSize);
-      Serial.print(fileSize);
-      Serial.print(" bytes");
-    }
+    one.flushData(fileSize);
+    Serial.print(fileSize);
+    Serial.print(" bytes");
 #endif
     Serial.println();
 #endif

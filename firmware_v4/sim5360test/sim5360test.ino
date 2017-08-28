@@ -158,7 +158,7 @@ public:
     {
       sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, ip, port);
       if (netSendCommand(buffer, 100, ">")) {
-        xbWrite(data, len);
+        xbWrite(data);
         return netSendCommand(0, 1000);
       } else {
         Serial.println(buffer);
