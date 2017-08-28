@@ -1,0 +1,55 @@
+################################################################################
+# Datatypes (KEYWORD1)
+################################################################################
+COBDSPI	KEYWORD1
+MPU9250_ACC	KEYWORD1
+MPU9250_9DOF KEYWORD1
+MPU9250_DMP KEYWORD1
+
+################################################################################
+# Methods and Functions (KEYWORD2)
+################################################################################
+begin	KEYWORD2
+end	KEYWORD2
+init	KEYWORD2
+uninit	KEYWORD2
+reset	KEYWORD2
+getState	KEYWORD2
+sleepSec	KEYWORD2
+sleep	KEYWORD2
+enterLowPowerMode	KEYWORD2
+leaveLowPowerMode	KEYWORD2
+
+readPID	KEYWORD2
+readDTC	KEYWORD2
+clearDTC	KEYWORD2
+getVoltage	KEYWORD2
+getVIN	KEYWORD2
+
+gpsInit	KEYWORD2
+gpsGetData	KEYWORD2
+gpsGetRawData	KEYWORD2
+gpsSendCommand	KEYWORD2
+internalGPS	KEYWORD2
+
+xbBegin	KEYWORD2
+xbRead	KEYWORD2
+xbWrite	KEYWORD2
+xbReceive	KEYWORD2
+xbPurge	KEYWORD2
+xbTogglePower	KEYWORD2
+
+memsInit KEYWORD2
+memsRead KEYWORD2
+
+################################################################################
+# Constants (LITERAL1)
+################################################################################
+OBD_PROTOCOLS	LITERAL1
+OBD_STATES	LITERAL1
+GPS_DATA	LITERAL1
+NET_LOCATION	LITERAL1
+INV_X_GYRO	LITERAL1
+INV_Y_GYRO	LITERAL1
+INV_Z_GYRO	LITERAL1
+ORIENTATION	LITERAL1
