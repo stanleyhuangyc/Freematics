@@ -7,7 +7,6 @@
 
 #if ENABLE_DATA_LOG
 using namespace SDLib;
-SDClass SD;
 File sdfile;
 #endif
 
@@ -82,7 +81,7 @@ public:
         Serial.print("File:");
         Serial.println(path);
         // O_READ | O_WRITE | O_CREAT = 0x13
-        sdfile = SD.open(path, 0x13);
+        sdfile = SD.open(path, FILE_WRITE);
         if (!sdfile) {
             Serial.println("File error");
             return false;

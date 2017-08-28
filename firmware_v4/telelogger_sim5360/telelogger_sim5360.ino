@@ -181,7 +181,7 @@ public:
     {
       sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, udpIP, udpPort);
       if (netSendCommand(buffer, 100, ">")) {
-        xbWrite(data, len);
+        xbWrite(data);
         if (!wait) return true;
         return waitCompletion(1000);
       } else {
