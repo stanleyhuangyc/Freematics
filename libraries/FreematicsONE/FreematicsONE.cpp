@@ -237,7 +237,7 @@ float COBDSPI::getVoltage()
 bool COBDSPI::getVIN(char* buffer, byte bufsize)
 {
 	setTarget(TARGET_OBD);
-	if (sendCommand("0902\r", buffer, bufsize)) {
+	if (sendCommand("0902\r", buffer, bufsize, OBD_TIMEOUT_LONG * 2)) {
 	    char *p = strstr(buffer, "49 02");
 	    if (p) {
 	        char *q = buffer;
