@@ -169,7 +169,7 @@ public:
 	// send data to xBee UART
 	void xbWrite(const char* cmd);
 	// receive data from xBee UART
-	byte xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char* expected1 = 0, const char* expected2 = 0);
+	byte xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char* expected = 0);
 	byte xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount);
 	// purge xBee UART buffer
 	void xbPurge();

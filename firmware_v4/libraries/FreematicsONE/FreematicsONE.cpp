@@ -15,6 +15,7 @@
 #include <avr/sleep.h>
 #include "FreematicsONE.h"
 
+//#define XBEE_DEBUG
 //#define DEBUG Serial
 
 SIGNAL(WDT_vect) {
@@ -484,19 +485,13 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				}
 				buffer[n] = c;
 				eos = (c == 0x9 && buffer[n - 1] =='>');
-				n++;
-#ifndef ESP32
 				if (eos) break;
-#endif
+				n++;
 			}
 		}
-#ifndef ESP32
 		sleep(1);
-#endif
 		digitalWrite(SPI_PIN_CS, HIGH);
-#ifndef ESP32
 		sleep(1);
-#endif
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -515,7 +510,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	}
 #endif
 	// wait for READY pin to restore high level so SPI bus is released
-	while (digitalRead(SPI_PIN_READY) == LOW) sleep(1);
+	while (digitalRead(SPI_PIN_READY) == LOW);
 	return n;
 }
 
@@ -753,42 +748,9 @@ int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 	return receive(buffer, bufsize, timeout);
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char* expected1, const char* expected2)
+byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char* expected)
 {
-	int bytesRecv = 0;
-	uint32_t t = millis();
-	setTarget(TARGET_OBD);
-	do {
-		if (bytesRecv >= bufsize - 16) {
-			bytesRecv -= dumpLine(buffer, bytesRecv);
-		}
-		delay(20);
-		byte n = xbRead(buffer + bytesRecv, bufsize - bytesRecv, timeout);
-		if (n > 0) {
-#ifdef DEBUG
-			debugOutput(buffer);
-#endif
-			if (!memcmp(buffer + bytesRecv, "$GSMNO DATA", 11)) {
-				if (timeout > 50) delay(50);
-			} else {
-				memmove(buffer + bytesRecv, buffer + bytesRecv + 4, n - 5);
-				//Serial.print(buffer + bytesRecv);
-				bytesRecv += n - 5;
-				buffer[bytesRecv] = 0;
-				if (!expected1)
-					return 1;
-				else if (strstr(buffer, expected1))
-					return 1;
-				else if (expected2 && strstr(buffer, expected2))
-					return 2;
-			}
-		} else if (n == -1) {
-			// an erroneous reading
-			break;
-		}
-	} while (millis() - t < timeout);
-	buffer[bytesRecv] = 0;
-	return 0;
+	return xbReceive(buffer, bufsize, timeout, expected ? &expected : 0, expected ? 1 : 0);
 }
 
 byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
@@ -799,18 +761,26 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 		if (bytesRecv >= bufsize - 16) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-		sleep(20);
+		//sleep(20);
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
 			buffer[bytesRecv + n] = 0;
-#ifdef DEBUG
-			debugOutput(buffer + bytesRecv);
-#endif
-			if (!memcmp(buffer + bytesRecv, "$GSM", 4) && memcmp(buffer + bytesRecv + 6, " DATA", 5)) {
+			if (n >= 5 && !memcmp(buffer + bytesRecv, "$GSM", 4) && memcmp(buffer + bytesRecv + 6, " DATA", 5)) {
+				char *p = buffer + bytesRecv + 4;
 				n -= 4;
-				memmove(buffer + bytesRecv, buffer + bytesRecv + 4, n);
+				if (bytesRecv > 0 && *p == '\n') {
+					// strip first \n
+					p++;
+					n--;
+				}
+				memmove(buffer + bytesRecv, p, n);
 				bytesRecv += n;
 				buffer[bytesRecv] = 0;
+#ifdef XBEE_DEBUG
+				Serial.print("[RECV]");
+				Serial.print(buffer + bytesRecv - n);
+				Serial.println("[/RECV]");
+#endif
 				if (expectedCount == 0) {
 					break;
 				}
@@ -821,11 +791,14 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 			}
 		} else if (n == -1) {
 			// an erroneous reading
+#ifdef XBEE_DEBUG
+			Serial.print("RECV ERROR");
+#endif
 			break;
 		}
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
-	return expectedCount == 0 ? bytesRecv : 0;
+	return 0;
 }
 
 void COBDSPI::xbPurge()
