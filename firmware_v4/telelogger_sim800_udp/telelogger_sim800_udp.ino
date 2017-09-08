@@ -518,14 +518,19 @@ public:
 
       if ((txCount % SERVER_SYNC_INTERVAL) == (SERVER_SYNC_INTERVAL - 1)) {
         // sync
-        Serial.print("SYNC...");
-        if (!notifyServer(EVENT_SYNC)) {
-          connErrors++;
-          Serial.println("NO");
-        } else {
-          connErrors = 0;
-          txCount++;
-          Serial.println("OK");
+        bool success = false;
+        for (byte n = 0; n < MAX_CONN_ERRORS; n++) {
+          Serial.print("SYNC...");
+          if (!notifyServer(EVENT_SYNC)) {
+            connErrors++;
+            Serial.println("NO");
+          } else {
+            connErrors = 0;
+            txCount++;
+            Serial.println("OK");
+            success = true;
+            break;
+          }
         }
       }
     }
