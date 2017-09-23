@@ -521,21 +521,18 @@ void COBDSPI::write(const char* s)
 #endif
 	sleep(1);
 	digitalWrite(SPI_PIN_CS, LOW);
-	sleep(1);
+	sleep(5);
 	//SPI.beginTransaction(spiSettings);
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
-			delayMicroseconds(5);
 		}
 	}
 	for (; *s ;s++) {
 		SPI.transfer((byte)*s);
-		delayMicroseconds(5);
 	}
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
-	delayMicroseconds(5);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 	sleep(1);
@@ -734,17 +731,18 @@ void COBDSPI::xbWrite(const char* cmd)
 {
 	setTarget(TARGET_BEE);
 	write(cmd);
-#ifdef DEBUG
-	Serial.print("<<<");
-	Serial.println(cmd);
-#endif
+#ifdef XBEE_DEBUG
+	Serial.print("[SEND]");
+	Serial.print(cmd);
+	Serial.println("[/SEND]");
+	#endif
 }
 
 int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 {
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");
-	dataIdleLoop();
+	sleep(10);
 	return receive(buffer, bufsize, timeout);
 }
 
@@ -761,7 +759,6 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 		if (bytesRecv >= bufsize - 16) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-		//sleep(20);
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
 			buffer[bytesRecv + n] = 0;
@@ -796,6 +793,7 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 #endif
 			break;
 		}
+		sleep(100);
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
 	return 0;
