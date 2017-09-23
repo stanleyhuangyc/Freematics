@@ -1,49 +1,93 @@
 /*************************************************************************
-* Arduino Library for Freematics ONE/ONE+
+* Arduino Library for Freematics ONE
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
-* (C)2012-2017 Stanley Huang <support@freematics.com.au
+* (C)2012-2016 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
-#ifdef ARDUINO_ARCH_AVR
+#include <Arduino.h>
+#include <SPI.h>
+#include <Wire.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/common.h>
 #include <avr/wdt.h>
 #include <avr/sleep.h>
-#endif
 #include "FreematicsONE.h"
 
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
-#ifdef ARDUINO_ARCH_AVR
 SIGNAL(WDT_vect) {
   wdt_disable();
   wdt_reset();
   WDTCSR &= ~_BV(WDIE);
 }
-#endif
 
-#ifdef ESP32
-bool gps_decode_start();
-bool gps_get_data(GPS_DATA* gdata);
-int gps_write_string(const char* string);
-void gps_decode_task(int timeout);
-void bee_start();
-int bee_write_string(const char* string);
-int bee_write_data(uint8_t* data, int len);
-int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout);
-void bee_flush();
-#endif
+uint16_t hex2uint16(const char *p)
+{
+	char c = *p;
+	uint16_t i = 0;
+	for (char n = 0; c && n < 4; c = *(++p)) {
+		if (c >= 'A' && c <= 'F') {
+			c -= 7;
+		} else if (c>='a' && c<='f') {
+			c -= 39;
+        } else if (c == ' ') {
+            continue;
+        } else if (c < '0' || c > '9') {
+			break;
+        }
+		i = (i << 4) | (c & 0xF);
+		n++;
+	}
+	return i;
+}
+
+byte hex2uint8(const char *p)
+{
+	byte c1 = *p;
+	byte c2 = *(p + 1);
+	if (c1 >= 'A' && c1 <= 'F')
+		c1 -= 7;
+	else if (c1 >='a' && c1 <= 'f')
+	    c1 -= 39;
+	else if (c1 < '0' || c1 > '9')
+		return 0;
+
+	if (c2 >= 'A' && c2 <= 'F')
+		c2 -= 7;
+	else if (c2 >= 'a' && c2 <= 'f')
+	    c2 -= 39;
+	else if (c2 < '0' || c2 > '9')
+		return 0;
+
+	return c1 << 4 | (c2 & 0xf);
+}
+
+int dumpLine(char* buffer, int len)
+{
+	int bytesToDump = len >> 1;
+	for (int i = 0; i < len; i++) {
+		// find out first line end and discard the first line
+		if (buffer[i] == '\r' || buffer[i] == '\n') {
+			// go through all following \r or \n if any
+			while (++i < len && (buffer[i] == '\r' || buffer[i] == '\n'));
+			bytesToDump = i;
+			break;
+		}
+	}
+	memmove(buffer, buffer + bytesToDump, len - bytesToDump);
+	return bytesToDump;
+}
 
 byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 {
 	/*
 	Response example:
-	0: 43 04 01 08 01 09
+	0: 43 04 01 08 01 09 
 	1: 01 11 01 15 00 00 00
-	*/
+	*/ 
 	byte codesRead = 0;
  	for (byte n = 0; n < 6; n++) {
 		char buffer[128];
@@ -58,7 +102,7 @@ byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 						if (*p == '\r') {
 							p = strchr(p, ':');
 							if (!p) break;
-							p += 2;
+							p += 2; 
 						}
 						uint16_t code = hex2uint16(p);
 						if (code == 0) break;
@@ -205,23 +249,15 @@ int COBDSPI::normalizeData(byte pid, char* data)
 
 void COBDSPI::enterLowPowerMode()
 {
-#ifdef ESP32
-	reset();
-	end();
-#else
 	setTarget(TARGET_OBD);
 	write("ATLP\r");
-#endif
 }
 
 void COBDSPI::leaveLowPowerMode()
 {
-#ifdef ESP32
-	begin();
-#else
+	// simply send any command to wake the device up
 	char buf[16];
 	sendCommand("AT\r", buf, sizeof(buf));
-#endif
 }
 
 float COBDSPI::getVoltage()
@@ -368,8 +404,6 @@ static const char targets[][4] = {
 	{'$','G','S','M'}
 };
 
-//SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
-
 byte COBDSPI::begin()
 {
 	// turn off ADC
@@ -382,20 +416,13 @@ byte COBDSPI::begin()
 	pinMode(SPI_PIN_CS, OUTPUT);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
-#ifdef ESP32
-	SPI.setFrequency(1000000);
-#else
-	SPI.setClockDivider(SPI_CLOCK_DIV16);
-#endif
-	delay(100);
+	SPI.setClockDivider(SPI_CLOCK_DIV64);
+	delay(50);
 	return getVersion();
 }
 
 void COBDSPI::end()
 {
-#ifdef ESP32
-	SPI.end();
-#endif
 }
 
 byte COBDSPI::getVersion()
@@ -458,19 +485,13 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				}
 				buffer[n] = c;
 				eos = (c == 0x9 && buffer[n - 1] =='>');
-				n++;
-#ifndef ESP32
 				if (eos) break;
-#endif
+				n++;
 			}
 		}
-#ifndef ESP32
 		sleep(1);
-#endif
 		digitalWrite(SPI_PIN_CS, HIGH);
-#ifndef ESP32
 		sleep(1);
-#endif
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -489,7 +510,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	}
 #endif
 	// wait for READY pin to restore high level so SPI bus is released
-	while (digitalRead(SPI_PIN_READY) == LOW) sleep(1);
+	while (digitalRead(SPI_PIN_READY) == LOW);
 	return n;
 }
 
@@ -498,37 +519,23 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-#if ESP32
-	char buf[256];
-	int len = strlen(s);
-	if (len > sizeof(buf) - 6) len = sizeof(buf) - 6;
-	memcpy(buf, targets[m_target], 4);
-	memcpy(buf + 4, s, len);
-	len += 4;
-	// add terminating byte (ESC)
-	buf[len++] = 0x1B;
-	sleep(10);
-#else
 	sleep(1);
-#endif
 	digitalWrite(SPI_PIN_CS, LOW);
 	sleep(1);
 	//SPI.beginTransaction(spiSettings);
-#ifdef ESP32
-	SPI.writeBytes((uint8_t*)buf, len);
-#else
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
+			delayMicroseconds(5);
 		}
 	}
 	for (; *s ;s++) {
 		SPI.transfer((byte)*s);
+		delayMicroseconds(5);
 	}
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
-#endif
-	sleep(1);
+	delayMicroseconds(5);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 	sleep(1);
@@ -538,14 +545,10 @@ void COBDSPI::write(byte* data, int len)
 {
 	digitalWrite(SPI_PIN_CS, LOW);
 	//SPI.beginTransaction(spiSettings);
-#ifdef ESP32
-	SPI.writeBytes((uint8_t*)data, len);
-#else
 	for (int i = 0; i < len; i++) {
 		SPI.transfer(data[i]);
+		delayMicroseconds(5);
 	}
-#endif
-	sleep(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 	sleep(1);
@@ -565,7 +568,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 
 byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout)
 {
-	uint32_t t = millis();
+	uint32_t t = millis();  
 	byte n;
 	do {
 		write(cmd);
@@ -583,41 +586,12 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 
 void COBDSPI::sleep(unsigned int ms)
 {
-#ifdef ESP32
-	uint32_t t = millis();
-	for (;;) {
-        uint32_t elapsed = millis() - t;
-        if (elapsed >= ms) break;
-		gps_decode_task(ms - elapsed);
-	}
-#else
 	delay(ms);
-#endif
 }
 
 void COBDSPI::sleepSec(unsigned int seconds)
 {
-#ifdef ARDUINO_ARCH_AVR
-	while (seconds > 0) {
-		uint8_t wdt_period;
-		if (seconds >= 8) {
-			wdt_period = WDTO_8S;
-			seconds -= 8;
-		} else {
-			wdt_period = WDTO_1S;
-			seconds--;
-		}
-		wdt_enable(wdt_period);
-		wdt_reset();
-		WDTCSR |= _BV(WDIE);
-		set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-		sleep_mode();
-		wdt_disable();
-		WDTCSR &= ~_BV(WDIE);
-	 }
-#else
 	sleep(seconds * 1000);
-#endif
 }
 
 bool COBDSPI::gpsInit(unsigned long baudrate)
@@ -625,17 +599,7 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 	bool success = false;
 	char buf[64];
 	m_target = TARGET_OBD;
-	m_internalGPS = false;
 	if (baudrate) {
-#ifdef ESP32
-		pinMode(PIN_GPS_POWER, OUTPUT);
-		// turn on GPS power
-		digitalWrite(PIN_GPS_POWER, HIGH);
-		if (gps_decode_start()) {
-			// success
-			return true;
-		}
-#endif
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf_P(buf, PSTR("ATBR2%lu\r"), baudrate);
 			sendCommand(buf, buf, sizeof(buf));
@@ -643,9 +607,6 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 			delay(100);
 			do {
 				if (gpsGetRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
-#ifdef ESP32
-					m_internalGPS = true;
-#endif
 					return true;
 				}
 			} while (millis() - t < GPS_INIT_TIMEOUT);
@@ -654,9 +615,6 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 		success = true;
 	}
 	//turn off GPS power
-#ifdef ESP32
-	digitalWrite(PIN_GPS_POWER, LOW);
-#endif
 	sendCommand("ATGPSOFF\r", buf, sizeof(buf));
 	return success;
 }
@@ -761,13 +719,6 @@ void COBDSPI::gpsSendCommand(const char* cmd)
 
 bool COBDSPI::xbBegin(unsigned long baudrate)
 {
-#ifdef PIN_XBEE_PWR
-	pinMode(PIN_XBEE_PWR, OUTPUT);
-	digitalWrite(PIN_XBEE_PWR, HIGH);
-#endif
-#ifdef ESP32
-	bee_start();
-#else
 	char buf[16];
 	sprintf_P(buf, PSTR("ATBR1%lu\r"), baudrate);
 	setTarget(TARGET_OBD);
@@ -777,46 +728,32 @@ bool COBDSPI::xbBegin(unsigned long baudrate)
 	} else {
 		return false;
 	}
-#endif
 }
-
-void COBDSPI::xbWrite(const char* data)
+	
+void COBDSPI::xbWrite(const char* cmd)
 {
-#ifdef ESP32
-	bee_write_string(data);
-#else
 	setTarget(TARGET_BEE);
-	write(data);
-	sleep(10);
-#endif
-#ifdef XBEE_DEBUG
-	Serial.print("[SENT]");
-	Serial.print(data);
-	Serial.println("[/SENT]");
-#endif
-}
-
-void COBDSPI::xbWrite(const char* data, int len)
-{
-#ifdef ESP32
-	bee_write_data((uint8_t*)data, len);
-#else
-	xbWrite((const char*)data);
+	write(cmd);
+#ifdef DEBUG
+	Serial.print("<<<");
+	Serial.println(cmd);
 #endif
 }
 
 int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 {
-#ifdef ESP32
-	return bee_read((uint8_t*)buffer, bufsize, timeout);
-#else
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");
+	dataIdleLoop();
 	return receive(buffer, bufsize, timeout);
-#endif
 }
 
-int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
+byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char* expected)
+{
+	return xbReceive(buffer, bufsize, timeout, expected ? &expected : 0, expected ? 1 : 0);
+}
+
+byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
@@ -824,28 +761,19 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 		if (bytesRecv >= bufsize - 16) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-#ifndef ESP32
-		sleep(20);
-#endif
+		//sleep(20);
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
-#ifdef ESP32
-#ifdef XBEE_DEBUG
-			Serial.print("[RECV]");
 			buffer[bytesRecv + n] = 0;
-			Serial.print(buffer + bytesRecv);
-			Serial.println("[/RECV]");
-#endif
-			bytesRecv += n;
-			buffer[bytesRecv] = 0;
-			for (byte i = 0; i < expectedCount; i++) {
-				// match expected string(s)
-				if (expected[i] && strstr(buffer, expected[i])) return i + 1;
-			}
-#else
-			if (!memcmp(buffer + bytesRecv, "$GSM", 4) && memcmp(buffer + bytesRecv + 6, " DATA", 5)) {
+			if (n >= 5 && !memcmp(buffer + bytesRecv, "$GSM", 4) && memcmp(buffer + bytesRecv + 6, " DATA", 5)) {
+				char *p = buffer + bytesRecv + 4;
 				n -= 4;
-				memmove(buffer + bytesRecv, buffer + bytesRecv + 4, n);
+				if (bytesRecv > 0 && *p == '\n') {
+					// strip first \n
+					p++;
+					n--;
+				}
+				memmove(buffer + bytesRecv, p, n);
 				bytesRecv += n;
 				buffer[bytesRecv] = 0;
 #ifdef XBEE_DEBUG
@@ -861,7 +789,6 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 					if (expected[i] && strstr(buffer, expected[i])) return i + 1;
 				}
 			}
-#endif
 		} else if (n == -1) {
 			// an erroneous reading
 #ifdef XBEE_DEBUG
@@ -871,39 +798,19 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 		}
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
-	return expectedCount == 0 ? bytesRecv : 0;
+	return 0;
 }
 
 void COBDSPI::xbPurge()
 {
-#ifdef ESP32
-	bee_flush();
-#else
 	char buf[16];
 	setTarget(TARGET_OBD);
 	sendCommand("ATCLRGSM\r", buf, sizeof(buf));
-#endif
 }
 
 void COBDSPI::xbTogglePower()
 {
-#ifdef PIN_XBEE_PWR
-	digitalWrite(PIN_XBEE_PWR, HIGH);
-	sleep(50);
-#ifdef XBEE_DEBUG
-	Serial.println("xBee power pin set to low");
-#endif
-	digitalWrite(PIN_XBEE_PWR, LOW);
-	sleep(2000);
-#ifdef XBEE_DEBUG
-	Serial.println("xBee power pin set to high");
-#endif
-	digitalWrite(PIN_XBEE_PWR, HIGH);
-	sleep(1000);
-	digitalWrite(PIN_XBEE_PWR, LOW);
-#else
 	setTarget(TARGET_OBD);
 	char buffer[64];
 	sendCommand("ATGSMPWR\r", buffer, sizeof(buffer));
-#endif
 }

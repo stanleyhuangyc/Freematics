@@ -23,6 +23,11 @@
 //------------------------------------------------------------------------------
 #ifndef SOFTWARE_SPI
 #ifdef USE_SPI_LIB
+
+#ifndef SDCARD_SPI
+#define SDCARD_SPI SPI
+#endif
+
 #include <SPI.h>
 static SPISettings settings;
 #endif
@@ -34,7 +39,7 @@ static void spiSend(uint8_t b) {
   while (!(SPSR & (1 << SPIF)))
     ;
 #else
-  SPI.transfer(b);
+  SDCARD_SPI.transfer(b);
 #endif
 }
 /** Receive a byte from the card */
@@ -43,7 +48,7 @@ static  uint8_t spiRec(void) {
   spiSend(0XFF);
   return SPDR;
 #else
-  return SPI.transfer(0xFF);
+  return SDCARD_SPI.transfer(0xFF);
 #endif
 }
 #else  // SOFTWARE_SPI
@@ -164,7 +169,7 @@ void Sd2Card::chipSelectHigh(void) {
 #ifdef USE_SPI_LIB
   if (chip_select_asserted) {
     chip_select_asserted = 0;
-    SPI.endTransaction();
+    SDCARD_SPI.endTransaction();
   }
 #endif
 }
@@ -173,7 +178,7 @@ void Sd2Card::chipSelectLow(void) {
 #ifdef USE_SPI_LIB
   if (!chip_select_asserted) {
     chip_select_asserted = 1;
-	  SPI.beginTransaction(settings);
+    SDCARD_SPI.beginTransaction(settings);
 	}
 #endif
   digitalWrite(chipSelectPin_, LOW);
@@ -240,7 +245,6 @@ uint8_t Sd2Card::eraseSingleBlockEnable(void) {
  * can be determined by calling errorCode() and errorData().
  */
 uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
-
   errorCode_ = inBlock_ = partialBlockRead_ = type_ = 0;
   chipSelectPin_ = chipSelectPin;
   // 16-bit init start time allows over a minute
@@ -262,11 +266,11 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
   pinMode(SS_PIN, OUTPUT);
   digitalWrite(SS_PIN, HIGH); // disable any SPI device using hardware SS pin
   // Enable SPI, Master, clock rate f_osc/128
-  //SPCR = (1 << SPE) | (1 << MSTR) | (1 << SPR1) | (1 << SPR0);
+  SPCR = (1 << SPE) | (1 << MSTR) | (1 << SPR1) | (1 << SPR0);
   // clear double speed
-  //SPSR &= ~(1 << SPI2X);
+  SPSR &= ~(1 << SPI2X);
 #else // USE_SPI_LIB
-  SPI.begin();
+  SDCARD_SPI.begin();
   #ifdef ESP32
   settings = SPISettings(1000000, MSBFIRST, SPI_MODE0);
   #else
@@ -277,18 +281,18 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
 
   // must supply min of 74 clock cycles with CS high.
 #ifdef USE_SPI_LIB
-  SPI.beginTransaction(settings);
+  SDCARD_SPI.beginTransaction(settings);
 #endif
   for (uint8_t i = 0; i < 10; i++) spiSend(0XFF);
 #ifdef USE_SPI_LIB
-  SPI.endTransaction();
+  SDCARD_SPI.endTransaction();
 #endif
 
   chipSelectLow();
 
   // command to go idle in SPI mode
   while ((status_ = cardCommand(CMD0, 0)) != R1_IDLE_STATE) {
-    if (((uint16_t)millis() - t0) > SD_INIT_TIMEOUT) {
+    if (((uint16_t)(millis() - t0)) > SD_INIT_TIMEOUT) {
       error(SD_CARD_ERROR_CMD0);
       goto fail;
     }
@@ -327,9 +331,8 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
   }
   chipSelectHigh();
 
-#ifndef SOFTWARE_SPI
-  //return setSckRate(sckRateID);
-  return true;
+#if 0 //#ifndef SOFTWARE_SPI
+  return setSckRate(sckRateID);
 #else  // SOFTWARE_SPI
   return true;
 #endif  // SOFTWARE_SPI

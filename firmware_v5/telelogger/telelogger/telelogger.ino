@@ -278,7 +278,6 @@ if (!checkState(STATE_STORAGE_READY)) {
           Serial.println("NO");
         } else {
           connErrors = 0;
-          Serial.println("OK");
           lastSyncTime = t;
         }
       }
@@ -310,9 +309,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     // connect to telematics server
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.print("LOGIN...");
-      if (netOpen(SERVER_HOST, SERVER_PORT)) {
-        Serial.println("OK");
-      } else {
+      if (!netOpen(SERVER_HOST, SERVER_PORT)) {
         Serial.println("NO");
         continue;
       }
@@ -429,6 +426,7 @@ if (!checkState(STATE_STORAGE_READY)) {
         Serial.print(" CMD:");
         Serial.print(m_cmd, HEX);
       }
+      Serial.println();
       return true;
     }
     return false;

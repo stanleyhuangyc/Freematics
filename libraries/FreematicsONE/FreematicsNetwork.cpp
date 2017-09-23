@@ -170,10 +170,8 @@ bool CTeleClientSIM800::netBegin()
 
 void CTeleClientSIM800::netEnd()
 {
-  if (m_stage == 2) {
-    xbTogglePower();
-    m_stage = 1;
-  }
+  netSendCommand("AT+CPOWD=1\r");
+  m_stage = 1;
 }
 
 bool CTeleClientSIM800::netSetup(const char* apn, unsigned int timeout)
@@ -283,7 +281,7 @@ char* CTeleClientSIM800::netReceive(int* pbytes, unsigned int timeout)
     char *p = strstr(m_buffer, "RECV FROM:");
     if (p) p = strchr(p, '\r');
     if (!p) return 0;
-    p++;
+    while (*(++p) == '\r' || *p =='\n');
     int len = strlen(p);
     if (len > 2) {
       if (pbytes) *pbytes = len;
