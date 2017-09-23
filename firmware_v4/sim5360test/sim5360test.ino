@@ -16,12 +16,10 @@
 
 #include <FreematicsONE.h>
 
-#define APN "connect"
+#define APN "3gnet"
 #define HTTP_SERVER_URL "hub.freematics.com"
 #define HTTP_SERVER_PORT 80
-#define UDP_SERVER_IP "172.104.40.203"
-#define UDP_SERVER_PORT 8081
-#define MAX_CONN_TIME 5000
+#define MAX_CONN_TIME 10000
 #define XBEE_BAUDRATE 115200
 
 typedef enum {
@@ -107,7 +105,7 @@ public:
       uint32_t t = millis();
       char *ip = 0;
       do {
-        if (netSendCommand("AT+IPADDR\r", 5000, "\r\nOK\r\n", true)) {
+        if (netSendCommand("AT+IPADDR\r", 5000, "+IPADDR:")) {
           char *p = strstr(buffer, "+IPADDR:");
           if (p) {
             ip = p + 9;
@@ -149,36 +147,6 @@ public:
             }
         }
         return false;
-    }
-    bool udpInit()
-    {
-      return netSendCommand("AT+CIPOPEN=0,\"UDP\",,,8000\r", 3000);
-    }
-    bool udpSend(const char* ip, uint16_t port, const char* data, unsigned int len)
-    {
-      sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, ip, port);
-      if (netSendCommand(buffer, 100, ">")) {
-        xbWrite(data, len);
-        return netSendCommand(0, 1000);
-      } else {
-        Serial.println(buffer);
-      }
-      return false;
-    }
-    char* udpReceive(int* pbytes = 0)
-    {
-      if (netSendCommand(0, 3000, "+IPD")) {
-        char *p = strstr(buffer, "+IPD");
-        if (!p) return 0;
-        int len = atoi(p + 4);
-        if (pbytes) *pbytes = len;
-        p = strchr(p, '\n');
-        if (p) {
-          *(++p + len) = 0;
-          return p;
-        }
-      }
-      return 0;
     }
     bool httpOpen()
     {
@@ -239,7 +207,7 @@ public:
           [XX bytes from server]\r\n
           \r\n+CHTTPSRECV: 0\r\n
         */
-        if (netSendCommand("AT+CHTTPSRECV=384\r", MAX_CONN_TIME, "\r\n+CHTTPSRECV: 0", true)) {
+        if (netSendCommand("AT+CHTTPSRECV=384\r", MAX_CONN_TIME, "+CHTTPSRECV: 0", true)) {
           char *p = strstr(buffer, "+CHTTPSRECV:");
           if (p) {
             p = strchr(p, ',');
@@ -269,7 +237,7 @@ public:
         return ret;
       }
     }
-    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK\r\n", bool terminated = false)
+    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK", bool terminated = false)
     {
       if (cmd) {
         xbWrite(cmd);
@@ -340,9 +308,6 @@ void setup()
       Serial.println("dB");
     }
 
-    Serial.print("Init UDP...");
-    Serial.println(sim.udpInit() ? "OK" : "NO");
-
     Serial.print("Init HTTP...");
     if (sim.httpOpen()) {
       Serial.println("OK");
@@ -361,25 +326,6 @@ void loop()
       setup();
       errors = 0;
     }
-  }
-
-  // send and receive UDP datagram
-  Serial.print("Sending UDP datagram...");
-  uint32_t t = millis();
-  char buf[16];
-  int len = sprintf(buf, "%lu", t);
-  if (sim.udpSend(UDP_SERVER_IP, UDP_SERVER_PORT, buf, len))
-    Serial.println("OK");
-  else
-    Serial.println("failed");
-  char *data = sim.udpReceive(&len);
-  if (data) {
-    Serial.print(len);
-    Serial.print(" bytes UDP datagram received [");
-    Serial.print(data);
-    Serial.print("] in ");
-    Serial.print(millis() - t);
-    Serial.println("ms");
   }
 
   // connect to HTTP server

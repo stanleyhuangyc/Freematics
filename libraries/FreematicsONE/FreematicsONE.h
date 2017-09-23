@@ -9,7 +9,9 @@
 #include "FreematicsMEMS.h"
 #include "FreematicsDMP.h"
 #include "FreematicsSD.h"
+#ifdef ESP32
 #include "FreematicsPlus.h"
+#endif
 
 #ifndef ARDUINO_ARCH_AVR
 #define sprintf_P sprintf
