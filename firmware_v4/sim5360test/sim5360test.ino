@@ -16,7 +16,7 @@
 
 #include <FreematicsONE.h>
 
-#define APN "3gnet"
+#define APN "connect"
 #define HTTP_SERVER_URL "hub.freematics.com"
 #define HTTP_SERVER_PORT 80
 #define MAX_CONN_TIME 10000
@@ -38,7 +38,7 @@ public:
     CSIM5360() { buffer[0] = 0; }
     bool netInit()
     {
-      for (byte n = 0; n < 10; n++) {
+      for (byte n = 0; n < 3; n++) {
         // try turning on module
         xbTogglePower();
         sleep(3000);
@@ -60,7 +60,7 @@ public:
       do {
         do {
           Serial.print('.');
-          sleep(500);
+          delay(3000);
           success = netSendCommand("AT+CPSI?\r", 1000, "Online");
           if (success) {
             if (!strstr_P(buffer, PSTR("NO SERVICE")))
@@ -96,6 +96,7 @@ public:
         if (!success) break;
 
         netSendCommand("AT+NETOPEN\r");
+        delay(5000);
       } while(0);
       if (!success) Serial.println(buffer);
       return success;
@@ -116,7 +117,7 @@ public:
         }
         sleep(500);
         ip = 0;
-      } while (millis() - t < 15000);
+      } while (millis() - t < 60000);
       return ip;
     }
     int getSignal()
@@ -269,19 +270,21 @@ void setup()
     delay(500);
     // this will init SPI communication
     sim.begin();
+    sim.xbBegin(XBEE_BAUDRATE);
 
     // initialize SIM5360 xBee module (if present)
-    Serial.print("Init SIM5360...");
-    sim.xbBegin(XBEE_BAUDRATE);
-    if (sim.netInit()) {
-      Serial.println("OK");
-    } else {
-      Serial.println("NO");
-      for (;;);
+    for (;;) {
+      Serial.print("Init SIM5360...");
+      if (sim.netInit()) {
+        Serial.println("OK");
+        break;
+      } else {
+        Serial.println("NO");
+      }
     }
 
     Serial.print("Connecting network");
-    if (sim.netSetup(APN, true)) {
+    if (sim.netSetup(APN, false)) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
