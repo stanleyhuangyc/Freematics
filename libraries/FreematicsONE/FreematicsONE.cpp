@@ -385,9 +385,9 @@ byte COBDSPI::begin()
 #ifdef ESP32
 	SPI.setFrequency(1000000);
 #else
-	SPI.setClockDivider(SPI_CLOCK_DIV16);
+	SPI.setClockDivider(SPI_CLOCK_DIV64);
 #endif
-	delay(100);
+	delay(50);
 	return getVersion();
 }
 
@@ -824,9 +824,6 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 		if (bytesRecv >= bufsize - 16) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-#ifndef ESP32
-		sleep(20);
-#endif
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
 #ifdef ESP32
@@ -869,9 +866,12 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 #endif
 			break;
 		}
+#ifndef ESP32
+		sleep(100);
+#endif
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
-	return expectedCount == 0 ? bytesRecv : 0;
+	return 0;
 }
 
 void COBDSPI::xbPurge()
