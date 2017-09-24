@@ -38,7 +38,7 @@ public:
     void setup()
     {
       Serial.print("OBD ");
-      if (init(PROTO_CAN_11B_500K)) {
+      if (init()) {
         Serial.println("OK");
       } else {
         Serial.println("NO");
