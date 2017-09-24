@@ -533,6 +533,7 @@ void COBDSPI::write(const char* s)
 	}
 	// send terminating byte (ESC)
 	SPI.transfer(0x1B);
+	delay(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 	sleep(1);
