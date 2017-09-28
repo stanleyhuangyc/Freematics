@@ -50,7 +50,7 @@ byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 		sprintf_P(buffer, n == 0 ? PSTR("03\r") : PSTR("03%02X\r"), n);
 		write(buffer);
 		if (receive(buffer, sizeof(buffer)) > 0) {
-			if (!strstr(buffer, "NO DATA")) {
+			if (!strstr_P(buffer, PSTR("NO DATA"))) {
 				char *p = strstr(buffer, "43");
 				if (p) {
 					while (codesRead < maxCodes && *p) {
@@ -576,7 +576,7 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 		write(cmd);
 		sleep(20);
 		n = receive(buf, bufsize, timeout);
-		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 7, " DATA", 5))) {
+		if (n == 0 || (buf[1] != 'O' && !memcmp_P(buf + 5, PSTR("NO DATA"), 7))) {
 			// data not ready
 			sleep(20);
 		} else {
@@ -791,8 +791,8 @@ void COBDSPI::xbWrite(const char* data)
 	bee_write_string(data);
 #else
 	setTarget(TARGET_BEE);
-	write(data);
 	sleep(10);
+	write(data);
 #endif
 #ifdef XBEE_DEBUG
 	Serial.print("[SENT]");
