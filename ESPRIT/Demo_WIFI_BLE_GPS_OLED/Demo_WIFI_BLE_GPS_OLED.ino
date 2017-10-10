@@ -97,7 +97,7 @@ void setup(void)
 
     // BLE
     lcd.print("BLE");
-    if (ble.init("FREEMATICS")) {
+    if (ble.init(BLE_DEVICE_NAME)) {
       Serial.println("BLE initialized");
       showTickCross(true);
     }
@@ -116,6 +116,9 @@ void setup(void)
     // Connect to WiFi network
     lcd.setCursor(64, 0);
     lcd.print("WIFI");
+    lcd.setCursor(0, 2);
+    lcd.print("SSID:");
+    lcd.print(WIFI_SSID);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("Connecting to ");
     Serial.println(WIFI_SSID);
@@ -131,8 +134,6 @@ void setup(void)
     lcd.setCursor(100, 0);
     showTickCross(true);
     lcd.setCursor(0, 2);
-    lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.print("IP:");
     lcd.print(WiFi.localIP());
     Serial.println("");
     Serial.print("IP address: ");
@@ -239,6 +240,7 @@ void loop(void)
     // Check if a TCP client has connected
     WiFiClient client = server.available();
     if (!client) {
+        delay(1);
         return;
     }
     Serial.println("");
