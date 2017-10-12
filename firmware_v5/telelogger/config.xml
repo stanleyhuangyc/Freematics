@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
-<target name="Freematics ONE+ (ESP32)" board="esp32">
+<target name="Freematics ONE+" board="esp32">
   <define name="Enable OBD-II" type="bool" const="ENABLE_OBD" default="true"/>
   <define name="Enable GPS" type="bool" const="ENABLE_GPS" default="true"/>
   <define name="Enable BLE" type="bool" const="ENABLE_BLE" default="true"/>

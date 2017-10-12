@@ -481,11 +481,8 @@ if (!checkState(STATE_STORAGE_READY)) {
             delay(50);
           }
           float motion = 0;
-          Serial.print("ACC:");
           for (byte i = 0; i < 3; i++) {
             float a = accSum[i] / accCount - accBias[i];
-            Serial.print(a);
-            Serial.print(' ');
             motion += a * a;
           }
           motion *= 10000;
