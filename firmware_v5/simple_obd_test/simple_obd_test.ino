@@ -77,9 +77,5 @@ void loop() {
     connected = false;
     obd.reset();
   }
-  //delay(500);
-  if (count == 1000) {
-    count = 0;
-    obd.reset();
-  }
+  delay(500);
 }
