@@ -104,8 +104,6 @@ const char* contentTypeTable[]={
 
 char* defaultPages[]={"index.htm","index.html","default.htm","main.xul"};
 
-FILE *fpLog=NULL;
-
 ////////////////////////////////////////////////////////////////////////////
 // API callsc
 ////////////////////////////////////////////////////////////////////////////
@@ -205,8 +203,6 @@ int mwServerStart(HttpParam* hp)
 		DBG("Error: Webserver thread already running\n");
 		return -1;
 	}
-
-	if (!fpLog) fpLog=stdout;
 
 	if (hp->maxClients == 0) {
 		SYSLOG(LOG_INFO,"Maximum clients not set\n");
@@ -437,12 +433,12 @@ void _mwCloseAllConnections(HttpParam* hp)
 // _mwHttpThread
 // Webserver independant processing thread. Handles all connections
 ////////////////////////////////////////////////////////////////////////////
-int mwHttpLoop(HttpParam *hp)
+int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 {
 	HttpSocket *phsSocketCur;
 	SOCKET socket;
 	struct sockaddr_in sinaddr;
-    int iRc;
+  int iRc;
 	int i;
 
 	time_t tmCurrentTime;
@@ -515,105 +511,102 @@ int mwHttpLoop(HttpParam *hp)
 	{
 		struct timeval tvSelectWait;
 		// initialize select delay
-		tvSelectWait.tv_sec = 1;
-		tvSelectWait.tv_usec = 0; // note: using timeval here -> usec not nsec
+		tvSelectWait.tv_sec = timeout / 1000;
+		tvSelectWait.tv_usec = (timeout % 1000) * 1000; // note: using timeval here -> usec not nsec
 
 		// and check sockets (may take a while!)
 		iRc=select(iSelectMaxFds+1, &fdsSelectRead, &fdsSelectWrite,
 				NULL, &tvSelectWait);
 	}
 
-	if (iRc<0) {
+	if (iRc <= 0) {
 		return iRc;
 	}
-	if (iRc>0) {
-		// check which sockets are read/write able
+	// check which sockets are read/write able
+	for (i = 0; i < hp->maxClients; i++) {
+		BOOL bRead;
+		BOOL bWrite;
+
+		phsSocketCur = hp->hsSocketQueue + i;
+
+		// get socket fd
+		socket = phsSocketCur->socket;
+		if (!socket) continue;
+
+		// get read/write status for socket
+		bRead = FD_ISSET(socket, &fdsSelectRead);
+		bWrite = FD_ISSET(socket, &fdsSelectWrite);
+
+		if ((bRead|bWrite)!=0) {
+			//DBG("socket %d bWrite=%d, bRead=%d\n",phsSocketCur->socket,bWrite,bRead);
+			// if readable or writeable then process
+			if (bWrite && ISFLAGSET(phsSocketCur,FLAG_SENDING)) {
+				DBG("SENDING\n");
+				iRc=_mwProcessWriteSocket(hp, phsSocketCur);
+			} else if (bRead && ISFLAGSET(phsSocketCur,FLAG_RECEIVING)) {
+				DBG("RECEIVING\n");
+				iRc=_mwProcessReadSocket(hp,phsSocketCur);
+			} else {
+				iRc=-1;
+				DBG("Invalid socket state (flag: %08x)\n",phsSocketCur->flags);
+			}
+			if (!iRc) {
+				// and reset expiration timer
+				phsSocketCur->tmExpirationTime=time(NULL)+hp->tmSocketExpireTime;
+			} else {
+				if (iRc == -1) {
+					SETFLAG(phsSocketCur, FLAG_CONN_CLOSE);
+				}
+				_mwCloseSocket(hp, phsSocketCur);
+			}
+		}
+	}
+
+	// check if any socket to accept and accept the socket
+	if (FD_ISSET(hp->listenSocket, &fdsSelectRead)) {
+		// find empty slot
+		phsSocketCur = 0;
 		for (i = 0; i < hp->maxClients; i++) {
-			BOOL bRead;
-			BOOL bWrite;
-
-			phsSocketCur = hp->hsSocketQueue + i;
-
-			// get socket fd
-			socket = phsSocketCur->socket;
-			if (!socket) continue;
-
-			// get read/write status for socket
-			bRead = FD_ISSET(socket, &fdsSelectRead);
-			bWrite = FD_ISSET(socket, &fdsSelectWrite);
-
-			if ((bRead|bWrite)!=0) {
-				//DBG("socket %d bWrite=%d, bRead=%d\n",phsSocketCur->socket,bWrite,bRead);
-				// if readable or writeable then process
-				if (bWrite && ISFLAGSET(phsSocketCur,FLAG_SENDING)) {
-					DBG("SENDING\n");
-					iRc=_mwProcessWriteSocket(hp, phsSocketCur);
-				} else if (bRead && ISFLAGSET(phsSocketCur,FLAG_RECEIVING)) {
-					DBG("RECEIVING\n");
-					iRc=_mwProcessReadSocket(hp,phsSocketCur);
-				} else {
-					iRc=-1;
-					DBG("Invalid socket state (flag: %08x)\n",phsSocketCur->flags);
-				}
-				if (!iRc) {
-					// and reset expiration timer
-					phsSocketCur->tmExpirationTime=time(NULL)+hp->tmSocketExpireTime;
-				} else {
-					if (iRc == -1) {
-						SETFLAG(phsSocketCur, FLAG_CONN_CLOSE);
-					}
-					_mwCloseSocket(hp, phsSocketCur);
-				}
+			if (hp->hsSocketQueue[i].socket == 0) {
+				phsSocketCur = hp->hsSocketQueue + i;
+				break;
 			}
 		}
 
-		// check if any socket to accept and accept the socket
-		if (FD_ISSET(hp->listenSocket, &fdsSelectRead)) {
-			// find empty slot
-			phsSocketCur = 0;
-			for (i = 0; i < hp->maxClients; i++) {
-				if (hp->hsSocketQueue[i].socket == 0) {
-					phsSocketCur = hp->hsSocketQueue + i;
-					break;
-				}
-			}
-
-			if (!phsSocketCur) {
-				DBG("WARNING: clientCount:%d > maxClients:%d\n", hp->stats.clientCount, hp->maxClients);
-				_mwDenySocket(hp,&sinaddr);
-				return 0;
-			}
-
-			phsSocketCur->socket = _mwAcceptSocket(hp,&sinaddr);
-			if (phsSocketCur->socket == 0)
-				return 0;
-			phsSocketCur->ipAddr.laddr=ntohl(sinaddr.sin_addr.s_addr);
-			SYSLOG(LOG_INFO,"[%d] IP: %d.%d.%d.%d\n",
-				phsSocketCur->socket,
-				phsSocketCur->ipAddr.caddr[3],
-				phsSocketCur->ipAddr.caddr[2],
-				phsSocketCur->ipAddr.caddr[1],
-				phsSocketCur->ipAddr.caddr[0]);
-
-			hp->stats.clientCount++;
-
-			//fill structure with data
-			_mwInitSocketData(phsSocketCur);
-			phsSocketCur->request.pucPayload = 0;
-			phsSocketCur->tmAcceptTime=time(NULL);
-			phsSocketCur->tmExpirationTime=phsSocketCur->tmAcceptTime+hp->tmSocketExpireTime;
-			phsSocketCur->iRequestCount=0;
-			DBG("Connected clients: %d\n",hp->stats.clientCount);
-
-			//update max client count
-			if (hp->stats.clientCount>hp->stats.clientCountMax) hp->stats.clientCountMax=hp->stats.clientCount;
+		if (!phsSocketCur) {
+			DBG("WARNING: clientCount:%d > maxClients:%d\n", hp->stats.clientCount, hp->maxClients);
+			_mwDenySocket(hp,&sinaddr);
+			return 0;
 		}
-		// check if any udp socket to read
-		if (hp->udpSocket && FD_ISSET(hp->udpSocket, &fdsSelectRead)) {
-			hp->pfnIncomingUDP(hp);
-		}
-	} else {
-		//DBG("Select Timeout\n");
+
+		DBG("ACCEPTING\n");
+		phsSocketCur->socket = _mwAcceptSocket(hp,&sinaddr);
+		if (phsSocketCur->socket == 0)
+			return 0;
+		phsSocketCur->ipAddr.laddr=ntohl(sinaddr.sin_addr.s_addr);
+		SYSLOG(LOG_INFO,"[%d] IP: %d.%d.%d.%d\n",
+			phsSocketCur->socket,
+			phsSocketCur->ipAddr.caddr[3],
+			phsSocketCur->ipAddr.caddr[2],
+			phsSocketCur->ipAddr.caddr[1],
+			phsSocketCur->ipAddr.caddr[0]);
+
+		hp->stats.clientCount++;
+
+		//fill structure with data
+		_mwInitSocketData(phsSocketCur);
+		phsSocketCur->request.pucPayload = 0;
+		phsSocketCur->tmAcceptTime=time(NULL);
+		phsSocketCur->tmExpirationTime=phsSocketCur->tmAcceptTime+hp->tmSocketExpireTime;
+		phsSocketCur->iRequestCount=0;
+		DBG("Connected clients: %d\n",hp->stats.clientCount);
+
+		//update max client count
+		if (hp->stats.clientCount>hp->stats.clientCountMax) hp->stats.clientCountMax=hp->stats.clientCount;
+	}
+	// check if any udp socket to read
+	if (hp->udpSocket && FD_ISSET(hp->udpSocket, &fdsSelectRead)) {
+		hp->pfnIncomingUDP(hp);
 	}
 	return iRc;
 } // end of _mwHttpThread
@@ -1026,8 +1019,6 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 	}
 	if (iLength < 0) {
 		SYSLOG(LOG_INFO,"[%d] socket closed by client\n",phsSocket->socket);
-		SETFLAG(phsSocket, FLAG_CONN_CLOSE);
-		_mwCloseSocket(hp, phsSocket);
 		return -1;
 	}
 	// add in new data received
@@ -1206,7 +1197,7 @@ int _mwProcessWriteSocket(HttpParam *hp, HttpSocket* phsSocket)
 ////////////////////////////////////////////////////////////////////////////
 void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 {
-    if (phsSocket->socket == 0) return;
+  if (phsSocket->socket == 0) return;
 	if (phsSocket->fd > 0) {
 		close(phsSocket->fd);
 	}
@@ -1240,12 +1231,12 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 		phsSocket->tmExpirationTime=time(NULL)+HTTP_KEEPALIVE_TIME;
 		return;
 	}
-	DBG("[%d] socket closed after responded for %d requests\n",phsSocket->socket,phsSocket->iRequestCount);
-	DBG("Connected clients: %d\n",hp->stats.clientCount);
+	DBG("[%d] socket closed after %d requests\n",phsSocket->socket,phsSocket->iRequestCount);
 	closesocket(phsSocket->socket);
 	phsSocket->socket = 0;
 	hp->stats.clientCount--;
 	phsSocket->iRequestCount=0;
+	DBG("Connected clients: %d\n",hp->stats.clientCount);
 } // end of _mwCloseSocket
 
 int _mwStrCopy(char *dest, const char *src)

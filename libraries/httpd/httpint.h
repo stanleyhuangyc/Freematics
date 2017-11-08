@@ -72,19 +72,10 @@
 #define MAX_REQUEST_PATH_LEN (512/*bytes*/)
 #define MAX_REQUEST_SIZE (2*1024 /*bytes*/)
 
-#ifndef WINCE
 #define SLASH '/'
-#else
-#define SLASH '\\'
-#endif
 
-#define LOG_INFO fpLog
-extern FILE *fpLog;
-#ifdef NOCONSOLE
-#define SYSLOG
-#else
+#define LOG_INFO stdout
 #define SYSLOG fprintf
-#endif
 
 /////////////////////////////////////////////////////////////////////////////
 // local helper function prototypes
