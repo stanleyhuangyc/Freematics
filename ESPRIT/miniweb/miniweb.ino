@@ -17,11 +17,13 @@
 #include <apps/sntp/sntp.h>
 #include <httpd.h>
 
+#ifdef ESP32
 extern "C"
 {
 uint8_t temprature_sens_read();
 uint32_t hall_sens_read();
 }
+#endif
 
 #define WIFI_SSID "YOUR_SSID"
 #define WIFI_PASSWORD "YOUR_PASSWORD"
@@ -38,16 +40,20 @@ int handlerInfo(UrlHandlerParam* param)
   time(&now);
   struct tm timeinfo = { 0 };
   localtime_r(&now, &timeinfo);
-
   if (timeinfo.tm_year) {
     bytes += snprintf(buf + bytes, bufsize - bytes, "\"date\":\"%04u-%02u-%02u\",\"time\":\"%02u:%02u:%02u\",",
       timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   }
 
+  IPAddress ip = WiFi.localIP();
+  bytes += snprintf(buf + bytes, bufsize - bytes, "\"IP\":\"%u.%u.%u.%u\",", ip[0], ip[1], ip[2], ip[3]);
+
+#ifdef ESP32
   int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
   bytes += snprintf(buf + bytes, bufsize - bytes, "\"temperature\":%d,", deviceTemp);
   bytes += snprintf(buf + bytes, bufsize - bytes, "\"magnetic\":%d", hall_sens_read());
+#endif
 
   buf[bytes++] = '}';
 
@@ -107,9 +113,10 @@ void setup()
   		Serial.println("Error starting");
       for (;;);
   }
+  Serial.println("MiniWeb started");
 }
 
 void loop()
 {
-  mwHttpLoop(&httpParam);
+  mwHttpLoop(&httpParam, 500);
 }
