@@ -422,7 +422,7 @@ byte COBDSPI::begin()
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
 	SPI.setClockDivider(SPI_CLOCK_DIV64);
-	delay(50);
+	reset();
 	return getVersion();
 }
 
@@ -457,9 +457,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
 			sleep(1);
 			if (millis() - t > timeout) {
-#ifdef DEBUG
-				debugOutput("NO READY SIGNAL");
-#endif
+				Serial.println("NO SPI DATA");
 				break;
 			}
 		}
@@ -742,7 +740,7 @@ void COBDSPI::xbWrite(const char* cmd)
 	Serial.print("[SEND]");
 	Serial.print(cmd);
 	Serial.println("[/SEND]");
-	#endif
+#endif
 }
 
 int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
@@ -770,7 +768,7 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 		if (n > 0) {
 			buffer[bytesRecv + n] = 0;
 			if (n < 5 || memcmp(buffer + bytesRecv, "$GSM", 4)) {
-				Serial.print("RECV ERROR");
+				Serial.println("[RECV ERROR]");
 				break;
 			} else if (!memcmp_P(buffer + bytesRecv + 4, PSTR("NO DATA"), 7)) {
 #ifdef XBEE_DEBUG

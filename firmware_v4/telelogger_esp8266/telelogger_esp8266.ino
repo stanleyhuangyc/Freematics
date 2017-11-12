@@ -32,14 +32,13 @@
 #define EVENT_LOGOUT 2
 
 #if USE_MEMS
-byte accCount = 0; // count of accelerometer readings
-long accSum[3] = {0}; // sum of accelerometer data
-int accCal[3] = {0}; // calibrated reference accelerometer data
+float accBias[3] = {0}; // calibrated reference accelerometer data
 byte deviceTemp = 0; // device temperature
 #endif
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
+uint32_t startTick;
 
 char udpIP[16] = "47.74.68.134";
 uint16_t udpPort = SERVER_PORT;
@@ -116,18 +115,17 @@ public:
       }
       return false;
     }
-    bool udpSend(const char* data, unsigned int len, bool wait = true)
+    bool udpSend(const char* data, unsigned int len)
     {
       sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), len);
       if (netSendCommand(buffer, 100, ">")) {
         xbWrite(data);
-        if (!wait) return true;
-        return waitCompletion(1000);
+        return true;
       } else {
         Serial.print("UDP error:");
         Serial.println(buffer);
+        return false;
       }
-      return false;
     }
     char* udpReceive(int* pbytes = 0)
     {
@@ -144,10 +142,6 @@ public:
         }
       }
       return 0;
-    }
-    bool waitCompletion(int timeout)
-    {
-      return netSendCommand(0, timeout);
     }
     char* queryIP(const char* host)
     {
@@ -200,7 +194,6 @@ public:
   }
   bool notifyUDP(byte event)
   {
-    waiting = false;
     for (byte attempts = 0; attempts < 3; attempts++) {
       // generate request
       setEvent(event);
@@ -227,7 +220,7 @@ public:
           cacheBytes += sprintf_P(cache + cacheBytes, PSTR("DEFAULT_VIN"));
         }
       }
-      transmitUDP(true);
+      transmitUDP();
       // receive reply
       int len;
       char *data = udpReceive(&len);
@@ -257,31 +250,15 @@ public:
     }
     return false;
   }
-  void transmitUDP(bool wait)
+  void transmitUDP()
   {
     addDataChecksum();
-    if (waiting) {
-      // wait for last data to be sent
-      if (!waitCompletion(100)) {
-        connErrors++;
-        Serial.println(buffer);
-      } else {
-        connErrors = 0;
-        txCount++;
-      }
-      waiting = false;
-    }
-
     // transmit data
-    if (!udpSend(cache, cacheBytes, wait)) {
+    if (!udpSend(cache, cacheBytes)) {
       connErrors++;
     } else {
-      if (!wait) {
-        waiting = true;
-      } else {
-        connErrors = 0;
-        txCount++;
-      }
+      connErrors = 0;
+      txCount++;
     }
     // clear cache and write header for next transmission
     cacheBytes = sprintf_P(cache, PSTR("%X#"), feedid);
@@ -303,10 +280,8 @@ public:
     Serial.print(' ');
     Serial.print(cacheBytes);
     Serial.print(" bytes ");
-    if (txCount >= 300) {
-      Serial.print(millis() / txCount);
-      Serial.print("ms");
-    }
+    Serial.print((millis() - startTick) / txCount);
+    Serial.print("ms");
     Serial.println();
     // output data in cache
     //Serial.println(cache);
@@ -314,9 +289,8 @@ public:
   uint16_t feedid;
   uint32_t txCount;
   uint8_t connErrors;
-  bool waiting;
 };
-
+  
 class CTeleLogger : public CTeleClient2
 {
 public:
@@ -412,8 +386,10 @@ public:
     }
 
 #if USE_MEMS
-    calibrateMEMS(CALIBRATION_TIME);
+    calibrateMEMS();
 #endif
+
+    startTick = millis();
     return checkState(STATE_ALL_GOOD);
   }
   void loop()
@@ -480,27 +456,29 @@ public:
         }
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY);
-        Serial.println("Standby");
+      Serial.println("Standby");
 #if USE_MEMS
-        calibrateMEMS(3000);
+      calibrateMEMS();
       if (checkState(STATE_MEMS_READY)) {
           enterLowPowerMode();
           for (;;) {
             // calculate relative movement
-            unsigned long motion = 0;
-            for (byte i = 0; i < 3; i++) {
-              long n = accSum[i] / accCount - accCal[i];
-              motion += n * n;
+            float motion = 0;
+            for (byte n = 0; n < 10; n++) {
+              float acc[3];
+              mems.memsRead(acc);
+              for (byte i = 0; i < 3; i++) {
+                float m = (acc[i] - accBias[i]);
+                motion += m * m;
+              }
+              delay(100);
             }
-            motion /= 100;
             Serial.println(motion);
             // check movement
             if (motion > WAKEUP_MOTION_THRESHOLD) {
               leaveLowPowerMode();
               break;
           }
-          // MEMS data collected while sleeping
-          sleep(3000);
         }
       }
 #else
@@ -554,10 +532,12 @@ private:
 #if USE_MEMS
     void processMEMS()
     {
-         // log the loaded MEMS data
-        if (accCount) {
-          logData(PID_ACC, accSum[0] / accCount, accSum[1] / accCount, accSum[2] / accCount);
-        }
+        // load accelerometer and temperature data
+        float acc[3] = {};
+        int16_t temp; // device temperature (in 0.1 celcius degree)
+        mems.memsRead(acc, 0, 0, &temp);
+        deviceTemp = temp / 10;
+        logData(PID_ACC, (int)(acc[0] * 100), (int)(acc[1] * 100), (int)(acc[2] * 100));
     }
 #endif
     void processGPS()
@@ -588,51 +568,25 @@ private:
         }
     }
 #if USE_MEMS
-    void calibrateMEMS(unsigned int duration)
+    void calibrateMEMS()
     {
         // MEMS data collected while sleeping
-        if (duration > 0) {
-          accCount = 0;
-          accSum[0] = 0;
-          accSum[1] = 0;
-          accSum[2] = 0;
-          sleep(duration);
+        accBias[0] = 0;
+        accBias[1] = 0;
+        accBias[2] = 0;
+        int n;
+        for (n = 0; n < 100; n++) {
+          float acc[3] = {};
+          mems.memsRead(acc);
+          accBias[0] += acc[0];
+          accBias[1] += acc[1];
+          accBias[2] += acc[2];          
         }
-        // store accelerometer reference data
-        if (checkState(STATE_MEMS_READY) && accCount) {
-          accCal[0] = accSum[0] / accCount;
-          accCal[1] = accSum[1] / accCount;
-          accCal[2] = accSum[2] / accCount;
-        }
-    }
-    void readMEMS()
-    {
-        // load accelerometer and temperature data
-        float acc[3] = {};
-        int16_t temp; // device temperature (in 0.1 celcius degree)
-        mems.memsRead(acc, 0, 0, &temp);
-        if (accCount >= 100) {
-          accSum[0] >>= 1;
-          accSum[1] >>= 1;
-          accSum[2] >>= 1;
-          accCount >>= 1;
-        }
-        accSum[0] += acc[0] * 100;
-        accSum[1] += acc[1] * 100;
-        accSum[2] += acc[2] * 100;
-        accCount++;
-        deviceTemp = temp / 10;
+        accBias[0] /= n;
+        accBias[1] /= n;
+        accBias[2] /= n;
     }
 #endif
-    void dataIdleLoop()
-    {
-      // do tasks while waiting for data on SPI
-#if USE_MEMS
-      if (checkState(STATE_MEMS_READY)) {
-        readMEMS();
-      }
-#endif
-    }
 #if USE_MEMS
     MPU9250_ACC mems;
 #endif
@@ -668,7 +622,7 @@ void loop()
     // show stats info
     logger.showStats();
     // transmit data
-    logger.transmitUDP(false);
+    logger.transmitUDP();
     if (logger.connErrors >= MAX_CONN_ERRORS_RECONNECT) {
       logger.reconnect();
     }
