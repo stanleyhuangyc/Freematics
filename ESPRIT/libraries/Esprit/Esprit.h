@@ -14,6 +14,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_spi_flash.h"
+#include "FreematicsPlus.h"
 
 extern HardwareSerial Serial1;
 extern HardwareSerial Serial2;
