@@ -2885,7 +2885,7 @@ static int setup_compass(void)
 
     if (akm_addr > 0x0F) {
         /* TODO: Handle this case in all compass-related functions. */
-        log_e("Compass not found.\n");
+        //log_e("Compass not found.\n");
         return -1;
     }
 
