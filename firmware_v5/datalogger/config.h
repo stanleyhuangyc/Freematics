@@ -28,9 +28,6 @@
 // enable(1)/disable(0) OBD-II reading
 #define USE_OBD 1
 
-// enable(1)/disable(0) MEMS sensor
-#define USE_MEMS 1
-
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
 
@@ -49,11 +46,8 @@
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
 
-// time for OBD-II attempt before entering non-OBD mode
-#define OBD_ATTEMPT_TIME 180000
-
 // motion detection
-#define WAKEUP_MOTION_THRESHOLD 20 /* for wakeup on movement */
+#define WAKEUP_MOTION_THRESHOLD 5 /* for motion triggered wakeup */
 
 // SD pin
 #ifdef ESP32
