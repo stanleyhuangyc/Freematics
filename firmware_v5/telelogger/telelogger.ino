@@ -30,8 +30,6 @@
 #define PIN_LED 4
 
 #if MEMS_MODE
-byte accCount = 0; // count of accelerometer readings
-float accSum[3] = {0}; // sum of accelerometer data
 float accBias[3] = {0}; // calibrated reference accelerometer data
 #endif
 int lastSpeed = 0;
@@ -95,10 +93,6 @@ public:
     }
 #endif
 
-#ifdef ENABLE_GPS
-    initGPS();
-#endif
-
 if (!checkState(STATE_STORAGE_READY)) {
   // init storage
   cache.init(RAM_CACHE_SIZE);
@@ -159,6 +153,13 @@ if (!checkState(STATE_STORAGE_READY)) {
     }
 #endif
 
+#ifdef ENABLE_GPS
+    initGPS();
+#endif
+    if (checkState(STATE_MEMS_READY)) {
+      calibrateMEMS();
+    }
+
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     Serial.print("IP...");
     String ip = getIP();
@@ -197,11 +198,12 @@ if (!checkState(STATE_STORAGE_READY)) {
   {
     cache.timestamp(millis());
 
-#ifdef ESP32
-    deviceTemp = (int)readChipTemperature() * 165 / 255 - 40;
-#endif
     if ((txCount % 100) == 1) {
-      cache.log(PID_DEVICE_TEMP, deviceTemp);
+      int temp = deviceTemp;
+#ifdef ESP32
+      temp = (int)readChipTemperature() * 165 / 255 - 40;
+#endif
+      cache.log(PID_DEVICE_TEMP, temp);
     }
 
 #if ENABLE_OBD
@@ -229,7 +231,6 @@ if (!checkState(STATE_STORAGE_READY)) {
 #if MEMS_MODE
     // process MEMS data if available
     if (checkState(STATE_MEMS_READY)) {
-      readMEMS();
       processMEMS();
     }
 #endif
@@ -279,6 +280,7 @@ if (!checkState(STATE_STORAGE_READY)) {
         } else {
           connErrors = 0;
           lastSyncTime = t;
+          Serial.println("OK");
         }
       }
     }
@@ -318,6 +320,8 @@ if (!checkState(STATE_STORAGE_READY)) {
         netClose();
         Serial.println("NO");
         continue;
+      } else {
+        Serial.println("OK");
       }
 
       Serial.print("SERVER:");
@@ -356,8 +360,8 @@ if (!checkState(STATE_STORAGE_READY)) {
 #if ENABLE_OBD
     char buf[128];
     if (getVIN(buf, sizeof(buf))) {
-      Serial.print("VIN:");
-      Serial.println(buf);
+      //Serial.print("VIN:");
+      //Serial.println(buf);
       req += buf;
     } else {
       req += DEFAULT_VIN;
@@ -383,7 +387,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     cache.tailer();
     for (byte attempts = 0; attempts < 3; attempts++) {
       if (!netSend(cache.buffer(), cache.length())) {
-        Serial.println("Data sending error");
+        Serial.print("error sending");
         continue;
       }
 #if NET_DEVICE == NET_BLE
@@ -394,20 +398,21 @@ if (!checkState(STATE_STORAGE_READY)) {
       int len;
       char *data = netReceive(&len);
       if (!data) {
-        Serial.println("No reply");
+        // no reply yet
+        Serial.print('.');
         continue;
       }
       connErrors = 0;
       // verify checksum
       if (!verifyChecksum(data)) {
         Serial.print("Checksum mismatch:");
-        Serial.println(data);
+        Serial.print(data);
         continue;
       }
       char pattern[16];
       sprintf(pattern, "EV=%u", event);
       if (!strstr(data, pattern)) {
-        Serial.println("Invalid reply");
+        Serial.print("Invalid reply");
         continue;
       }
       if (event == EVENT_LOGIN) {
@@ -421,12 +426,11 @@ if (!checkState(STATE_STORAGE_READY)) {
       }
       char *p = strstr(data, "CMD=");
       if (p) m_cmd = atoi(p + 4);
-      Serial.print("OK");
       if (m_cmd) {
-        Serial.print(" CMD:");
+        Serial.print("CMD:");
         Serial.print(m_cmd, HEX);
       }
-      Serial.println();
+      Serial.print(' ');
       return true;
     }
     return false;
@@ -454,61 +458,51 @@ if (!checkState(STATE_STORAGE_READY)) {
         clearState(STATE_STORAGE_READY);
       }
 #endif
+#if ENABLE_GPS
+      if (checkState(STATE_GPS_READY)) {
+        Serial.println("GPS OFF");
+        gpsInit(0); // turn off GPS power
+      }
+#endif
 #if ENABLE_OBD
       if (errors > MAX_OBD_ERRORS) {
         // inaccessible OBD treated as end of trip
         feedid = 0;
       }
-#endif
-#if ENABLE_GPS
-      if (checkState(STATE_GPS_READY)) {
-        Serial.print("GPS:");
-        gpsInit(0); // turn off GPS power
-        Serial.println("OFF");
-      }
+      Serial.println("OBD OFF");
+      reset();
+      end();
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
       Serial.println("Standby");
       blePrint("Standby");
 #if MEMS_MODE
       if (checkState(STATE_MEMS_READY)) {
-        calibrateMEMS(CALIBRATION_TIME);
+        calibrateMEMS();
         for (;;) {
           // calculate relative movement
-          clearMEMS();
-          for (byte i = 0; i < 20; i++) {
-            readMEMS();
-            delay(50);
-          }
           float motion = 0;
-          for (byte i = 0; i < 3; i++) {
-            float a = accSum[i] / accCount - accBias[i];
-            motion += a * a;
+          for (byte n = 0; n < 10; n++) {
+            float acc[3];
+            mems.memsRead(acc);
+            for (byte i = 0; i < 3; i++) {
+              float m = (acc[i] - accBias[i]);
+              motion += m * m;
+            }
+#if !ENABLE_BLE
+            // this puts ESP32 into sleep mode but will also turn off BLE
+            esp_sleep_enable_timer_wakeup(100000); //100ms
+            esp_light_sleep_start();
+#else
+            delay(100);
+#endif
           }
-          motion *= 10000;
-          char buf[16];
-          sprintf(buf, "M:%ld", (long)motion);
-          Serial.println(buf);
-          blePrint(buf);
-          if (motion >= WAKEUP_MOTION_THRESHOLD) {
-            bool success = false;
-            // check if OBD can be connected
-            Serial.print("Checking OBD");
-            blePrint("Checking OBD");
-            for (uint32_t t = millis(); !success && millis() - t < MAX_OBD_RETRY_TIME;) {
-              Serial.print('.');
-              success = init();
-            }
-            Serial.println();
-            if (success) {
-              setState(STATE_OBD_READY);
-              break;
-            }
-            calibrateMEMS(CALIBRATION_TIME);
+          Serial.println(motion);
+          // check movement
+          if (motion > WAKEUP_MOTION_THRESHOLD) {
+            break;
           }
         }
-      } else {
-        while (!init()) Serial.print('.');
       }
 #else
       while (!init()) Serial.print('.');
@@ -536,9 +530,7 @@ private:
         if (readPID(pids[i], value)) {
           cache.log(0x100 | pids[i], value);
         }
-#if MEMS_MODE
-        readMEMS();
-#endif
+        delay(1);
       }
       static byte count = 0;
       if ((count++ % 50) == 0) {
@@ -547,9 +539,7 @@ private:
         if (isValidPID(pid) && readPID(pid, value)) {
           cache.log(0x100 | pid, value);
         }
-#if MEMS_MODE
-        readMEMS();
-#endif
+        delay(1);
       }
     }
     int readSpeed()
@@ -569,15 +559,12 @@ private:
 #if MEMS_MODE
     void processMEMS()
     {
-         // log the loaded MEMS data
-        if (accCount) {
-          cache.log(PID_ACC,
-            (int16_t)(accSum[0] / accCount * 100),
-            (int16_t)(accSum[1] / accCount * 100),
-            (int16_t)(accSum[2] / accCount * 100)
-          );
-          clearMEMS();
-        }
+        // load and store accelerometer
+        float acc[3];
+        int16_t temp;
+        mems.memsRead(acc, 0, 0, &temp);
+        deviceTemp = temp / 10;
+        cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
     }
 #endif
 #if ENABLE_GPS
@@ -626,52 +613,29 @@ private:
     }
 #endif
 #if MEMS_MODE
-    void calibrateMEMS(unsigned int duration)
+    void calibrateMEMS()
     {
-        // MEMS data collected while sleeping
-        clearMEMS();
-        for (uint32_t t = millis(); millis() - t < duration; ) {
-          readMEMS();
-          delay(20);
+        Serial.print("ACC BIAS...");
+        accBias[0] = 0;
+        accBias[1] = 0;
+        accBias[2] = 0;
+        int n;
+        for (n = 0; n < 100; n++) {
+          float acc[3] = {0};
+          mems.memsRead(acc);
+          accBias[0] += acc[0];
+          accBias[1] += acc[1];
+          accBias[2] += acc[2];
+          delay(10);
         }
-        // store accelerometer reference data
-        if (accCount) {
-          accBias[0] = accSum[0] / accCount;
-          accBias[1] = accSum[1] / accCount;
-          accBias[2] = accSum[2] / accCount;
-        }
-        Serial.print("ACC Bias:");
+        accBias[0] /= n;
+        accBias[1] /= n;
+        accBias[2] /= n;
         Serial.print(accBias[0]);
         Serial.print('/');
         Serial.print(accBias[1]);
         Serial.print('/');
         Serial.println(accBias[2]);
-    }
-    void clearMEMS()
-    {
-      accCount = 0;
-      accSum[0] = 0;
-      accSum[1] = 0;
-      accSum[2] = 0;
-    }
-    void readMEMS()
-    {
-      if (checkState(STATE_MEMS_READY)) {
-        // load and store accelerometer
-        float acc[3];
-        int16_t temp;
-        mems.memsRead(acc, 0, 0, &temp);
-        if (accCount >= 255) {
-          clearMEMS();
-        }
-        accSum[0] += acc[0];
-        accSum[1] += acc[1];
-        accSum[2] += acc[2];
-        accCount++;
-#ifndef ESP32
-        deviceTemp = temp / 10;
-#endif
-      }
     }
 #endif
 #if MEMS_MODE == MEMS_ACC
@@ -694,9 +658,9 @@ CTeleLogger logger;
 
 void setup()
 {
-    delay(1000);
     // initialize USB serial
     Serial.begin(115200);
+    delay(200);
 #if ENABLE_OBD
     Serial.println("Freematics ONE+ (ESP32)");
 #else
@@ -707,7 +671,7 @@ void setup()
     // perform initializations
 #if ENABLE_BLE
     logger.bleBegin(BLE_DEVICE_NAME);
-    delay(500);
+    delay(100);
 #endif
     digitalWrite(PIN_LED, HIGH);
     logger.setup();
