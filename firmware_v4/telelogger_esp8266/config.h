@@ -11,10 +11,10 @@
 /**************************************
 * WIFI and server settings
 **************************************/
-#define XBEE_BAUDRATE 9600
+#define XBEE_BAUDRATE 115200 /* 9600 for older ESP8266 modules */
 // change YOUR_SSID and YOUR_PASSWORD to your own
-#define WIFI_SSID "HOMEWIFI"
-#define WIFI_PASSWORD "862150909018"
+#define WIFI_SSID "YOUR_SSID"
+#define WIFI_PASSWORD "YOUR_PASSWORD"
 
 /**************************************
 * Server settings
@@ -47,8 +47,7 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 100 /* for wakeup on movement */
-#define CALIBRATION_TIME 1000 /* ms */
+#define WAKEUP_MOTION_THRESHOLD 2 /* for wakeup on movement */
 
 /**************************************
 * Other options

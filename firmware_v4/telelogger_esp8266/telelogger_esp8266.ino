@@ -62,10 +62,7 @@ public:
       for (byte n = 0; !(success = netSendCommand("ATE0\r\n")) && n < 10; n++) {
         sleep(100);
       }
-      if (success) {
-        // send ESP8266 initialization commands
-        //netSendCommand("AT+CWMODE=1\r\n", 100);
-        netSendCommand("AT+CIPMUX=0\r\n");
+      if (success && netSendCommand("AT+CWMODE=1\r\n", 100) && netSendCommand("AT+CIPMUX=0\r\n", 100)) {
         return true;
       } else {
         return false;
@@ -76,21 +73,18 @@ public:
       // generate and send AT command for joining AP
       sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
       byte ret = netSendCommand(buffer, 10000);
-      if (ret == 1) {
+      if (ret == 1 || strstr_P(buffer, PSTR("WIFI CONNECTED"))) {
         // get IP address
-        if (netSendCommand("AT+CIFSR\r\n", 5000) && !strstr(buffer, "0.0.0.0")) {
-          char *p = strchr(buffer, '\r');
-          if (p) *p = 0;
-          Serial.println(buffer);
+        if (netSendCommand("AT+CIFSR\r\n", 5000) && !strstr_P(buffer, PSTR("0.0.0.0"))) {
+          char *p = strchr(buffer, '\"');
+          char *ip = p ? p + 1 : buffer;
+          if ((p = strchr(ip, '\"')) || (p = strchr(ip, '\r'))) *p = 0;
           // output IP address
+          Serial.println(ip);
           return true;
-        } else {
-          // output error message
-          Serial.println(buffer); 
         }
-      } else if (ret == 2) {
-        Serial.println("Failed to join AP"); 
       }
+      Serial.println(buffer);
       return false;
     }
     void udpClose()
@@ -101,7 +95,7 @@ public:
     {
       char *ip = queryIP(SERVER_URL);
       if (ip) {
-        Serial.println(ip);
+        //Serial.println(ip);
         strncpy(udpIP, ip, sizeof(udpIP) - 1);
       }
       for (byte n = 0; n < 3; n++) {
@@ -112,6 +106,7 @@ public:
           // check if already connected
           if (strstr(buffer, "CONN")) return true;
         }
+        Serial.println(buffer);
       }
       return false;
     }
@@ -146,16 +141,13 @@ public:
     char* queryIP(const char* host)
     {
       sprintf_P(buffer, PSTR("AT+CIPDOMAIN=\"%s\"\r\n"), host);
-      if (netSendCommand(buffer, 2000, "+CIPDOMAIN")) {
-        char *p = strstr(buffer, "+CIPDOMAIN");
-        if (p) {
-          p = strchr(p, ':');
-          if (p) {
-            char *ip = *(++p) == '\"' ? p + 1 : p;
-            p = strchr(ip, '\"');
-            if (p) *p = 0;
-            return ip;
-          }
+      if (netSendCommand(buffer, 5000, "+CIPDOMAIN")) {
+        char *p;
+        if ((p = strstr(buffer, "+CIPDOMAIN")) && (p = strchr(p, ':'))) {
+          char *ip = p + 1;
+          p = strchr(ip, '\r');
+          if (p) *p = 0;
+          return ip;
         }
       }
       return 0;
@@ -179,6 +171,7 @@ public:
       }
     }
     char buffer[96];
+    bool connected = false;
 };
 
 class CTeleClient2 : public COBDWIFI, public CDataLogger
@@ -352,10 +345,17 @@ public:
         return false;
       }
       
-      Serial.print("#WIFI(SSID:");
-      Serial.print(WIFI_SSID);
-      Serial.print(")...");
-      if (netSetup()) {
+      connected = false;
+      for (byte n = 0; n < 10 && !connected; n++) {
+        Serial.print("#WIFI(SSID:");
+        Serial.print(WIFI_SSID);
+        Serial.print(")...");
+        connected = netSetup();
+        if (!connected) {
+          Serial.println("NO");          
+        }
+      }
+      if (connected) {
           Serial.print("#UDP...");
           if (udpOpen()) {
             setState(STATE_NET_READY);
@@ -365,16 +365,17 @@ public:
             return false;
           }
       } else {
-        Serial.println("NO");
         return false;
       }
     }
-    // connect to cellular network
+    // connect to internet server
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.print("#SERVER...");
       if (!udpOpen()) {
         Serial.println("NO");
         continue;
+      } else {
+        Serial.println("OK");
       }
 
       // login Freematics Hub
