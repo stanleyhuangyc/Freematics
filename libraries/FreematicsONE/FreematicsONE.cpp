@@ -295,7 +295,7 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 
 	m_state = OBD_DISCONNECTED;
 
-	for (byte n = 0; n < 3; n++) {
+	for (byte n = 0; n < 2; n++) {
 		stage = 0;
 		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 			if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
@@ -349,8 +349,10 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 		errors = 0;
 		return true;
 	} else {
+#ifdef DEBUG
 		Serial.print("Stage:");
 		Serial.println(stage);
+#endif
 		reset();
 		return false;
 	}
