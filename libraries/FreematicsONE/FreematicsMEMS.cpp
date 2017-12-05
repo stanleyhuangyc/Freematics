@@ -554,14 +554,19 @@ void MPU9250_ACC::initMPU9250()
 
 byte MPU9250_ACC::memsInit(bool fusion)
 {
+  byte ret = 0;
   Wire.begin();
   Wire.setClock(400000);
-  //float SelfTest[6];
-  //MPU9250SelfTest(SelfTest);
-  byte c = readByte(WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
-  if (c != 0x68 && c != 0x71) return 0;
-  initMPU9250();
-  return (c == 0x71) ? 2 : 1;
+  for (byte attempt = 0; attempt < 2; attempt++) {
+    //float SelfTest[6];
+    //MPU9250SelfTest(SelfTest);
+    byte c = readByte(WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
+    if (c != 0x68 && c != 0x71) continue;
+    initMPU9250();
+    ret = (c == 0x71) ? 2 : 1;
+    break;
+  }
+  return ret;
 }
 
 bool MPU9250_ACC::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
