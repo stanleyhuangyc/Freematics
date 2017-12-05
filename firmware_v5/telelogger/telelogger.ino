@@ -82,7 +82,6 @@ public:
     // initialize OBD communication
     if (!checkState(STATE_OBD_READY)) {
       Serial.print("OBD...");
-      begin();
       if (!init()) {
         Serial.println("NO");
         return false;
@@ -387,7 +386,7 @@ if (!checkState(STATE_STORAGE_READY)) {
     cache.tailer();
     for (byte attempts = 0; attempts < 3; attempts++) {
       if (!netSend(cache.buffer(), cache.length())) {
-        Serial.print("error sending");
+        Serial.print('.');
         continue;
       }
 #if NET_DEVICE == NET_BLE
@@ -469,9 +468,6 @@ if (!checkState(STATE_STORAGE_READY)) {
         // inaccessible OBD treated as end of trip
         feedid = 0;
       }
-      Serial.println("OBD OFF");
-      reset();
-      end();
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
       Serial.println("Standby");
@@ -674,6 +670,7 @@ void setup()
     delay(100);
 #endif
     digitalWrite(PIN_LED, HIGH);
+    logger.begin();
     logger.setup();
     digitalWrite(PIN_LED, LOW);
 }
