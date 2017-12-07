@@ -16,7 +16,7 @@
 #define __SD_H__
 
 #include <Arduino.h>
-
+#include <SPI.h>
 #include <utility/SdFat.h>
 #include <utility/SdFatUtil.h>
 
