@@ -60,6 +60,8 @@ public:
 	virtual void xbTogglePower();
     // delay specified number of ms while receiving and processing GPS data (ought to be regularly called)
     virtual void sleep(unsigned int ms);
+    // hibernate (lower power consumption)
+    virtual void hibernate(unsigned int ms);
 };
 
 #endif
