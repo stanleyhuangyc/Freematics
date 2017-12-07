@@ -205,23 +205,14 @@ int COBDSPI::normalizeData(byte pid, char* data)
 
 void COBDSPI::enterLowPowerMode()
 {
-#ifdef ESP32
-	reset();
-	end();
-#else
 	setTarget(TARGET_OBD);
 	write("ATLP\r");
-#endif
 }
 
 void COBDSPI::leaveLowPowerMode()
 {
-#ifdef ESP32
-	begin();
-#else
 	char buf[16];
 	sendCommand("AT\r", buf, sizeof(buf));
-#endif
 }
 
 float COBDSPI::getVoltage()
@@ -270,6 +261,7 @@ void COBDSPI::reset()
 	char buf[32];
 	sendCommand("ATR\r", buf, sizeof(buf));
 	delay(3000);
+	sendCommand("ATZ\r", buf, sizeof(buf));
 }
 
 void COBDSPI::uninit()
@@ -297,6 +289,7 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 
 	for (byte n = 0; n < 2; n++) {
 		stage = 0;
+		if (n != 0) reset();
 		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 			if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
 				continue;
