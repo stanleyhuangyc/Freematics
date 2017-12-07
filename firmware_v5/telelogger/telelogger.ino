@@ -287,21 +287,14 @@ if (!checkState(STATE_STORAGE_READY)) {
 #if ENABLE_OBD
     if (errors > MAX_OBD_ERRORS) {
       reset();
-      clearState(STATE_GPS_READY);
-      if (!init()) {
-        clearState(STATE_OBD_READY | STATE_ALL_GOOD);
-      } else {
-#if ENABLE_GPS
-        initGPS();
-#endif
-      }
+      clearState(STATE_OBD_READY | STATE_ALL_GOOD);
     }
-  #endif
+#endif
 
     if (deviceTemp >= COOLING_DOWN_TEMP) {
       // device too hot, cool down
       Serial.println("Cooling down...");
-      sleep(10000);
+      hibernate(10000);
     }
   }
   bool login()
@@ -355,33 +348,35 @@ if (!checkState(STATE_STORAGE_READY)) {
       req += ",SK=";
       req += serverKey;
     }
-    req += ",VIN=";
+    if (event != EVENT_LOGOUT) {
+      req += ",VIN=";
 #if ENABLE_OBD
-    char buf[128];
-    if (getVIN(buf, sizeof(buf))) {
-      //Serial.print("VIN:");
-      //Serial.println(buf);
-      req += buf;
-    } else {
-      req += DEFAULT_VIN;
-    }
-    // load DTC
-    uint16_t dtc[6];
-    byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-    if (dtcCount > 0) {
-      Serial.print("DTC:");
-      Serial.println(dtcCount);
-      req += ",DTC=";
-      int bytes = 0;
-      for (byte i = 0; i < dtcCount; i++) {
-        bytes += sprintf(buf + bytes, "%X;", dtc[i]);
+      char buf[128];
+      if (getVIN(buf, sizeof(buf))) {
+        //Serial.print("VIN:");
+        //Serial.println(buf);
+        req += buf;
+      } else {
+        req += DEFAULT_VIN;
       }
-      buf[bytes - 1] = 0;
-      req += buf;
-    }
+      // load DTC
+      uint16_t dtc[6];
+      byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+      if (dtcCount > 0) {
+        Serial.print("DTC:");
+        Serial.println(dtcCount);
+        req += ",DTC=";
+        int bytes = 0;
+        for (byte i = 0; i < dtcCount; i++) {
+          bytes += sprintf(buf + bytes, "%X;", dtc[i]);
+        }
+        buf[bytes - 1] = 0;
+        req += buf;
+      }
 #else
-    req += DEFAULT_VIN;
+      req += DEFAULT_VIN;
 #endif
+    }
     cache.dispatch(req.c_str(), req.length());
     cache.tailer();
     for (byte attempts = 0; attempts < 3; attempts++) {
@@ -485,13 +480,7 @@ if (!checkState(STATE_STORAGE_READY)) {
               float m = (acc[i] - accBias[i]);
               motion += m * m;
             }
-#if !ENABLE_BLE
-            // this puts ESP32 into sleep mode but will also turn off BLE
-            esp_sleep_enable_timer_wakeup(100000); //100ms
-            esp_light_sleep_start();
-#else
             delay(100);
-#endif
           }
           Serial.println(motion);
           // check movement
@@ -656,7 +645,6 @@ void setup()
 {
     // initialize USB serial
     Serial.begin(115200);
-    delay(200);
 #if ENABLE_OBD
     Serial.println("Freematics ONE+ (ESP32)");
 #else
@@ -679,12 +667,15 @@ void loop()
 {
     // error handling
     if (!logger.checkState(STATE_ALL_GOOD)) {
-      do {
-        digitalWrite(PIN_LED, LOW);
-        logger.standby();
+      logger.standby();
+      for (byte n = 0; n < 3; n++) {
         digitalWrite(PIN_LED, HIGH);
-      } while (!logger.setup());
-      digitalWrite(PIN_LED, LOW);
+        logger.setup();
+        digitalWrite(PIN_LED, LOW);
+        if (logger.checkState(STATE_ALL_GOOD)) break;
+        hibernate(3000);
+      }
+      return;
     }
     if (logger.getConnErrors() >= MAX_CONN_ERRORS) {
       digitalWrite(PIN_LED, HIGH);
