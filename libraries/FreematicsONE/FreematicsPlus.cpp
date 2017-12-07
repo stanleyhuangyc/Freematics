@@ -327,7 +327,7 @@ void CFreematicsESP32::sleep(unsigned int ms)
 	}
 }
 
-virtual void CFreematicsESP32::hibernate(unsigned int ms)
+void CFreematicsESP32::hibernate(unsigned int ms)
 {
   // this puts ESP32 into sleep mode but will also turn off BLE
   esp_sleep_enable_timer_wakeup((unsigned long)ms * 1000);

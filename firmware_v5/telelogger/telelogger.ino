@@ -673,7 +673,7 @@ void loop()
         logger.setup();
         digitalWrite(PIN_LED, LOW);
         if (logger.checkState(STATE_ALL_GOOD)) break;
-        hibernate(3000);
+        logger.hibernate(3000);
       }
       return;
     }
