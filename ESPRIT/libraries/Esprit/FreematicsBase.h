@@ -10,6 +10,10 @@
 
 #include <Arduino.h>
 
+#define EVENT_LOGIN 1
+#define EVENT_LOGOUT 2
+#define EVENT_SYNC 3
+
 #ifdef ESP32
 #define PIN_XBEE_PWR 27
 #define PIN_GPS_POWER 15
@@ -55,8 +59,8 @@ class CFreematics
 public:
 	virtual byte begin() { return 1; }
 	virtual bool init() { return true; }
-	// hardware sleep (timer counter will stop)
-	virtual void sleepSec(unsigned int seconds) { delay(seconds * 1000); }
+	// hibernate (lower power consumption)
+	virtual void hibernate(unsigned int ms) { delay(ms); }
 	// normal delay
 	virtual void sleep(unsigned int ms) { delay(ms); }
 	// enter low power mode
