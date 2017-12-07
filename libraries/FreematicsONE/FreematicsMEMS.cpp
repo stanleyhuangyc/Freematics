@@ -5,8 +5,8 @@
 * (C)2016 Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
+#include <Wire.h>
 #include "FreematicsMEMS.h"
-
 
 // Implementation of Sebastian Madgwick's "...efficient orientation filter for... inertial/magnetic sensor arrays"
 // (see http://www.x-io.co.uk/category/open-source/ for examples and more details)

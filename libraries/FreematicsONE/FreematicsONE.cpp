@@ -595,7 +595,7 @@ void COBDSPI::sleep(unsigned int ms)
 #endif
 }
 
-void CFreematicsESP32::hibernate(unsigned int ms)
+void COBDSPI::hibernate(unsigned int ms)
 {
 #if defined(ARDUINO_ARCH_AVR)
 	for (;;) {

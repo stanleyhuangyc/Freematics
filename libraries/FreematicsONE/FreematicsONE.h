@@ -12,6 +12,7 @@
 #ifdef ESP32
 #include "FreematicsPlus.h"
 #endif
+#include "utility/OBD.h"
 
 #ifndef ARDUINO_ARCH_AVR
 #define sprintf_P sprintf
