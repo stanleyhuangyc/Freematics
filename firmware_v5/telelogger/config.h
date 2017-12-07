@@ -117,7 +117,7 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 2 /* for motion triggered wakeup */
+#define WAKEUP_MOTION_THRESHOLD 1.0f /* for motion triggered wakeup */
 
 /**************************************
 * Other options
