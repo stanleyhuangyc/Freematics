@@ -34,7 +34,7 @@
 #define TARGET_BEE 2
 #define TARGET_RAW 3
 
-class COBDSPI : public virtual CFreematics {
+class COBDSPI : virtual CFreematics {
 public:
 	COBDSPI():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	byte begin();
@@ -83,10 +83,10 @@ public:
 	void xbTogglePower();
 	// get connection state
 	OBD_STATES getState() { return m_state; }
-	// hardware sleep (timer counter will stop for AVR)
-	void sleepSec(unsigned int seconds);
 	// delay specified number of ms
 	void sleep(unsigned int ms);
+	// hibernate (lower power consumption)
+  void hibernate(unsigned int ms);
 	// enter low power mode
 	void enterLowPowerMode();
 	// leave low power mode

@@ -155,8 +155,8 @@ class CFreematics
 public:
 	virtual byte begin() { return 1; }
 	virtual bool init() { return true; }
-	// hardware sleep (timer counter will stop)
-	virtual void sleepSec(unsigned int seconds) { delay(seconds * 1000); }
+  // hibernate (lower power consumption)
+  virtual void hibernate(unsigned int ms) { delay(ms); }
 	// normal delay
 	virtual void sleep(unsigned int ms) { delay(ms); }
 	// enter low power mode

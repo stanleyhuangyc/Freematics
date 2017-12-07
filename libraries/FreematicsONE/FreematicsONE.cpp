@@ -595,18 +595,29 @@ void COBDSPI::sleep(unsigned int ms)
 #endif
 }
 
-void COBDSPI::sleepSec(unsigned int seconds)
+void CFreematicsESP32::hibernate(unsigned int ms)
 {
-#ifdef ARDUINO_ARCH_AVR
-	while (seconds > 0) {
+#if defined(ARDUINO_ARCH_AVR)
+	for (;;) {
 		uint8_t wdt_period;
-		if (seconds >= 8) {
+		if (ms >= 8000) {
 			wdt_period = WDTO_8S;
-			seconds -= 8;
-		} else {
+			ms -= 8000;
+		} else if (ms >= 1000) {
 			wdt_period = WDTO_1S;
-			seconds--;
-		}
+			ms -= 1000;
+		} else if (ms >= 250) {
+      wdt_period = WDTO_250MS;
+			ms -= 250;
+    } else if (ms >= 60) {
+      wdt_period = WDTO_60MS;
+			ms -= 60;
+    } else if (ms >= 15) {
+      wdt_period = WDTO_15MS;
+			ms -= 15;
+    } else {
+      break;
+    }
 		wdt_enable(wdt_period);
 		wdt_reset();
 		WDTCSR |= _BV(WDIE);
@@ -615,8 +626,12 @@ void COBDSPI::sleepSec(unsigned int seconds)
 		wdt_disable();
 		WDTCSR &= ~_BV(WDIE);
 	 }
+#elif defined(ESP32)
+  // this puts ESP32 into sleep mode but will also turn off BLE
+  esp_sleep_enable_timer_wakeup((unsigned long)ms * 1000);
+  esp_light_sleep_start();
 #else
-	sleep(seconds * 1000);
+	delay(ms);
 #endif
 }
 
