@@ -12,10 +12,24 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
+#include <Arduino.h>
+#if defined(ESP32)
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <apps/sntp/sntp.h>
+#elif defined(ESP8266)
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#else
+#error Unsupported board type
+#endif
 #include <httpd.h>
+
+#define WIFI_SSID "...."
+#define WIFI_PASSWORD "...."
+#define PIN_LED 4
 
 #ifdef ESP32
 extern "C"
@@ -25,17 +39,27 @@ uint32_t hall_sens_read();
 }
 #endif
 
-#define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
-
 HttpParam httpParam;
+
+int handlerRoot(UrlHandlerParam* param)
+{
+  IPAddress ip = WiFi.localIP();
+  param->contentLength = snprintf(param->pucBuffer, param->bufSize,
+    "<html><head><title>MiniWeb for Arduino</title></head><body><h3>Hello from MiniWeb (%u.%u.%u.%u)</h3><ul><li>Up time: %u seconds</li><li>Connected clients: %u</li><li>Total requests: %u</li></body>",
+    ip[0], ip[1], ip[2], ip[3],
+    millis() / 1000, httpParam.stats.clientCount, httpParam.stats.reqCount);
+  param->fileType = HTTPFILETYPE_HTML;
+  return FLAG_DATA_RAW;
+}
 
 int handlerInfo(UrlHandlerParam* param)
 {
   char *buf = param->pucBuffer;
-  int bufsize = param->dataBytes;
-  int bytes = snprintf(buf, bufsize, "{\"tick\":%u,", millis());
+  int bufsize = param->bufSize;
+  int bytes = snprintf(buf, bufsize, "{\"uptime\":%u,\"requests\":%u,\"clients\":%u,\"traffic\":%u,",
+    millis(), httpParam.stats.clientCount, httpParam.stats.reqCount, (unsigned int)(httpParam.stats.fileSentBytes >> 10));
 
+#ifdef ESP32
   time_t now;
   time(&now);
   struct tm timeinfo = { 0 };
@@ -46,40 +70,41 @@ int handlerInfo(UrlHandlerParam* param)
       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   }
 
-  IPAddress ip = WiFi.localIP();
-  bytes += snprintf(buf + bytes, bufsize - bytes, "\"IP\":\"%u.%u.%u.%u\",", ip[0], ip[1], ip[2], ip[3]);
-
-#ifdef ESP32
   int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
   bytes += snprintf(buf + bytes, bufsize - bytes, "\"temperature\":%d,", deviceTemp);
   bytes += snprintf(buf + bytes, bufsize - bytes, "\"magnetic\":%d", hall_sens_read());
 #endif
+  if (bytes < bufsize - 1) buf[bytes++] = '}';
 
-  buf[bytes++] = '}';
-
-  param->dataBytes = bytes;
+  param->contentLength = bytes;
   param->fileType=HTTPFILETYPE_JSON;
   return FLAG_DATA_RAW;
 }
 
 UrlHandler urlHandlerList[]={
 	{"info", handlerInfo},
+  {"", handlerRoot},
   {0}
 };
 
-void obtainTime(void)
+void obtainTime()
 {
+#ifdef ESP32
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, "pool.ntp.org");
+    sntp_setservername(0, (char*)"pool.ntp.org");
     sntp_init();
+#endif
 }
 
 void setup()
 {
-  delay(500);
+  // light up onboard LED
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, HIGH);
+
+  // initialize serial
   Serial.begin(115200);
   Serial.print("Connecting...");
-  delay(500);
 
   // Connect to WiFi network
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -105,15 +130,16 @@ void setup()
 
   obtainTime();
 
-  mwInitParam(&httpParam, 80, "app");
-	//httpParam.hlBindIP = htonl(INADDR_LOOPBACK);
-  httpParam.pxUrlHandler=urlHandlerList;
+  mwInitParam(&httpParam, 80, "");
+  httpParam.pxUrlHandler = urlHandlerList;
   httpParam.maxClients = 4;
   if (mwServerStart(&httpParam)) {
   		Serial.println("Error starting");
       for (;;);
   }
   Serial.println("MiniWeb started");
+  // turn off onboard LED
+  digitalWrite(PIN_LED, LOW);
 }
 
 void loop()

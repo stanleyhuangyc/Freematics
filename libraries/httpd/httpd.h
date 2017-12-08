@@ -168,12 +168,11 @@ typedef struct {
 typedef struct _HttpSocket{
 	SOCKET socket;
 	IPADDR ipAddr;
-
 	HttpRequest request;
 	HttpResponse response;
 	char *pucData;
-	int bufferSize;			// the size of buffer pucData pointing to
-	int dataLength;
+	unsigned int bufferSize;			// the size of buffer pucData pointing to
+	unsigned int dataLength;
 	int fd;
 	unsigned int flags;
 	void* handler;				// http handler function address
@@ -194,12 +193,11 @@ typedef struct {
 	int iVarCount;
 	char *pucHeader;
 	char *pucBuffer;
+  unsigned int bufSize;
 	char *pucPayload;
-	int payloadSize;
-	int dataBytes;
-	int contentBytes;
+	unsigned int payloadSize;
+	unsigned int contentLength;
 	HttpFileType fileType;
-	void *p_sys;
 } UrlHandlerParam;
 
 typedef int (*PFNURLCALLBACK)(UrlHandlerParam*);
@@ -224,13 +222,6 @@ typedef struct {
 	char pchAuthString[MAX_AUTH_INFO_LEN];
 } AuthHandler;
 
-#ifndef DISABLE_VIRTUAL_PATH
-typedef struct {
-	char* pchUrlPrefix;
-	char pchLocalRealPath[MAX_PATH];
-} VirtPathHandler;
-#endif
-
 #define FLAG_DIR_LISTING 1
 #define FLAG_DISABLE_RANGE 2
 
@@ -249,9 +240,6 @@ typedef struct _httpParam {
 	char pchWebPath[256];
 	UrlHandler *pxUrlHandler;		/* pointer to URL handler array */
 	AuthHandler *pxAuthHandler;     /* pointer to authorization handler array */
-#ifndef DISABLE_VIRTUAL_PATH
-	VirtPathHandler *pxVirtPathHandler;
-#endif
 	// incoming udp callback
 	PFN_UDP_CALLBACK pfnIncomingUDP;
 	// misc
@@ -260,8 +248,7 @@ typedef struct _httpParam {
 	time_t tmSocketExpireTime;
 	int maxDownloadSpeed; /* maximum download speed in KB/s */
 	HttpStats stats;
-	u_long hlBindIP;
-	void* szctx;
+	DWORD hlBindIP;
 } HttpParam;
 
 typedef struct {

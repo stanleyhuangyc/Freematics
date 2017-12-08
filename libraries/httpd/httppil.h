@@ -6,22 +6,38 @@
 #ifndef _HTTPPIL_H_
 #define _HTTPPIL_H_
 
-#ifdef SYS_MINGW
-#ifndef WIN32
+#if defined(SYS_MINGW) && !defined(WIN32)
 #define WIN32
 #endif
+
+#ifdef ARDUINO
+#include <Arduino.h>
 #endif
+
+#include <stdint.h>
 
 #if defined(WIN32)
 #include <windows.h>
 #include <io.h>
 
-#elif defined(ESP32) || defined(ESP8266)
+#elif defined(ESP32)
 
 #include <lwip/err.h>
 #include <lwip/sockets.h>
 #include <lwip/netdb.h>
 #include "string.h"
+
+#elif defined(ESP8266)
+
+//#define LWIP_INTERNAL
+#define LWIP_COMPAT_SOCKETS 1
+
+#include <lwip/err.h>
+#include <lwip/sockets.h>
+#include <lwip/netdb.h>
+#include "lwip/opt.h"
+#include "lwip/err.h"
+#include "lwip/dns.h"
 
 #else
 
@@ -36,7 +52,6 @@
 #include <sys/wait.h>
 #include <sys/select.h>
 #include <netdb.h>
-#include <stdint.h>
 
 #if !defined(O_BINARY)
 #define O_BINARY 0
@@ -80,7 +95,9 @@ typedef int SOCKET;
 typedef unsigned int DWORD;
 typedef unsigned short int WORD;
 typedef unsigned char BYTE;
-typedef int BOOL;
+#ifndef ESP8266
+typedef unsigned char BOOL;
+#endif
 #endif
 typedef unsigned char OCTET;
 
@@ -102,7 +119,11 @@ int IsFileExist(const char* filename);
 int IsDir(const char* pchName);
 
 #ifndef WIN32
+#ifdef ARDUINO
+#define GetTickCount millis
+#else
 uint32_t GetTickCount();
+#endif
 uint64_t GetTickCount64();
 #endif
 #ifdef __cplusplus
