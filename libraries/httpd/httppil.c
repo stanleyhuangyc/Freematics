@@ -13,10 +13,12 @@
 #include "httppil.h"
 
 #ifndef WIN32
-#include <sys/time.h>
 #include <sys/types.h>
-#include <dirent.h>
 #include <unistd.h>
+#ifndef ESP8266
+#include <sys/time.h>
+#include <dirent.h>
+#endif
 #endif
 
 int InitSocket()
@@ -47,6 +49,25 @@ char *GetTimeString()
 	return buf;
 }
 
+#if defined(ARDUINO)
+
+int IsDir(const char* pchName)
+{
+	return 0;
+}
+
+int ReadDir(const char* pchDir, char* pchFileNameBuf)
+{
+	return 0;
+}
+
+int IsFileExist(const char* filename)
+{
+	return 0;
+}
+
+#else
+
 int IsDir(const char* pchName)
 {
 #ifdef WIN32
@@ -59,7 +80,7 @@ int IsDir(const char* pchName)
 #else
 	struct stat stDirInfo;
 	if (stat( pchName, &stDirInfo) < 0) return 0;
-	return (stDirInfo.st_mode & S_IFDIR)?1:0;
+	return S_ISDIR(stDirInfo.st_mode);
 #endif
 }
 
@@ -141,22 +162,22 @@ int IsFileExist(const char* filename)
 	struct stat stat_ret;
 	if (stat(filename, &stat_ret) != 0) return 0;
 
-	return (stat_ret.st_mode & S_IFREG) != 0;
+	return S_ISREG(stat_ret.st_mode);
 #endif
 }
+
+#endif
 
 #ifndef WIN32
 
+#ifndef ARDUINO
 uint32_t GetTickCount()
 {
-#ifdef ARDUINO
-	return millis();
-#else
 	struct timeval ts;
 	gettimeofday(&ts,0);
 	return ts.tv_sec * 1000 + ts.tv_usec / 1000;
-#endif
 }
+#endif
 
 uint64_t GetTickCount64()
 {

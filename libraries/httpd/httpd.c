@@ -313,7 +313,6 @@ SOCKET _mwStartListening(HttpParam* hp)
 		return 0;
 	}
 
-#if 0
     // allow reuse of port number
     {
       int iOptVal=1;
@@ -321,7 +320,6 @@ SOCKET _mwStartListening(HttpParam* hp)
                      (char*)&iOptVal,sizeof(iOptVal));
       if (iRc<0) return 0;
     }
-#endif
 
     // bind it to the http port
 	memset(&sinAddress,0,sizeof(struct sockaddr_in));
@@ -584,7 +582,7 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		if (phsSocketCur->socket == 0)
 			return 0;
 		phsSocketCur->ipAddr.laddr=ntohl(sinaddr.sin_addr.s_addr);
-		SYSLOG(LOG_INFO,"[%d] IP: %d.%d.%d.%d\n",
+		SYSLOG(LOG_INFO,"[%d] Client IP: %d.%d.%d.%d\n",
 			phsSocketCur->socket,
 			phsSocketCur->ipAddr.caddr[3],
 			phsSocketCur->ipAddr.caddr[2],
@@ -723,7 +721,7 @@ int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateT
 	}
 	p+=snprintf(p, end - p, "Content-Type: %s\r\n", phsSocket->mimeType ? phsSocket->mimeType : contentTypeTable[phsSocket->response.fileType]);
 	if (phsSocket->response.contentLength > 0 && !(phsSocket->flags & FLAG_CHUNK)) {
-		p+=snprintf(p, end - p,"Content-Length: %d\r\n", phsSocket->response.contentLength);
+		p+=snprintf(p, end - p,"Content-Length: %lld\r\n", (long long)phsSocket->response.contentLength);
 	}
 	if (phsSocket->flags & FLAG_CHUNK) {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");
@@ -866,23 +864,22 @@ void _mwSend401AuthorizationRequired(HttpParam* hp, HttpSocket* phsSocket, int r
 {
 	char hdr[128];
 	const char *body = NULL;
-	int body_len = 0, hdrsize = 0;
-
+	int hdrsize = 0;
+	int bodylen;
 	if (reason == AUTH_REQUIRED) {
 		body = "Authentication required";
-		body_len = 8;
 	}
 	else {
 		body = "Authentication failed";
-		body_len = 6;
 	}
+	bodylen = strlen(body);
 
-	hdrsize = snprintf(hdr, sizeof(hdr), HTTP401_HEADER, "Login", body_len);
+	hdrsize = snprintf(hdr, sizeof(hdr), HTTP401_HEADER, "Login", bodylen);
 
 	SYSLOG(LOG_INFO,"[%d] Authorization Required\n",phsSocket->socket);
 	// send Authorization Required
 	send(phsSocket->socket, hdr, hdrsize, 0);
-	send(phsSocket->socket, body, body_len, 0);
+	send(phsSocket->socket, body, bodylen, 0);
 	//Below is the work around
 	SETFLAG(phsSocket, FLAG_CONN_CLOSE);
 	_mwCloseSocket(hp, phsSocket);
@@ -903,9 +900,12 @@ int _mwBasicAuthorizationHandlers(HttpParam* hp, HttpSocket* phsSocket)
 	char* path = phsSocket->request.pucPath;
 	int ret = AUTH_NO_NEED;
 
+	if (phsSocket->ipAddr.laddr == INADDR_LOOPBACK) {
+		return ret;
+	}
 	for (pah = hp->pxAuthHandler; pah && pah->pchUrlPrefix; pah++) {
 		//printf("\req path:%s prefix:0x%x, username:0x%x, password:0x%x\n", path, pah->pchUrlPrefix, pah->pchUsername, pah->pchPassword);
-		if (strncmp(path, pah->pchUrlPrefix, strlen(pah->pchUrlPrefix)) != 0) continue;
+		if (*pah->pchUrlPrefix && strncmp(path, pah->pchUrlPrefix, strlen(pah->pchUrlPrefix)) != 0) continue;
 
 		if (pah->pchUsername == NULL || *pah->pchUsername == '\0' ||
 			pah->pchPassword == NULL || *pah->pchPassword == '\0') continue;
@@ -936,14 +936,7 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 	UrlHandlerParam up;
 	int ret=0;
 	char* path = phsSocket->request.pucPath;
-	char* p = strstr(path, "rtsp://");
-	if (p) {
-		// remove RTSP protocol and host name from URL
-		p = strchr(p + 7, '/');
-		if (p) path = p + 1;
-	} else {
-		while (*path == '/') path++;
-	}
+	while (*path && *path == '/') path++;
 	up.pxVars=NULL;
 	for (puh=hp->pxUrlHandler; puh && puh->pchUrlPrefix; puh++) {
 		size_t prefixLen=strlen(puh->pchUrlPrefix);
@@ -952,7 +945,7 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 			memset(&up, 0, sizeof(up));
 			up.hp=hp;
 			up.hs = phsSocket;
-			up.dataBytes=(int)phsSocket->bufferSize;
+			up.bufSize=(int)phsSocket->bufferSize;
 			up.pucRequest=path+prefixLen;
 			up.pucHeader=phsSocket->buffer;
 			up.pucBuffer=phsSocket->pucData;
@@ -971,8 +964,8 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 			if (ret & FLAG_DATA_RAW) {
 				SETFLAG(phsSocket, FLAG_DATA_RAW);
 				phsSocket->pucData=up.pucBuffer;
-				phsSocket->dataLength=up.dataBytes;
-				phsSocket->response.contentLength=up.contentBytes>0?up.contentBytes:up.dataBytes;
+				phsSocket->dataLength=up.contentLength;
+				phsSocket->response.contentLength=up.contentLength;
 				if (ret & FLAG_TO_FREE) {
 					phsSocket->ptr=up.pucBuffer;	//keep the pointer which will be used to free memory later
 				}
@@ -980,7 +973,7 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 			} else if (ret & FLAG_DATA_STREAM) {
 				SETFLAG(phsSocket, FLAG_DATA_STREAM);
 				phsSocket->pucData = up.pucBuffer;
-				phsSocket->dataLength = up.dataBytes;
+				phsSocket->dataLength = up.contentLength;
 				phsSocket->response.contentLength = 0;
 				DBG("URL handler: stream\n");
 			} else if (ret & FLAG_DATA_FILE) {
@@ -1013,12 +1006,8 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 	int iLength = recv(phsSocket->socket,
 					phsSocket->pucData+phsSocket->dataLength,
 					(int)(phsSocket->bufferSize - phsSocket->dataLength - 1), 0);
-	if (iLength == 0) {
-		SYSLOG(LOG_INFO,"[%d] no data\n",phsSocket->socket);
-		return 0;
-	}
-	if (iLength < 0) {
-		SYSLOG(LOG_INFO,"[%d] socket closed by client\n",phsSocket->socket);
+	if (iLength <= 0) {
+		DBG("[%d] socket closed by client\n",phsSocket->socket);
 		return -1;
 	}
 	// add in new data received
@@ -1126,7 +1115,8 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 		phsSocket->bufferSize = HTTP_BUFFER_SIZE;
 	}
 
-	SYSLOG(LOG_INFO,"[%d] request path: %s\n",phsSocket->socket,phsSocket->request.pucPath);
+	DBG("[%d] request path: %s\n",phsSocket->socket,phsSocket->request.pucPath);
+
 	hp->stats.reqCount++;
 
 	if (hp->pxAuthHandler != NULL) {
@@ -1212,7 +1202,7 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 		up.hs = phsSocket;
 		up.hp = hp;
 		up.pucBuffer = 0;	// indicate connection closed
-		up.dataBytes = -1;
+		up.bufSize = 0;
 		(pfnHandler->pfnUrlHandler)(&up);
 		phsSocket->handler = 0;
 	}
@@ -1296,7 +1286,7 @@ int _mwListDirectory(HttpSocket* phsSocket, char* dir)
 		}
 		snprintf(cFilePath, sizeof(cFilePath), "%s/%s",dir,cFileName);
 		if (stat(cFilePath,&st)) continue;
-		if (st.st_mode & S_IFDIR) {
+		if (S_ISDIR(st.st_mode)) {
 			p+=snprintf(p, 256, "<tr><td width=35%%><a href='%s/'>%s</a></td><td width=15%%>&lt;dir&gt;</td><td width=15%%>",
 				cFileName,cFileName);
 		} else {
@@ -1380,6 +1370,7 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 		return -1;
 	}
 
+#ifndef ARDUINO
 	if (phsSocket->fd < 0) {
 		char *p;
 		int i;
@@ -1423,6 +1414,7 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 			return _mwStartSendRawData(hp, phsSocket);
 		}
 	}
+#endif
 	if (phsSocket->fd > 0) {
 		DWORD fileSize = st.st_size;
 		phsSocket->response.contentLength = fileSize - phsSocket->request.startByte;
@@ -1610,7 +1602,7 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 			up.hs = phsSocket;
 			up.hp = hp;
 			up.pucBuffer=phsSocket->buffer;
-			up.dataBytes=HTTP_BUFFER_SIZE;
+			up.bufSize=HTTP_BUFFER_SIZE;
 			if ((pfnHandler->pfnUrlHandler)(&up) == 0) {
 				if (phsSocket->flags & FLAG_CHUNK) {
 					send(phsSocket->socket, "0\r\n\r\n", 5, 0);
@@ -1618,7 +1610,7 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 				SETFLAG(phsSocket, FLAG_CONN_CLOSE);
 				return 1;	// EOF
 			}
-			phsSocket->dataLength=up.dataBytes;
+			phsSocket->dataLength = up.contentLength;
 			phsSocket->pucData = up.pucBuffer;
 		} else {
 			if (phsSocket->flags & FLAG_CHUNK) {
