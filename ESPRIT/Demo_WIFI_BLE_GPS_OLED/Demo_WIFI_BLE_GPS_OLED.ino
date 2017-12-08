@@ -32,7 +32,6 @@
 WiFiServer server(80);
 CNVS nvs;
 LCD_SH1106 lcd;
-TinyGPS gps;
 
 const char waitsign[] = {'|', '/', '-', '\\'};
 
@@ -188,9 +187,11 @@ public:
   uint8_t speed;
   uint8_t sat;
   int16_t heading;
+private:
+  TinyGPS gps;
 };
 
-CGPS mygps;
+CGPS gps;
 
 void loop(void)
 {
@@ -216,23 +217,23 @@ void loop(void)
         lcd.setCursor(27, 4);
         lcd.setFontSize(FONT_SIZE_MEDIUM);
         lcd.print('(');
-        if (mygps.time == 0)
+        if (gps.time == 0)
           lcd.print(millis() / 1000);
         else
-          lcd.print(mygps.time);
+          lcd.print(gps.time);
         lcd.print(')');
       }
-      if (mygps.push(c)) {
+      if (gps.push(c)) {
         lcd.setCursor(0, 6);
         lcd.setFontSize(FONT_SIZE_SMALL);
-        lcd.print((float)mygps.lat / 1000000);
+        lcd.print((float)gps.lat / 1000000);
         lcd.print('/');
-        lcd.println((float)mygps.lng / 1000000);
-        lcd.print(mygps.speed);
+        lcd.println((float)gps.lng / 1000000);
+        lcd.print(gps.speed);
         lcd.print("kph Alt:");
-        lcd.print(mygps.alt / 100);
+        lcd.print(gps.alt / 100);
         lcd.print("m Sat:");
-        lcd.print(mygps.sat);
+        lcd.print(gps.sat);
         lcd.print(' ');
       }
     }
