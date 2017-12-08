@@ -7,6 +7,8 @@
 
 #include <Arduino.h>
 
+#define PIN_XBEE_PWR 27
+
 class Task
 {
 public:
