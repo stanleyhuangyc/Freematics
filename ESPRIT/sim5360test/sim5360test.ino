@@ -267,9 +267,6 @@ void setup()
 {
     Serial.begin(115200);
     delay(500);
-    // this will init SPI communication
-    sim.begin();
-
     // initialize SIM5360 xBee module (if present)
     Serial.print("Init SIM5360...");
     sim.xbBegin(XBEE_BAUDRATE);

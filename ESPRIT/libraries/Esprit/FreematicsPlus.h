@@ -6,10 +6,6 @@
 *************************************************************************/
 
 #include <Arduino.h>
-#include "FreematicsBase.h"
-
-// get chip temperature sensor
-uint8_t readChipTemperature();
 
 class Task
 {
@@ -32,7 +28,7 @@ private:
   void* xSemaphore;
 };
 
-class CFreematicsESP32 : public virtual CFreematics
+class CFreematicsESP32
 {
 public:
 	// start xBee UART communication
