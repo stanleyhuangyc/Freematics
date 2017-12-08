@@ -19,12 +19,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "soc/uart_struct.h"
-#include "FreematicsSD.h"
 #include "FreematicsPlus.h"
-#include "FreematicsGPS.h"
-
-static TinyGPS* gps = 0;
-static bool newGPSData = false;
 
 #define BEE_UART_PIN_RXD  (16)
 #define BEE_UART_PIN_TXD  (17)
@@ -35,81 +30,6 @@ static bool newGPSData = false;
 #define GPS_UART_NUM UART_NUM_2
 
 #define UART_BUF_SIZE (2048)
-
-void gps_decode_task(int timeout)
-{
-    if (!gps) {
-        delay(timeout);
-        return;
-    }
-    uint8_t c;
-    int len = uart_read_bytes(GPS_UART_NUM, &c, 1, timeout / portTICK_RATE_MS);
-    if (len == 1) {
-        if (gps->encode(c)) {
-            newGPSData = true;
-        }
-    }
-}
-
-bool gps_get_data(GPS_DATA* gdata)
-{
-	if (!newGPSData || !gps) {
-		return false;
-	}
-    gps->get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
-    gps->get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
-    gdata->sat = gps->satellites();
-    gdata->speed = gps->speed() * 1852 / 100000; /* km/h */
-    gdata->alt = gps->altitude();
-    gdata->heading = gps->course() / 100;
-    newGPSData = false;
-    return true;
-}
-
-int gps_write_string(const char* string)
-{
-    if (!gps) return 0;
-    return uart_write_bytes(BEE_UART_NUM, string, strlen(string));
-}
-
-bool gps_decode_start()
-{
-    if (gps) return true;
-
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .rx_flow_ctrl_thresh = 122,
-    };
-    //Configure UART parameters
-    uart_param_config(GPS_UART_NUM, &uart_config);
-    //Set UART pins
-    uart_set_pin(GPS_UART_NUM, GPS_UART_PIN_TXD, GPS_UART_PIN_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    //Install UART driver (we don't need an event queue here)
-    //In this example we don't even use a buffer for sending data.
-    uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
-
-    // quick check of input data format
-    uint32_t t = millis();
-    uint8_t match[] = {'$', ',', '\n'};
-    int idx = 0;
-    do {
-        uint8_t c;
-        if (uart_read_bytes(GPS_UART_NUM, &c, 1, 200 / portTICK_RATE_MS) == -1) continue;
-        if (c == match[idx]) idx++;
-    } while (millis() - t < GPS_INIT_TIMEOUT && idx < sizeof(match));
-    if (idx < sizeof(match)) {
-        // no matching pattern
-        uart_driver_delete(GPS_UART_NUM);
-        return false;
-    }
-
-    gps = new TinyGPS;
-    return true;
-}
 
 void bee_start()
 {
@@ -147,7 +67,6 @@ int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout)
     do {
         uint8_t c;
         int len = uart_read_bytes(BEE_UART_NUM, &c, 1, 0);
-        gps_decode_task(0);
         if (len == 1) {
             if (c >= 0xA && c <= 0x7E) {
                 buffer[recv++] = c;
@@ -207,36 +126,6 @@ void Mutex::lock()
 void Mutex::unlock()
 {
   xSemaphoreGive(xSemaphore);
-}
-
-bool CFreematicsESP32::gpsInit(unsigned long baudrate)
-{
-	bool success = false;
-	char buf[128];
-	if (baudrate) {
-		pinMode(PIN_GPS_POWER, OUTPUT);
-		// turn on GPS power
-		digitalWrite(PIN_GPS_POWER, HIGH);
-		if (gps_decode_start()) {
-			// success
-			return true;
-		}
-	} else {
-		success = true;
-	}
-	//turn off GPS power
-	digitalWrite(PIN_GPS_POWER, LOW);
-	return success;
-}
-
-bool CFreematicsESP32::gpsGetData(GPS_DATA* gdata)
-{
-  return gps_get_data(gdata);
-}
-
-void CFreematicsESP32::gpsSendCommand(const char* cmd)
-{
-	gps_write_string(cmd);
 }
 
 bool CFreematicsESP32::xbBegin(unsigned long baudrate)
@@ -319,12 +208,7 @@ void CFreematicsESP32::xbTogglePower()
 
 void CFreematicsESP32::sleep(unsigned int ms)
 {
-	uint32_t t = millis();
-	for (;;) {
-        uint32_t elapsed = millis() - t;
-        if (elapsed >= ms) break;
-		gps_decode_task(ms - elapsed);
-	}
+  delay(ms);
 }
 
 void CFreematicsESP32::hibernate(unsigned int ms)
