@@ -8,6 +8,8 @@
 #ifndef Esprit_h
 #define Esprit_h
 
+#define PIN_LED 4
+
 #ifndef _SIM
 #include "esp_system.h"
 #include "esp_partition.h"
