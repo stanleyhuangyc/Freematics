@@ -31,6 +31,22 @@
 
 #define UART_BUF_SIZE (2048)
 
+static int dumpLine(char* buffer, int len)
+{
+	int bytesToDump = len >> 1;
+	for (int i = 0; i < len; i++) {
+		// find out first line end and discard the first line
+		if (buffer[i] == '\r' || buffer[i] == '\n') {
+			// go through all following \r or \n if any
+			while (++i < len && (buffer[i] == '\r' || buffer[i] == '\n'));
+			bytesToDump = i;
+			break;
+		}
+	}
+	memmove(buffer, buffer + bytesToDump, len - bytesToDump);
+	return bytesToDump;
+}
+
 void bee_start()
 {
     uart_config_t uart_config = {
