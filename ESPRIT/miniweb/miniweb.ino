@@ -22,8 +22,10 @@
 #endif
 #include <httpd.h>
 
+#define ENABLE_SOFT_AP 0
 #define WIFI_SSID "...."
 #define WIFI_PASSWORD "...."
+#define WIFI_TIMEOUT 5000
 #define PIN_LED 4
 
 #ifdef ESP32
@@ -39,7 +41,11 @@ HttpParam httpParam;
 int handlerRoot(UrlHandlerParam* param)
 {
   digitalWrite(PIN_LED, HIGH);
+#if ENABLE_SOFT_AP
+  IPAddress ip = WiFi.softAPIP();
+#else
   IPAddress ip = WiFi.localIP();
+#endif
   param->contentLength = snprintf(param->pucBuffer, param->bufSize,
     "<html><head><title>MiniWeb for Arduino</title></head><body><h3>Hello from MiniWeb (%u.%u.%u.%u)</h3><ul><li>Up time: %u seconds</li><li>Connected clients: %u</li><li>Total requests: %u</li></body>",
     ip[0], ip[1], ip[2], ip[3],
@@ -163,17 +169,25 @@ void setup()
 
   // initialize serial
   Serial.begin(115200);
-  Serial.print("Connecting...");
 
-  // Connect to WiFi network
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  delay(1000);
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-      Serial.print(".");
-      delay(500);
-  }
-  Serial.println("");
+#if ENABLE_SOFT_AP
+  WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("AP IP address: ");
+  Serial.println(WiFi.softAPIP());
+#else
+  do {
+    Serial.print("Connecting...");
+
+    // Connect to WiFi network
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    // Wait for connection
+    for (unsigned long t = millis(); WiFi.status() != WL_CONNECTED && millis() - t < WIFI_TIMEOUT; ) {
+        Serial.print(".");
+        delay(500);
+    }
+    Serial.println();
+  } while (WiFi.status() != WL_CONNECTED);
+
   Serial.print("Connected to ");
   Serial.println(WIFI_SSID);
   Serial.print("IP address: ");
@@ -188,6 +202,7 @@ void setup()
   MDNS.addService("http", "tcp", 80);
 
   obtainTime();
+#endif
 
   mwInitParam(&httpParam, 80, 0);
   httpParam.pxUrlHandler = urlHandlerList;
