@@ -60,16 +60,21 @@
 #define FILEEXT_SDP DEFDWORD('S', 'D', 'P', 0)
 
 // Settings for http server
+#ifndef ARDUINO
 #define HTTP_EXPIRATION_TIME (120/*secs*/)
 #define HTTP_KEEPALIVE_TIME (15/*secs*/)
+#define MAX_REQUEST_PATH_LEN (512/*bytes*/)
+#else
+#define HTTP_EXPIRATION_TIME (10/*secs*/)
+#define HTTP_KEEPALIVE_TIME (5/*secs*/)
+#define MAX_REQUEST_PATH_LEN (128/*bytes*/)
+#endif
 #define MAX_RECV_RETRIES (3/*times*/)
-#define HTTPAUTHTIMEOUT   (300/*secs*/)
+#define HTTPAUTHTIMEOUT   (60/*secs*/)
 #define HTTPSUBSTEXPANSION (0/*bytes*/)
 #define HTTPHEADERSIZE (512/*bytes*/)
-#define HTTPSMALLBUFFER (256/*bytes*/)
 #define HTTPMAXRECVBUFFER HTTP_BUFFER_SIZE
 #define HTTPUPLOAD_CHUNKSIZE (HTTPMAXRECVBUFFER / 2/*bytes*/)
-#define MAX_REQUEST_PATH_LEN (512/*bytes*/)
 #define MAX_REQUEST_SIZE (2*1024 /*bytes*/)
 
 #define SLASH '/'
