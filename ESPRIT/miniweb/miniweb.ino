@@ -51,13 +51,13 @@ int handlerRoot(UrlHandlerParam* param)
 
 int handlerDigitalPins(UrlHandlerParam* param)
 {
+  if (!param->pxVars) return 0; // return 404 when no URL arguments
   char *buf = param->pucBuffer;
   int bufsize = param->bufSize;
   int gpio = -1;
   int level = -1;
   int bytes = snprintf(buf, bufsize, "{");
-  int i;
-  for (i = 0; param->pxVars[i].name; i++) {
+  for (int i = 0; param->pxVars[i].name; i++) {
     if (!strncmp(param->pxVars[i].name, "gpio", 4)) {
       gpio = atoi(param->pxVars[i].name + 4);
       if (*param->pxVars[i].value) level = atoi(param->pxVars[i].value);
@@ -77,8 +77,8 @@ int handlerDigitalPins(UrlHandlerParam* param)
       bytes += snprintf(buf + bytes, bufsize - bytes, "\"GPIO%u\":%u,", gpio, level);
     }
   }
-  if (i == 0) return 0; // return 404
-  buf[bytes - 1] = '}';
+  if (buf[bytes - 1] == ',') bytes--;
+  buf[bytes++] = '}';
   param->contentLength = bytes;
   param->fileType = HTTPFILETYPE_JSON;
   return FLAG_DATA_RAW;
@@ -86,12 +86,12 @@ int handlerDigitalPins(UrlHandlerParam* param)
 
 int handlerAnalogPins(UrlHandlerParam* param)
 {
+  if (!param->pxVars) return 0; // return 404 when no URL arguments
   char *buf = param->pucBuffer;
   int bufsize = param->bufSize;
   int gpio = -1;
   int bytes = snprintf(buf, bufsize, "{");
-  int i;
-  for (i = 0; param->pxVars[i].name; i++) {
+  for (int i = 0; param->pxVars[i].name; i++) {
     if (!strncmp(param->pxVars[i].name, "gpio", 4)) {
       gpio = atoi(param->pxVars[i].name + 4);
       if (gpio == -1 || gpio > 39) {
@@ -102,8 +102,8 @@ int handlerAnalogPins(UrlHandlerParam* param)
       bytes += snprintf(buf + bytes, bufsize - bytes, "\"GPIO%u\":%d,", gpio, level);
     }
   }
-  if (i == 0) return 0; // return 404
-  buf[bytes - 1] = '}';
+  if (buf[bytes - 1] == ',') bytes--;
+  buf[bytes++] = '}';
   param->contentLength = bytes;
   param->fileType = HTTPFILETYPE_JSON;
   return FLAG_DATA_RAW;
