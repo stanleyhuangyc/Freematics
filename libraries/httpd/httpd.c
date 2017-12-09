@@ -312,7 +312,9 @@ SOCKET _mwStartListening(HttpParam* hp)
 		DBG("Error creating socket\n");
 		return 0;
 	}
+	DBG("Listen socket: %d\n", listenSocket);
 
+#ifndef ARDUINO
     // allow reuse of port number
     {
       int iOptVal=1;
@@ -320,6 +322,7 @@ SOCKET _mwStartListening(HttpParam* hp)
                      (char*)&iOptVal,sizeof(iOptVal));
       if (iRc<0) return 0;
     }
+#endif
 
     // bind it to the http port
 	memset(&sinAddress,0,sizeof(struct sockaddr_in));
@@ -351,7 +354,7 @@ SOCKET _mwStartListening(HttpParam* hp)
 #endif
 
     // listen on the socket for incoming calls
-	if (listen(listenSocket,hp->maxClients-1)) {
+	if (listen(listenSocket, hp->maxClients)) {
 		DBG("Unable to listen on socket %d\n",listenSocket);
 		return 0;
 	}
