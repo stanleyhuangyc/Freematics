@@ -132,7 +132,7 @@ int mwGetVarValueInt(HttpVariables* vars, const char *varname, int defval)
 		for (i=0; (vars+i)->name; i++) {
 			if (!strcmp((vars+i)->name,varname)) {
 				char *p = (vars+i)->value;
-				return p ? atoi(p) : defval;
+				return *p ? atoi(p) : defval;
 			}
 		}
 	}
@@ -940,7 +940,7 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 	up.pxVars=NULL;
 	for (puh=hp->pxUrlHandler; puh && puh->pchUrlPrefix; puh++) {
 		size_t prefixLen=strlen(puh->pchUrlPrefix);
-		if (puh->pfnUrlHandler && !strncmp(path,puh->pchUrlPrefix,prefixLen)) {
+		if (puh->pfnUrlHandler && ((prefixLen == 0 && *path == 0) || (prefixLen && !strncmp(path,puh->pchUrlPrefix,prefixLen)))) {
 			//URL prefix matches
 			memset(&up, 0, sizeof(up));
 			up.hp=hp;
