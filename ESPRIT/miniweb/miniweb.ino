@@ -17,11 +17,6 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <apps/sntp/sntp.h>
-#elif defined(ESP8266)
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
 #else
 #error Unsupported board type
 #endif
@@ -43,12 +38,74 @@ HttpParam httpParam;
 
 int handlerRoot(UrlHandlerParam* param)
 {
+  digitalWrite(PIN_LED, HIGH);
   IPAddress ip = WiFi.localIP();
   param->contentLength = snprintf(param->pucBuffer, param->bufSize,
     "<html><head><title>MiniWeb for Arduino</title></head><body><h3>Hello from MiniWeb (%u.%u.%u.%u)</h3><ul><li>Up time: %u seconds</li><li>Connected clients: %u</li><li>Total requests: %u</li></body>",
     ip[0], ip[1], ip[2], ip[3],
     millis() / 1000, httpParam.stats.clientCount, httpParam.stats.reqCount);
   param->fileType = HTTPFILETYPE_HTML;
+  digitalWrite(PIN_LED, LOW);
+  return FLAG_DATA_RAW;
+}
+
+int handlerDigitalPins(UrlHandlerParam* param)
+{
+  char *buf = param->pucBuffer;
+  int bufsize = param->bufSize;
+  int gpio = -1;
+  int level = -1;
+  int bytes = snprintf(buf, bufsize, "{");
+  int i;
+  for (i = 0; param->pxVars[i].name; i++) {
+    if (!strncmp(param->pxVars[i].name, "gpio", 4)) {
+      gpio = atoi(param->pxVars[i].name + 4);
+      if (*param->pxVars[i].value) level = atoi(param->pxVars[i].value);
+      if (gpio == -1 || gpio > 39) {
+        bytes += snprintf(buf + bytes, bufsize - bytes, "\"Error\":\"invalid pin number\",");
+        break;
+      }
+      if (level == -1) {
+        // reading pin
+        pinMode(gpio, INPUT);
+        level = digitalRead(gpio);
+      } else {
+        // writing pin
+        pinMode(gpio, OUTPUT);
+        digitalWrite(gpio, level);
+      }
+      bytes += snprintf(buf + bytes, bufsize - bytes, "\"GPIO%u\":%u,", gpio, level);
+    }
+  }
+  if (i == 0) return 0; // return 404
+  buf[bytes - 1] = '}';
+  param->contentLength = bytes;
+  param->fileType = HTTPFILETYPE_JSON;
+  return FLAG_DATA_RAW;
+}
+
+int handlerAnalogPins(UrlHandlerParam* param)
+{
+  char *buf = param->pucBuffer;
+  int bufsize = param->bufSize;
+  int gpio = -1;
+  int bytes = snprintf(buf, bufsize, "{");
+  int i;
+  for (i = 0; param->pxVars[i].name; i++) {
+    if (!strncmp(param->pxVars[i].name, "gpio", 4)) {
+      gpio = atoi(param->pxVars[i].name + 4);
+      if (gpio == -1 || gpio > 39) {
+        bytes += snprintf(buf + bytes, bufsize - bytes, "\"Error\":\"invalid pin number\",");
+        break;
+      }
+      int level = analogRead(gpio);
+      bytes += snprintf(buf + bytes, bufsize - bytes, "\"GPIO%u\":%d,", gpio, level);
+    }
+  }
+  if (i == 0) return 0; // return 404
+  buf[bytes - 1] = '}';
+  param->contentLength = bytes;
+  param->fileType = HTTPFILETYPE_JSON;
   return FLAG_DATA_RAW;
 }
 
@@ -56,7 +113,7 @@ int handlerInfo(UrlHandlerParam* param)
 {
   char *buf = param->pucBuffer;
   int bufsize = param->bufSize;
-  int bytes = snprintf(buf, bufsize, "{\"uptime\":%u,\"requests\":%u,\"clients\":%u,\"traffic\":%u,",
+  int bytes = snprintf(buf, bufsize, "{\"uptime\":%u,\"clients\":%u,\"requests\":%u,\"traffic\":%u,",
     millis(), httpParam.stats.clientCount, httpParam.stats.reqCount, (unsigned int)(httpParam.stats.fileSentBytes >> 10));
 
 #ifdef ESP32
@@ -83,6 +140,8 @@ int handlerInfo(UrlHandlerParam* param)
 
 UrlHandler urlHandlerList[]={
 	{"info", handlerInfo},
+  {"digital", handlerDigitalPins},
+  {"analog", handlerAnalogPins},
   {"", handlerRoot},
   {0}
 };
@@ -130,9 +189,8 @@ void setup()
 
   obtainTime();
 
-  mwInitParam(&httpParam, 80, "");
+  mwInitParam(&httpParam, 80, 0);
   httpParam.pxUrlHandler = urlHandlerList;
-  httpParam.maxClients = 4;
   if (mwServerStart(&httpParam)) {
   		Serial.println("Error starting");
       for (;;);
