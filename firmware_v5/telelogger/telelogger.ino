@@ -484,7 +484,7 @@ if (!checkState(STATE_STORAGE_READY)) {
           }
           Serial.println(motion);
           // check movement
-          if (motion > WAKEUP_MOTION_THRESHOLD) {
+          if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD * 10) {
             break;
           }
         }
