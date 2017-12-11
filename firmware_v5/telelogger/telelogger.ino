@@ -471,20 +471,18 @@ if (!checkState(STATE_STORAGE_READY)) {
       if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
         for (;;) {
+          delay(100);
           // calculate relative movement
           float motion = 0;
-          for (byte n = 0; n < 10; n++) {
-            float acc[3];
-            mems.memsRead(acc);
-            for (byte i = 0; i < 3; i++) {
-              float m = (acc[i] - accBias[i]);
-              motion += m * m;
-            }
-            delay(100);
+          float acc[3];
+          mems.memsRead(acc);
+          for (byte i = 0; i < 3; i++) {
+            float m = (acc[i] - accBias[i]);
+            motion += m * m;
           }
-          Serial.println(motion);
+          //Serial.println(motion);
           // check movement
-          if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD * 10) {
+          if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
             break;
           }
         }
