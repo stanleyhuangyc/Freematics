@@ -34,7 +34,7 @@ void setup() {
   delay(500);
   // set xBee module baudrate
   Serial.print("Setting xBee baudrate...");
-  if (one.xbBegin(9600) ) {
+  if (one.xbBegin(115200) ) {
     Serial.println("OK");
   } else {
     for (;;); 
