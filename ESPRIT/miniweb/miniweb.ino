@@ -120,7 +120,7 @@ int handlerInfo(UrlHandlerParam* param)
   char *buf = param->pucBuffer;
   int bufsize = param->bufSize;
   int bytes = snprintf(buf, bufsize, "{\"uptime\":%u,\"clients\":%u,\"requests\":%u,\"traffic\":%u,",
-    millis(), httpParam.stats.clientCount, httpParam.stats.reqCount, (unsigned int)(httpParam.stats.fileSentBytes >> 10));
+    millis(), httpParam.stats.clientCount, httpParam.stats.reqCount, (unsigned int)(httpParam.stats.totalSentBytes >> 10));
 
 #ifdef ESP32
   time_t now;

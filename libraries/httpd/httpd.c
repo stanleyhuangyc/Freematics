@@ -208,13 +208,12 @@ int mwServerStart(HttpParam* hp)
 		SYSLOG(LOG_INFO,"Maximum clients not set\n");
 		return -1;
 	}
-	hp->hsSocketQueue = calloc(hp->maxClients, sizeof(HttpSocket));
 	if (!(hp->listenSocket=_mwStartListening(hp))) {
 		DBG("Error listening on port %d\n", hp->httpPort);
 		return -1;
 	}
 
-	hp->stats.startTime=time(NULL);
+	hp->hsSocketQueue = calloc(hp->maxClients, sizeof(HttpSocket));
 	hp->bKillWebserver=FALSE;
 	hp->bWebserverRunning=TRUE;
 	if (!hp->tmSocketExpireTime) hp->tmSocketExpireTime = HTTP_EXPIRATION_TIME;
@@ -312,7 +311,6 @@ SOCKET _mwStartListening(HttpParam* hp)
 		DBG("Error creating socket\n");
 		return 0;
 	}
-	DBG("Listen socket: %d\n", listenSocket);
 
 #ifndef ARDUINO
     // allow reuse of port number
@@ -482,7 +480,6 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		// check expiration timer (for non-listening, in-use sockets)
 		if (tmCurrentTime > phsSocketCur->tmExpirationTime) {
 			SYSLOG(LOG_INFO,"[%d] Http socket expired\n",phsSocketCur->socket);
-			hp->stats.timeOutCount++;
 			// close connection
 			phsSocketCur->flags=FLAG_CONN_CLOSE;
 			_mwCloseSocket(hp, phsSocketCur);
@@ -617,7 +614,6 @@ void mwServerExit(HttpParam* hp)
 	int i;
 	// cleanup
 	_mwCloseAllConnections(hp);
-	SYSLOG(LOG_INFO, "Cleaning up...\n");
 	for (i = 0; i < hp->maxClients; i++) {
 		if (hp->hsSocketQueue[i].buffer) free(hp->hsSocketQueue[i].buffer);
 	}
@@ -963,7 +959,6 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 			if (phsSocket->response.statusCode >= 500) phsSocket->flags |= FLAG_CONN_CLOSE;
 			phsSocket->flags|=ret;
 			phsSocket->response.fileType=up.fileType;
-			hp->stats.urlProcessCount++;
 			if (ret & FLAG_DATA_RAW) {
 				SETFLAG(phsSocket, FLAG_DATA_RAW);
 				phsSocket->pucData=up.pucBuffer;
@@ -993,6 +988,7 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 				SETFLAG(phsSocket, FLAG_DATA_FILE);
 				DBG("URL handler: file descriptor\n");
 			}
+			_mwFreeJSONPairs(&up);
 			break;
 		}
 	}
@@ -1289,7 +1285,8 @@ int _mwListDirectory(HttpSocket* phsSocket, char* dir)
 		}
 		snprintf(cFilePath, sizeof(cFilePath), "%s/%s",dir,cFileName);
 		if (stat(cFilePath,&st)) continue;
-		if (S_ISDIR(st.st_mode)) {
+		if (st.st_mode & S_IFDIR) {
+		//if (S_ISDIR(st.st_mode)) {
 			p+=snprintf(p, 256, "<tr><td width=35%%><a href='%s/'>%s</a></td><td width=15%%>&lt;dir&gt;</td><td width=15%%>",
 				cFileName,cFileName);
 		} else {
@@ -1447,7 +1444,6 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 
 	phsSocket->response.headerBytes = phsSocket->dataLength;
 	phsSocket->response.sentBytes = 0;
-	hp->stats.fileSentCount++;
 	return 0;
 } // end of _mwStartSendFile2
 
@@ -1460,7 +1456,7 @@ int _mwStartSendFile(HttpParam* hp, HttpSocket* phsSocket)
 	int ret = -1;
 	ret = _mwStartSendFile2(hp, phsSocket, hp->pchWebPath, phsSocket->request.pucPath);
 	if (ret != 0) {
-		SYSLOG(LOG_INFO,"[%d] Http file not found\n",phsSocket->socket);
+		SYSLOG(LOG_INFO,"[%d] Not found - %s\n",phsSocket->socket, phsSocket->request.pucPath);
 		_mwSendErrorPage(phsSocket->socket, HTTP404_HEADER, HTTP404_BODY);
 	}
 	return ret;
@@ -1501,7 +1497,7 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 			return -1;
 		}
 		SETFLAG(phsSocket, FLAG_HEADER_SENT);
-		hp->stats.fileSentBytes+=iBytesWritten;
+		hp->stats.totalSentBytes+=iBytesWritten;
 		phsSocket->response.sentBytes+=iBytesWritten;
 		phsSocket->pucData+=iBytesWritten;
 		phsSocket->dataLength-=iBytesWritten;
@@ -1558,6 +1554,7 @@ int _mwStartSendRawData(HttpParam *hp, HttpSocket* phsSocket)
 			bytes=send(phsSocket->socket, header+offset,hdrsize-offset,0);
 			if (bytes<=0) break;
 			offset+=bytes;
+			hp->stats.totalSentBytes+=bytes;
 		} while (offset<hdrsize);
 		if (bytes<=0) {
 			// failed to send header (socket may have been closed by peer)
@@ -1580,19 +1577,18 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 		char buf[16];
 		int bytes = snprintf(buf, sizeof(buf), "%x\r\n", phsSocket->dataLength);
 		iBytesWritten = send(phsSocket->socket, buf, bytes, 0);
+		if (iBytesWritten<=0) return -1;
+		hp->stats.totalSentBytes+=iBytesWritten;
 	}
     // send a chunk of data
 	if (phsSocket->dataLength > 0) {
 		iBytesWritten=(int)send(phsSocket->socket, phsSocket->pucData, phsSocket->dataLength, 0);
 		if (iBytesWritten<=0) {
 			// failure - close connection
-			DBG("Connection closed\n");
-			SETFLAG(phsSocket,FLAG_CONN_CLOSE);
-			_mwCloseSocket(hp, phsSocket);
 			return -1;
 		} else {
 			DBG("[%d] sent %d bytes of raw data\n",phsSocket->socket,iBytesWritten);
-			hp->stats.fileSentBytes+=iBytesWritten;
+			hp->stats.totalSentBytes+=iBytesWritten;
 			phsSocket->response.sentBytes+=iBytesWritten;
 			phsSocket->pucData+=iBytesWritten;
 			phsSocket->dataLength-=iBytesWritten;
@@ -1608,8 +1604,10 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 			up.bufSize=HTTP_BUFFER_SIZE;
 			if ((pfnHandler->pfnUrlHandler)(&up) == 0) {
 				if (phsSocket->flags & FLAG_CHUNK) {
-					send(phsSocket->socket, "0\r\n\r\n", 5, 0);
+					iBytesWritten = send(phsSocket->socket, "0\r\n\r\n", 5, 0);
+					if (iBytesWritten<=0) return -1;
 				}
+				hp->stats.totalSentBytes+=iBytesWritten;
 				SETFLAG(phsSocket, FLAG_CONN_CLOSE);
 				return 1;	// EOF
 			}
@@ -1617,7 +1615,9 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 			phsSocket->pucData = up.pucBuffer;
 		} else {
 			if (phsSocket->flags & FLAG_CHUNK) {
-				send(phsSocket->socket, "0\r\n\r\n", 5, 0);
+				iBytesWritten = send(phsSocket->socket, "0\r\n\r\n", 5, 0);
+				if (iBytesWritten<=0) return -1;
+				hp->stats.totalSentBytes+=iBytesWritten;
 			}
 			return 1;
 		}
