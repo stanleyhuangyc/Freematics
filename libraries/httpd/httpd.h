@@ -142,16 +142,11 @@ typedef struct {
 typedef int (*PFN_UDP_CALLBACK)(void* hp);
 
 typedef struct {
-	time_t startTime;
 	int clientCount;
 	int clientCountMax;
 	size_t reqCount;
-	size_t fileSentCount;
-	size_t fileSentBytes;
-	int urlProcessCount;
-	int timeOutCount;
+	size_t totalSentBytes;
 	int authFailCount;
-	int fileUploadCount;
 } HttpStats;
 
 #ifndef ARDUINO
@@ -185,6 +180,18 @@ typedef struct _HttpSocket{
 	char* buffer;
 } HttpSocket;
 
+typedef enum {
+	JSON_TYPE_STRING = 0,
+	JSON_TYPE_DECIMAL,
+	JSON_TYPE_BOOLEAN,
+} JSONValueType;
+
+typedef struct {
+	char* name;
+	char* value;
+	JSONValueType type;
+} NameValuePair;
+
 typedef struct {
 	void* hp;
 	HttpSocket* hs;
@@ -193,11 +200,13 @@ typedef struct {
 	int iVarCount;
 	char *pucHeader;
 	char *pucBuffer;
-  unsigned int bufSize;
+	unsigned int bufSize;
 	char *pucPayload;
 	unsigned int payloadSize;
 	unsigned int contentLength;
 	HttpFileType fileType;
+	NameValuePair* json;
+	int jsonPairCount;
 } UrlHandlerParam;
 
 typedef int (*PFNURLCALLBACK)(UrlHandlerParam*);
@@ -316,6 +325,8 @@ unsigned int mwGetVarValueHex(HttpVariables* vars, const char *varname, unsigned
 int mwParseQueryString(UrlHandlerParam* up);
 int mwGetContentType(const char *pchExtname);
 void mwDecodeString(char* s);
+NameValuePair* mwGetJSONData(UrlHandlerParam* up, const char* name);
+int mwParseJSONString(UrlHandlerParam* up);
 
 #ifdef __cplusplus
 }
