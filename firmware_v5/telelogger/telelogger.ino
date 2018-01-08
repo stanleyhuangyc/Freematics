@@ -92,31 +92,35 @@ public:
     }
 #endif
 
-if (!checkState(STATE_STORAGE_READY)) {
-  // init storage
-  cache.init(RAM_CACHE_SIZE);
-#if STORAGE_TYPE != STORAGE_NONE
-  if (store.init()) {
-    setState(STATE_STORAGE_READY);
-    if (store.begin()) {
-      cache.setForward(&store);
+#ifdef ENABLE_GPS
+    // start serial communication with GPS receiver
+    if (!checkState(STATE_GPS_READY)) {
+      Serial.print("GPS...");
+      if (gpsInit(GPS_SERIAL_BAUDRATE)) {
+        setState(STATE_GPS_READY);
+        Serial.println("OK");
+        blePrint("GPS OK");
+      } else {
+        Serial.println("NO");
+      }
     }
-  }
-#else
-  setState(STATE_STORAGE_READY);
 #endif
-}
 
 #if NET_DEVICE == NET_WIFI
-    Serial.print("WIFI(SSID:");
-    Serial.print(WIFI_SSID);
-    Serial.print(")...");
-    if (netBegin() && netSetup(WIFI_SSID, WIFI_PASSWORD)) {
-      blePrint("WIFI OK");
-      Serial.println("OK");
-      setState(STATE_NET_READY | STATE_CONNECTED);
-    } else {
-      Serial.println("NO");
+    for (byte attempts = 0; attempts < 3; attempts++) {
+      Serial.print("WIFI(SSID:");
+      Serial.print(WIFI_SSID);
+      Serial.print(")...");
+      if (netBegin() && netSetup(WIFI_SSID, WIFI_PASSWORD)) {
+        blePrint("WIFI OK");
+        Serial.println("OK");
+        setState(STATE_NET_READY);
+        break;
+      } else {
+        Serial.println("NO");
+      }
+    }
+    if (!checkState(STATE_NET_READY)) {
       return false;
     }
 #elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
@@ -145,16 +149,12 @@ if (!checkState(STATE_STORAGE_READY)) {
       } else {
         Serial.println("OK");
       }
-      setState(STATE_CONNECTED);
     } else {
       Serial.println("NO");
       return false;
     }
 #endif
 
-#ifdef ENABLE_GPS
-    initGPS();
-#endif
     if (checkState(STATE_MEMS_READY)) {
       calibrateMEMS();
     }
@@ -177,17 +177,44 @@ if (!checkState(STATE_STORAGE_READY)) {
 #endif
 
     txCount = 0;
-
+    cache.init(RAM_CACHE_SIZE);
     if (!login()) {
       return false;
     }
+    setState(STATE_CONNECTED);
+
     cache.header(feedid);
-
     lastSyncTime = millis();
-
 #if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
     // log signal level
     if (csq) cache.log(PID_CSQ, csq);
+#endif
+
+#if STORAGE_TYPE != STORAGE_NONE
+    GPS_DATA gdata = {0};
+    if (checkState(STATE_GPS_READY)) {
+      // wait for GPS signal (need UTC for storage)
+      Serial.print("Waiting GPS time..");
+      for (int i = 0; gdata.date == 0 && i < 60; i++) {
+        Serial.print('.');
+        sleep(1000);
+        gpsGetData(&gdata);
+      }
+      Serial.println();
+    }
+    if (!checkState(STATE_STORAGE_READY)) {
+      // init storage
+      if (store.init()) {
+        setState(STATE_STORAGE_READY);
+        unsigned int year = (gdata.date % 100) + 2000;
+        unsigned int month = (gdata.date / 100) % 100;
+        unsigned int day = (gdata.date / 10000);
+        unsigned long date = gdata.date ? ((unsigned long)year * 10000 + month * 100 + day) : 0;
+        if (store.begin(date)) {
+          cache.setForward(&store);
+        }
+      }
+    }
 #endif
 
     setState(STATE_ALL_GOOD);
@@ -293,8 +320,10 @@ if (!checkState(STATE_STORAGE_READY)) {
 
     if (deviceTemp >= COOLING_DOWN_TEMP) {
       // device too hot, cool down
-      Serial.println("Cooling down...");
-      hibernate(10000);
+      Serial.println("Cooling down - ");
+      Serial.print(deviceTemp);
+      Serial.println('C');
+      delay(10000);
     }
   }
   bool login()
@@ -551,22 +580,6 @@ private:
     }
 #endif
 #if ENABLE_GPS
-    void initGPS()
-    {
-      // start serial communication with GPS receiver
-      if (!checkState(STATE_GPS_READY)) {
-        Serial.print("GPS...");
-        if (gpsInit(GPS_SERIAL_BAUDRATE)) {
-          setState(STATE_GPS_READY);
-          Serial.print("OK(");
-          Serial.print(internalGPS() ? "internal" : "external");
-          Serial.println(')');
-          blePrint("GPS OK");
-        } else {
-          Serial.println("NO");
-        }
-      }
-    }
     void processGPS()
     {
         static uint16_t lastUTC = 0;
@@ -641,10 +654,13 @@ CTeleLogger logger;
 
 void setup()
 {
+    delay(500);
     // initialize USB serial
     Serial.begin(115200);
 #if ENABLE_OBD
-    Serial.println("Freematics ONE+ (ESP32)");
+    Serial.print("Freematics ONE+ (ESP32 @ ");
+    Serial.print(ESP.getCpuFreqMHz());
+    Serial.println("MHz)");
 #else
     Serial.println("Freematics Esprit (ESP32)");
 #endif
@@ -671,7 +687,7 @@ void loop()
         logger.setup();
         digitalWrite(PIN_LED, LOW);
         if (logger.checkState(STATE_ALL_GOOD)) break;
-        logger.hibernate(3000);
+        logger.sleep(3000);
       }
       return;
     }
