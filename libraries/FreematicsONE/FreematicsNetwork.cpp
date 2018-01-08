@@ -138,6 +138,8 @@ String CTeleClientWIFI::queryIP(const char* host)
 void CTeleClientWIFI::netEnd()
 {
   WiFi.disconnect();
+  // deactivate WIFI
+  esp_wifi_set_mode(WIFI_MODE_NULL);
 }
 
 #endif
