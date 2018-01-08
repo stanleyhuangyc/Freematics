@@ -119,7 +119,6 @@ public:
         if (m_next) m_next->timestamp(ts);
     }
     virtual void setForward(CStorageNull* next) { m_next = next; }
-    virtual void flush() {}
     virtual void purge() { m_samples = 0; }
     virtual uint16_t samples() { return m_samples; }
     virtual void dispatch(const char* buf, byte len)
@@ -227,57 +226,50 @@ public:
     bool begin(uint32_t dateTime = 0)
     {
       uint16_t fileIndex;
-      char path[20] = "DATA";
-      if (SD.exists(path)) {
-          if (dateTime) {
-             // using date and time as file name
-             sprintf(path + 4, "/%08lu.CSV", dateTime);
-          } else {
-            // use index number as file name
-            for (fileIndex = 1; fileIndex; fileIndex++) {
-                sprintf(path + 4, "/DAT%05u.CSV", fileIndex);
-                if (!SD.exists(path)) {
-                    break;
-                }
-            }
-            if (fileIndex == 0)
-                return false;
-          }
+      char path[20];
+      if (dateTime) {
+        // using year as directory name
+        sprintf(path, "%04u", (unsigned int)(dateTime / 10000));
+        SD.mkdir(path);
+        // using date and time as file name
+        sprintf(path + 4, "/%08lu.CSV", dateTime);
       } else {
-          SD.mkdir(path);
-          fileIndex = 1;
-          sprintf(path + 4, "/DAT%05u.CSV", 1);
+        strcpy(path, "DATA");
+        SD.mkdir(path);
+        // use index number as file name
+        for (fileIndex = 1; fileIndex; fileIndex++) {
+          sprintf(path + 4, "/DAT%05u.CSV", fileIndex);
+          if (!SD.exists(path)) {
+              break;
+          }
+        }
+        if (fileIndex == 0) return false;
       }
-      // O_READ | O_WRITE | O_CREAT = 0x13
+
       Serial.print("File:");
       Serial.println(path);
+      // O_READ | O_WRITE | O_CREAT = 0x13
       sdfile = SD.open(path, 0x13);
       if (!sdfile) {
           Serial.println("File error");
           return false;
       }
-      sdfile.print("#FREEMATICS");
       return true;
   }
   void end()
   {
       if (sdfile) sdfile.close();
   }
-  void flush()
-  {
-      if (sdfile) sdfile.flush();
-  }
   void dispatch(const char* buf, byte len)
   {
       if (sdfile) {
-        // output data via serial
-        if (m_dataTime) {
-          sdfile.write('\n');
-          sdfile.print(m_dataTime);
-          sdfile.write(':');
-        }
         sdfile.write((uint8_t*)buf, len);
-        sdfile.write(' ');
+        sdfile.write('\n');
+        uint16_t sizeKB = sdfile.size() >> 10;
+        if (sizeKB != m_sizeKB) {
+            sdfile.flush();
+            m_sizeKB = sizeKB;
+        }
       }
   }
   uint32_t size()
@@ -287,4 +279,5 @@ public:
 private:
   SDClass SD;
   File sdfile;
+  uint16_t m_sizeKB = 0;
 };

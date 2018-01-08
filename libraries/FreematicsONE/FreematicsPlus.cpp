@@ -42,10 +42,10 @@ void gps_decode_task(int timeout)
         delay(timeout);
         return;
     }
-    uint8_t c;
-    int len = uart_read_bytes(GPS_UART_NUM, &c, 1, timeout / portTICK_RATE_MS);
-    if (len == 1) {
-        if (gps->encode(c)) {
+    uint8_t buf[64];
+    int len = uart_read_bytes(GPS_UART_NUM, buf, sizeof(buf), timeout / portTICK_RATE_MS);
+    for (int n = 0; n < len; n++) {
+        if (gps->encode(buf[n])) {
             newGPSData = true;
         }
     }
@@ -58,10 +58,11 @@ bool gps_get_data(GPS_DATA* gdata)
 	}
     gps->get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
     gps->get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
-    gdata->sat = gps->satellites();
     gdata->speed = gps->speed() * 1852 / 100000; /* km/h */
     gdata->alt = gps->altitude();
     gdata->heading = gps->course() / 100;
+    gdata->sat = gps->satellites();
+    if (gdata->sat > 200) gdata->sat = 0;
     newGPSData = false;
     return true;
 }
