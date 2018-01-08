@@ -117,7 +117,7 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 0.2f /* in unit of G */
+#define WAKEUP_MOTION_THRESHOLD 0.1f /* in unit of G */
 
 /**************************************
 * Other options
