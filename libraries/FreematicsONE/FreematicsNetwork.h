@@ -12,6 +12,7 @@
 
 #include "esp_system.h"
 #include "esp_log.h"
+#include "esp_wifi.h"
 #include "nvs_flash.h"
 #include "bt.h"
 #include "bta_api.h"
