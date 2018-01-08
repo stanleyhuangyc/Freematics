@@ -11,7 +11,16 @@
 
 #ifdef ESP32
 
-// get chip temperature sensor
+bool gps_decode_start();
+void gps_decode_stop();
+bool gps_get_data(GPS_DATA* gdata);
+int gps_write_string(const char* string);
+void gps_decode_task(int timeout);
+void bee_start();
+int bee_write_string(const char* string);
+int bee_write_data(uint8_t* data, int len);
+int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout);
+void bee_flush();
 uint8_t readChipTemperature();
 
 class Task

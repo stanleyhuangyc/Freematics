@@ -72,6 +72,15 @@ int gps_write_string(const char* string)
     return uart_write_bytes(BEE_UART_NUM, string, strlen(string));
 }
 
+void gps_decode_stop()
+{
+    if (gps) {
+        uart_driver_delete(GPS_UART_NUM);
+        delete gps;
+        gps = 0;
+    }
+}
+
 bool gps_decode_start()
 {
     if (gps) return true;
