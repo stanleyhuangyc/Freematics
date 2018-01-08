@@ -25,18 +25,6 @@ SIGNAL(WDT_vect) {
 }
 #endif
 
-#ifdef ESP32
-bool gps_decode_start();
-bool gps_get_data(GPS_DATA* gdata);
-int gps_write_string(const char* string);
-void gps_decode_task(int timeout);
-void bee_start();
-int bee_write_string(const char* string);
-int bee_write_data(uint8_t* data, int len);
-int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout);
-void bee_flush();
-#endif
-
 byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 {
 	/*
@@ -651,6 +639,7 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 			return true;
 		}
 #endif
+#if 0
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf_P(buf, PSTR("ATBR2%lu\r"), baudrate);
 			sendCommand(buf, buf, sizeof(buf));
@@ -665,7 +654,9 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 				}
 			} while (millis() - t < GPS_INIT_TIMEOUT);
 		}
+#endif
 	} else {
+		gps_decode_stop();
 		success = true;
 	}
 	//turn off GPS power
