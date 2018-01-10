@@ -42,7 +42,7 @@ void gps_decode_task(int timeout)
         delay(timeout);
         return;
     }
-    uint8_t buf[64];
+    uint8_t buf[32];
     int len = uart_read_bytes(GPS_UART_NUM, buf, sizeof(buf), timeout / portTICK_RATE_MS);
     for (int n = 0; n < len; n++) {
         if (gps->encode(buf[n])) {
