@@ -190,10 +190,29 @@ public:
     if (csq) cache.log(PID_CSQ, csq);
 #endif
 
+    // check system time
+    time_t utc;
+    bool utcValid = false;
+    time(&utc);
+   	struct tm *btm = gmtime(&utc);
+    if (btm->tm_year > 100) {
+      // valid system time available
+      char buf[64];
+      sprintf(buf, "%04u-%02u-%02u %02u:%02u:%02u",
+        1900 + btm->tm_year, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec);
+      Serial.print("UTC:");
+      Serial.println(buf);
+      utcValid = true;
+    }
+
 #if STORAGE_TYPE != STORAGE_NONE
+    // need valid current date for data storage
     GPS_DATA gdata = {0};
-    if (checkState(STATE_GPS_READY)) {
-      // wait for GPS signal (need UTC for storage)
+    unsigned long date = 0;
+    if (utcValid) {
+      date = (unsigned long)(1900 + btm->tm_year) * 10000 + (btm->tm_mon + 1) * 100 + btm->tm_mday;
+    } else if (checkState(STATE_GPS_READY)) {
+      // wait for GPS signal to get UTC
       Serial.print("Waiting GPS time..");
       for (int i = 0; gdata.date == 0 && i < 60; i++) {
         Serial.print('.');
@@ -201,15 +220,17 @@ public:
         gpsGetData(&gdata);
       }
       Serial.println();
+      if (gdata.date) {
+        unsigned int year = (gdata.date % 100) + 2000;
+        unsigned int month = (gdata.date / 100) % 100;
+        unsigned int day = (gdata.date / 10000);
+        date = (unsigned long)year * 10000 + month * 100 + day;
+      }
     }
     if (!checkState(STATE_STORAGE_READY)) {
       // init storage
       if (store.init()) {
         setState(STATE_STORAGE_READY);
-        unsigned int year = (gdata.date % 100) + 2000;
-        unsigned int month = (gdata.date / 100) % 100;
-        unsigned int day = (gdata.date / 10000);
-        unsigned long date = gdata.date ? ((unsigned long)year * 10000 + month * 100 + day) : 0;
         if (store.begin(date)) {
           cache.setForward(&store);
         }
@@ -439,11 +460,19 @@ public:
         continue;
       }
       if (event == EVENT_LOGIN) {
-        char *p = strstr(data, "SN=");
+        // extract info from server response
+        char *p = strstr(data, "TM=");
+        if (p) {
+          // set local time from server
+          unsigned long tm = atol(p + 3);
+          struct timeval tv = { .tv_sec = (time_t)tm, .tv_usec = 0 };
+          settimeofday(&tv, NULL);
+        }
+        p = strstr(data, "SN=");
         if (p) {
           char *q = strchr(p, ',');
           if (q) *q = 0;
-          m_serverName = p;
+          m_serverName = p + 3;
         }
         feedid = hex2uint16(data);
       }
@@ -657,13 +686,9 @@ void setup()
     delay(500);
     // initialize USB serial
     Serial.begin(115200);
-#if ENABLE_OBD
-    Serial.print("Freematics ONE+ (ESP32 @ ");
+    Serial.print("ESP32 @ ");
     Serial.print(ESP.getCpuFreqMHz());
-    Serial.println("MHz)");
-#else
-    Serial.println("Freematics Esprit (ESP32)");
-#endif
+    Serial.println("MHz");
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     // perform initializations
