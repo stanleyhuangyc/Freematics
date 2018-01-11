@@ -195,6 +195,14 @@ public:
         if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
         m_cacheBytes += sprintf(m_cache + m_cacheBytes, "*%X", (unsigned int)checksum(m_cache, m_cacheBytes));
     }
+    void untailer()
+    {
+        char *p = strrchr(m_cache, '*');
+        if (p) {
+            *p = ',';
+            m_cacheBytes = p + 1 - m_cache;
+        }
+    }
 protected:
     unsigned int m_cacheSize = 0;
     unsigned int m_cacheBytes = 0;
