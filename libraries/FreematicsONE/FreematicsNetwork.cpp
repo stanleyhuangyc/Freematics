@@ -119,14 +119,15 @@ bool CTeleClientWIFI::netSend(const char* data, unsigned int len)
 
 char* CTeleClientWIFI::netReceive(int* pbytes, unsigned int timeout)
 {
-  for (uint32_t t = millis(); millis() - t < timeout;) {
+  uint32_t t = millis();
+  do {
     int bytes = udp.parsePacket();
     if (bytes > 0) {
       bytes = udp.read(m_buffer, sizeof(m_buffer));
       if (pbytes) *pbytes = bytes;
       return m_buffer;
     }
-  }
+  } while (millis() - t < timeout);
   return 0;
 }
 
