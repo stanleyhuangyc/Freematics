@@ -142,6 +142,7 @@ public:
     const char* netDeviceName() { return "SIM800"; }
 protected:
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
+    char* checkIncoming(int* pbytes);
 #ifdef ESP32
     char m_buffer[256] = {0};
 #else
@@ -166,9 +167,10 @@ public:
     String queryIP(const char* host);
     String serverName() { return m_serverName.length() ? m_serverName : udpIP; }
     const char* netDeviceName() { return "SIM5360"; }
-  protected:
+protected:
     // send command and check for expected response
     bool netSendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
+    char* checkIncoming(int* pbytes);
 #ifdef ESP32
     char m_buffer[256] = {0};
 #else

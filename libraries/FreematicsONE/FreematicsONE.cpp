@@ -551,10 +551,10 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 	return results;
 }
 
-byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout)
+int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
 {
 	uint32_t t = millis();
-	byte n;
+	int n;
 	do {
 		write(cmd);
 		sleep(20);
@@ -638,8 +638,7 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 			// success
 			return true;
 		}
-#endif
-#if 0
+#else
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf_P(buf, PSTR("ATBR2%lu\r"), baudrate);
 			sendCommand(buf, buf, sizeof(buf));
@@ -647,9 +646,7 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 			delay(100);
 			do {
 				if (gpsGetRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
-#ifdef ESP32
 					m_internalGPS = true;
-#endif
 					return true;
 				}
 			} while (millis() - t < GPS_INIT_TIMEOUT);
