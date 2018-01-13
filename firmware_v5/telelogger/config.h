@@ -46,7 +46,7 @@
 #define NET_DEVICE NET_WIFI
 // WIFI settings
 #define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
+#define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network
 #define CELL_APN "connect"
 // Freematics Hub server settings
@@ -91,9 +91,9 @@
 #define RAM_CACHE_SIZE 1500 /* bytes */
 #endif
 #ifndef DATA_SENDING_INTERVAL
-#define DATA_SENDING_INTERVAL 1000 /* ms */
+#define DATA_SENDING_INTERVAL 3000 /* ms */
 #endif
-#define SERVER_SYNC_INTERVAL 60000
+#define SERVER_SYNC_INTERVAL 0 /* seconds, 0 to disable */
 
 
 /**************************************
@@ -117,7 +117,7 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 0.1f /* in unit of G */
+#define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
 
 /**************************************
 * Other options

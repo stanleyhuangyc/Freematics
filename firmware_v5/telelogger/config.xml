@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
-<target name="Freematics ONE+" board="esp32">
+<target name="Freematics ONE+" board="esp32" monitor_baudrate="115200">
   <define name="Enable OBD-II" type="bool" const="ENABLE_OBD" default="true"/>
   <define name="Enable GPS" type="bool" const="ENABLE_GPS" default="true"/>
   <define name="Enable BLE" type="bool" const="ENABLE_BLE" default="true"/>
@@ -27,6 +27,6 @@
   <define name="Transmission Interval (ms)" const="DATA_SENDING_INTERVAL" type="number" default="1000"/>
   <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
   <define name="Server Port" const="SERVER_PORT" type="number" default="8081"/>
-  <define name="Device ID" const="DEVICE_ID" type="string" default="Freematics Device"/>
+  <define name="Device ID" const="DEVICE_ID" type="string" default="FreematicsDevice"/>
 </target>
 </config>
