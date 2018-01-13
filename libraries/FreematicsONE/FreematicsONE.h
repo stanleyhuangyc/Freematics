@@ -57,7 +57,7 @@ public:
 	void write(const char* s);
 	void write(byte* data, int len);
 	// send AT command and receive response
-	byte sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
+	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
 	// initialize GPS (set baudrate to 0 to power off GPS)
 	bool gpsInit(unsigned long baudrate = 115200L);
 	// get parsed GPS data

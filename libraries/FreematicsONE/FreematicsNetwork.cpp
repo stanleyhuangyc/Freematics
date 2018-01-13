@@ -280,25 +280,33 @@ bool CTeleClientSIM800::netSend(const char* data, unsigned int len)
 
 char* CTeleClientSIM800::netReceive(int* pbytes, unsigned int timeout)
 {
-  if (netSendCommand(0, timeout, "RECV FROM:")) {
-    char *p = strstr(m_buffer, "RECV FROM:");
-    if (p) p = strchr(p, '\r');
-    if (!p) return 0;
-    while (*(++p) == '\r' || *p =='\n');
-    int len = strlen(p);
-    if (len > 2) {
-      if (pbytes) *pbytes = len;
-      return p;
-    } else {
-      if (netSendCommand("AT\r", 1000, "\r\nOK", true)) {
-        p = m_buffer;
-        while (*p && (*p == '\r' || *p == '\n')) p++;
-        if (pbytes) *pbytes = strlen(p);
-        return p;
-      }
-    }
+	char *data = checkIncoming(pbytes);
+	if (data) return data;
+  if (timeout && netSendCommand(0, timeout, "RECV FROM:")) {
+		return checkIncoming(pbytes);
   }
   return 0;
+}
+
+char* CTeleClientSIM800::checkIncoming(int* pbytes)
+{
+	char *p = strstr(m_buffer, "RECV FROM:");
+	if (p) p = strchr(p, '\r');
+	if (!p) return 0;
+	while (*(++p) == '\r' || *p =='\n');
+	int len = strlen(p);
+	if (len > 2) {
+		if (pbytes) *pbytes = len;
+		return p;
+	} else {
+		if (netSendCommand("AT\r", 1000, "\r\nOK", true)) {
+			p = m_buffer;
+			while (*p && (*p == '\r' || *p == '\n')) p++;
+			if (pbytes) *pbytes = strlen(p);
+			return p;
+		}
+	}
+	return 0;
 }
 
 String CTeleClientSIM800::queryIP(const char* host)
@@ -523,18 +531,26 @@ bool CTeleClientSIM5360::netSend(const char* data, unsigned int len)
 
 char* CTeleClientSIM5360::netReceive(int* pbytes, unsigned int timeout)
 {
-  if (netSendCommand(0, timeout, "+IPD")) {
-    char *p = strstr(m_buffer, "+IPD");
-    if (!p) return 0;
-    int len = atoi(p + 4);
-    if (pbytes) *pbytes = len;
-    p = strchr(p, '\n');
-    if (p) {
-      *(++p + len) = 0;
-      return p;
-    }
+	char *data = checkIncoming(pbytes);
+	if (data) return data;
+  if (timeout && netSendCommand(0, timeout, "+IPD")) {
+		return checkIncoming(pbytes);
   }
   return 0;
+}
+
+char* CTeleClientSIM5360::checkIncoming(int* pbytes)
+{
+	char *p = strstr(m_buffer, "+IPD");
+	if (!p) return 0;
+	int len = atoi(p + 4);
+	if (pbytes) *pbytes = len;
+	p = strchr(p, '\n');
+	if (p) {
+		*(++p + len) = 0;
+		return p;
+	}
+	return 0;
 }
 
 String CTeleClientSIM5360::queryIP(const char* host)
