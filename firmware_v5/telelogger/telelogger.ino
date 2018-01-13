@@ -178,6 +178,7 @@ public:
 
     txCount = 0;
     cache.init(RAM_CACHE_SIZE);
+    netbuf.init(256);
     if (!login()) {
       return false;
     }
@@ -241,6 +242,84 @@ public:
     setState(STATE_ALL_GOOD);
     return true;
   }
+  String executeCommand(const char* cmd)
+  {
+    String result;
+    Serial.println(cmd);
+    if (!strncmp(cmd, "LED", 3) && cmd[4]) {
+      m_ledMode = atoi(cmd + 4);
+      digitalWrite(PIN_LED, (m_ledMode == 2) ? HIGH : LOW);
+      result = "OK";
+    } else if (!strcmp(cmd, "REBOOT")) {
+#if STORAGE_TYPE != STORAGE_NONE
+      if (checkState(STATE_STORAGE_READY)) {
+        store.end();
+        clearState(STATE_STORAGE_READY);
+      }
+#endif
+      ESP.restart();
+      // never reach here
+    } else if (!strcmp(cmd, "STANDBY")) {
+      clearState(STATE_ALL_GOOD);
+      result = "OK";
+    } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
+      // send OBD command
+      String obdcmd = cmd + 4;
+      obdcmd += '\r';
+      char buf[256];
+      if (sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
+        Serial.println(buf);
+        for (int n = 4; buf[n]; n++) {
+          switch (buf[n]) {
+          case '\r':
+          case '\n':
+            result += ' ';
+            break;
+          default:
+            result += buf[n];
+          }
+        }
+      } else {
+        result = "TIMEOUT";
+      }
+    }
+    return result;
+  }
+  bool processCommand(char* data)
+  {
+    char *p;
+    if (!(p = strstr(data, "TK="))) return false;
+    uint32_t token = atol(p + 3);
+    if (!(p = strstr(data, "CMD="))) return false;
+    char *cmd = p + 4;
+
+    if (token > lastCmdToken) {
+      // new command
+      String result = executeCommand(cmd);
+      // send command response
+      char buf[256];
+      snprintf(buf, sizeof(buf), "TK=%lu,MSG=%s", token, result.c_str());
+      for (byte attempts = 0; attempts < 3; attempts++) {
+        Serial.println("Sending ACK...");
+        if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
+          Serial.println("ACK sent");
+          break;
+        }
+      }
+    }else {
+      // previously executed command
+      char buf[64];
+      snprintf(buf, sizeof(buf), "TK=%lu,DUP=1", token);
+      for (byte attempts = 0; attempts < 3; attempts++) {
+        Serial.println("Sending ACK...");
+        if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
+          Serial.println("ACK sent");
+          break;
+        }
+      }
+    }
+  }
+
   void loop()
   {
     cache.timestamp(millis());
@@ -283,8 +362,38 @@ public:
 #endif
 
     uint32_t t = millis();
-    if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
-      digitalWrite(PIN_LED, HIGH);
+
+    // check incoming datagram
+    do {
+      int len;
+      char *data = netReceive(&len, 0);
+      if (data) {
+        data[len] = 0;
+        if (!verifyChecksum(data)) {
+          Serial.print("Checksum mismatch:");
+          Serial.print(data);
+          break;
+        }
+        char *p = strstr(data, "EV=");
+        if (!p) break;
+        int eventID = atoi(p + 3);
+        switch (eventID) {
+        case EVENT_COMMAND:
+          processCommand(data);
+          break;
+        case EVENT_SYNC:
+          lastSyncTime = t;
+          break;
+        }
+      }
+    } while(0);
+
+    if (SERVER_SYNC_INTERVAL && t - lastSyncTime >= SERVER_SYNC_INTERVAL * 1000) {
+      Serial.println("NO SYNC");
+      connErrors++;
+    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
+      // start data chunk
+      if (m_ledMode == 0) digitalWrite(PIN_LED, HIGH);
       //Serial.println(cache.buffer()); // print the content to be sent
       Serial.print('[');
       Serial.print(txCount);
@@ -303,33 +412,21 @@ public:
 #endif
         blePrint(buf);
         Serial.println(buf);
-        // this will clear the cache buffer and add a header
+        // purge cache and place a header
         cache.header(feedid);
       } else {
         connErrors++;
         Serial.println("Unsent");
         blePrint("Unsent");
+        cache.untailer(); // remove tail
       }
-      digitalWrite(PIN_LED, LOW);
+      if (m_ledMode == 0) digitalWrite(PIN_LED, LOW);
       if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
         netClose();
         netOpen(SERVER_HOST, SERVER_PORT);
         lastSyncTime = 0; // sync on next time
       }
       lastSentTime = t;
-
-      if (t - lastSyncTime >= SERVER_SYNC_INTERVAL) {
-        // sync
-        Serial.print("Sync...");
-        if (!notifyServer(EVENT_SYNC, SERVER_KEY)) {
-          connErrors++;
-          Serial.println("NO");
-        } else {
-          connErrors = 0;
-          lastSyncTime = t;
-          Serial.println("OK");
-        }
-      }
     }
 
 #if ENABLE_OBD
@@ -338,6 +435,20 @@ public:
       clearState(STATE_OBD_READY | STATE_ALL_GOOD);
     }
 #endif
+
+    // check serial input and store in command buffer
+    while (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\r' || c == '\n') {
+        if (serialCommand.length() > 0) {
+          String result = executeCommand(serialCommand.c_str());
+          serialCommand = "";
+          Serial.println(result);
+        }
+      } else if (serialCommand.length() < 32) {
+        serialCommand += c;
+      }
+    }
 
     if (deviceTemp >= COOLING_DOWN_TEMP) {
       // device too hot, cool down
@@ -350,6 +461,35 @@ public:
   bool login()
   {
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
+      // retrieve additional vehicle data for server submission
+      String data;
+      data = "VIN=";
+#if ENABLE_OBD
+      char buf[128];
+      if (getVIN(buf, sizeof(buf))) {
+        Serial.print("VIN:");
+        Serial.println(buf);
+        data += buf;
+      } else {
+        data += DEFAULT_VIN;
+      }
+      // load DTC
+      uint16_t dtc[6];
+      byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+      if (dtcCount > 0) {
+        Serial.print("DTC:");
+        Serial.println(dtcCount);
+        data += ",DTC=";
+        int bytes = 0;
+        for (byte i = 0; i < dtcCount; i++) {
+          bytes += sprintf(buf + bytes, "%X;", dtc[i]);
+        }
+        buf[bytes - 1] = 0;
+        data += buf;
+      }
+#else
+      data += DEFAULT_VIN;
+#endif
     // connect to telematics server
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.print("LOGIN...");
@@ -358,7 +498,7 @@ public:
         continue;
       }
       // login Freematics Hub
-      if (!notifyServer(EVENT_LOGIN, SERVER_KEY)) {
+      if (!notifyServer(EVENT_LOGIN, SERVER_KEY, data.c_str())) {
         netClose();
         Serial.println("NO");
         continue;
@@ -380,16 +520,21 @@ public:
     return true;
 #endif
   }
-  bool verifyChecksum(const char* data)
+  bool verifyChecksum(char* data)
   {
     uint8_t sum = 0;
-    const char *s;
-    for (s = data; *s && *s != '*'; s++) sum += *s;
-    return (*s && hex2uint8(s + 1) == sum);
+    char *s = strrchr(data, '*');
+    if (!s) return false;
+    for (char *p = data; p < s; p++) sum += *p;
+    if (hex2uint8(s + 1) == sum) {
+      *s = 0;
+      return true;
+    }
+    return false;
   }
-  bool notifyServer(byte event, const char* serverKey)
+  bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
   {
-    cache.header(feedid);
+    netbuf.header(feedid);
     String req = "EV=";
     req += (unsigned int)event;
     req += ",TS=";
@@ -398,46 +543,22 @@ public:
       req += ",SK=";
       req += serverKey;
     }
-    if (event != EVENT_LOGOUT) {
-      req += ",VIN=";
-#if ENABLE_OBD
-      char buf[128];
-      if (getVIN(buf, sizeof(buf))) {
-        //Serial.print("VIN:");
-        //Serial.println(buf);
-        req += buf;
-      } else {
-        req += DEFAULT_VIN;
-      }
-      // load DTC
-      uint16_t dtc[6];
-      byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-      if (dtcCount > 0) {
-        Serial.print("DTC:");
-        Serial.println(dtcCount);
-        req += ",DTC=";
-        int bytes = 0;
-        for (byte i = 0; i < dtcCount; i++) {
-          bytes += sprintf(buf + bytes, "%X;", dtc[i]);
-        }
-        buf[bytes - 1] = 0;
-        req += buf;
-      }
-#else
-      req += DEFAULT_VIN;
-#endif
+    if (payload) {
+      req += ',';
+      req += payload;
     }
-    cache.dispatch(req.c_str(), req.length());
-    cache.tailer();
+    netbuf.dispatch(req.c_str(), req.length());
+    netbuf.tailer();
+    //Serial.println(netbuf.buffer());
     for (byte attempts = 0; attempts < 3; attempts++) {
-      if (!netSend(cache.buffer(), cache.length())) {
+      if (!netSend(netbuf.buffer(), netbuf.length())) {
         Serial.print('.');
         continue;
       }
 #if NET_DEVICE == NET_BLE
         return true;
 #endif
-
+      if (event == EVENT_ACK) return true; // no reply for ACK
       // receive reply
       int len;
       char *data = netReceive(&len);
@@ -446,7 +567,7 @@ public:
         Serial.print('.');
         continue;
       }
-      connErrors = 0;
+      data[len] = 0;
       // verify checksum
       if (!verifyChecksum(data)) {
         Serial.print("Checksum mismatch:");
@@ -476,13 +597,8 @@ public:
         }
         feedid = hex2uint16(data);
       }
-      char *p = strstr(data, "CMD=");
-      if (p) m_cmd = atoi(p + 4);
-      if (m_cmd) {
-        Serial.print("CMD:");
-        Serial.print(m_cmd, HEX);
-      }
       Serial.print(' ');
+      connErrors = 0;
       return true;
     }
     return false;
@@ -674,9 +790,11 @@ private:
 #if STORAGE_TYPE == STORAGE_SD
     CStorageSD store;
 #endif
+    CStorageRAM netbuf;
     byte m_state = 0;
-    bool m_waiting = false;
-    uint32_t m_cmd = 0;
+    byte m_ledMode = 0;
+    uint32_t lastCmdToken = 0;
+    String serialCommand;
 };
 
 CTeleLogger logger;
