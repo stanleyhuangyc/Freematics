@@ -282,6 +282,8 @@ public:
       } else {
         result = "TIMEOUT";
       }
+    } else {
+      result="INVALID";
     }
     return result;
   }
