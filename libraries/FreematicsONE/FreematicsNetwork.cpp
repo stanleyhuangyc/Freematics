@@ -282,7 +282,7 @@ char* CTeleClientSIM800::netReceive(int* pbytes, unsigned int timeout)
 {
 	char *data = checkIncoming(pbytes);
 	if (data) return data;
-  if (timeout && netSendCommand(0, timeout, "RECV FROM:")) {
+  if (netSendCommand(0, timeout, "RECV FROM:")) {
 		return checkIncoming(pbytes);
   }
   return 0;
@@ -533,7 +533,7 @@ char* CTeleClientSIM5360::netReceive(int* pbytes, unsigned int timeout)
 {
 	char *data = checkIncoming(pbytes);
 	if (data) return data;
-  if (timeout && netSendCommand(0, timeout, "+IPD")) {
+  if (netSendCommand(0, timeout, "+IPD")) {
 		return checkIncoming(pbytes);
   }
   return 0;
@@ -543,6 +543,7 @@ char* CTeleClientSIM5360::checkIncoming(int* pbytes)
 {
 	char *p = strstr(m_buffer, "+IPD");
 	if (!p) return 0;
+	*p = '-'; // mark this datagram as checked
 	int len = atoi(p + 4);
 	if (pbytes) *pbytes = len;
 	p = strchr(p, '\n');
