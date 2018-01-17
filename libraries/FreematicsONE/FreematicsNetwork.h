@@ -42,14 +42,14 @@ public:
   void bleEnd();
   bool bleSend(const char* data, unsigned int len);
   void blePrint(String s);
-  virtual size_t onRequest(uint8_t* buffer, size_t len)
+  virtual size_t onRequestBLE(uint8_t* buffer, size_t len)
   {
     // being requested for data
     buffer[0] = 'O';
     buffer[1] = 'K';
     return 2;
   }
-  virtual void onReceive(uint8_t* buffer, size_t len)
+  virtual void onReceiveBLE(uint8_t* buffer, size_t len)
   {
     // data received is in buffer
   }
