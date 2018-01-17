@@ -25,7 +25,7 @@ int gatts_send(uint8_t* data, size_t len);
 size_t gatts_read_callback(uint8_t* buffer, size_t len)
 {
 	if (gatts_inst) {
-		return gatts_inst->onRequest(buffer, len);
+		return gatts_inst->onRequestBLE(buffer, len);
 	} else {
 		return 0;
 	}
@@ -33,7 +33,7 @@ size_t gatts_read_callback(uint8_t* buffer, size_t len)
 
 void gatts_write_callback(uint8_t* data, size_t len)
 {
-    if (gatts_inst) gatts_inst->onReceive(data, len);
+    if (gatts_inst) gatts_inst->onReceiveBLE(data, len);
 }
 
 }
