@@ -1,4 +1,4 @@
-This sketch works as a vehicle telematics data collector and transmitter.
+This Arduino sketch is designed for running on Freematics ONE+ and Freematics Esprit development board, to collect vehicle telemetry data from OBD-II, GPS and motion sensor and transmit the collected data to remote server running [Freematics Hub](https://freematics.com/hub) software in realtime. It also has a mechansim for executing and responding to commands sent from serverside.
 
 Data Collection
 ---------------
