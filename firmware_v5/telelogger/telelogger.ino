@@ -26,6 +26,7 @@
 #define STATE_NET_READY 0x10
 #define STATE_CONNECTED 0x20
 #define STATE_ALL_GOOD 0x40
+#define STATE_STANDBY 0x80
 
 #define PIN_LED 4
 
@@ -242,6 +243,13 @@ public:
     setState(STATE_ALL_GOOD);
     return true;
   }
+
+  void onReceiveBLE(uint8_t* buffer, size_t len)
+  {
+    buffer[len] = 0;
+    executeCommand((char*)buffer);
+  }
+
   String executeCommand(const char* cmd)
   {
     String result;
@@ -261,6 +269,9 @@ public:
       // never reach here
     } else if (!strcmp(cmd, "STANDBY")) {
       clearState(STATE_ALL_GOOD);
+      result = "OK";
+    } else if (!strcmp(cmd, "WAKEUP")) {
+      clearState(STATE_STANDBY);
       result = "OK";
     } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
       // send OBD command
@@ -283,6 +294,7 @@ public:
         result = "TIMEOUT";
       }
     }
+    blePrint(result.c_str());
     return result;
   }
   bool processCommand(char* data)
@@ -390,6 +402,7 @@ public:
 
     if (SERVER_SYNC_INTERVAL && t - lastSyncTime >= SERVER_SYNC_INTERVAL * 1000) {
       Serial.println("NO SYNC");
+      blePrint("NO SYNC");
       connErrors++;
     } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
       // start data chunk
@@ -639,12 +652,13 @@ public:
       }
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
+      setState(STATE_STANDBY);
       Serial.println("Standby");
       blePrint("Standby");
 #if MEMS_MODE
       if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
-        for (;;) {
+        while (checkState(STATE_STANDBY)) {
           delay(100);
           // calculate relative movement
           float motion = 0;
@@ -664,6 +678,7 @@ public:
 #else
       while (!init()) Serial.print('.');
 #endif
+      clearState(STATE_STANDBY);
       Serial.println("Wakeup");
       blePrint("Wakeup");
   }
