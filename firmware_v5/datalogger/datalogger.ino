@@ -377,7 +377,7 @@ void loop()
           logger.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
         }
 #else
-        updated = mems.memsRead(acc);
+        updated = mems.read(acc);
         if (updated) {
           logger.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
         }
