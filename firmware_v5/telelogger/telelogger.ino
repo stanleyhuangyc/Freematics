@@ -348,21 +348,21 @@ public:
 
   void loop()
   {
+    uint32_t startTime = millis();
     cache.timestamp(millis());
 
+#if ENABLE_OBD
     if ((txCount % 100) == 1) {
-      int temp = deviceTemp;
-#ifdef ESP32
-      temp = (int)readChipTemperature() * 165 / 255 - 40;
-#endif
+      int temp = (int)readChipTemperature() * 165 / 255 - 40;
       cache.log(PID_DEVICE_TEMP, temp);
     }
-
-#if ENABLE_OBD
     // process OBD data if connected
     if (checkState(STATE_OBD_READY)) {
       processOBD();
     }
+#else
+    int temp = (int)readChipTemperature() * 165 / 255 - 40;
+    cache.log(PID_DEVICE_TEMP, temp);
 #endif
 
 #if ENABLE_GPS
@@ -387,34 +387,49 @@ public:
     }
 #endif
 
-    uint32_t t = millis();
-
-    // check incoming datagram
-    do {
-      int len = 0;
-      char *data = netReceive(&len, 0);
-      if (data) {
-        data[len] = 0;
-        if (!verifyChecksum(data)) {
-          Serial.print("Checksum mismatch:");
-          Serial.print(data);
-          break;
+    for (;;) {
+      // check incoming datagram
+      do {
+        int len = 0;
+        char *data = netReceive(&len, 0);
+        if (data) {
+          data[len] = 0;
+          if (!verifyChecksum(data)) {
+            Serial.print("Checksum mismatch:");
+            Serial.print(data);
+            break;
+          }
+          char *p = strstr(data, "EV=");
+          if (!p) break;
+          int eventID = atoi(p + 3);
+          switch (eventID) {
+          case EVENT_COMMAND:
+            processCommand(data);
+            break;
+          case EVENT_SYNC:
+            lastSyncTime = millis();
+            break;
+          }
         }
-        char *p = strstr(data, "EV=");
-        if (!p) break;
-        int eventID = atoi(p + 3);
-        switch (eventID) {
-        case EVENT_COMMAND:
-          processCommand(data);
-          lastSyncTime = t;
-          break;
-        case EVENT_SYNC:
-          lastSyncTime = t;
-          break;
+      } while(0);
+      // check serial input for command
+      while (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\r' || c == '\n') {
+          if (serialCommand.length() > 0) {
+            String result = executeCommand(serialCommand.c_str());
+            serialCommand = "";
+            Serial.println(result);
+          }
+        } else if (serialCommand.length() < 32) {
+          serialCommand += c;
         }
       }
-    } while(0);
+      if (millis() - startTime >= MIN_LOOP_TIME) break;
+      sleep(10);
+    }
 
+    uint32_t t = millis();
     if (syncInterval > 10000 && t - lastSyncTime > syncInterval) {
       Serial.println("NO SYNC");
       blePrint("NO SYNC");
@@ -463,20 +478,6 @@ public:
       clearState(STATE_OBD_READY | STATE_ALL_GOOD);
     }
 #endif
-
-    // check serial input and store in command buffer
-    while (Serial.available()) {
-      char c = Serial.read();
-      if (c == '\r' || c == '\n') {
-        if (serialCommand.length() > 0) {
-          String result = executeCommand(serialCommand.c_str());
-          serialCommand = "";
-          Serial.println(result);
-        }
-      } else if (serialCommand.length() < 32) {
-        serialCommand += c;
-      }
-    }
 
     if (deviceTemp >= COOLING_DOWN_TEMP) {
       // device too hot, cool down
@@ -841,7 +842,7 @@ CTeleLogger logger;
 
 void setup()
 {
-    delay(500);
+    delay(1000);
     // initialize USB serial
     Serial.begin(115200);
     Serial.print("ESP32 @ ");
@@ -852,7 +853,7 @@ void setup()
     // perform initializations
 #if ENABLE_BLE
     logger.bleBegin(BLE_DEVICE_NAME);
-    delay(100);
+    delay(100); 
 #endif
     digitalWrite(PIN_LED, HIGH);
     logger.setup();
