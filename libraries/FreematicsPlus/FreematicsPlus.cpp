@@ -341,7 +341,7 @@ void CFreematicsESP32::sleep(unsigned int ms)
 	uint32_t t = millis();
 	for (;;) {
 		uint32_t elapsed = millis() - t;
-		if (elapsed >= ms) break;
+		if (elapsed > ms) break;
 		gps_decode_task(ms - elapsed);
 	}
 }
