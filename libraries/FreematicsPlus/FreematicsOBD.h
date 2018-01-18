@@ -8,10 +8,6 @@
 #include <Arduino.h>
 #include "utility/OBD.h"
 
-#ifndef ARDUINO_ARCH_AVR
-#define sprintf_P sprintf
-#endif
-
 #define OBD_TIMEOUT_SHORT 2000 /* ms */
 #define OBD_TIMEOUT_LONG 10000 /* ms */
 
@@ -42,7 +38,7 @@ public:
 	virtual OBD_STATES getState() { return m_state; }
 	// read specified OBD-II PID value
 	virtual bool readPID(byte pid, int& result);
-	// read multiple (up to 8) OBD-II PID values, return number of values obtained
+	// read multiple OBD-II PID values, return number of values obtained
 	virtual byte readPID(const byte pid[], byte count, int result[]);
 	// set device into low power mode
 	virtual void enterLowPowerMode();
@@ -76,18 +72,17 @@ protected:
 	virtual char* getResponse(byte& pid, char* buffer, byte bufsize);
 	virtual int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
 	virtual void write(const char* s);
-	virtual void idleTask() {}
-	void recover();
-	void debugOutput(const char* s);
-	int normalizeData(byte pid, char* data);
-	OBD_STATES m_state;
-private:
-	byte checkErrorMessage(const char* buffer);
 	virtual uint8_t getPercentageValue(char* data);
 	virtual uint16_t getLargeValue(char* data);
 	virtual uint8_t getSmallValue(char* data);
 	virtual int16_t getTemperatureValue(char* data);
-	char* getResultValue(char* buf);
+	virtual int normalizeData(byte pid, char* data);
+	virtual byte checkErrorMessage(const char* buffer);
+	virtual char* getResultValue(char* buf);
+	OBD_STATES m_state;
+private:
+	void recover();
+	virtual void idleTask() {}
 };
 
 class COBDSPI : public COBD {
@@ -99,7 +94,8 @@ public:
 	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
 	// write data to SPI bus
 	void write(const char* s);
-	void write(byte* data, int len);
+	// read specified OBD-II PID value
+	bool readPID(byte pid, int& result);
 	// send AT command and receive response
 	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
 	// delay specified number of ms while still receiving and processing GPS data
