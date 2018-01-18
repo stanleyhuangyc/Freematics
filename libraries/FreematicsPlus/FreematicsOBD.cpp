@@ -18,6 +18,16 @@ void gps_decode_task(int timeout);
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
+#ifdef DEBUG
+void debugOutput(const char *s)
+{
+	DEBUG.print('[');
+	DEBUG.print(millis());
+	DEBUG.print(']');
+	DEBUG.print(s);
+}
+#endif
+
 int dumpLine(char* buffer, int len)
 {
 	int bytesToDump = len >> 1;
@@ -567,16 +577,6 @@ int16_t COBD::getTemperatureValue(char* data)
   return (int)hex2uint8(data) - 40;
 }
 
-#ifdef DEBUG
-void COBD::debugOutput(const char *s)
-{
-	DEBUG.print('[');
-	DEBUG.print(millis());
-	DEBUG.print(']');
-	DEBUG.print(s);
-}
-#endif
-
 /*************************************************************************
 * OBD-II SPI bridge
 *************************************************************************/
@@ -587,11 +587,6 @@ static const char target[4] = {'$','O','B','D'};
 
 byte COBDSPI::begin()
 {
-	// turn off ADC
-#ifdef ARDUINO_ARCH_AVR
-	ADCSRA &= ~(1 << ADEN);
-#endif
-
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
 	digitalWrite(SPI_PIN_CS, HIGH);
@@ -649,18 +644,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				buffer[n] = c;
 				eos = (c == 0x9 && buffer[n - 1] =='>');
 				n++;
-#ifndef ESP32
-				if (eos) break;
-#endif
 			}
 		}
-#ifndef ESP32
-		sleep(1);
-#endif
 		digitalWrite(SPI_PIN_CS, HIGH);
-#ifndef ESP32
-		sleep(1);
-#endif
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -705,15 +691,35 @@ void COBDSPI::write(const char* s)
 	sleep(1);
 }
 
-void COBDSPI::write(byte* data, int len)
+bool COBDSPI::readPID(byte pid, int& result)
 {
-	digitalWrite(SPI_PIN_CS, LOW);
-	//SPI.beginTransaction(spiSettings);
-	SPI.writeBytes((uint8_t*)data, len);
-	sleep(1);
-	//SPI.endTransaction();
-	digitalWrite(SPI_PIN_CS, HIGH);
-	sleep(1);
+	// send a single query command
+	sendQuery(pid);
+	// receive and parse the response
+	char buffer[64];
+	char* data = 0;
+	sleep(20);
+	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
+		char *p = buffer;
+		while ((p = strstr(p, "41 "))) {
+			p += 3;
+			byte curpid = hex2uint8(p);
+			if (curpid == pid) {
+				errors = 0;
+				p += 2;
+				if (*p == ' ') {
+					data = p + 1;
+					break;
+				}
+			}
+		}
+	}
+	if (!data) {
+		errors++;
+		return false;
+	}
+	result = normalizeData(pid, data);
+	return true;
 }
 
 int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
