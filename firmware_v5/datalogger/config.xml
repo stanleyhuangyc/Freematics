@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
-<target name="Freematics ONE/ONE+" board="esp32 uno">
+<target name="Freematics ONE/ONE+" board="esp32" monitor_baudrate="115200">
   <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
   <define name="Enable GPS" type="bool" const="USE_GPS" default="true"/>
   <define name="Motion Sensor">

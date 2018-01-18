@@ -13,7 +13,7 @@
 * THE SOFTWARE.
 *************************************************************************/
 
-#include <FreematicsONE.h>
+#include <FreematicsPlus.h>
 #include "config.h"
 #include "datalogger.h"
 
@@ -29,6 +29,8 @@
 
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
+
+COBDSPI obd;
 
 #if MEMS_MODE
 
@@ -51,7 +53,7 @@ void calibrateMEMS()
     int n;
     for (n = 0; n < 100; n++) {
       float acc[3] = {0};
-      mems.memsRead(acc);
+      mems.read(acc);
       accBias[0] += acc[0];
       accBias[1] += acc[1];
       accBias[2] += acc[2];
@@ -69,18 +71,18 @@ void calibrateMEMS()
 }
 #endif
 
-class ONE : public COBDSPI, public CDataLogger
+class CLogger : public virtual CFreematicsESP32, public CDataLogger
 {
 public:
     void setup()
     {
 #if USE_OBD
       Serial.print("OBD ");
-      if (init()) {
+      if (obd.init()) {
         Serial.println("OK");
         // retrieve VIN
         char buffer[128];
-        if (checkState(STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
+        if (checkState(STATE_OBD_READY) && obd.getVIN(buffer, sizeof(buffer))) {
           Serial.print("VIN:");
           Serial.println(buffer);
         }
@@ -197,7 +199,7 @@ public:
 #endif
     void reconnect()
     {
-        if (init()) return;
+        if (obd.init()) return;
         // try to re-connect to OBD
 #if ENABLE_DATA_LOG
         closeFile();
@@ -228,7 +230,7 @@ public:
             float motion = 0;
             for (byte n = 0; n < 10; n++) {
               float acc[3];
-              mems.memsRead(acc);
+              mems.read(acc);
               for (byte i = 0; i < 3; i++) {
                 float m = (acc[i] - accBias[i]);
                 motion += m * m;
@@ -259,28 +261,32 @@ private:
     byte m_state = 0;
 };
 
-ONE one;
+CLogger logger;
 
 void setup()
 {
+    delay(1000);
     Serial.begin(115200);
 #ifdef ESP32
-    Serial.println("Freematics ONE+");
+    Serial.print("ESP32 @ ");
+    Serial.print(ESP.getCpuFreqMHz());
+    Serial.println("MHz");
 #else
-    Serial.println("Freematics ONE");
+    Serial.println("ATmega328");
 #endif
-    delay(1000);
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
-    byte ver = one.begin();
+    byte ver = obd.begin();
     Serial.print("Firmware Ver. ");
     Serial.println(ver);
 
 #if MEMS_MODE
     Serial.print("MEMS ");
-    if (mems.memsInit(ENABLE_ORIENTATION)) {
-      one.setState(STATE_MEMS_READY);
+    byte ret = mems.begin(ENABLE_ORIENTATION);
+    if (ret) {
+      logger.setState(STATE_MEMS_READY);
+      if (ret == 2) Serial.print("9-DOF ");
       Serial.println("OK");
       calibrateMEMS();
     } else {
@@ -288,32 +294,33 @@ void setup()
     }
 #endif
 
-    one.setup();
+    logger.setup();
     digitalWrite(PIN_LED, LOW);
+    delay(1000);
 }
 
 void loop()
 {
 #if USE_OBD
-    if (!one.checkState(STATE_OBD_READY)) {
+    if (!logger.checkState(STATE_OBD_READY)) {
       digitalWrite(PIN_LED, HIGH);
-      one.setup();
+      logger.setup();
       digitalWrite(PIN_LED, LOW);
       return;
     }
 #endif
 #if ENABLE_DATA_LOG
-    if (!one.checkState(STATE_FILE_READY) && one.checkState(STATE_SD_READY)) {
+    if (!logger.checkState(STATE_FILE_READY) && logger.checkState(STATE_SD_READY)) {
       digitalWrite(PIN_LED, HIGH);
 #if USE_GPS
-      if (one.checkState(STATE_GPS_FOUND)) {
+      if (logger.checkState(STATE_GPS_FOUND)) {
         // GPS connected
-        one.logGPSData();
-        if (one.checkState(STATE_GPS_READY)) {
+        logger.logGPSData();
+        if (logger.checkState(STATE_GPS_READY)) {
           uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
-          if (one.openFile(dateTime)) {
+          if (logger.openFile(dateTime)) {
             MMDD = 0;
-            one.setState(STATE_FILE_READY);
+            logger.setState(STATE_FILE_READY);
           }
         } else {
           Serial.println("Waiting for GPS...");
@@ -323,31 +330,31 @@ void loop()
 #endif
       {
         // no GPS connected
-        if (one.openFile(0)) {
-          one.setState(STATE_FILE_READY);
+        if (logger.openFile(0)) {
+          logger.setState(STATE_FILE_READY);
         }
       }
-      one.sleep(1000);
+      logger.sleep(1000);
       digitalWrite(PIN_LED, LOW);
       return;
     }
 #endif
 #if USE_OBD
     byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
-    one.dataTime = millis();
+    logger.dataTime = millis();
     for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
       int value;
       byte pid = pids[i];
-      if (one.readPID(pid, value)) {
-        one.log((uint16_t)pids[i] | 0x100, value);
-      } else if (one.errors >= 3) {
-          one.reset();
-          one.reconnect();
+      if (obd.readPID(pid, value)) {
+        logger.log((uint16_t)pids[i] | 0x100, value);
+      } else if (obd.errors >= 3) {
+          obd.reset();
+          logger.reconnect();
       }
 #endif
 
 #if MEMS_MODE
-      if (one.checkState(STATE_MEMS_READY)) {
+      if (logger.checkState(STATE_MEMS_READY)) {
         float acc[3];
         bool updated;
 #if ENABLE_ORIENTATION
@@ -355,9 +362,9 @@ void loop()
 #if !ENABLE_DMP
         float gyr[3];
         float mag[3];
-        updated = mems.memsRead(acc, gyr, mag, 0, &ori);
+        updated = mems.read(acc, gyr, mag, 0, &ori);
 #else
-        updated = mems.memsRead(acc, 0, 0, 0, &ori);
+        updated = mems.read(acc, 0, 0, 0, &ori);
 #endif
         if (updated) {
           Serial.print("Orientation: ");
@@ -366,13 +373,13 @@ void loop()
           Serial.print(ori.pitch, 2);
           Serial.print(' ');
           Serial.println(ori.roll, 2);
-          one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-          one.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
+          logger.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+          logger.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
         }
 #else
         updated = mems.memsRead(acc);
         if (updated) {
-          one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+          logger.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
         }
 #endif
       }
@@ -381,24 +388,24 @@ void loop()
 #if USE_OBD
     }
     // log battery voltage (from voltmeter), data in 0.01v
-    int v = one.getVoltage() * 100;
-    one.log(PID_BATTERY_VOLTAGE, v);
+    int v = obd.getVoltage() * 100;
+    logger.log(PID_BATTERY_VOLTAGE, v);
 #endif
 
 #if USE_GPS
-    one.logGPSData();
+    logger.logGPSData();
 #endif
 
 #if !ENABLE_DATA_OUT
     uint32_t t = millis();
-    Serial.print(one.dataCount);
+    Serial.print(logger.dataCount);
     Serial.print(" samples ");
-    Serial.print((float)one.dataCount * 1000 / t, 1);
+    Serial.print((float)logger.dataCount * 1000 / t, 1);
     Serial.print(" sps ");
 #if ENABLE_DATA_LOG
     uint32_t fileSize = sdfile.size();
     if (fileSize > 0) {
-      one.flushData(fileSize);
+      logger.flushData(fileSize);
       Serial.print(fileSize);
       Serial.print(" bytes");
     }

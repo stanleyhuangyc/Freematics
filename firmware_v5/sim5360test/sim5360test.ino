@@ -14,7 +14,7 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <FreematicsONE.h>
+#include <FreematicsPlus.h>
 
 #define APN "connect"
 #define HTTP_SERVER_URL "hub.freematics.com"
@@ -35,7 +35,7 @@ typedef enum {
   HTTP_POST,
 } HTTP_METHOD;
 
-class CSIM5360 : public COBDSPI {
+class CSIM5360 : public CFreematicsESP32 {
 public:
     CSIM5360() { buffer[0] = 0; }
     bool netInit()
@@ -300,7 +300,6 @@ void setup()
     Serial.begin(115200);
     delay(500);
     // this will init SPI communication
-    sim.begin();
 
     // initialize SIM5360 xBee module (if present)
     Serial.print("Init SIM5360...");

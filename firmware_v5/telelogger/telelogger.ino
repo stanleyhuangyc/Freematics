@@ -15,7 +15,7 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <FreematicsONE.h>
+#include <FreematicsPlus.h>
 #include "config.h"
 
 // logger states
@@ -39,8 +39,10 @@ uint32_t distance = 0;
 uint32_t lastSentTime = 0;
 uint32_t lastSyncTime = 0;
 uint8_t deviceTemp = 0; // device temperature
+uint32_t sendingInterval = DATA_SENDING_INTERVAL;
+uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 
-class CTeleLogger :
+class CTeleLogger : public virtual CFreematicsESP32,
 #if NET_DEVICE == NET_SERIAL
 public CTeleClientSerialUSB
 #elif NET_DEVICE == NET_BLE
@@ -54,11 +56,6 @@ public CTeleClientSIM5360
 #else
 public CTeleClient
 #endif
-#if ENABLE_OBD
-,public COBDSPI
-#else
-,public CFreematicsESP32
-#endif
 {
 public:
   bool setup()
@@ -69,7 +66,7 @@ public:
 #if MEMS_MODE
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("MEMS...");
-      if (mems.memsInit()) {
+      if (mems.begin()) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
         blePrint("MEMS OK");
@@ -82,8 +79,9 @@ public:
 #if ENABLE_OBD
     // initialize OBD communication
     if (!checkState(STATE_OBD_READY)) {
+      obd.begin();
       Serial.print("OBD...");
-      if (!init()) {
+      if (!obd.init()) {
         Serial.println("NO");
         return false;
       }
@@ -273,12 +271,24 @@ public:
     } else if (!strcmp(cmd, "WAKEUP")) {
       clearState(STATE_STANDBY);
       result = "OK";
+    } else if (!strncmp(cmd, "SET", 3) && cmd[3]) {
+      const char* subcmd = cmd + 4;
+      if (!strncmp(subcmd, "INTERVAL", 8) && subcmd[8]) {
+        sendingInterval = atoi(subcmd + 8 + 1);
+        result = "OK";
+      } else if (!strncmp(subcmd, "SYNC", 4) && subcmd[4]) {
+        syncInterval = atoi(subcmd + 4 + 1);
+        result = "OK";
+      } else {
+        result = "ERROR";
+      }
+#if ENABLE_OBD
     } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
       // send OBD command
       String obdcmd = cmd + 4;
       obdcmd += '\r';
       char buf[256];
-      if (sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
+      if (obd.sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
         Serial.println(buf);
         for (int n = 4; buf[n]; n++) {
           switch (buf[n]) {
@@ -290,13 +300,15 @@ public:
             result += buf[n];
           }
         }
+#endif
       } else {
-        result = "TIMEOUT";
+        result = "ERROR";
       }
     }
     blePrint(result.c_str());
     return result;
   }
+
   bool processCommand(char* data)
   {
     char *p;
@@ -361,7 +373,7 @@ public:
 #if ENABLE_OBD
     // read and log car battery voltage , data in 0.01v
     {
-      int v = getVoltage() * 100;
+      int v = obd.getVoltage() * 100;
       cache.log(PID_BATTERY_VOLTAGE, v);
     }
 #endif
@@ -400,11 +412,11 @@ public:
       }
     } while(0);
 
-    if (SERVER_SYNC_INTERVAL && t - lastSyncTime >= SERVER_SYNC_INTERVAL * 1000) {
+    if (syncInterval > 10000 && t - lastSyncTime > syncInterval) {
       Serial.println("NO SYNC");
       blePrint("NO SYNC");
       connErrors++;
-    } else if (t - lastSentTime >= DATA_SENDING_INTERVAL && cache.samples() > 0) {
+    } else if (t - lastSentTime >= sendingInterval && cache.samples() > 0) {
       // start data chunk
       if (m_ledMode == 0) digitalWrite(PIN_LED, HIGH);
       //Serial.println(cache.buffer()); // print the content to be sent
@@ -443,8 +455,8 @@ public:
     }
 
 #if ENABLE_OBD
-    if (errors > MAX_OBD_ERRORS) {
-      reset();
+    if (obd.errors > MAX_OBD_ERRORS) {
+      obd.reset();
       clearState(STATE_OBD_READY | STATE_ALL_GOOD);
     }
 #endif
@@ -465,12 +477,13 @@ public:
 
     if (deviceTemp >= COOLING_DOWN_TEMP) {
       // device too hot, cool down
-      Serial.println("Cooling down - ");
-      Serial.print(deviceTemp);
-      Serial.println('C');
+      Serial.println("Cooling down");
+      blePrint("Cooling down");
       delay(10000);
+      lastSyncTime = millis();
     }
   }
+
   bool login()
   {
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
@@ -479,7 +492,7 @@ public:
       data = "VIN=";
 #if ENABLE_OBD
       char buf[128];
-      if (getVIN(buf, sizeof(buf))) {
+      if (obd.getVIN(buf, sizeof(buf))) {
         Serial.print("VIN:");
         Serial.println(buf);
         data += buf;
@@ -488,7 +501,7 @@ public:
       }
       // load DTC
       uint16_t dtc[6];
-      byte dtcCount = readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+      byte dtcCount = obd.readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
       if (dtcCount > 0) {
         Serial.print("DTC:");
         Serial.println(dtcCount);
@@ -533,6 +546,7 @@ public:
     return true;
 #endif
   }
+
   bool verifyChecksum(char* data)
   {
     uint8_t sum = 0;
@@ -545,6 +559,7 @@ public:
     }
     return false;
   }
+
   bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
   {
     netbuf.header(feedid);
@@ -616,6 +631,7 @@ public:
     }
     return false;
   }
+
   void shutDownNet()
   {
     Serial.print(netDeviceName());
@@ -624,6 +640,7 @@ public:
     clearState(STATE_NET_READY);
     Serial.println(" OFF");
   }
+
   void standby()
   {
       if (checkState(STATE_NET_READY)) {
@@ -646,7 +663,7 @@ public:
       }
 #endif
 #if ENABLE_OBD
-      if (errors > MAX_OBD_ERRORS) {
+      if (obd.errors > MAX_OBD_ERRORS) {
         // inaccessible OBD treated as end of trip
         feedid = 0;
       }
@@ -663,7 +680,7 @@ public:
           // calculate relative movement
           float motion = 0;
           float acc[3];
-          mems.memsRead(acc);
+          mems.read(acc);
           for (byte i = 0; i < 3; i++) {
             float m = (acc[i] - accBias[i]);
             motion += m * m;
@@ -682,9 +699,11 @@ public:
       Serial.println("Wakeup");
       blePrint("Wakeup");
   }
+
   bool checkState(byte flags) { return (m_state & flags) == flags; }
   void setState(byte flags) { m_state |= flags; }
   void clearState(byte flags) { m_state &= ~flags; }
+
 private:
 #if ENABLE_OBD
   void processOBD()
@@ -699,7 +718,7 @@ private:
       const byte pids[]= {PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
       int value;
       for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
-        if (readPID(pids[i], value)) {
+        if (obd.readPID(pids[i], value)) {
           cache.log(0x100 | pids[i], value);
         }
         delay(1);
@@ -708,7 +727,7 @@ private:
       if ((count++ % 50) == 0) {
         const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP, PID_ENGINE_FUEL_RATE};
         byte pid = pidTier2[count / 50];
-        if (isValidPID(pid) && readPID(pid, value)) {
+        if (obd.isValidPID(pid) && obd.readPID(pid, value)) {
           cache.log(0x100 | pid, value);
         }
         delay(1);
@@ -717,7 +736,7 @@ private:
     int readSpeed()
     {
         int value;
-        if (readPID(PID_SPEED, value)) {
+        if (obd.readPID(PID_SPEED, value)) {
            uint32_t t = millis();
            distance += (value + lastSpeed) * (t - lastSpeedTime) / 3600 / 2;
            lastSpeedTime = t;
@@ -727,18 +746,9 @@ private:
           return -1;
         }
     }
+    COBDSPI obd;
 #endif
-#if MEMS_MODE
-    void processMEMS()
-    {
-        // load and store accelerometer
-        float acc[3];
-        int16_t temp;
-        mems.memsRead(acc, 0, 0, &temp);
-        deviceTemp = temp / 10;
-        cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
-    }
-#endif
+
 #if ENABLE_GPS
     void processGPS()
     {
@@ -768,7 +778,18 @@ private:
         }
     }
 #endif
+
 #if MEMS_MODE
+    void processMEMS()
+    {
+        // load and store accelerometer
+        float acc[3];
+        int16_t temp;
+        mems.read(acc, 0, 0, &temp);
+        deviceTemp = temp / 10;
+        cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+    }
+
     void calibrateMEMS()
     {
         Serial.print("ACC BIAS...");
@@ -778,7 +799,7 @@ private:
         int n;
         for (n = 0; n < 100; n++) {
           float acc[3] = {0};
-          mems.memsRead(acc);
+          mems.read(acc);
           accBias[0] += acc[0];
           accBias[1] += acc[1];
           accBias[2] += acc[2];
@@ -794,6 +815,7 @@ private:
         Serial.println(accBias[2]);
     }
 #endif
+
 #if MEMS_MODE == MEMS_ACC
     MPU9250_ACC mems;
 #elif MEMS_MODE == MEMS_9DOF
@@ -830,7 +852,6 @@ void setup()
     delay(100);
 #endif
     digitalWrite(PIN_LED, HIGH);
-    logger.begin();
     logger.setup();
     digitalWrite(PIN_LED, LOW);
 }
