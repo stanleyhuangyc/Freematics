@@ -33,7 +33,7 @@
 
 #endif
 
-// enable(1)/disable(0) IMU DMP for MEMS reading and quaternion calculation
+// enable(1)/disable(0) MEMS
 #ifndef MEMS_MODE
 #define MEMS_MODE MEMS_ACC
 #endif
@@ -47,7 +47,7 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 
 // motion detection
-#define WAKEUP_MOTION_THRESHOLD 5 /* for motion triggered wakeup */
+#define WAKEUP_MOTION_THRESHOLD 0.2 /* G */
 
 // SD pin
 #ifdef ESP32

@@ -1,5 +1,3 @@
-#include <Arduino.h>
-
 /******************************************************************************
 * Simple OBD-II test sketch for Freematics ONE/ONE+
 * Written by Stanley Huang https://www.facebook.com/stanleyhuangyc
@@ -15,7 +13,7 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <FreematicsONE.h>
+#include <FreematicsPlus.h>
 
 #define PIN_LED 4
 
