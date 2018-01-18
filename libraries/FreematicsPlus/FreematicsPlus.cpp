@@ -10,7 +10,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#ifdef ESP32
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
@@ -121,10 +120,10 @@ bool gps_decode_start()
     return true;
 }
 
-void bee_start()
+void bee_start(int baudrate)
 {
     uart_config_t uart_config = {
-        .baud_rate = 115200,
+        .baud_rate = baudrate,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
@@ -222,7 +221,6 @@ void Mutex::unlock()
 bool CFreematicsESP32::gpsInit(unsigned long baudrate)
 {
 	bool success = false;
-	char buf[128];
 	if (baudrate) {
 		pinMode(PIN_GPS_POWER, OUTPUT);
 		// turn on GPS power
@@ -232,6 +230,7 @@ bool CFreematicsESP32::gpsInit(unsigned long baudrate)
 			return true;
 		}
 	} else {
+    gps_decode_stop();
 		success = true;
 	}
 	//turn off GPS power
@@ -255,7 +254,7 @@ bool CFreematicsESP32::xbBegin(unsigned long baudrate)
 	pinMode(PIN_XBEE_PWR, OUTPUT);
 	digitalWrite(PIN_XBEE_PWR, HIGH);
 #endif
-	bee_start();
+	bee_start(baudrate);
   return true;
 }
 
@@ -263,9 +262,9 @@ void CFreematicsESP32::xbWrite(const char* cmd)
 {
 	bee_write_string(cmd);
 #ifdef XBEE_DEBUG
-	Serial.print("<<<");
-	Serial.print(cmd);
-	Serial.println("<<<");
+	Serial.print("[SENT]");
+	Serial.print(data);
+	Serial.println("[/SENT]");
 #endif
 }
 
@@ -281,7 +280,7 @@ int CFreematicsESP32::xbRead(char* buffer, int bufsize, unsigned int timeout)
 
 int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
-	int bytesRecv = 0;
+  int bytesRecv = 0;
 	uint32_t t = millis();
 	do {
 		if (bytesRecv >= bufsize - 16) {
@@ -290,18 +289,27 @@ int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout,
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
 #ifdef XBEE_DEBUG
-			Serial.print(">>>");
+			Serial.print("[RECV]");
 			buffer[bytesRecv + n] = 0;
 			Serial.print(buffer + bytesRecv);
-			Serial.println(">>>");
+			Serial.println("[/RECV]");
 #endif
 			bytesRecv += n;
 			buffer[bytesRecv] = 0;
-            for (byte i = 0; i < expectedCount; i++) {
-                // match expected string(s)
-                if (expected[i] && strstr(buffer, expected[i])) return i + 1;
-            }
-        }
+			for (byte i = 0; i < expectedCount; i++) {
+				// match expected string(s)
+				if (expected[i] && strstr(buffer, expected[i])) return i + 1;
+			}
+		} else if (n == -1) {
+			// an erroneous reading
+#ifdef XBEE_DEBUG
+			Serial.print("RECV ERROR");
+#endif
+			break;
+		}
+#ifndef ESP32
+		sleep(100);
+#endif
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
 	return 0;
@@ -315,6 +323,8 @@ void CFreematicsESP32::xbPurge()
 void CFreematicsESP32::xbTogglePower()
 {
 #ifdef PIN_XBEE_PWR
+  digitalWrite(PIN_XBEE_PWR, HIGH);
+  sleep(50);
 #ifdef XBEE_DEBUG
 	Serial.println("xBee power pin set to low");
 #endif
@@ -323,7 +333,9 @@ void CFreematicsESP32::xbTogglePower()
 #ifdef XBEE_DEBUG
 	Serial.println("xBee power pin set to high");
 #endif
-	digitalWrite(PIN_XBEE_PWR, HIGH);
+  digitalWrite(PIN_XBEE_PWR, HIGH);
+  sleep(1000);
+  digitalWrite(PIN_XBEE_PWR, LOW);
 #endif
 }
 
@@ -343,5 +355,3 @@ void CFreematicsESP32::hibernate(unsigned int ms)
   esp_sleep_enable_timer_wakeup((unsigned long)ms * 1000);
   esp_light_sleep_start();
 }
-
-#endif

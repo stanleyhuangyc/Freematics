@@ -5,8 +5,6 @@
 *************************************************************************/
 
 #include <Arduino.h>
-
-#ifdef ESP32
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
@@ -21,8 +19,26 @@
 #include "esp_gatts_api.h"
 #include "esp_bt_defs.h"
 #include "esp_bt_main.h"
-#include "esp_bt_main.h"
-#endif
+
+#include "FreematicsBase.h"
+
+#define EVENT_LOGIN 1
+#define EVENT_LOGOUT 2
+#define EVENT_SYNC 3
+#define EVENT_RECONNECT 4
+#define EVENT_COMMAND 5
+#define EVENT_ACK 6
+
+typedef struct {
+  float lat;
+  float lng;
+  uint8_t year; /* year past 2000, e.g. 15 for 2015 */
+  uint8_t month;
+  uint8_t day;
+  uint8_t hour;
+  uint8_t minute;
+  uint8_t second;
+} NET_LOCATION;
 
 class CTeleClient
 {

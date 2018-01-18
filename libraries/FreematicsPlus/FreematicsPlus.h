@@ -8,8 +8,31 @@
 #include <Arduino.h>
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
+#include "FreematicsMEMS.h"
+#include "FreematicsDMP.h"
+#include "FreematicsSD.h"
+#include "FreematicsOBD.h"
+
+
 
 #ifdef ESP32
+#define PIN_XBEE_PWR 27
+#define PIN_GPS_POWER 15
+#endif
+
+#define GPS_READ_TIMEOUT 200 /* ms */
+#define GPS_INIT_TIMEOUT 1000 /* ms */
+
+typedef struct {
+    uint32_t date;
+    uint32_t time;
+    int32_t lat;
+    int32_t lng;
+    int16_t alt;
+    uint8_t speed;
+    uint8_t sat;
+    int16_t heading;
+} GPS_DATA;
 
 bool gps_decode_start();
 void gps_decode_stop();
@@ -44,7 +67,7 @@ private:
   void* xSemaphore;
 };
 
-class CFreematicsESP32 : public virtual CFreematics
+class CFreematicsESP32 : virtual CFreematics
 {
 public:
   // initialize GPS (set baudrate to 0 to power off GPS)
@@ -72,8 +95,6 @@ public:
   // hibernate (lower power consumption)
   virtual void hibernate(unsigned int ms);
 };
-
-#endif
 
 class CStorageNull;
 

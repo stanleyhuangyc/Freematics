@@ -673,7 +673,7 @@ static void orient_cb(unsigned char orient)
 	mpu9250_orientation = orient;
 }
 
-byte MPU9250_DMP::memsInit(bool fusion, int rate)
+byte MPU9250_DMP::begin(bool fusion, int rate)
 {
 	inv_error_t result;
     struct int_param_s int_param;
@@ -701,7 +701,7 @@ byte MPU9250_DMP::memsInit(bool fusion, int rate)
 	return 1;
 }
 
-bool MPU9250_DMP::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
+bool MPU9250_DMP::read(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
 {
 	if ( fifoAvailable() && dmpUpdateFifo() == INV_SUCCESS )
 	{
