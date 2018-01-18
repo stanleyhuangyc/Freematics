@@ -35,7 +35,7 @@
 #ifdef DEVICE_ID
 #define DEFAULT_VIN DEVICE_ID
 #else
-#define DEFAULT_VIN "DEFAULT_VIN"
+#define DEFAULT_VIN "FreematicsDevice"
 #endif
 
 /**************************************
@@ -45,7 +45,7 @@
 // change the following line to change network device
 #define NET_DEVICE NET_WIFI
 // WIFI settings
-#define WIFI_SSID "YOUR_SSID"
+#define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network
 #define CELL_APN "connect"
@@ -62,6 +62,8 @@
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
+// minimum loop time (avoiding too fast data rate)
+#define MIN_LOOP_TIME 100 /* ms */
 
 /**************************************
 * BLE configurations
@@ -93,7 +95,7 @@
 #ifndef DATA_SENDING_INTERVAL
 #define DATA_SENDING_INTERVAL 3000 /* ms */
 #endif
-#define SERVER_SYNC_INTERVAL 0 /* seconds, 0 to disable */
+#define SERVER_SYNC_INTERVAL 60 /* seconds, 0 to disable */
 
 
 /**************************************
