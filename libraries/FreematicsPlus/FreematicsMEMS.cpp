@@ -556,7 +556,7 @@ byte MPU9250_ACC::begin(bool fusion)
 {
   byte ret = 0;
   Wire.begin();
-  Wire.setClock(400000);
+  //Wire.setClock(400000);
   for (byte attempt = 0; attempt < 2; attempt++) {
     //float SelfTest[6];
     //MPU9250SelfTest(SelfTest);
@@ -588,7 +588,7 @@ byte MPU9250_9DOF::begin(bool fusion)
 {
   byte ret = 0;
   Wire.begin();
-  Wire.setClock(400000);
+  //Wire.setClock(400000);
   for (byte attempt = 0; attempt < 2; attempt++) {
     //float SelfTest[6];
     //MPU9250SelfTest(SelfTest);
