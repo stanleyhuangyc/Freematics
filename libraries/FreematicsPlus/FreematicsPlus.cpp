@@ -280,7 +280,7 @@ int CFreematicsESP32::xbRead(char* buffer, int bufsize, unsigned int timeout)
 
 int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
-  int bytesRecv = 0;
+    int bytesRecv = 0;
 	uint32_t t = millis();
 	do {
 		if (bytesRecv >= bufsize - 16) {
@@ -307,9 +307,6 @@ int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout,
 #endif
 			break;
 		}
-#ifndef ESP32
-		sleep(100);
-#endif
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
 	return 0;

@@ -300,10 +300,10 @@ public:
             result += buf[n];
           }
         }
-#endif
       } else {
         result = "ERROR";
       }
+#endif
     } else {
       result="INVALID";
     }
@@ -391,7 +391,7 @@ public:
 
     // check incoming datagram
     do {
-      int len;
+      int len = 0;
       char *data = netReceive(&len, 0);
       if (data) {
         data[len] = 0;
@@ -406,6 +406,7 @@ public:
         switch (eventID) {
         case EVENT_COMMAND:
           processCommand(data);
+          lastSyncTime = t;
           break;
         case EVENT_SYNC:
           lastSyncTime = t;
