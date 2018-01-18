@@ -15,7 +15,6 @@ init	KEYWORD2
 uninit	KEYWORD2
 reset	KEYWORD2
 getState	KEYWORD2
-sleepSec	KEYWORD2
 sleep	KEYWORD2
 enterLowPowerMode	KEYWORD2
 leaveLowPowerMode	KEYWORD2
@@ -38,9 +37,6 @@ xbWrite	KEYWORD2
 xbReceive	KEYWORD2
 xbPurge	KEYWORD2
 xbTogglePower	KEYWORD2
-
-memsInit KEYWORD2
-memsRead KEYWORD2
 
 ################################################################################
 # Constants (LITERAL1)

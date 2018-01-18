@@ -552,7 +552,7 @@ void MPU9250_ACC::initMPU9250()
 
 }
 
-byte MPU9250_ACC::memsInit(bool fusion)
+byte MPU9250_ACC::begin(bool fusion)
 {
   byte ret = 0;
   Wire.begin();
@@ -569,7 +569,7 @@ byte MPU9250_ACC::memsInit(bool fusion)
   return ret;
 }
 
-bool MPU9250_ACC::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
+bool MPU9250_ACC::read(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
 {
   if (acc) {
     readAccelData(accelCount);
@@ -584,7 +584,7 @@ bool MPU9250_ACC::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, OR
   return true;
 }
 
-byte MPU9250_9DOF::memsInit(bool fusion)
+byte MPU9250_9DOF::begin(bool fusion)
 {
   byte ret = 0;
   Wire.begin();
@@ -596,8 +596,10 @@ byte MPU9250_9DOF::memsInit(bool fusion)
     if (c != 0x68 && c != 0x71) continue;
     calibrateMPU9250(gyroBias, accelBias); // Calibrate gyro and accelerometers, load biases in bias registers
     initMPU9250();
-    initAK8963(magCalibration);
-    ret = (c == 0x71) ? 2 : 1;
+    if (c == 0x71 && initAK8963(magCalibration))
+      ret = 2;
+    else
+      ret = 1;
     break;
   }
   if (ret && fusion && !quaterion) {
@@ -606,7 +608,7 @@ byte MPU9250_9DOF::memsInit(bool fusion)
   return ret;
 }
 
-bool MPU9250_9DOF::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
+bool MPU9250_9DOF::read(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
 {
   if (acc) {
     readAccelData(accelCount);

@@ -241,8 +241,8 @@ private:
 class MPU9250_ACC
 {
 public:
-  virtual byte memsInit(bool fusion = false);
-  virtual bool memsRead(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+  virtual byte begin(bool fusion = false);
+  virtual bool read(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
 protected:
   void getAres();
   void readAccelData(int16_t *);
@@ -257,8 +257,8 @@ protected:
 class MPU9250_9DOF : public MPU9250_ACC
 {
 public:
-  byte memsInit(bool fusion = false);
-  bool memsRead(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+  byte begin(bool fusion = false);
+  bool read(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
 private:
   void getMres();
   void getGres();
