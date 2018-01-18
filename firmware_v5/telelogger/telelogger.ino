@@ -304,6 +304,8 @@ public:
       } else {
         result = "ERROR";
       }
+    } else {
+      result="INVALID";
     }
     blePrint(result.c_str());
     return result;
