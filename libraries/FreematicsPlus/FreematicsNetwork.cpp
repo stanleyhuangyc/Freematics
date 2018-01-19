@@ -399,7 +399,7 @@ bool CTeleClientSIM5360::netBegin()
 
 void CTeleClientSIM5360::netEnd()
 {
-  if (m_stage == 2) {
+  if (m_stage == 2 || netSendCommand("AT\r")) {
     xbTogglePower();
     m_stage = 1;
   }

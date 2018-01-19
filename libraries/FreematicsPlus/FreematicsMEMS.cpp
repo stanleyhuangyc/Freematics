@@ -563,7 +563,7 @@ byte MPU9250_ACC::begin(bool fusion)
     byte c = readByte(WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
     if (c != 0x68 && c != 0x71) continue;
     initMPU9250();
-    ret = (c == 0x71) ? 2 : 1;
+    ret = 1;
     break;
   }
   return ret;
