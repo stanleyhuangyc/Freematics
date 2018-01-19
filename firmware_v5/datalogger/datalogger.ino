@@ -173,8 +173,8 @@ public:
 #if ENABLE_DATA_LOG
     uint16_t initSD()
     {
-        pinMode(SD_CS_PIN, OUTPUT);
-        if (SD.begin(SD_CS_PIN)) {
+        pinMode(PIN_SD_CS, OUTPUT);
+        if (SD.begin(PIN_SD_CS)) {
           return SD.cardSize();
         } else {
           return 0;
@@ -266,14 +266,14 @@ CLogger logger;
 void setup()
 {
     delay(1000);
+    // initialize USB serial
     Serial.begin(115200);
-#ifdef ESP32
-    Serial.print("ESP32 @ ");
+    Serial.print("ESP32 ");
     Serial.print(ESP.getCpuFreqMHz());
-    Serial.println("MHz");
-#else
-    Serial.println("ATmega328");
-#endif
+    Serial.print("MHz ");
+    Serial.print(spi_flash_get_chip_size() >> 20);
+    Serial.println("M Flash");
+
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
@@ -286,7 +286,6 @@ void setup()
     byte ret = mems.begin(ENABLE_ORIENTATION);
     if (ret) {
       logger.setState(STATE_MEMS_READY);
-      if (ret == 2) Serial.print("9-DOF ");
       Serial.println("OK");
       calibrateMEMS();
     } else {
@@ -393,7 +392,6 @@ void loop()
     // log battery voltage (from voltmeter), data in 0.01v
     int v = obd.getVoltage() * 100;
     logger.log(PID_BATTERY_VOLTAGE, v);
-    Serial.println(v);
 #endif
 
 #if USE_GPS
