@@ -41,6 +41,16 @@ uint32_t lastSyncTime = 0;
 uint8_t deviceTemp = 0; // device temperature
 uint32_t sendingInterval = DATA_SENDING_INTERVAL;
 uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
+uint32_t timeoutsOBD = 0;
+uint32_t timeoutsNet = 0;
+
+void printTimeoutStats()
+{
+  Serial.print("Timeouts: OBD:");
+  Serial.print(timeoutsOBD);
+  Serial.print(" Network:");
+  Serial.println(timeoutsNet);
+}
 
 class CTeleLogger : public virtual CFreematicsESP32,
 #if NET_DEVICE == NET_SERIAL
@@ -391,6 +401,8 @@ public:
       Serial.println("NO SYNC");
       blePrint("NO SYNC");
       connErrors++;
+      timeoutsNet++;
+      printTimeoutStats();
     } else if (millis() - lastSentTime >= sendingInterval && cache.samples() > 0) {
       // start data chunk
       if (m_ledMode == 0) digitalWrite(PIN_LED, HIGH);
@@ -417,10 +429,10 @@ public:
         cache.header(feedid);
         lastSentTime = millis();
       } else {
-        connErrors++;
-        Serial.println("Unsent");
-        blePrint("Unsent");
         cache.untailer(); // remove tail
+        connErrors++;
+        timeoutsNet++;
+        printTimeoutStats();
       }
       if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
         netClose();
@@ -617,8 +629,8 @@ public:
         if (checkState(STATE_CONNECTED)) {
           notifyServer(EVENT_LOGOUT, SERVER_KEY);
         }
-        shutDownNet();
       }
+      shutDownNet();
 #if STORAGE_TYPE != STORAGE_NONE
       if (checkState(STATE_STORAGE_READY)) {
         cache.uninit();
@@ -676,47 +688,45 @@ public:
 
 private:
 #if ENABLE_OBD
+  int logOBDPID(byte pid)
+  {
+    int value;
+    if (obd.readPID(pid, value)) {
+      cache.log((uint16_t)0x100 | pid, (int16_t)value);
+    } else {
+      timeoutsOBD++;
+      printTimeoutStats();
+      value = -1;
+    }
+    idleTasks();
+    return value;
+  }
   void processOBD()
   {
-      int speed = readSpeed();
+      int speed = logOBDPID(PID_SPEED);
       if (speed == -1) {
         return;
       }
-      cache.log(0x100 | PID_SPEED, speed);
+      // calculate distance for speed
+      uint32_t t = millis();
+      distance += (speed + lastSpeed) * (t - lastSpeedTime) / 3600 / 2;
+      lastSpeedTime = t;
+      lastSpeed = speed;
       cache.log(PID_TRIP_DISTANCE, distance);
       // poll more PIDs
       const byte pids[]= {PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
       int value;
       for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
-        if (obd.readPID(pids[i], value)) {
-          cache.log(0x100 | pids[i], value);
-        } else {
-          Serial.println("PID not read");
-        }
-        idleTasks();
+        logOBDPID(pids[i]);
       }
       static byte count = 0;
       if ((count++ % 50) == 0) {
         const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP, PID_ENGINE_FUEL_RATE};
         byte pid = pidTier2[count / 50];
-        if (obd.isValidPID(pid) && obd.readPID(pid, value)) {
-          cache.log(0x100 | pid, value);
+        if (obd.isValidPID(pid)) {
+          logOBDPID(pid);
         }
-        idleTasks();
       }
-    }
-    int readSpeed()
-    {
-        int value;
-        if (obd.readPID(PID_SPEED, value)) {
-           uint32_t t = millis();
-           distance += (value + lastSpeed) * (t - lastSpeedTime) / 3600 / 2;
-           lastSpeedTime = t;
-           lastSpeed = value;
-           return value;
-        } else {
-          return -1;
-        }
     }
     COBDSPI obd;
 #endif
@@ -856,9 +866,11 @@ void setup()
     delay(1000);
     // initialize USB serial
     Serial.begin(115200);
-    Serial.print("ESP32 @ ");
+    Serial.print("ESP32 ");
     Serial.print(ESP.getCpuFreqMHz());
-    Serial.println("MHz");
+    Serial.print("MHz ");
+    Serial.print(spi_flash_get_chip_size() >> 20);
+    Serial.println("M Flash");
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     // perform initializations
