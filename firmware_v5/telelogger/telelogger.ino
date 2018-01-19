@@ -691,7 +691,7 @@ private:
         if (obd.readPID(pids[i], value)) {
           cache.log(0x100 | pids[i], value);
         } else {
-          Serial.println("OBD error");
+          Serial.println("PID not read");
         }
         idleTasks();
       }
@@ -701,8 +701,6 @@ private:
         byte pid = pidTier2[count / 50];
         if (obd.isValidPID(pid) && obd.readPID(pid, value)) {
           cache.log(0x100 | pid, value);
-        } else {
-          Serial.println("OBD error");
         }
         idleTasks();
       }
