@@ -347,9 +347,12 @@ void loop()
       byte pid = pids[i];
       if (obd.readPID(pid, value)) {
         logger.log((uint16_t)pids[i] | 0x100, value);
-      } else if (obd.errors >= 3) {
+      } else {
+        Serial.println("PID not read");
+        if (obd.errors >= 3) {
           obd.reset();
           logger.reconnect();
+        }
       }
 #endif
 
@@ -390,6 +393,7 @@ void loop()
     // log battery voltage (from voltmeter), data in 0.01v
     int v = obd.getVoltage() * 100;
     logger.log(PID_BATTERY_VOLTAGE, v);
+    Serial.println(v);
 #endif
 
 #if USE_GPS

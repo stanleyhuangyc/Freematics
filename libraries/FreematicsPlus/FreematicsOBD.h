@@ -21,7 +21,6 @@ byte hex2uint8(const char *p);
 class COBD
 {
 public:
-	COBD():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	// begin serial UART
 	virtual byte begin();
 	// terminate communication channel
@@ -54,8 +53,6 @@ public:
 	virtual float getVoltage();
 	// get VIN as a string, buffer length should be >= OBD_RECV_BUF_SIZE
 	virtual bool getVIN(char* buffer, byte bufsize);
-	// send query for specified PID
-	virtual void sendQuery(byte pid);
 	// retrive and parse the response of specifie PID
 	virtual bool getResult(byte& pid, int& result);
 	// determine if the PID is supported
@@ -63,11 +60,11 @@ public:
 	// get adapter firmware version
 	virtual byte getVersion();
 	// set current PID mode
-	byte dataMode;
+	byte dataMode = 1;
 	// occurrence of errors
-	byte errors;
+	byte errors = 0;
 	// bit map of supported PIDs
-	byte pidmap[4 * 4];
+	byte pidmap[4 * 4] = {0};
 protected:
 	virtual char* getResponse(byte& pid, char* buffer, byte bufsize);
 	virtual int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
@@ -79,7 +76,7 @@ protected:
 	virtual int normalizeData(byte pid, char* data);
 	virtual byte checkErrorMessage(const char* buffer);
 	virtual char* getResultValue(char* buf);
-	OBD_STATES m_state;
+	OBD_STATES m_state = OBD_DISCONNECTED;
 private:
 	void recover();
 	virtual void idleTask() {}
