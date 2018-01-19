@@ -6,6 +6,11 @@
 *************************************************************************/
 
 #include <Arduino.h>
+#include "esp_system.h"
+#include "esp_partition.h"
+#include "nvs_flash.h"
+#include "nvs.h"
+#include "esp_spi_flash.h"
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
 #include "FreematicsMEMS.h"
@@ -13,12 +18,9 @@
 #include "FreematicsSD.h"
 #include "FreematicsOBD.h"
 
-
-
-#ifdef ESP32
 #define PIN_XBEE_PWR 27
 #define PIN_GPS_POWER 15
-#endif
+#define PIN_SD_CS 5
 
 #define GPS_READ_TIMEOUT 200 /* ms */
 #define GPS_INIT_TIMEOUT 1000 /* ms */
