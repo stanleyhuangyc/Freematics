@@ -24,7 +24,7 @@ void debugOutput(const char *s)
 	DEBUG.print('[');
 	DEBUG.print(millis());
 	DEBUG.print(']');
-	DEBUG.print(s);
+	DEBUG.println(s);
 }
 #endif
 
@@ -98,20 +98,11 @@ byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 	return receive(buf, bufsize, timeout);
 }
 
-void COBD::sendQuery(byte pid)
+bool COBD::readPID(byte pid, int& result)
 {
 	char cmd[8];
 	sprintf(cmd, "%02X%02X\r", dataMode, pid);
-#ifdef DEBUG
-	debugOutput(cmd);
-#endif
 	write(cmd);
-}
-
-bool COBD::readPID(byte pid, int& result)
-{
-	// send a query command
-	sendQuery(pid);
 	// receive and parse the response
 	return getResult(pid, result);
 }
@@ -477,7 +468,8 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		bool success = false;
 		for (byte i = 0; i < 4; i++) {
 			byte pid = i * 0x20;
-			sendQuery(pid);
+			sprintf(buffer, "%02X%02X\r", dataMode, pid);
+			write(buffer);
 			if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0) {
 				if (checkErrorMessage(buffer)) {
 					break;
@@ -581,7 +573,7 @@ int16_t COBD::getTemperatureValue(char* data)
 * OBD-II SPI bridge
 *************************************************************************/
 
-static const char target[4] = {'$','O','B','D'};
+static const char header[] = {'$','O','B','D'};
 
 //SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
 
@@ -605,6 +597,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 {
 	int n = 0;
 	bool eos = false;
+	bool matched = false;
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
@@ -621,11 +614,17 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
 			if (eos) continue;
-			if (n == 0) {
-				// match header char before we can move forward
-				if (c == '$') {
-					buffer[0] = c;
+			if (!matched) {
+				// match header
+				if (c == header[0]) {
 					n = 1;
+					buffer[0] = c;
+					continue;
+				}
+				buffer[n++] = c;
+				if (n == sizeof(header)) {
+					matched = memcmp(buffer, header, sizeof(header)) == 0;
+					if (matched) n = 0;
 				}
 				continue;
 			}
@@ -642,7 +641,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #endif
 				}
 				buffer[n] = c;
-				eos = (c == 0x9 && buffer[n - 1] =='>');
+				if (n > 0) {
+					eos = (c == 0x9 && buffer[n - 1] =='>');
+				}
 				n++;
 			}
 		}
@@ -656,7 +657,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 #endif
 	if (eos) {
 		// eliminate ending char
-		n--;
+		n -= 2;
 	}
 	buffer[n] = 0;
 #ifdef DEBUG
@@ -672,19 +673,14 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-	char buf[256];
 	int len = strlen(s);
-	if (len > sizeof(buf) - 6) len = sizeof(buf) - 6;
-	memcpy(buf, target, 4);
-	memcpy(buf + 4, s, len);
-	len += 4;
-	// add terminating byte (ESC)
-	buf[len++] = 0x1B;
-	sleep(10);
+	//sleep(10);
 	digitalWrite(SPI_PIN_CS, LOW);
 	sleep(1);
 	//SPI.beginTransaction(spiSettings);
-	SPI.writeBytes((uint8_t*)buf, len);
+	SPI.writeBytes((uint8_t*)header, sizeof(header));
+	SPI.writeBytes((uint8_t*)s, len);
+	SPI.write(0x1B);
 	sleep(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
@@ -693,11 +689,10 @@ void COBDSPI::write(const char* s)
 
 bool COBDSPI::readPID(byte pid, int& result)
 {
-	// send a single query command
-	sendQuery(pid);
-	// receive and parse the response
 	char buffer[64];
 	char* data = 0;
+	sprintf(buffer, "%02X%02X\r", dataMode, pid);
+	write(buffer);
 	sleep(20);
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
