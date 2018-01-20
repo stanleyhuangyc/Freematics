@@ -82,7 +82,7 @@ public:
         Serial.println("OK");
         // retrieve VIN
         char buffer[128];
-        if (checkState(STATE_OBD_READY) && obd.getVIN(buffer, sizeof(buffer))) {
+        if (obd.getVIN(buffer, sizeof(buffer))) {
           Serial.print("VIN:");
           Serial.println(buffer);
         }
