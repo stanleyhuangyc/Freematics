@@ -22,6 +22,8 @@
 #include "FreematicsPlus.h"
 #include "FreematicsGPS.h"
 
+int32_t hall_sens_read();
+
 static TinyGPS* gps = 0;
 static bool newGPSData = false;
 
@@ -52,9 +54,8 @@ void gps_decode_task(int timeout)
 
 bool gps_get_data(GPS_DATA* gdata)
 {
-	if (!newGPSData || !gps) {
-		return false;
-	}
+    gps_decode_task(0);
+    if (!newGPSData) return false;
     gps->get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
     gps->get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
     gdata->speed = gps->speed() * 1852 / 100000; /* km/h */
@@ -179,6 +180,11 @@ extern "C" uint8_t temprature_sens_read();
 uint8_t readChipTemperature()
 {
   return temprature_sens_read();
+}
+
+int32_t readChipHallSensor()
+{
+  return hall_sens_read();
 }
 
 bool Task::create(void (*task)(void*), const char* name, int priority)

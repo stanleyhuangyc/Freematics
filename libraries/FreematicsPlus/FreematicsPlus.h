@@ -47,6 +47,7 @@ int bee_write_data(uint8_t* data, int len);
 int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout);
 void bee_flush();
 uint8_t readChipTemperature();
+int32_t readChipHallSensor();
 
 class Task
 {
@@ -230,19 +231,13 @@ protected:
     char* m_cache = 0;
 };
 
-#ifdef ESP32
-#define SD_CS_PIN 5
-#else
-#define SD_CS_PIN 10
-#endif
-
 class CStorageSD : public CStorageNull {
 public:
   CStorageSD() {}
   bool init()
   {
-      pinMode(SD_CS_PIN, OUTPUT);
-      if(!SD.begin(SD_CS_PIN)){
+      pinMode(PIN_SD_CS, OUTPUT);
+      if(!SD.begin(PIN_SD_CS)){
           Serial.println("No SD card");
           return false;
       }
