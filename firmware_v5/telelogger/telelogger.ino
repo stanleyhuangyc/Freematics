@@ -95,6 +95,7 @@ public:
         Serial.println("NO");
         return false;
       }
+      timeoutsOBD = 0;
       Serial.println("OK");
       blePrint("OBD OK");
       setState(STATE_OBD_READY);
@@ -163,6 +164,7 @@ public:
       return false;
     }
 #endif
+    timeoutsNet = 0;
 
     if (checkState(STATE_MEMS_READY)) {
       calibrateMEMS();
@@ -292,6 +294,10 @@ public:
       } else {
         result = "ERROR";
       }
+    } else if (!strcmp(cmd, "timeouts")) {
+      char buf[64];
+      sprintf(buf, "OBD:%u NET:%u", timeoutsOBD, timeoutsNet);
+      result = buf;
 #if ENABLE_OBD
     } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
       // send OBD command
@@ -359,7 +365,7 @@ public:
   void loop()
   {
     uint32_t startTime = millis();
-    cache.timestamp(millis());
+    cache.timestamp(startTime);
 
 #if ENABLE_OBD
     if ((txCount % 100) == 1) {
@@ -373,12 +379,14 @@ public:
 #else
     int temp = (int)readChipTemperature() * 165 / 255 - 40;
     cache.log(PID_DEVICE_TEMP, temp);
+    cache.log(PID_DEVICE_HALL, readChipHallSensor());
+    idleTasks();
 #endif
 
-#if ENABLE_GPS
-    // process GPS data if connected
-    if (checkState(STATE_GPS_READY)) {
-      processGPS();
+#if MEMS_MODE
+    // process MEMS data if available
+    if (checkState(STATE_MEMS_READY)) {
+      processMEMS();
     }
 #endif
 
@@ -387,13 +395,6 @@ public:
     {
       int v = obd.getVoltage() * 100;
       cache.log(PID_BATTERY_VOLTAGE, v);
-    }
-#endif
-
-#if MEMS_MODE
-    // process MEMS data if available
-    if (checkState(STATE_MEMS_READY)) {
-      processMEMS();
     }
 #endif
 
@@ -406,38 +407,7 @@ public:
     } else if (millis() - lastSentTime >= sendingInterval && cache.samples() > 0) {
       // start data chunk
       if (m_ledMode == 0) digitalWrite(PIN_LED, HIGH);
-      //Serial.println(cache.buffer()); // print the content to be sent
-      Serial.print('[');
-      Serial.print(txCount);
-      Serial.print("] ");
-      cache.tailer();
-      // transmit data
-      //Serial.println(cache.buffer());
-      if (netSend(cache.buffer(), cache.length())) {
-        connErrors = 0;
-        txCount++;
-        // output some stats
-        char buf[64];
-#if STORAGE_TYPE == STORAGE_NONE
-        sprintf(buf, "%u bytes sent", cache.length());
-#else
-        sprintf(buf, "%uB sent %lu KB saved", cache.length(), store.size() >> 10);
-#endif
-        Serial.println(buf);
-        blePrint(buf);
-        // purge cache and place a header
-        cache.header(feedid);
-        lastSentTime = millis();
-      } else {
-        cache.untailer(); // remove tail
-        connErrors++;
-        timeoutsNet++;
-        printTimeoutStats();
-      }
-      if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
-        netClose();
-        netOpen(SERVER_HOST, SERVER_PORT);
-      }
+      transmit();
       if (m_ledMode == 0) digitalWrite(PIN_LED, LOW);
     }
 
@@ -451,10 +421,10 @@ public:
     }
 
     // maintain minimum loop time
-    for (;;) {
-      idleTasks();
-      if (millis() - startTime >= MIN_LOOP_TIME) break;
-    }
+#if MIN_LOOP_TIME
+    int waitTime = MIN_LOOP_TIME - (millis() - startTime);
+    idleTasks(waitTime > 0 ? waitTime : 0);
+#endif
 
 #if ENABLE_OBD
     if (obd.errors > MAX_OBD_ERRORS) {
@@ -623,6 +593,44 @@ public:
     Serial.println(" OFF");
   }
 
+  void transmit()
+  {
+    //Serial.println(cache.buffer()); // print the content to be sent
+    Serial.print('[');
+    Serial.print(txCount);
+    Serial.print("] ");
+    cache.tailer();
+    // transmit data
+    if (netSend(cache.buffer(), cache.length())) {
+      connErrors = 0;
+      txCount++;
+      // output some stats
+      char buf[64];
+#if STORAGE_TYPE == STORAGE_NONE
+      sprintf(buf, "%u bytes sent", cache.length());
+#else
+      sprintf(buf, "%uB sent %lu KB saved", cache.length(), store.size() >> 10);
+#endif
+      Serial.println(buf);
+      blePrint(buf);
+      // purge cache and place a header
+      cache.header(feedid);
+      lastSentTime = millis();
+    } else {
+      if (connErrors == 0)
+        cache.untailer(); // keep data in cache for resending
+      else
+        cache.header(feedid); // purge cache on repeated connection error
+      connErrors++;
+      timeoutsNet++;
+      printTimeoutStats();
+    }
+    if (getConnErrors() >= MAX_CONN_ERRORS_RECONNECT) {
+      netClose();
+      netOpen(SERVER_HOST, SERVER_PORT);
+    }
+  }
+
   void standby()
   {
       if (checkState(STATE_NET_READY)) {
@@ -698,7 +706,6 @@ private:
       printTimeoutStats();
       value = -1;
     }
-    idleTasks();
     return value;
   }
   void processOBD()
@@ -717,6 +724,7 @@ private:
       const byte pids[]= {PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
       int value;
       for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
+        idleTasks(5);
         logOBDPID(pids[i]);
       }
       static byte count = 0;
@@ -724,6 +732,7 @@ private:
         const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP, PID_ENGINE_FUEL_RATE};
         byte pid = pidTier2[count / 50];
         if (obd.isValidPID(pid)) {
+          idleTasks(5);
           logOBDPID(pid);
         }
       }
@@ -799,46 +808,54 @@ private:
 #endif
 
     // tasks to perform in idle time
-    void idleTasks()
+    void idleTasks(uint32_t idleTime = 1)
     {
-      // check incoming datagram
+      uint32_t t = millis();
       do {
-        int len = 0;
-        char *data = netReceive(&len, 0);
-        if (data) {
-          data[len] = 0;
-          if (!verifyChecksum(data)) {
-            Serial.print("Checksum mismatch:");
-            Serial.print(data);
-            break;
+        // check incoming datagram
+        do {
+          int len = 0;
+          char *data = netReceive(&len, 0);
+          if (data) {
+            data[len] = 0;
+            if (!verifyChecksum(data)) {
+              Serial.print("Checksum mismatch:");
+              Serial.print(data);
+              break;
+            }
+            char *p = strstr(data, "EV=");
+            if (!p) break;
+            int eventID = atoi(p + 3);
+            switch (eventID) {
+            case EVENT_COMMAND:
+              processCommand(data);
+              break;
+            case EVENT_SYNC:
+              lastSyncTime = millis();
+              break;
+            }
           }
-          char *p = strstr(data, "EV=");
-          if (!p) break;
-          int eventID = atoi(p + 3);
-          switch (eventID) {
-          case EVENT_COMMAND:
-            processCommand(data);
-            break;
-          case EVENT_SYNC:
-            lastSyncTime = millis();
-            break;
+        } while(0);
+        // check serial input for command
+        while (Serial.available()) {
+          char c = Serial.read();
+          if (c == '\r' || c == '\n') {
+            if (serialCommand.length() > 0) {
+              String result = executeCommand(serialCommand.c_str());
+              serialCommand = "";
+              Serial.println(result);
+            }
+          } else if (serialCommand.length() < 32) {
+            serialCommand += c;
           }
         }
-      } while(0);
-      // check serial input for command
-      while (Serial.available()) {
-        char c = Serial.read();
-        if (c == '\r' || c == '\n') {
-          if (serialCommand.length() > 0) {
-            String result = executeCommand(serialCommand.c_str());
-            serialCommand = "";
-            Serial.println(result);
-          }
-        } else if (serialCommand.length() < 32) {
-          serialCommand += c;
+#if ENABLE_GPS
+        // process GPS data if connected
+        if (checkState(STATE_GPS_READY)) {
+          processGPS();
         }
-      }
-      sleep(1);
+#endif
+      } while (millis() - t < idleTime);
     }
 
 #if MEMS_MODE == MEMS_ACC
@@ -876,7 +893,7 @@ void setup()
     // perform initializations
 #if ENABLE_BLE
     logger.bleBegin(BLE_DEVICE_NAME);
-    delay(100); 
+    delay(100);
 #endif
     digitalWrite(PIN_LED, HIGH);
     logger.setup();
