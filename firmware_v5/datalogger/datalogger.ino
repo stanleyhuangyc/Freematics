@@ -235,12 +235,7 @@ public:
                 float m = (acc[i] - accBias[i]);
                 motion += m * m;
               }
-#ifdef ESP32
-              esp_sleep_enable_timer_wakeup(100000); //100ms
-              esp_light_sleep_start();
-#else
               delay(100);
-#endif
             }
             Serial.println(motion);
             // check movement
