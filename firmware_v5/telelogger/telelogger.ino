@@ -28,8 +28,6 @@
 #define STATE_ALL_GOOD 0x40
 #define STATE_STANDBY 0x80
 
-#define PIN_LED 4
-
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
 #endif
@@ -294,9 +292,9 @@ public:
       } else {
         result = "ERROR";
       }
-    } else if (!strcmp(cmd, "timeouts")) {
+    } else if (!strcmp(cmd, "STATS")) {
       char buf[64];
-      sprintf(buf, "OBD:%u NET:%u", timeoutsOBD, timeoutsNet);
+      sprintf(buf, "TX:%u OBD:%u NET:%u", txCount, timeoutsOBD, timeoutsNet);
       result = buf;
 #if ENABLE_OBD
     } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
@@ -321,7 +319,7 @@ public:
       }
 #endif
     } else {
-      result="INVALID";
+      return "INVALID";
     }
     blePrint(result.c_str());
     return result;
@@ -886,8 +884,8 @@ void setup()
     Serial.print("ESP32 ");
     Serial.print(ESP.getCpuFreqMHz());
     Serial.print("MHz ");
-    Serial.print(spi_flash_get_chip_size() >> 20);
-    Serial.println("M Flash");
+    Serial.print(getFlashSize() >> 10);
+    Serial.println("MB Flash");
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     // perform initializations
