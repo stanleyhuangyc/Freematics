@@ -25,10 +25,10 @@
 #define STATE_MEMS_READY 0x10
 #define STATE_FILE_READY 0x20
 
-#define PIN_LED 4
-
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
+uint32_t startTime = 0;
+uint32_t pidErrors = 0;
 
 COBDSPI obd;
 
@@ -121,6 +121,9 @@ public:
         }
       }
 #endif
+
+      startTime = millis();
+      dataCount = 0;
     }
 #if USE_GPS
     void logGPSData()
@@ -235,12 +238,7 @@ public:
                 float m = (acc[i] - accBias[i]);
                 motion += m * m;
               }
-#ifdef ESP32
-              esp_sleep_enable_timer_wakeup(100000); //100ms
-              esp_light_sleep_start();
-#else
               delay(100);
-#endif
             }
             Serial.println(motion);
             // check movement
@@ -250,7 +248,7 @@ public:
           }
         }
   #else
-        while (!init()) Serial.print('.');
+        while (!obd.init()) Serial.print('.');
   #endif
         Serial.println("Wakeup");
     }
@@ -271,8 +269,8 @@ void setup()
     Serial.print("ESP32 ");
     Serial.print(ESP.getCpuFreqMHz());
     Serial.print("MHz ");
-    Serial.print(spi_flash_get_chip_size() >> 20);
-    Serial.println("M Flash");
+    Serial.print(getFlashSize() >> 10);
+    Serial.println("MB Flash");
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
@@ -286,6 +284,7 @@ void setup()
     byte ret = mems.begin(ENABLE_ORIENTATION);
     if (ret) {
       logger.setState(STATE_MEMS_READY);
+      if (ret == 2) Serial.print("9-DOF ");
       Serial.println("OK");
       calibrateMEMS();
     } else {
@@ -347,7 +346,8 @@ void loop()
       if (obd.readPID(pid, value)) {
         logger.log((uint16_t)pids[i] | 0x100, value);
       } else {
-        Serial.println("PID not read");
+        Serial.print("PID errors ");
+        Serial.println(++pidErrors);
         if (obd.errors >= 3) {
           obd.reset();
           logger.reconnect();
@@ -399,10 +399,9 @@ void loop()
 #endif
 
 #if !ENABLE_DATA_OUT
-    uint32_t t = millis();
     Serial.print(logger.dataCount);
     Serial.print(" samples ");
-    Serial.print((float)logger.dataCount * 1000 / t, 1);
+    Serial.print((float)logger.dataCount * 1000 / (millis() - startTime), 1);
     Serial.print(" sps ");
 #if ENABLE_DATA_LOG
     uint32_t fileSize = sdfile.size();
