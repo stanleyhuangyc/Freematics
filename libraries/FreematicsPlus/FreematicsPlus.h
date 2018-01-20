@@ -20,6 +20,7 @@
 
 #define PIN_XBEE_PWR 27
 #define PIN_GPS_POWER 15
+#define PIN_LED 4
 #define PIN_SD_CS 5
 
 #define GPS_READ_TIMEOUT 200 /* ms */
@@ -48,6 +49,7 @@ int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout);
 void bee_flush();
 uint8_t readChipTemperature();
 int32_t readChipHallSensor();
+uint16_t getFlashSize(); /* KB */
 
 class Task
 {

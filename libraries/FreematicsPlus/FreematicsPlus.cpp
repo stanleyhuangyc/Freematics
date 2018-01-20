@@ -22,8 +22,6 @@
 #include "FreematicsPlus.h"
 #include "FreematicsGPS.h"
 
-int32_t hall_sens_read();
-
 static TinyGPS* gps = 0;
 static bool newGPSData = false;
 
@@ -174,7 +172,10 @@ void bee_flush()
     uart_flush(BEE_UART_NUM);
 }
 
-extern "C" uint8_t temprature_sens_read();
+extern "C" {
+uint8_t temprature_sens_read();
+int32_t hall_sens_read();
+}
 
 // get chip temperature sensor
 uint8_t readChipTemperature()
@@ -185,6 +186,17 @@ uint8_t readChipTemperature()
 int32_t readChipHallSensor()
 {
   return hall_sens_read();
+}
+
+uint16_t getFlashSize()
+{
+    char out;
+    uint16_t size = 16384;
+    do {
+        if (spi_flash_read((size_t)size * 1024 - 1, &out, 1) == ESP_OK)
+            return size;
+    } while ((size >>= 1));
+    return 0;
 }
 
 bool Task::create(void (*task)(void*), const char* name, int priority)
