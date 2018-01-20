@@ -8,7 +8,7 @@
 #include <Arduino.h>
 #include "utility/OBD.h"
 
-#define OBD_TIMEOUT_SHORT 2000 /* ms */
+#define OBD_TIMEOUT_SHORT 1000 /* ms */
 #define OBD_TIMEOUT_LONG 10000 /* ms */
 
 #define SPI_PIN_CS 2
