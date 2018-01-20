@@ -48,12 +48,12 @@ uint16_t hex2uint16(const char *p)
 {
 	char c = *p;
 	uint16_t i = 0;
-	for (char n = 0; c && n < 4; c = *(++p)) {
+	for (uint8_t n = 0; c && n < 4; c = *(++p)) {
 		if (c >= 'A' && c <= 'F') {
 			c -= 7;
 		} else if (c>='a' && c<='f') {
 			c -= 39;
-        } else if (c == ' ') {
+        } else if (c == ' ' && n == 2) {
             continue;
         } else if (c < '0' || c > '9') {
 			break;
@@ -324,21 +324,31 @@ float COBD::getVoltage()
 
 bool COBD::getVIN(char* buffer, byte bufsize)
 {
-	if (sendCommand("0902\r", buffer, bufsize)) {
-        char *p = strstr(buffer, "0: 49 02");
-        if (p) {
-            char *q = buffer;
-            p += 10;
-            do {
-                for (++p; *p == ' '; p += 3) {
-                    if (*q = hex2uint8(p + 1)) q++;
-                }
-                p = strchr(p, ':');
-            } while(p);
-            *q = 0;
-            return true;
-        }
-    }
+	for (byte n = 0; n < 3; n++) {
+		if (sendCommand("0902\r", buffer, bufsize)) {
+			int len = hex2uint16(buffer);
+			char *p = strstr(buffer + 4, "0: 49 02 01");
+			if (p) {
+				char *q = buffer;
+				p += 11; // skip the header
+				do {
+					while (*(++p) == ' ');
+					for (;;) {
+						*(q++) = hex2uint8(p);
+						while (*p && *p != ' ') p++;
+						while (*p == ' ') p++;
+						if (!*p || *p == '\r') break;
+					}
+					p = strchr(p, ':');
+				} while(p);
+				*q = 0;
+				if (q - buffer == len - 3) {
+					return true;
+				}
+			}
+		}
+		delay(10);
+	}
     return false;
 }
 
@@ -447,6 +457,7 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		stage = 0;
 		if (n != 0) reset();
 		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
+			delay(10);
 			if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
 				continue;
 			}
@@ -454,11 +465,13 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		stage = 1;
 		if (protocol != PROTO_AUTO) {
 			sprintf(buffer, "ATSP%u\r", protocol);
+			delay(10);
 			if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
 				continue;
 			}
 		}
 		stage = 2;
+		delay(10);
 		if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
 			continue;
 		}
@@ -469,6 +482,7 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		for (byte i = 0; i < 4; i++) {
 			byte pid = i * 0x20;
 			sprintf(buffer, "%02X%02X\r", dataMode, pid);
+			delay(10);
 			write(buffer);
 			if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0) {
 				if (checkErrorMessage(buffer)) {
@@ -701,9 +715,10 @@ bool COBDSPI::readPID(byte pid, int& result)
 			byte curpid = hex2uint8(p);
 			if (curpid == pid) {
 				errors = 0;
-				p += 2;
-				if (*p == ' ') {
-					data = p + 1;
+				while (*p && *p != ' ') p++;
+				while (*p == ' ') p++;
+				if (*p) {
+					data = p;
 					break;
 				}
 			}
