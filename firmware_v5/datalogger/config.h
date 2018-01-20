@@ -49,11 +49,4 @@
 // motion detection
 #define WAKEUP_MOTION_THRESHOLD 0.2 /* G */
 
-// SD pin
-#ifdef ESP32
-#define SD_CS_PIN 5
-#else
-#define SD_CS_PIN 10
-#endif
-
 #endif // CONFIG_H_INCLUDED

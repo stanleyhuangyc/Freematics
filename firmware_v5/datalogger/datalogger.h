@@ -12,7 +12,6 @@ File sdfile;
 
 class CDataLogger {
 public:
-    CDataLogger():dataTime(0),dataCount(0) {}
     void record(const char* buf, byte len)
     {
 #if ENABLE_DATA_LOG
@@ -97,6 +96,6 @@ public:
         sdfile.flush();
     }
 #endif
-    uint32_t dataTime;
-    uint32_t dataCount;
+    uint32_t dataTime = 0;
+    uint32_t dataCount = 0;
 };
