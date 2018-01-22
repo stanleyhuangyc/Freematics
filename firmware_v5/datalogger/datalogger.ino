@@ -220,6 +220,7 @@ public:
   #endif
         clearState(STATE_OBD_READY | STATE_GPS_READY);
         Serial.println("Standby");
+        ble.println("Standby");
   #if MEMS_MODE
         if (checkState(STATE_MEMS_READY)) {
           calibrateMEMS();
@@ -246,6 +247,7 @@ public:
         while (!obd.init()) Serial.print('.');
   #endif
         Serial.println("Wakeup");
+        ble.println("Wakeup");
     }
     bool checkState(byte flags) { return (m_state & flags) == flags; }
     void setState(byte flags) { m_state |= flags; }
@@ -255,6 +257,43 @@ private:
 };
 
 CLogger logger;
+
+void showStats()
+{
+    uint32_t t = millis() - startTime;
+    // calculate samples per second
+    float sps = (float)logger.dataCount * 1000 / t;
+    // output to serial monitor
+    char timestr[24];
+    sprintf(timestr, "%02u:%02u.%c", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
+    uint32_t fileSize = sdfile.size();
+#if !ENABLE_DATA_OUT
+    Serial.print(timestr);
+    Serial.print(" | ");
+    Serial.print(logger.dataCount);
+    Serial.print(" samples | ");
+    Serial.print(sps, 1);
+    Serial.print(" sps | ");
+    if (fileSize > 0) {
+      digitalWrite(PIN_LED, HIGH);
+      logger.flushData(fileSize);
+      Serial.print(fileSize);
+      Serial.print(" bytes");
+      digitalWrite(PIN_LED, LOW);
+    }
+    Serial.println();
+#endif
+    // output via BLE
+    ble.print(timestr);
+    ble.print(' ');
+    ble.print(sps, 1);
+    if (fileSize > 0) {
+      ble.print(' ');
+      ble.print(fileSize >> 10);
+      ble.print('K');
+    }
+    ble.println();
+}
 
 void setup()
 {
@@ -396,31 +435,5 @@ void loop()
     logger.logGPSData();
 #endif
 
-    // calculate samples per second
-    float sps = (float)logger.dataCount * 1000 / (millis() - startTime);
-    // output to serial monitor
-#if !ENABLE_DATA_OUT
-    Serial.print(logger.dataCount);
-    Serial.print(" samples ");
-    Serial.print(sps, 1);
-    Serial.print(" sps ");
-    uint32_t fileSize = sdfile.size();
-    if (fileSize > 0) {
-      digitalWrite(PIN_LED, HIGH);
-      logger.flushData(fileSize);
-      Serial.print(fileSize);
-      Serial.print(" bytes");
-      digitalWrite(PIN_LED, LOW);
-    }
-    Serial.println();
-#endif
-    // output via BLE
-    ble.print(logger.dataCount);
-    ble.print(' ');
-    ble.print(sps);
-    if (fileSize > 0) {
-      ble.print(' ');
-      ble.print(fileSize);
-    }
-    ble.println();
+    showStats();
 }
