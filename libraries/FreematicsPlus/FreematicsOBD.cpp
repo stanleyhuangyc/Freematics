@@ -15,6 +15,7 @@ HardwareSerial OBDUART(1);
 
 void gps_decode_task(int timeout);
 
+#define SAFE_MODE 0
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
@@ -623,7 +624,11 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				break;
 			}
 		}
+#if SAFE_MODE
 		sleep(10);
+#else
+		sleep(1);
+#endif
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
@@ -706,7 +711,11 @@ bool COBDSPI::readPID(byte pid, int& result)
 	char* data = 0;
 	sprintf(buffer, "%02X%02X\r", dataMode, pid);
 	write(buffer);
+#if SAFE_MODE
 	sleep(20);
+#else
+	sleep(1);
+#endif
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
 		while ((p = strstr(p, "41 "))) {
