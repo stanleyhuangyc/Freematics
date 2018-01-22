@@ -1,12 +1,12 @@
 /****************************************************************************
 *
-* Arduino Library for Freematics ESPRIT
+* Arduino Helper Library for Freematics Esprit Development Board
 * Distributed under BSD license
 *
 * This library currently provides access to BLE (GATT server), NVS, Flash I/O
 * and additional hardware serial UARTs, within the scope of Arduino.
 *
-* (C)2017 Developed by Stanley Huang <support@freematics.com.au>
+* Developed by Stanley Huang <stanley@freematics.com.au>
 * Visit http://freematics.com/products/freematics-esprit for more information
 *
 ****************************************************************************/
