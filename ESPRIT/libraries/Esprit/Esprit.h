@@ -1,14 +1,35 @@
 /****************************************************************************
-* Arduino Library for Freematics ESPRIT
+* Arduino Helper Library for Freematics Esprit Development Board
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-esprit for more information
-* (C)2017 Developed by Stanley Huang <support@freematics.com.au>
+* Developed by Stanley Huang <stanley@freematics.com.au>
 ****************************************************************************/
 
 #ifndef Esprit_h
 #define Esprit_h
 
 #define PIN_LED 4
+
+#define D0 16
+#define D1 17
+#define D2 2
+#define D3 27
+#define D4 26
+#define D5 25
+#define D6 15
+#define D7 13
+#define D8 12
+#define D9 14
+#define D10 5
+#define D11 23
+#define D12 19
+#define D13 18
+#define A0 36
+#define A1 35
+#define A2 34
+#define A3 39
+#define A4 32
+#define A5 33
 
 #ifndef _SIM
 #include "esp_system.h"
