@@ -39,7 +39,7 @@ Commands can be sent to Freematics ONE+ with results responded, through serial t
 * SET INTERVAL [interval in ms] - setting data sending interval
 * SET SYNC [interval in ms] - setting server sync checking interval
 * STATS - returning some stats
-* OBD [PID] - querying and returning specified PID value
+* OBD [PID] - querying and returning specified OBD-II PID value (raw data)
 
 
 Prerequisites
