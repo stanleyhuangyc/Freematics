@@ -363,3 +363,73 @@ void CFreematicsESP32::sleep(unsigned int ms)
 		gps_decode_task(ms - elapsed);
 	}
 }
+
+
+extern "C" {
+  void gatts_init(const char* device_name);
+  int gatts_send(uint8_t* data, size_t len);
+}
+
+bool GATTServer::initBLE()
+{
+  btStart();
+  esp_err_t ret = esp_bluedroid_init();
+  if (ret) {
+      Serial.println("Bluetooth failed");
+      return false;
+  }
+  ret = esp_bluedroid_enable();
+  if (ret) {
+      Serial.println("Error enabling bluetooth");
+      return false;
+  }
+  return true;
+}
+
+static GATTServer* gatts_inst;
+
+bool GATTServer::begin(const char* deviceName)
+{
+  gatts_inst = this;
+  if (!initBLE()) return false;
+  gatts_init(deviceName);
+  return true;
+}
+
+bool GATTServer::send(uint8_t* data, size_t len)
+{
+  return gatts_send(data, len);
+}
+
+size_t GATTServer::write(uint8_t c)
+{
+    bool success = true;
+    if (sendbuf.length() >= MAX_BLE_MSG_LEN) {
+        success = send((uint8_t*)sendbuf.c_str(), sendbuf.length());
+        sendbuf = "";
+    }
+    sendbuf += (char)c;
+    if (c == '\n') {
+        success = send((uint8_t*)sendbuf.c_str(), sendbuf.length());
+        sendbuf = "";
+    }
+    return 1;
+}
+
+extern "C" {
+
+size_t gatts_read_callback(uint8_t* buffer, size_t len)
+{
+	if (gatts_inst) {
+		return gatts_inst->onRequest(buffer, len);
+	} else {
+		return 0;
+	}
+}
+
+void gatts_write_callback(uint8_t* data, size_t len)
+{
+    if (gatts_inst) gatts_inst->onReceive(data, len);
+}
+
+}
