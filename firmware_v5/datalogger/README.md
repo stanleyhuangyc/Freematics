@@ -5,10 +5,11 @@ Data Collection
 
 The sketch collects follow data.
 
-* OBD-II data (from a OBD-II certified vehicle)
-* Battery voltage (from OBD-II port)
-* GPS data (from connected GPS receiver)
-* MEMS data (from built-in motion sensor)
+* Vehicle OBD-II PIDs data (from OBD port)
+* Battery voltage (from OBD port)
+* Geolocation data (from connected GPS receiver)
+* Acceleration data (from built-in motion sensor)
+* Orientation data (computed from motion sensor data)
 
 GPS
 ---
@@ -24,7 +25,6 @@ Orientation
 -----------
 
 The device orientation (yaw, pitch roll) can be calculated from collected motion sensor data with quanterion algorithm. This normally reflects the orientation of the vehicle if the device is fixed to vehicle (e.g. firmly plugged in OBD port)  This feature consumes extra computation power and is disabled by default.
-
 
 Prerequisites
 -------------
