@@ -1,8 +1,8 @@
 /*************************************************************************
-* OBD-II/MEMS/GPS Data Logging Sketch for Freematics ONE
+* OBD-II/MEMS/GPS Data Logger Sketch for Freematics ONE+
 * Distributed under BSD license
-* Visit http://freematics.com/products/freematics-one for more information
-* Developed by Stanley Huang <support@freematics.com.au>
+* Visit http://freematics.com/products/freematics-one-plus for more information
+* Developed by Stanley Huang <stanley@freematics.com.au>
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
