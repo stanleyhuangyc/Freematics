@@ -31,6 +31,7 @@ uint32_t startTime = 0;
 uint32_t pidErrors = 0;
 
 COBDSPI obd;
+GATTServer ble;
 
 #if MEMS_MODE
 
@@ -108,7 +109,6 @@ public:
       }
 #endif
 
-#if ENABLE_DATA_LOG
       if (!checkState(STATE_SD_READY)) {
         Serial.print("SD ");
         uint16_t volsize = initSD();
@@ -120,7 +120,6 @@ public:
           Serial.println("NO");
         }
       }
-#endif
 
       startTime = millis();
       dataCount = 0;
@@ -173,7 +172,6 @@ public:
         }
     }
 #endif
-#if ENABLE_DATA_LOG
     uint16_t initSD()
     {
         pinMode(PIN_SD_CS, OUTPUT);
@@ -199,14 +197,11 @@ public:
 #endif
         }
     }
-#endif
     void reconnect()
     {
         if (obd.init()) return;
         // try to re-connect to OBD
-#if ENABLE_DATA_LOG
         closeFile();
-#endif
         // turn off GPS power
 #if USE_GPS
         gpsInit(0);
@@ -272,6 +267,8 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
+    ble.begin("Freematics ONE+");
+
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
@@ -307,7 +304,6 @@ void loop()
       return;
     }
 #endif
-#if ENABLE_DATA_LOG
     if (!logger.checkState(STATE_FILE_READY) && logger.checkState(STATE_SD_READY)) {
       digitalWrite(PIN_LED, HIGH);
 #if USE_GPS
@@ -336,7 +332,6 @@ void loop()
       digitalWrite(PIN_LED, LOW);
       return;
     }
-#endif
 #if USE_OBD
     byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
     logger.dataTime = millis();
@@ -346,8 +341,11 @@ void loop()
       if (obd.readPID(pid, value)) {
         logger.log((uint16_t)pids[i] | 0x100, value);
       } else {
-        Serial.print("PID errors ");
-        Serial.println(++pidErrors);
+        pidErrors++;
+        Serial.print("PID errors: ");
+        Serial.println(pidErrors);
+        ble.print("PID errors: ");
+        ble.println(pidErrors);
         if (obd.errors >= 3) {
           obd.reset();
           logger.reconnect();
@@ -398,19 +396,31 @@ void loop()
     logger.logGPSData();
 #endif
 
+    // calculate samples per second
+    float sps = (float)logger.dataCount * 1000 / (millis() - startTime);
+    // output to serial monitor
 #if !ENABLE_DATA_OUT
     Serial.print(logger.dataCount);
     Serial.print(" samples ");
-    Serial.print((float)logger.dataCount * 1000 / (millis() - startTime), 1);
+    Serial.print(sps, 1);
     Serial.print(" sps ");
-#if ENABLE_DATA_LOG
     uint32_t fileSize = sdfile.size();
     if (fileSize > 0) {
+      digitalWrite(PIN_LED, HIGH);
       logger.flushData(fileSize);
       Serial.print(fileSize);
       Serial.print(" bytes");
+      digitalWrite(PIN_LED, LOW);
     }
-#endif
     Serial.println();
 #endif
+    // output via BLE
+    ble.print(logger.dataCount);
+    ble.print(' ');
+    ble.print(sps);
+    if (fileSize > 0) {
+      ble.print(' ');
+      ble.print(fileSize);
+    }
+    ble.println();
 }

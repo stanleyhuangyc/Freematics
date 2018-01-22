@@ -5,19 +5,15 @@
 * Visit http://freematics.com for more information
 *************************************************************************/
 
-#if ENABLE_DATA_LOG
 SDClass SD;
 File sdfile;
-#endif
 
 class CDataLogger {
 public:
     void record(const char* buf, byte len)
     {
-#if ENABLE_DATA_LOG
         sdfile.write((uint8_t*)buf, len);
         sdfile.write('\n');
-#endif
 #if ENABLE_DATA_OUT
         // skip timestamp
         char *p = strchr(buf, ',');
@@ -57,7 +53,6 @@ public:
         byte len = sprintf_P(buf, PSTR("%lu,%X,%d.%06lu"), dataTime, pid, (int)(value / 1000000), abs(value) % 1000000);
         record(buf, len);
     }
-#if ENABLE_DATA_LOG
     bool openFile(uint32_t dateTime = 0)
     {
         char path[16]; // = "/DATA";
@@ -95,7 +90,6 @@ public:
     {
         sdfile.flush();
     }
-#endif
     uint32_t dataTime = 0;
     uint32_t dataCount = 0;
 };

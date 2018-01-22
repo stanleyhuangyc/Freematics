@@ -10,10 +10,7 @@
 * Data logging/streaming out
 **************************************/
 
-#ifndef ENABLE_DATA_LOG
-
-// enable(1)/disable(0) data logging (if SD card is present)
-#define ENABLE_DATA_LOG 1
+#ifndef ENABLE_DATA_OUT
 
 // enable(1)/disable(0) data streaming
 #define ENABLE_DATA_OUT 0
