@@ -10,7 +10,6 @@
     <option name="DMP" const="MEMS_MODE=MEMS_DMP"/>
   </define>
   <define name="Enable Quaternion" type="bool" const="ENABLE_ORIENTATION" default="false"/>
-  <define name="Enable Data Logging" type="bool" const="ENABLE_DATA_LOG" default="true"/>
   <define name="Enable Data Output" type="bool" const="ENABLE_DATA_OUT" default="false"/>
   <define name="Data File Size Limit (KB)" const="MAX_DATA_FILE_SIZE" type="number" default="1024"/>
 </target>
