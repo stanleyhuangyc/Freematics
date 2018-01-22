@@ -324,7 +324,7 @@ float COBD::getVoltage()
 
 bool COBD::getVIN(char* buffer, byte bufsize)
 {
-	for (byte n = 0; n < 3; n++) {
+	for (byte n = 0; n < 5; n++) {
 		if (sendCommand("0902\r", buffer, bufsize)) {
 			int len = hex2uint16(buffer);
 			char *p = strstr(buffer + 4, "0: 49 02 01");
@@ -347,7 +347,7 @@ bool COBD::getVIN(char* buffer, byte bufsize)
 				}
 			}
 		}
-		delay(10);
+		delay(100);
 	}
     return false;
 }
@@ -698,7 +698,6 @@ void COBDSPI::write(const char* s)
 	sleep(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
-	sleep(1);
 }
 
 bool COBDSPI::readPID(byte pid, int& result)
