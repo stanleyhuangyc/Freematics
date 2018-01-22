@@ -27,6 +27,21 @@ The sketch implements following data storage.
 * MicroSD card storage
 * ESP32 built-in Flash memory storage (under development)
 
+Remote Commands
+---------------
+
+Commands can be sent to Freematics ONE+ with results responded, through serial terminal, BLE or [Freematics Hub API](https://freematics.com/hub/api/). Currently following commands are implemented.
+
+* LED [0/1/2] - setting device LED status (0:auto 1:always off 2:always on)
+* REBOOT - performing a reboot immediately
+* STANDBY - entering standby mode immediately
+* WAKEUP - waking up the device from standby mode
+* SET INTERVAL [interval in ms] - setting data sending interval
+* SET SYNC [interval in ms] - setting server sync checking interval
+* STATS - returning some stats
+* OBD [PID] - querying and returning specified PID value
+
+
 Prerequisites
 -------------
 
