@@ -3,7 +3,7 @@ This Arduino sketch is designed for running on [Freematics ONE+](https://freemat
 Data Collection
 ---------------
 
-The sketch implements telematics data collection for Freematics ONE+ including
+The sketch collects following data.
 
 * OBD-II data (from a OBD-II certified vehicle)
 * GPS data (from either internal or external GPS)
@@ -12,29 +12,26 @@ The sketch implements telematics data collection for Freematics ONE+ including
 Data Transmissions
 ------------------
 
-The sketch implements telematics data transmissions for Freematics ONE+ including
+The sketch implements data transmissions with following networking hardware.
 
 * BLE (ESP32 built-in)
 * WIFI (ESP32 built-in)
-* 2G cellular network (plugged-in SIM800 bee module)
-* 3G cellular network (plugged-in SIM5360 bee module)
-* Serial USB
+* GSM/GPRS (optional SIM800 bee module)
+* WCDMA (optional SIM5360 bee module)
 
 Data Storage
 ------------
 
-The sketch implements telematics data storage for Freematics ONE+ including
+The sketch implements following data storage.
 
-* RAM cache
-* ESP32 built-in Flash memory storage
 * MicroSD card storage
+* ESP32 built-in Flash memory storage (under development)
 
 Prerequisites
 -------------
 
-* Freematics ONE+
-* SIM800 or SIM5360 bee module if cellular network required
-* PlatformIO or Arduino IDE
-* A Freematics Hub server key
-* A micro SIM card
-* A car with OBD-II port
+* [Freematics ONE+](https://freematics.com/products/freematics-one-plus/)
+* SIM800 or SIM5360 bee module and a micro SIM card if cellular network required
+* [Freematics Hub server software](https://freematics.com/hub) (freeware)
+* [PlatformIO](http://platformio.org/), [Arduino IDE](https://github.com/espressif/arduino-esp32#installation-instructions) or [Freematics Arduino Builder](https://freematics.com/software/arduino-builder) for compiling and uploading code
+* A car with OBD-II port or [Freematics OBD-II Emulator](https://freematics.com/products/freematics-obd-emulator-mk2/)
