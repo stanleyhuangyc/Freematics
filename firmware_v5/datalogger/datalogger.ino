@@ -273,10 +273,11 @@ void showStats()
     Serial.print(logger.dataCount);
     Serial.print(" samples | ");
     Serial.print(sps, 1);
-    Serial.print(" sps | ");
+    Serial.print(" sps");
     if (fileSize > 0) {
       digitalWrite(PIN_LED, HIGH);
       logger.flushData(fileSize);
+      Serial.print(" | ");
       Serial.print(fileSize);
       Serial.print(" bytes");
       digitalWrite(PIN_LED, LOW);
@@ -285,6 +286,8 @@ void showStats()
 #endif
     // output via BLE
     ble.print(timestr);
+    ble.print(' ');
+    ble.print(logger.dataCount);
     ble.print(' ');
     ble.print(sps, 1);
     if (fileSize > 0) {
@@ -390,6 +393,8 @@ void loop()
           logger.reconnect();
         }
       }
+#else
+    {
 #endif
 
 #if MEMS_MODE
@@ -423,9 +428,9 @@ void loop()
 #endif
       }
 #endif
+    }
 
 #if USE_OBD
-    }
     // log battery voltage (from voltmeter), data in 0.01v
     int v = obd.getVoltage() * 100;
     logger.log(PID_BATTERY_VOLTAGE, v);
