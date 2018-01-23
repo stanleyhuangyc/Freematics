@@ -91,6 +91,8 @@ public:
 	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
 	// write data to SPI bus
 	void write(const char* s);
+	// write data to SPI bus (without header)
+	void write(uint8_t* data, int bytes);
 	// read specified OBD-II PID value
 	bool readPID(byte pid, int& result);
 	// send AT command and receive response
