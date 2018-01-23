@@ -3,11 +3,14 @@ This Arduino sketch is designed for running on [Freematics ONE+](https://freemat
 Data Collection
 ---------------
 
-The sketch collects following data.
+The sketch can collect following data.
 
-* OBD-II data (from a OBD-II certified vehicle)
-* GPS data (from either internal or external GPS)
-* MEMS data (from built-in MPU-9250 motion sensor)
+* Vehicle OBD-II PIDs data (from OBD port)
+* Battery voltage (from OBD port)
+* Geolocation data (from connected GPS receiver)
+* Acceleration data (from built-in motion sensor)
+* Orientation data (computed from motion sensor data)
+* CPU temperature (from ESP32 built-in sensor)
 
 Data Transmissions
 ------------------
