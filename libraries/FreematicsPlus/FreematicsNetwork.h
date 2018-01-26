@@ -92,31 +92,6 @@ protected:
   String m_serverName;
 };
 
-class CTeleClientSerialUSB : public CTeleClient
-{
-public:
-    bool netSend(const char* data, unsigned int len)
-    {
-      Serial.write((uint8_t*)data, len);
-      Serial.write('\n');
-      return true;
-    }
-    const char* netDeviceName() { return "Serial"; }
-};
-
-#ifdef ESP32
-
-class CTeleClientBLE : public CTeleClient
-{
-public:
-    bool netSend(const char* data, unsigned int len)
-    {
-      return bleSend(data, len);
-    }
-    char* netReceive(int* pbytes = 0, unsigned int timeout = 1000) { return 0; }
-    const char* netDeviceName() { return "BLE"; }
-};
-
 class CTeleClientWIFI : public CTeleClient, public virtual CFreematics
 {
 public:
@@ -136,8 +111,6 @@ public:
     uint16_t udpPort;
     WiFiUDP udp;
 };
-
-#endif
 
 class CTeleClientSIM800 : public CTeleClient, public virtual CFreematics
 {

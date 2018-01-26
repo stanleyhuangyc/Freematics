@@ -12,72 +12,9 @@
 
 #define XBEE_BAUDRATE 115200
 
-#ifdef ESP32
-
-static CTeleClient* gatts_inst = 0;
-
-extern "C" {
-
-void gatts_init(const char* device_name);
-void gatts_uninit();
-int gatts_send(uint8_t* data, size_t len);
-
-size_t gatts_read_callback(uint8_t* buffer, size_t len)
-{
-	if (gatts_inst) {
-		return gatts_inst->onRequestBLE(buffer, len);
-	} else {
-		return 0;
-	}
-}
-
-void gatts_write_callback(uint8_t* data, size_t len)
-{
-    if (gatts_inst) gatts_inst->onReceiveBLE(data, len);
-}
-
-}
-
-bool CTeleClient::bleBegin(const char* bleDeviceName)
-{
-  btStart();
-  esp_err_t ret = esp_bluedroid_init();
-  if (ret) {
-      Serial.println("Bluetooth failed");
-      return false;
-  }
-  ret = esp_bluedroid_enable();
-  if (ret) {
-      Serial.println("Error enabling bluetooth");
-      return false;
-  }
-  gatts_inst = this;
-  gatts_init(bleDeviceName);
-  return true;
-}
-
-void CTeleClient::bleEnd()
-{
-  gatts_uninit();
-}
-
-bool CTeleClient::bleSend(const char* data, unsigned int len)
-{
-  return gatts_inst && gatts_send((uint8_t*)data, len);
-}
-
-void  CTeleClient::blePrint(String s)
-{
-	if (gatts_inst) gatts_send((uint8_t*)s.c_str(), s.length());
-}
-
-#endif
-
 /*******************************************************************************
   Implementation for ESP32 built-in WIFI (Arduino WIFI library)
 *******************************************************************************/
-
-#ifdef ESP32
 
 bool CTeleClientWIFI::netSetup(const char* ssid, const char* password, unsigned int timeout)
 {
@@ -138,12 +75,10 @@ String CTeleClientWIFI::queryIP(const char* host)
 
 void CTeleClientWIFI::netEnd()
 {
-  WiFi.disconnect();
+  WiFi.disconnect(true);
   // deactivate WIFI
-  esp_wifi_set_mode(WIFI_MODE_NULL);
+  //esp_wifi_set_mode(WIFI_MODE_NULL);
 }
-
-#endif
 
 /*******************************************************************************
   Implementation for SIM800 (SIM800 AT command-set)
