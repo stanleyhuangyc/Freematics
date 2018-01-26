@@ -5,11 +5,9 @@
 * Configuration Definitions
 **************************************/
 #define NET_NONE 0
-#define NET_SERIAL 1
-#define NET_BLE 2
-#define NET_WIFI 3
-#define NET_SIM800 4
-#define NET_SIM5360 5
+#define NET_WIFI 1
+#define NET_SIM800 2
+#define NET_SIM5360 3
 
 #define MEMS_DISABLED 0
 #define MEMS_ACC 1
@@ -68,10 +66,6 @@
 /**************************************
 * BLE configurations
 **************************************/
-#ifndef ENABLE_BLE
-#define ENABLE_BLE 1
-#endif
-
 #ifdef DEVICE_ID
 #define BLE_DEVICE_NAME DEVICE_ID
 #else
@@ -87,13 +81,11 @@
 #endif
 #ifndef STORAGE_SIZE
 #endif
-#if NET_DEVICE == NET_BLE || !defined(ESP32)
-#define RAM_CACHE_SIZE 160 /* bytes */
-#else
-#define RAM_CACHE_SIZE 1500 /* bytes */
-#endif
+
+#define RAM_CACHE_SIZE 1024 /* bytes */
+
 #ifndef DATA_SENDING_INTERVAL
-#define DATA_SENDING_INTERVAL 3000 /* ms */
+#define DATA_SENDING_INTERVAL 1000 /* ms */
 #endif
 #define SERVER_SYNC_INTERVAL 60 /* seconds, 0 to disable */
 
