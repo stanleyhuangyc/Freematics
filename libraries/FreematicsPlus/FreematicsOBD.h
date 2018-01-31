@@ -13,6 +13,7 @@
 
 #define SPI_PIN_CS 2
 #define SPI_PIN_READY 13
+#define SPI_FREQ 1000000
 
 int dumpLine(char* buffer, int len);
 uint16_t hex2uint16(const char *p);
@@ -79,7 +80,7 @@ protected:
 	OBD_STATES m_state = OBD_DISCONNECTED;
 private:
 	void recover();
-	virtual void idleTask() {}
+	virtual void idleTasks() {}
 };
 
 class COBDSPI : public COBD {

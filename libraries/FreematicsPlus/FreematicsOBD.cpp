@@ -15,8 +15,7 @@ HardwareSerial OBDUART(1);
 
 void gps_decode_task(int timeout);
 
-#define SAFE_MODE 0
-//#define XBEE_DEBUG
+#define SAFE_MODE 1
 //#define DEBUG Serial
 
 #ifdef DEBUG
@@ -95,7 +94,7 @@ byte hex2uint8(const char *p)
 byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 {
 	write(cmd);
-	idleTask();
+	idleTasks();
 	return receive(buf, bufsize, timeout);
 }
 
@@ -428,7 +427,7 @@ int COBD::receive(char* buffer, int bufsize, unsigned int timeout)
 			    // timeout
 			    break;
 			}
-			idleTask();
+			idleTasks();
 		}
 	}
 	if (buffer) {
@@ -590,7 +589,7 @@ int16_t COBD::getTemperatureValue(char* data)
 
 static const char header[] = {'$','O','B','D'};
 
-//SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
+//SPISettings spiSettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 byte COBDSPI::begin()
 {
@@ -598,7 +597,7 @@ byte COBDSPI::begin()
 	pinMode(SPI_PIN_CS, OUTPUT);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
-	SPI.setFrequency(1000000);
+	SPI.setFrequency(SPI_FREQ);
 	delay(50);
 	return getVersion();
 }
