@@ -42,6 +42,8 @@ uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 
+GATTServer BLE;
+
 void printTimeoutStats()
 {
   Serial.print("Timeouts: OBD:");
@@ -51,11 +53,7 @@ void printTimeoutStats()
 }
 
 class CTeleLogger : public virtual CFreematicsESP32,
-#if NET_DEVICE == NET_SERIAL
-public CTeleClientSerialUSB
-#elif NET_DEVICE == NET_BLE
-public CTeleClientBLE
-#elif NET_DEVICE == NET_WIFI
+#if NET_DEVICE == NET_WIFI
 public CTeleClientWIFI
 #elif NET_DEVICE == NET_SIM800
 public CTeleClientSIM800
@@ -77,7 +75,7 @@ public:
       if (mems.begin()) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
-        blePrint("MEMS OK");
+        BLE.println("MEMS OK");
       } else {
         Serial.println("NO");
       }
@@ -95,7 +93,7 @@ public:
       }
       timeoutsOBD = 0;
       Serial.println("OK");
-      blePrint("OBD OK");
+      BLE.println("OBD OK");
       setState(STATE_OBD_READY);
     }
 #endif
@@ -107,7 +105,7 @@ public:
       if (gpsInit(GPS_SERIAL_BAUDRATE)) {
         setState(STATE_GPS_READY);
         Serial.println("OK");
-        blePrint("GPS OK");
+        BLE.println("GPS OK");
       } else {
         Serial.println("NO");
       }
@@ -120,7 +118,7 @@ public:
       Serial.print(WIFI_SSID);
       Serial.print(")...");
       if (netBegin() && netSetup(WIFI_SSID, WIFI_PASSWORD)) {
-        blePrint("WIFI OK");
+        BLE.println("WIFI OK");
         Serial.println("OK");
         setState(STATE_NET_READY);
         break;
@@ -138,7 +136,7 @@ public:
       Serial.print("...");
       if (netBegin()) {
         Serial.println("OK");
-        blePrint("NET OK");
+        BLE.println("NET OK");
         setState(STATE_NET_READY);
       } else {
         Serial.println("NO");
@@ -149,11 +147,11 @@ public:
     Serial.print(CELL_APN);
     Serial.print(")");
     if (netSetup(CELL_APN)) {
-      blePrint("CELL OK");
+      BLE.println("CELL OK");
       String op = getOperatorName();
       if (op.length()) {
         Serial.println(op);
-        blePrint(op);
+        BLE.println(op);
       } else {
         Serial.println("OK");
       }
@@ -173,7 +171,7 @@ public:
     String ip = getIP();
     if (ip.length()) {
       Serial.println(ip);
-      blePrint(ip);
+      BLE.println(ip);
     } else {
       Serial.println("NO");
     }
@@ -321,7 +319,7 @@ public:
     } else {
       return "INVALID";
     }
-    blePrint(result.c_str());
+    BLE.println(result.c_str());
     return result;
   }
 
@@ -398,7 +396,7 @@ public:
 
     if (syncInterval > 10000 && millis() - lastSyncTime > syncInterval) {
       Serial.println("NO SYNC");
-      blePrint("NO SYNC");
+      BLE.println("NO SYNC");
       connErrors++;
       timeoutsNet++;
       printTimeoutStats();
@@ -412,7 +410,7 @@ public:
     if (deviceTemp >= COOLING_DOWN_TEMP) {
       // device too hot, cool down
       Serial.println("Cooling down");
-      blePrint("Cooling down");
+      BLE.println("Cooling down");
       delay(10000);
       // ignore syncing
       lastSyncTime = millis();
@@ -427,7 +425,7 @@ public:
 #if ENABLE_OBD
     if (obd.errors > MAX_OBD_ERRORS) {
       Serial.println("Reset OBD");
-      blePrint("Reset OBD");
+      BLE.println("Reset OBD");
       obd.reset();
       clearState(STATE_OBD_READY | STATE_ALL_GOOD);
     }
@@ -492,7 +490,7 @@ public:
     }
     return false;
 #elif NET_DEVICE == NET_BLE
-    blePrint(payload);
+    BLE.println(payload);
     return true;
 #endif
   }
@@ -610,7 +608,7 @@ public:
       sprintf(buf, "%uB sent %lu KB saved", cache.length(), store.size() >> 10);
 #endif
       Serial.println(buf);
-      blePrint(buf);
+      BLE.println(buf);
       // purge cache and place a header
       cache.header(feedid);
       lastSentTime = millis();
@@ -659,7 +657,7 @@ public:
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
       setState(STATE_STANDBY);
       Serial.println("Standby");
-      blePrint("Standby");
+      BLE.println("Standby");
 #if MEMS_MODE
       if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
@@ -685,7 +683,7 @@ public:
 #endif
       clearState(STATE_STANDBY);
       Serial.println("Wakeup");
-      blePrint("Wakeup");
+      BLE.println("Wakeup");
   }
 
   bool checkState(byte flags) { return (m_state & flags) == flags; }
@@ -762,7 +760,7 @@ private:
               char buf[32];
               sprintf(buf, "UTC:%08lu SAT:%u", gd.time, (unsigned int)gd.sat);
               Serial.println(buf);
-              blePrint(buf);
+              BLE.println(buf);
             }
         }
     }
@@ -886,13 +884,12 @@ void setup()
     Serial.print("MHz ");
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
+    
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     // perform initializations
-#if ENABLE_BLE
-    logger.bleBegin(BLE_DEVICE_NAME);
-    delay(100);
-#endif
+    BLE.begin(BLE_DEVICE_NAME);
+
     digitalWrite(PIN_LED, HIGH);
     logger.setup();
     digitalWrite(PIN_LED, LOW);

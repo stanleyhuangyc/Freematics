@@ -13,6 +13,7 @@
 
 #define SPI_PIN_CS 2
 #define SPI_PIN_READY 13
+#define SPI_FREQ 1000000
 
 int dumpLine(char* buffer, int len);
 uint16_t hex2uint16(const char *p);
@@ -79,7 +80,7 @@ protected:
 	OBD_STATES m_state = OBD_DISCONNECTED;
 private:
 	void recover();
-	virtual void idleTask() {}
+	virtual void idleTasks() {}
 };
 
 class COBDSPI : public COBD {
@@ -91,6 +92,8 @@ public:
 	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
 	// write data to SPI bus
 	void write(const char* s);
+	// write data to SPI bus (without header)
+	void write(uint8_t* data, int bytes);
 	// read specified OBD-II PID value
 	bool readPID(byte pid, int& result);
 	// send AT command and receive response

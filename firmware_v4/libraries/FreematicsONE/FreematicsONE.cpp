@@ -273,20 +273,30 @@ float COBDSPI::getVoltage()
 bool COBDSPI::getVIN(char* buffer, byte bufsize)
 {
 	setTarget(TARGET_OBD);
-	if (sendCommand("0902\r", buffer, bufsize, OBD_TIMEOUT_LONG * 2)) {
-	    char *p = strstr(buffer, "49 02");
-	    if (p) {
-	        char *q = buffer;
-	        p += 10;
-	        do {
-	            for (++p; *p == ' '; p += 3) {
-	                if ((*q = hex2uint8(p + 1))) q++;
-	            }
-	            p = strchr(p, ':');
-	        } while(p);
-	        *q = 0;
-	        return true;
-	    }
+	for (byte n = 0; n < 5; n++) {
+		if (sendCommand("0902\r", buffer, bufsize)) {
+			int len = hex2uint16(buffer);
+			char *p = strstr_P(buffer + 4, PSTR("0: 49 02 01"));
+			if (p) {
+				char *q = buffer;
+				p += 11; // skip the header
+				do {
+					while (*(++p) == ' ');
+					for (;;) {
+						*(q++) = hex2uint8(p);
+						while (*p && *p != ' ') p++;
+						while (*p == ' ') p++;
+						if (!*p || *p == '\r') break;
+					}
+					p = strchr(p, ':');
+				} while(p);
+				*q = 0;
+				if (q - buffer == len - 3) {
+					return true;
+				}
+			}
+		}
+		delay(100);
 	}
 	return false;
 }
