@@ -15,8 +15,7 @@ HardwareSerial OBDUART(1);
 
 void gps_decode_task(int timeout);
 
-#define SAFE_MODE 0
-//#define XBEE_DEBUG
+#define SAFE_MODE 1
 //#define DEBUG Serial
 
 #ifdef DEBUG
@@ -95,7 +94,7 @@ byte hex2uint8(const char *p)
 byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 {
 	write(cmd);
-	idleTask();
+	idleTasks();
 	return receive(buf, bufsize, timeout);
 }
 
@@ -428,7 +427,7 @@ int COBD::receive(char* buffer, int bufsize, unsigned int timeout)
 			    // timeout
 			    break;
 			}
-			idleTask();
+			idleTasks();
 		}
 	}
 	if (buffer) {
@@ -590,7 +589,7 @@ int16_t COBD::getTemperatureValue(char* data)
 
 static const char header[] = {'$','O','B','D'};
 
-//SPISettings spiSettings(1000000, MSBFIRST, SPI_MODE0);
+//SPISettings spiSettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 byte COBDSPI::begin()
 {
@@ -598,7 +597,7 @@ byte COBDSPI::begin()
 	pinMode(SPI_PIN_CS, OUTPUT);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
-	SPI.setFrequency(1000000);
+	SPI.setFrequency(SPI_FREQ);
 	delay(50);
 	return getVersion();
 }
@@ -647,9 +646,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				}
 				continue;
 			}
-			if (n > 6 && buffer[1] == 'O' && c == '.' && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
-				// $OBDSEARCHING...
-				n = 4;
+			if (n > 3 && c == '.' && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
+				// SEARCHING...
+				n = 0;
 				timeout += OBD_TIMEOUT_LONG;
 			} else if (c != 0 && c != 0xff) {
 				if (n == bufsize - 1) {
@@ -693,7 +692,6 @@ void COBDSPI::write(const char* s)
 	debugOutput(s);
 #endif
 	int len = strlen(s);
-	//sleep(10);
 	digitalWrite(SPI_PIN_CS, LOW);
 	sleep(1);
 	//SPI.beginTransaction(spiSettings);
@@ -702,6 +700,16 @@ void COBDSPI::write(const char* s)
 	SPI.write(0x1B);
 	sleep(1);
 	//SPI.endTransaction();
+	digitalWrite(SPI_PIN_CS, HIGH);
+}
+
+void COBDSPI::write(uint8_t* data, int bytes)
+{
+	digitalWrite(SPI_PIN_CS, LOW);
+	sleep(1);
+	SPI.writeBytes(data, bytes);
+	SPI.write(0x1B);
+	sleep(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
