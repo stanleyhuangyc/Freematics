@@ -72,7 +72,7 @@ public:
 #if MEMS_MODE
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("MEMS...");
-      if (mems.begin()) {
+      if (mems.begin(ENABLE_ORIENTATION)) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
         BLE.println("MEMS OK");
@@ -220,6 +220,7 @@ public:
     if (utcValid) {
       date = (unsigned long)(1900 + btm->tm_year) * 10000 + (btm->tm_mon + 1) * 100 + btm->tm_mday;
     } else if (checkState(STATE_GPS_READY)) {
+#if WAIT_FOR_GPS
       // wait for GPS signal to get UTC
       Serial.print("Waiting GPS time..");
       for (int i = 0; gdata.date == 0 && i < 60; i++) {
@@ -234,6 +235,7 @@ public:
         unsigned int day = (gdata.date / 10000);
         date = (unsigned long)year * 10000 + month * 100 + day;
       }
+#endif
     }
     if (!checkState(STATE_STORAGE_READY)) {
       // init storage
@@ -772,7 +774,13 @@ private:
         // load and store accelerometer
         float acc[3];
         int16_t temp;
+#if ENABLE_ORIENTATION
+        ORIENTATION ori;
+        mems.read(acc, 0, 0, &temp, &ori);
+        cache.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
+#else
         mems.read(acc, 0, 0, &temp);
+#endif
         deviceTemp = temp / 10;
         cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
     }
@@ -884,7 +892,7 @@ void setup()
     Serial.print("MHz ");
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
-    
+
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     // perform initializations
