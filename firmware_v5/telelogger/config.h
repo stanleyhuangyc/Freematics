@@ -93,11 +93,13 @@
 /**************************************
 * MEMS sensors
 **************************************/
-#ifndef MEMS_MODE
+#define ENABLE_ORIENTATION 0
+
+#if ENABLE_ORIENTATION
+#define MEMS_MODE MEMS_9DOF
+#elif !defined(MEMS_MODE)
 #define MEMS_MODE MEMS_ACC
 #endif
-
-#define ENABLE_ORIENTATION 0
 
 /**************************************
 * GPS
