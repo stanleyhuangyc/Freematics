@@ -113,27 +113,30 @@ public:
     bool udpSend(const char* data, unsigned int len)
     {
       sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), len);
-      if (netSendCommand(buffer, 100, ">")) {
-        xbWrite(data);
+      if (netSendCommand(buffer, 100, ">") && netSendCommand(data, 1000, "SEND OK")) {
         return true;
       } else {
-        Serial.print("UDP error:");
         Serial.println(buffer);
         return false;
       }
     }
     char* udpReceive(int* pbytes = 0)
     {
-      if (netSendCommand(0, 3000, "+IPD,")) {
-        char *p = strstr(buffer, "+IPD,");
-        if (!p) return 0;
+      char *p = buffer;
+      for (byte n = 0; n < 2; n++) {
+        p = strstr(p, "+IPD,");
+        if (!p) {
+          if (!netSendCommand(0, 3000, "+IPD,")) return 0;
+          p = buffer;
+          continue;
+        }
         p += 5;
         int len = atoi(p);
         if (pbytes) *pbytes = len;
-        p = strchr(p, ':');
-        if (p++) {
-          *(p + len) = 0;
-          return p;
+        char *q = strchr(p, ':');
+        if (q++) {
+          *(q + len) = 0;
+          return q;
         }
       }
       return 0;
@@ -218,6 +221,7 @@ public:
       int len;
       char *data = udpReceive(&len);
       if (!data) {
+        Serial.println(buffer);
         Serial.println("No reply");
         delay(1000);
         continue;
@@ -601,7 +605,7 @@ void setup()
     // initialize hardware serial (for USB and BLE)
     Serial.begin(115200);
     Serial.println("Freematics ONE");
-    delay(1000);
+    delay(100);
     // perform initializations
     logger.begin();
     logger.setup();
