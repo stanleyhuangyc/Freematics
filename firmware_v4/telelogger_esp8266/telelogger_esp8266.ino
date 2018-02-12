@@ -17,6 +17,7 @@
 ******************************************************************************/
 
 #include <FreematicsONE.h>
+#include <FreematicsHub.h>
 #include "config.h"
 #include "datalogger.h"
 
@@ -28,8 +29,7 @@
 #define STATE_NET_READY 0x10
 #define STATE_ALL_GOOD 0x40
 
-#define EVENT_LOGIN 1
-#define EVENT_LOGOUT 2
+#define SYNC_INTERVAL 60000 /* ms */
 
 #if USE_MEMS
 float accBias[3] = {0}; // calibrated reference accelerometer data
@@ -39,6 +39,7 @@ int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
 uint32_t startTick;
+uint32_t lastSyncTime = 0;
 
 char udpIP[16] = "47.74.68.134";
 uint16_t udpPort = SERVER_PORT;
@@ -104,7 +105,7 @@ public:
           return true;
         } else {
           // check if already connected
-          if (strstr(buffer, "CONN")) return true;
+          if (strstr_P(buffer, PSTR("CONN"))) return true;
         }
         Serial.println(buffer);
       }
@@ -120,33 +121,16 @@ public:
         return false;
       }
     }
-    char* udpReceive(int* pbytes = 0)
+    bool udpReceive(int timeout)
     {
-      char *p = buffer;
-      for (byte n = 0; n < 2; n++) {
-        p = strstr(p, "+IPD,");
-        if (!p) {
-          if (!netSendCommand(0, 3000, "+IPD,")) return 0;
-          p = buffer;
-          continue;
-        }
-        p += 5;
-        int len = atoi(p);
-        if (pbytes) *pbytes = len;
-        char *q = strchr(p, ':');
-        if (q++) {
-          *(q + len) = 0;
-          return q;
-        }
-      }
-      return 0;
+       return netSendCommand(0, timeout, "+IPD,");
     }
     char* queryIP(const char* host)
     {
       sprintf_P(buffer, PSTR("AT+CIPDOMAIN=\"%s\"\r\n"), host);
       if (netSendCommand(buffer, 5000, "+CIPDOMAIN")) {
         char *p;
-        if ((p = strstr(buffer, "+CIPDOMAIN")) && (p = strchr(p, ':'))) {
+        if ((p = strstr_P(buffer, PSTR("+CIPDOMAIN"))) && (p = strchr(p, ':'))) {
           char *ip = p + 1;
           p = strchr(ip, '\r');
           if (p) *p = 0;
@@ -163,6 +147,23 @@ public:
       sleep(50);
       buffer[0] = 0;
       byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
+      // reception
+      char *p = strstr_P(buffer, PSTR("+IPD,"));
+      if (p) {
+        p += 5;
+        if (rxBuf) free(rxBuf);
+        rxLen = atoi(p);
+        if (rxLen > MAX_RECV_LEN) rxLen = MAX_RECV_LEN;
+        rxBuf = (char*)malloc(rxLen + 1);
+        rxBuf[0] = 0;
+        char *q = strchr(p, ':');
+        if (q++) {
+          memcpy(rxBuf, q, rxLen);
+          rxBuf[rxLen] = 0;
+        } else {
+          rxLen = 0;
+        }
+      }
       if (ret) {
         if (terminated) {
           char *p = strstr(buffer, expected);
@@ -175,12 +176,13 @@ public:
     }
     char buffer[96];
     bool connected = false;
+    char* rxBuf = 0;
+    int rxLen = 0;
 };
 
 class CTeleClient2 : public COBDWIFI, public CDataLogger
 {
 public:
-  CTeleClient2():connErrors(0),txCount(0),feedid(0) {}
   bool verifyChecksum(const char* data)
   {
     uint8_t sum = 0;
@@ -218,28 +220,28 @@ public:
       }
       transmitUDP();
       // receive reply
-      int len;
-      char *data = udpReceive(&len);
-      if (!data) {
-        Serial.println(buffer);
-        Serial.println("No reply");
-        delay(1000);
-        continue;
+      if (!rxLen) {
+        if (!udpReceive(5000) || !rxLen) {
+          Serial.println("No reply");
+          delay(1000);
+          continue;
+        }
       }
+      rxLen = 0;
       connErrors = 0;
       // verify checksum
-      if (!verifyChecksum(data)) {
-        Serial.println("Wrong checksum");
+      if (!verifyChecksum(rxBuf)) {
+        Serial.println("Invalid data");
         continue;
       }
       char pattern[16];
       sprintf_P(pattern, PSTR("EV=%u"), event);
-      if (!strstr(data, pattern)) {
+      if (!strstr(rxBuf, pattern)) {
         Serial.println("Invalid reply");
         continue;
       }
       if (event == EVENT_LOGIN) {
-        feedid = hex2uint16(data);
+        feedid = hex2uint16(rxBuf);
         Serial.print("#FEED ID:");
         Serial.println(feedid);
       }
@@ -259,6 +261,40 @@ public:
     }
     // clear cache and write header for next transmission
     cacheBytes = sprintf_P(cache, PSTR("%X#"), feedid);
+  }
+  void processIncomingUDP()
+  {
+    if (rxLen) {
+      //Serial.println(rxBuf);
+      rxLen = 0;
+      if (!verifyChecksum(rxBuf)) {
+        Serial.println("Invalid data");
+        return;
+      }
+      char *p = strstr_P(rxBuf, PSTR("EV="));
+      if (p) {
+        int eventID = atoi(p + 3);
+        switch (eventID) {
+        case EVENT_COMMAND:
+          if ((p = strstr_P(rxBuf, PSTR("CMD=")))) {
+            Serial.println(p);
+          }
+          break;
+        case EVENT_SYNC:
+          if ((p = strstr_P(rxBuf, PSTR("TM=")))) {
+            Serial.print("Server time:");
+            Serial.println(atol(p + 3));
+          }
+          if ((p = strstr_P(rxBuf, PSTR("RX=")))) {
+            Serial.print("Server RX:");
+            Serial.println(atol(p + 3));
+          }
+          lastSyncTime = millis();
+          break;
+        }
+      }
+
+    }
   }
   void setEvent(byte event)
   {
@@ -283,9 +319,9 @@ public:
     // output data in cache
     //Serial.println(cache);
   }
-  uint16_t feedid;
-  uint32_t txCount;
-  uint8_t connErrors;
+  uint16_t feedid = 0;
+  uint32_t txCount = 0;
+  uint8_t connErrors = 0;
 };
   
 class CTeleLogger : public CTeleClient2
@@ -465,7 +501,6 @@ public:
 #if USE_MEMS
       calibrateMEMS();
       if (checkState(STATE_MEMS_READY)) {
-          enterLowPowerMode();
           for (;;) {
             // calculate relative movement
             float motion = 0;
@@ -481,16 +516,13 @@ public:
             Serial.println(motion);
             // check movement
             if (motion > WAKEUP_MOTION_THRESHOLD) {
-              leaveLowPowerMode();
               break;
           }
         }
       }
 #else
         do {
-          enterLowPowerMode();
-          sleepSec(10);
-          leaveLowPowerMode();
+          sleep(10000);
         } while (!init());
 #endif
         Serial.println("Wakeup");
@@ -626,8 +658,15 @@ void loop()
     logger.loop();
     // show stats info
     logger.showStats();
-    // transmit data
+    // transmit datagram
     logger.transmitUDP();
+    // process incoming datagram
+    logger.processIncomingUDP();
+    
+    if (lastSyncTime && millis() - lastSyncTime > SYNC_INTERVAL) {
+      Serial.println("No SYNC");
+      logger.reconnect();
+    }
     if (logger.connErrors >= MAX_CONN_ERRORS_RECONNECT) {
       logger.reconnect();
     }

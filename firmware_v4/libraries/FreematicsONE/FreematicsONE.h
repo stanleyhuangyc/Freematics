@@ -134,23 +134,16 @@ class COBDSPI {
 public:
 	COBDSPI():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	byte begin();
-  // initialize OBD-II connection
+    // initialize OBD-II connection
 	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
-	void uninit();
-	void reset();
 	// un-initialize OBD-II connection
-	void end();
-	// set SPI data target
-	void setTarget(byte target) { m_target = target; }
-	// receive data (up to 255 bytes) from SPI bus
-	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
+	void uninit();
+	// reset OBD
+	void reset();
 	// read specified OBD-II PID value
 	bool readPID(byte pid, int& result);
 	// read multiple (up to 4) OBD-II PID value
 	byte readPID(const byte pid[], byte count, int result[]);
-	// write data to SPI bus
-	void write(const char* s);
-	void write(byte* data, int len);
 	// send AT command and receive response
 	byte sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
 	// initialize GPS (set baudrate to 0 to power off GPS)
@@ -161,7 +154,6 @@ public:
 	int gpsGetRawData(char* buf, int bufsize);
 	// send command string to GPS
 	void gpsSendCommand(const char* cmd);
-
 	// start xBee UART communication
 	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
@@ -177,14 +169,8 @@ public:
 	void xbTogglePower();
 	// get connection state
 	OBD_STATES getState() { return m_state; }
-	// hardware sleep (timer counter will stop for AVR)
-	void sleepSec(unsigned int seconds);
 	// delay specified number of ms
 	void sleep(unsigned int ms);
-	// enter low power mode
-	void enterLowPowerMode();
-	// leave low power mode
-	void leaveLowPowerMode();
 	// read diagnostic trouble codes (return number of DTCs read)
 	byte readDTC(uint16_t codes[], byte maxCodes = 1);
 	// clear diagnostic trouble code
@@ -204,9 +190,15 @@ public:
 	// bit map of supported PIDs
 	byte pidmap[4 * 4];
 protected:
+	// write data to SPI bus
+	void write(const char* s);
+	// receive data from SPI bus
+	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
+	// set SPI data target
+	void setTarget(byte target) { m_target = target; }
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
-	virtual void dataIdleLoop() { delay(10); }
+	virtual void idleTasks() { delay(1); }
 	OBD_STATES m_state;
 private:
 	// get firmware version

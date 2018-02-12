@@ -8,21 +8,10 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <avr/io.h>
-#include <avr/interrupt.h>
-#include <avr/common.h>
-#include <avr/wdt.h>
-#include <avr/sleep.h>
 #include "FreematicsONE.h"
 
 //#define XBEE_DEBUG
 //#define DEBUG Serial
-
-SIGNAL(WDT_vect) {
-  wdt_disable();
-  wdt_reset();
-  WDTCSR &= ~_BV(WDIE);
-}
 
 uint16_t hex2uint16(const char *p)
 {
@@ -247,19 +236,6 @@ int COBDSPI::normalizeData(byte pid, char* data)
 	return result;
 }
 
-void COBDSPI::enterLowPowerMode()
-{
-	setTarget(TARGET_OBD);
-	write("ATLP\r");
-}
-
-void COBDSPI::leaveLowPowerMode()
-{
-	// simply send any command to wake the device up
-	char buf[16];
-	sendCommand("AT\r", buf, sizeof(buf));
-}
-
 float COBDSPI::getVoltage()
 {
 	char buf[32];
@@ -436,10 +412,6 @@ byte COBDSPI::begin()
 	return getVersion();
 }
 
-void COBDSPI::end()
-{
-}
-
 byte COBDSPI::getVersion()
 {
 	byte version = 0;
@@ -541,25 +513,15 @@ void COBDSPI::write(const char* s)
 			SPI.transfer(targets[m_target][i]);
 		}
 	}
+	char c = 0;
 	for (; *s ;s++) {
-		SPI.transfer((byte)*s);
+		c = *s;
+		SPI.transfer((byte)c);
 	}
-	// send terminating byte (ESC)
+	if (c != '\r') SPI.transfer('\r');
+	// send terminating byte
 	SPI.transfer(0x1B);
 	delay(1);
-	//SPI.endTransaction();
-	digitalWrite(SPI_PIN_CS, HIGH);
-	sleep(1);
-}
-
-void COBDSPI::write(byte* data, int len)
-{
-	digitalWrite(SPI_PIN_CS, LOW);
-	//SPI.beginTransaction(spiSettings);
-	for (int i = 0; i < len; i++) {
-		SPI.transfer(data[i]);
-		delayMicroseconds(5);
-	}
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 	sleep(1);
@@ -597,12 +559,10 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 
 void COBDSPI::sleep(unsigned int ms)
 {
-	delay(ms);
-}
-
-void COBDSPI::sleepSec(unsigned int seconds)
-{
-	sleep(seconds * 1000);
+	uint32_t t = millis();
+	do {
+		idleTasks();
+	} while(millis() - t < ms);
 }
 
 bool COBDSPI::gpsInit(unsigned long baudrate)
