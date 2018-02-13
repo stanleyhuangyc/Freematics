@@ -17,9 +17,8 @@
 ******************************************************************************/
 
 #include <FreematicsONE.h>
-#include <FreematicsHub.h>
 #include "config.h"
-#include "datalogger.h"
+#include "telelogger.h"
 
 // logger states
 #define STATE_SD_READY 0x1
@@ -27,13 +26,12 @@
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
 #define STATE_NET_READY 0x10
+#define STATE_NET_CONNECTED 0x20
 #define STATE_ALL_GOOD 0x40
-
-#define SYNC_INTERVAL 60000 /* ms */
 
 #if USE_MEMS
 float accBias[3] = {0}; // calibrated reference accelerometer data
-byte deviceTemp = 0; // device temperature
+float acc[3] = {0};
 #endif
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
@@ -41,7 +39,7 @@ uint32_t distance = 0;
 uint32_t startTick;
 uint32_t lastSyncTime = 0;
 
-char udpIP[16] = "47.74.68.134";
+char udpIP[16] = "47.74.68.134"; // fallback IP when domain name can't be resolved
 uint16_t udpPort = SERVER_PORT;
 
 class COBDWIFI : public COBDSPI {
@@ -139,12 +137,12 @@ public:
       }
       return 0;
     }
-    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK", bool terminated = false)
+    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK")
     {
       if (cmd) {
         xbWrite(cmd);
       }
-      sleep(50);
+      //sleep(50);
       buffer[0] = 0;
       byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
       // reception
@@ -164,15 +162,7 @@ public:
           rxLen = 0;
         }
       }
-      if (ret) {
-        if (terminated) {
-          char *p = strstr(buffer, expected);
-          if (p) *p = 0;
-        }
-        return true;
-      } else {
-        return false;
-      }
+      return ret != 0;
     }
     char buffer[96];
     bool connected = false;
@@ -180,16 +170,9 @@ public:
     int rxLen = 0;
 };
 
-class CTeleClient2 : public COBDWIFI, public CDataLogger
+class CTeleClient2 : public COBDWIFI, public CDataHub
 {
 public:
-  bool verifyChecksum(const char* data)
-  {
-    uint8_t sum = 0;
-    const char *s;
-    for (s = data; *s && *s != '*'; s++) sum += *s;
-    return (*s && hex2uint8(s + 1) == sum);
-  }
   bool notifyUDP(byte event)
   {
     for (byte attempts = 0; attempts < 3; attempts++) {
@@ -222,8 +205,6 @@ public:
       // receive reply
       if (!rxLen) {
         if (!udpReceive(5000) || !rxLen) {
-          Serial.println("No reply");
-          delay(1000);
           continue;
         }
       }
@@ -242,7 +223,7 @@ public:
       }
       if (event == EVENT_LOGIN) {
         feedid = hex2uint16(rxBuf);
-        Serial.print("#FEED ID:");
+        Serial.print("FEED ID:");
         Serial.println(feedid);
       }
       return true;
@@ -260,7 +241,7 @@ public:
       txCount++;
     }
     // clear cache and write header for next transmission
-    cacheBytes = sprintf_P(cache, PSTR("%X#"), feedid);
+    purgeCache();
   }
   void processIncomingUDP()
   {
@@ -282,8 +263,9 @@ public:
           break;
         case EVENT_SYNC:
           if ((p = strstr_P(rxBuf, PSTR("TM=")))) {
-            Serial.print("Server time:");
-            Serial.println(atol(p + 3));
+            uint32_t epoch = atol(p + 3);
+            Serial.print("Server Epoch:");
+            Serial.println(epoch);
           }
           if ((p = strstr_P(rxBuf, PSTR("RX=")))) {
             Serial.print("Server RX:");
@@ -295,10 +277,6 @@ public:
       }
 
     }
-  }
-  void setEvent(byte event)
-  {
-    cacheBytes = sprintf_P(cache, PSTR("%X#EV=%u,SK=%s,TS=%lu"), feedid, (unsigned int)event, SERVER_KEY, millis());
   }
   bool reconnect()
   {
@@ -319,7 +297,6 @@ public:
     // output data in cache
     //Serial.println(cache);
   }
-  uint16_t feedid = 0;
   uint32_t txCount = 0;
   uint8_t connErrors = 0;
 };
@@ -409,21 +386,19 @@ public:
       }
     }
     // connect to internet server
+    Serial.print("#SERVER..");
     for (byte attempts = 0; attempts < 3; attempts++) {
-      Serial.print("#SERVER...");
-      if (!udpOpen()) {
-        Serial.println("NO");
-        continue;
-      } else {
-        Serial.println("OK");
-      }
-
+      Serial.print('.');
       // login Freematics Hub
-      if (!notifyUDP(EVENT_LOGIN)) {
-        continue;
+      if (notifyUDP(EVENT_LOGIN)) {
+        setState(STATE_NET_CONNECTED);
+        break;
       }
-      setState(STATE_ALL_GOOD);
-      break;
+    }
+
+    if (!checkState(STATE_NET_CONNECTED)) {
+      Serial.println("NO");
+      return false;
     }
 
 #if USE_MEMS
@@ -431,7 +406,9 @@ public:
 #endif
 
     startTick = millis();
-    return checkState(STATE_ALL_GOOD);
+
+    setState(STATE_ALL_GOOD);
+    return true;
   }
   void loop()
   {
@@ -455,78 +432,63 @@ public:
       processGPS();
     }
 #endif
-#if CACHE_SIZE > 128
     // read and log car battery voltage , data in 0.01v
     {
       int v = getVoltage() * 100;
       logData(PID_BATTERY_VOLTAGE, v);
     }
-#endif
-
-#if USE_MEMS
-    if ((txCount % 100) == 1) {
-      logData(PID_DEVICE_TEMP, deviceTemp);
-    }
-    if (deviceTemp >= COOLING_DOWN_TEMP && deviceTemp < 100) {
-      // device too hot, cool down
-      Serial.print("Cooling (");
-      Serial.print(deviceTemp);
-      Serial.println("C)");
-      sleep(10000);
-    }
-#endif
   }
-    void standby()
-    {
-      if (checkState(STATE_NET_READY)) {
-        notifyUDP(EVENT_LOGOUT);
-          udpClose();
-          netDisconnect(); // disconnect from AP
-          sleep(500);
-          netReset();
-        clearState(STATE_NET_READY);
-      }
-      if (errors > MAX_OBD_ERRORS) {
-        feedid = 0;
-      }
-#if USE_GPS
-      if (checkState(STATE_GPS_READY)) {
-          Serial.print("#GPS:");
-          gpsInit(0); // turn off GPS power
-          Serial.println("OFF");
-        }
-#endif
-      clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY);
-      Serial.println("Standby");
-#if USE_MEMS
-      calibrateMEMS();
-      if (checkState(STATE_MEMS_READY)) {
-          for (;;) {
-            // calculate relative movement
-            float motion = 0;
-            for (byte n = 0; n < 10; n++) {
-              float acc[3];
-              mems.memsRead(acc);
-              for (byte i = 0; i < 3; i++) {
-                float m = (acc[i] - accBias[i]);
-                motion += m * m;
-              }
-              delay(100);
-            }
-            Serial.println(motion);
-            // check movement
-            if (motion > WAKEUP_MOTION_THRESHOLD) {
-              break;
-          }
-        }
-      }
-#else
-        do {
-          sleep(10000);
-        } while (!init());
-#endif
-        Serial.println("Wakeup");
+  void standby()
+  {
+    if (checkState(STATE_NET_READY)) {
+      notifyUDP(EVENT_LOGOUT);
+      udpClose();
+      netDisconnect(); // disconnect from AP
+      sleep(500);
+      netReset();
+      clearState(STATE_NET_READY);
     }
+    if (errors > MAX_OBD_ERRORS) {
+      feedid = 0;
+    }
+#if USE_GPS
+    if (checkState(STATE_GPS_READY)) {
+        Serial.print("#GPS:");
+        gpsInit(0); // turn off GPS power
+        Serial.println("OFF");
+      }
+#endif
+    clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY);
+    Serial.println("Standby");
+#if USE_MEMS
+    calibrateMEMS();
+    if (checkState(STATE_MEMS_READY)) {
+        for (;;) {
+          // calculate relative movement
+          float motion = 0;
+          for (byte n = 0; n < 10; n++) {
+            float acc[3];
+            mems.memsRead(acc);
+            for (byte i = 0; i < 3; i++) {
+              float m = (acc[i] - accBias[i]);
+              motion += m * m;
+            }
+            delay(100);
+          }
+          Serial.println(motion);
+          // check movement
+          if (motion > WAKEUP_MOTION_THRESHOLD) {
+            break;
+        }
+      }
+    }
+#else
+    do {
+      sleep(10000);
+    } while (!init());
+#endif
+    Serial.println("Wakeup");
+  }
   bool checkState(byte flags) { return (m_state & flags) == flags; }
   void setState(byte flags) { m_state |= flags; }
   void clearState(byte flags) { m_state &= ~flags; }
@@ -570,11 +532,13 @@ private:
     void processMEMS()
     {
         // load accelerometer and temperature data
-        float acc[3] = {};
+        float acc[3] = {0};
         int16_t temp; // device temperature (in 0.1 celcius degree)
         mems.memsRead(acc, 0, 0, &temp);
-        deviceTemp = temp / 10;
         logData(PID_ACC, (int)(acc[0] * 100), (int)(acc[1] * 100), (int)(acc[2] * 100));
+        if ((txCount % 100) == 1) {
+          logData(PID_DEVICE_TEMP, temp / 10);
+        }
     }
 #endif
     void processGPS()
@@ -663,7 +627,7 @@ void loop()
     // process incoming datagram
     logger.processIncomingUDP();
     
-    if (lastSyncTime && millis() - lastSyncTime > SYNC_INTERVAL) {
+    if (lastSyncTime && millis() - lastSyncTime > MAX_SYNC_INTERVAL) {
       Serial.println("No SYNC");
       logger.reconnect();
     }
