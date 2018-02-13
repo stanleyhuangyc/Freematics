@@ -592,12 +592,6 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 
 bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 {
-#ifdef ESP32
-	if (!m_internalGPS) {
-		return gps_get_data(gdata);
-	}
-#endif
-
 	char buf[128];
 	m_target = TARGET_OBD;
 	if (sendCommand("ATGPS\r", buf, sizeof(buf), GPS_READ_TIMEOUT) == 0) {
@@ -655,18 +649,6 @@ bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 
 int COBDSPI::gpsGetRawData(char* buf, int bufsize)
 {
-#if 0 //def ESP32
-	if (!m_internalGPS && uartGPS) {
-		int bytes = 0;
-		for (uint32_t t = millis(); uartGPS.available() && millis() - t < GPS_READ_TIMEOUT && bytes < bufsize - 1;) {
-			char c = uartGPS.read();
-			gps.encode(c);
-			buf[bytes++] = c;
-		}
-		buf[bytes] = 0;
-		return bytes;
-	}
-#endif
 	m_target = TARGET_OBD;
 	int n = sendCommand("ATGRR\r", buf, bufsize, GPS_READ_TIMEOUT);
 	if (n > 2) {
@@ -678,12 +660,6 @@ int COBDSPI::gpsGetRawData(char* buf, int bufsize)
 
 void COBDSPI::gpsSendCommand(const char* cmd)
 {
-#ifdef ESP32
-	if (!m_internalGPS) {
-		gps_write_string(cmd);
-		return;
-	}
-#endif
 	setTarget(TARGET_GPS);
 	write(cmd);
 }
@@ -703,21 +679,20 @@ bool COBDSPI::xbBegin(unsigned long baudrate)
 	
 void COBDSPI::xbWrite(const char* cmd)
 {
-	setTarget(TARGET_BEE);
-	sleep(10);
-	write(cmd);
 #ifdef XBEE_DEBUG
 	Serial.print("[SEND]");
 	Serial.print(cmd);
 	Serial.println("[/SEND]");
 #endif
+	setTarget(TARGET_BEE);
+	write(cmd);
 }
 
 int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 {
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");
-	sleep(20);
+	sleep(10);
 	return receive(buffer, bufsize, timeout);
 }
 
