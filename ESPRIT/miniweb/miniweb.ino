@@ -1,5 +1,5 @@
 /******************************************************************************
-* MiniWeb example for ESP32
+* MiniWeb example for Freematics Esprit
 * Distributed under BSD license
 * Developed by Stanley Huang https://facebook.com/stanleyhuangyc
 *
@@ -17,14 +17,15 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <apps/sntp/sntp.h>
+#include <esp_spi_flash.h>
 #else
 #error Unsupported board type
 #endif
 #include <httpd.h>
 
-#define ENABLE_SOFT_AP 0
-#define WIFI_SSID "...."
-#define WIFI_PASSWORD "...."
+#define ENABLE_SOFT_AP 1
+#define WIFI_SSID "Freematics Esprit"
+#define WIFI_PASSWORD "..."
 #define WIFI_TIMEOUT 5000
 #define PIN_LED 4
 
@@ -161,6 +162,16 @@ void obtainTime()
 #endif
 }
 
+uint16_t getFlashSize()
+{
+    char out;
+    uint16_t size = 16384;
+    do {
+        if (spi_flash_read((size_t)size * 1024 - 1, &out, 1) == ESP_OK) return size;
+    } while ((size >>= 1));
+    return 0;
+}
+
 void setup()
 {
   // light up onboard LED
@@ -169,9 +180,15 @@ void setup()
 
   // initialize serial
   Serial.begin(115200);
+  Serial.println();
+  Serial.print("ESP32 ");
+  Serial.print(ESP.getCpuFreqMHz());
+  Serial.print("MHz ");
+  Serial.print(getFlashSize() >> 10);
+  Serial.println("MB Flash");
 
 #if ENABLE_SOFT_AP
-  WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.softAP(WIFI_SSID);
   Serial.print("AP IP address: ");
   Serial.println(WiFi.softAPIP());
 #else
