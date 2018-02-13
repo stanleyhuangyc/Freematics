@@ -11,19 +11,22 @@
 /**************************************
 * WIFI and server settings
 **************************************/
-#define XBEE_BAUDRATE 115200 /* 9600 for older ESP8266 modules */
 // change YOUR_SSID and YOUR_PASSWORD to your own
-#define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
+#define WIFI_SSID "FREEMATICS"
+#define WIFI_PASSWORD "PASSWORD"
+#define XBEE_BAUDRATE 115200 /* 9600 for ESP8266 with older firmware */
+#define MAX_RECV_LEN 128
 
 /**************************************
 * Server settings
 **************************************/
-// change YOUR_SERVER_KEY to your server key
 #define SERVER_KEY "TEST_SERVER_KEY"
 #define SERVER_URL "hub.freematics.com"
 #define SERVER_PORT 8081
 
+/**************************************
+* Error handling settings
+**************************************/
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 10
 // maximum consecutive communication errors before entering standby
@@ -47,11 +50,6 @@
 /**************************************
 * Motion detection
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 2 /* for wakeup on movement */
-
-/**************************************
-* Other options
-**************************************/
-#define COOLING_DOWN_TEMP 65 /* celsius degrees */
+#define WAKEUP_MOTION_THRESHOLD 0.2 /* G */
 
 #endif // CONFIG_H_INCLUDED

@@ -1,25 +1,25 @@
 /*************************************************************************
-* Telematics Data Logger Class
+* Freematics Hub Helper Class
 * Distributed under BSD license
-* Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
+* Developed by Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
-// additional custom PID for data logger
-#define PID_DATA_SIZE 0x80
-#define PID_CSQ 0x81
-#define PID_DEVICE_TEMP 0x82
+#define EVENT_LOGIN 1
+#define EVENT_LOGOUT 2
+#define EVENT_SYNC 3
+#define EVENT_RECONNECT 4
+#define EVENT_COMMAND 5
+#define EVENT_ACK 6
+
+#define MAX_SYNC_INTERVAL 60000
 
 #if ENABLE_DATA_LOG
 SDClass SD;
 File sdfile;
 #endif
 
-class CDataLogger {
+class CDataHub {
 public:
-    CDataLogger():m_dataTime(0)
-    {
-        cacheBytes = 0;
-    }
     void record(const char* buf, byte len)
     {
     }
@@ -98,6 +98,21 @@ public:
       for (unsigned int i = 0; i < cacheBytes; i++) sum += cache[i];
       cacheBytes += sprintf_P(cache + cacheBytes, PSTR("*%X"), sum);
     }
+    bool verifyChecksum(const char* data)
+    {
+        uint8_t sum = 0;
+        const char *s;
+        for (s = data; *s && *s != '*'; s++) sum += *s;
+        return (*s && hex2uint8(s + 1) == sum);
+    }
+    void setEvent(byte event)
+    {
+        cacheBytes = sprintf_P(cache, PSTR("%X#EV=%u,SK=%s,TS=%lu"), feedid, (unsigned int)event, SERVER_KEY, millis());
+    }
+    void purgeCache()
+    {
+        cacheBytes = sprintf_P(cache, PSTR("%X#"), feedid);
+    }
 #if ENABLE_DATA_LOG
     uint16_t openFile(uint32_t dateTime = 0)
     {
@@ -142,8 +157,8 @@ public:
     }
 #endif
     char cache[CACHE_SIZE];
-    unsigned int cacheBytes;
+    unsigned int cacheBytes = 0;
+    uint16_t feedid = 0;
 private:
-    uint32_t m_dataTime;
+    uint32_t m_dataTime = 0;
 };
-
