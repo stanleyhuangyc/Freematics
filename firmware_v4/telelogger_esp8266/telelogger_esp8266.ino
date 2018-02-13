@@ -386,7 +386,9 @@ public:
       }
     }
     // connect to internet server
-    Serial.print("#SERVER..");
+    Serial.print("#SERVER(");
+    Serial.print(udpIP);
+    Serial.print(")..");
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.print('.');
       // login Freematics Hub
