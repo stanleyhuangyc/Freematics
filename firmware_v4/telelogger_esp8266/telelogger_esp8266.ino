@@ -71,7 +71,7 @@ public:
     {
       // generate and send AT command for joining AP
       sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
-      byte ret = netSendCommand(buffer, 10000);
+      byte ret = netSendCommand(buffer, 5000);
       if (ret == 1 || strstr_P(buffer, PSTR("WIFI CONNECTED"))) {
         // get IP address
         if (netSendCommand("AT+CIFSR\r\n", 5000) && !strstr_P(buffer, PSTR("0.0.0.0"))) {
@@ -142,7 +142,6 @@ public:
       if (cmd) {
         xbWrite(cmd);
       }
-      //sleep(50);
       buffer[0] = 0;
       byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
       // reception
@@ -209,7 +208,6 @@ public:
         }
       }
       rxLen = 0;
-      connErrors = 0;
       // verify checksum
       if (!verifyChecksum(rxBuf)) {
         Serial.println("Invalid data");
@@ -226,6 +224,7 @@ public:
         Serial.print("FEED ID:");
         Serial.println(feedid);
       }
+      connErrors = 0;
       return true;
     }
     return false;
@@ -237,7 +236,6 @@ public:
     if (!udpSend(cache, cacheBytes)) {
       connErrors++;
     } else {
-      connErrors = 0;
       txCount++;
     }
     // clear cache and write header for next transmission
@@ -252,6 +250,7 @@ public:
         Serial.println("Invalid data");
         return;
       }
+      connErrors = 0;
       char *p = strstr_P(rxBuf, PSTR("EV="));
       if (p) {
         int eventID = atoi(p + 3);
@@ -282,6 +281,7 @@ public:
   {
       udpClose();
       udpOpen();
+      lastSyncTime = millis();
       return notifyUDP(EVENT_LOGIN);
   }
   void showStats()
@@ -461,6 +461,7 @@ public:
       }
 #endif
     clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY);
+    reset();
     Serial.println("Standby");
 #if USE_MEMS
     calibrateMEMS();
@@ -469,7 +470,7 @@ public:
           // calculate relative movement
           float motion = 0;
           for (byte n = 0; n < 10; n++) {
-            float acc[3];
+            float acc[3] = {0};
             mems.memsRead(acc);
             for (byte i = 0; i < 3; i++) {
               float m = (acc[i] - accBias[i]);
@@ -579,11 +580,12 @@ private:
         accBias[2] = 0;
         int n;
         for (n = 0; n < 100; n++) {
-          float acc[3] = {};
+          float acc[3] = {0};
           mems.memsRead(acc);
           accBias[0] += acc[0];
           accBias[1] += acc[1];
-          accBias[2] += acc[2];          
+          accBias[2] += acc[2];
+          delay(10);          
         }
         accBias[0] /= n;
         accBias[1] /= n;
