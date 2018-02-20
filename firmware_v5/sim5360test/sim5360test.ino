@@ -43,7 +43,7 @@ public:
       for (byte n = 0; n < 10; n++) {
         // try turning on module
         xbTogglePower();
-        sleep(3000);
+        delay(3000);
         // discard any stale data
         xbPurge();
         for (byte m = 0; m < 3; m++) {
@@ -62,7 +62,7 @@ public:
       do {
         do {
           Serial.print('.');
-          sleep(500);
+          delay(500);
           success = netSendCommand("AT+CPSI?\r", 1000, "Online");
           if (success) {
             if (!strstr_P(buffer, PSTR("NO SERVICE")))
@@ -116,7 +116,7 @@ public:
             }
           }
         }
-        sleep(500);
+        delay(500);
         ip = 0;
       } while (millis() - t < 15000);
       return ip;
