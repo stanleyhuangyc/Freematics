@@ -77,10 +77,9 @@ protected:
 	virtual int normalizeData(byte pid, char* data);
 	virtual byte checkErrorMessage(const char* buffer);
 	virtual char* getResultValue(char* buf);
+	virtual void idleTasks() { delay(10); }
+	virtual void recover();
 	OBD_STATES m_state = OBD_DISCONNECTED;
-private:
-	void recover();
-	virtual void idleTasks() {}
 };
 
 class COBDSPI : public COBD {

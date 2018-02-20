@@ -44,8 +44,6 @@ class CFreematics
 public:
 	// hibernate (lower power consumption)
 	virtual void hibernate(unsigned int ms) { delay(ms); }
-	// normal delay
-	virtual void sleep(unsigned int ms) { delay(ms); }
 	// start xBee UART communication
 	virtual bool xbBegin(unsigned long baudrate = 115200L) = 0;
 	// read data to xBee UART

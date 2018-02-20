@@ -23,8 +23,7 @@
 #define PIN_LED 4
 #define PIN_SD_CS 5
 
-#define GPS_READ_TIMEOUT 200 /* ms */
-#define GPS_INIT_TIMEOUT 1000 /* ms */
+#define GPS_TIMEOUT 1000 /* ms */
 
 typedef struct {
     uint32_t date;
@@ -39,7 +38,7 @@ typedef struct {
 
 bool gps_decode_start();
 void gps_decode_stop();
-bool gps_get_data(GPS_DATA* gdata);
+int gps_get_data(GPS_DATA* gdata);
 int gps_write_string(const char* string);
 void gps_decode_task(int timeout);
 void bee_start();
@@ -54,12 +53,16 @@ uint16_t getFlashSize(); /* KB */
 class Task
 {
 public:
-  Task():xHandle(0) {}
-	bool create(void (*task)(void*), const char* name, int priority = 0);
-  void destroy();
-  static void sleep(uint32_t ms);
+    Task():xHandle(0) {}
+    bool create(void (*task)(void*), const char* name, int priority = 0);
+    void destroy();
+    void suspend();
+    void resume();
+    bool running();
+    void sleep(uint32_t ms);
+    int status = 0;
 private:
-	void* xHandle;
+	void* xHandle = 0;
 };
 
 class Mutex
@@ -77,8 +80,8 @@ class CFreematicsESP32 : virtual CFreematics
 public:
     // initialize GPS (set baudrate to 0 to power off GPS)
     virtual bool gpsInit(unsigned long baudrate = 115200L);
-    // get parsed GPS data
-    virtual bool gpsGetData(GPS_DATA* gdata);
+    // get parsed GPS data (returns the number of data parsed since last invoke)
+    virtual int gpsGetData(GPS_DATA* gdata);
     // send command string to GPS
     virtual void gpsSendCommand(const char* cmd);
 	// start xBee UART communication
@@ -95,8 +98,6 @@ public:
 	virtual void xbPurge();
 	// toggle xBee module power
 	virtual void xbTogglePower();
-    // delay specified number of ms while still receiving and processing GPS data
-    virtual void sleep(unsigned int ms);
 };
 
 class CStorageNull;

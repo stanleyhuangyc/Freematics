@@ -93,7 +93,7 @@ bool CTeleClientSIM800::netBegin()
   for (byte n = 0; n < 10; n++) {
     // try turning on module
     xbTogglePower();
-    sleep(3000);
+    delay(3000);
     // discard any stale data
     xbPurge();
     for (byte m = 0; m < 3; m++) {
@@ -319,7 +319,7 @@ bool CTeleClientSIM5360::netBegin()
   for (byte n = 0; n < 10; n++) {
     // try turning on module
     xbTogglePower();
-    sleep(3000);
+    delay(3000);
     // discard any stale data
     xbPurge();
     for (byte m = 0; m < 5; m++) {
@@ -349,7 +349,7 @@ bool CTeleClientSIM5360::netSetup(const char* apn, bool only3G, unsigned int tim
   do {
     do {
       Serial.print('.');
-      sleep(500);
+      delay(500);
       success = netSendCommand("AT+CPSI?\r", 1000, "Online");
       if (success) {
         if (!strstr(m_buffer, "NO SERVICE"))
@@ -400,7 +400,7 @@ String CTeleClientSIM5360::getIP()
         }
       }
     }
-    sleep(500);
+    delay(500);
   } while (millis() - t < 15000);
   return "";
 }
