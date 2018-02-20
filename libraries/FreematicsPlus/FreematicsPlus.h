@@ -23,6 +23,16 @@
 #define PIN_LED 4
 #define PIN_SD_CS 5
 
+#define BEE_UART_PIN_RXD  (16)
+#define BEE_UART_PIN_TXD  (17)
+#define BEE_UART_NUM UART_NUM_1
+
+#define GPS_UART_PIN_RXD  (32)
+#define GPS_UART_PIN_TXD  (33)
+#define GPS_UART_NUM UART_NUM_2
+
+#define UART_BUF_SIZE (256)
+
 #define GPS_TIMEOUT 1000 /* ms */
 
 typedef struct {

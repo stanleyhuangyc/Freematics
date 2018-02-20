@@ -27,16 +27,6 @@ static TinyGPS gps;
 static int newGPSData = 0;
 Task taskGPS;
 
-#define BEE_UART_PIN_RXD  (16)
-#define BEE_UART_PIN_TXD  (17)
-#define BEE_UART_NUM UART_NUM_1
-
-#define GPS_UART_PIN_RXD  (32)
-#define GPS_UART_PIN_TXD  (33)
-#define GPS_UART_NUM UART_NUM_2
-
-#define UART_BUF_SIZE (256)
-
 void gps_decode_task(void* inst)
 {
     Task* task = (Task*)inst;
@@ -78,7 +68,7 @@ void gps_decode_task(void* inst)
     for (;;) {
         uint8_t c;
         int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 100 / portTICK_RATE_MS);
-        if (gps.encode(c)) {
+        if (len == 1 && gps.encode(c)) {
             newGPSData++;
         }
     }
