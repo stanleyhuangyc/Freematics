@@ -87,16 +87,16 @@ public:
           Serial.print("VIN:");
           Serial.println(buffer);
         }
+        setState(STATE_OBD_READY);
       } else {
         Serial.println("NO");
-        reconnect();
+        standby();
+        return;
       }
-      setState(STATE_OBD_READY);
 #else
       SPI.begin();
 #endif
 
-#if USE_GPS
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("GPS ");
         if (gpsInit(GPS_SERIAL_BAUDRATE)) {
@@ -107,7 +107,6 @@ public:
           Serial.println("NO");
         }
       }
-#endif
 
       if (!checkState(STATE_SD_READY)) {
         Serial.print("SD ");
@@ -124,12 +123,12 @@ public:
       startTime = millis();
       dataCount = 0;
     }
-#if USE_GPS
     void logGPSData()
     {
         // issue the command to get parsed GPS data
         GPS_DATA gd = {0};
-        if (checkState(STATE_GPS_FOUND) && gpsGetData(&gd)) {
+        int count = gpsGetData(&gd);
+        if (count) {
             dataTime = millis();
             if (gd.time && gd.time != UTC) {
               byte day = gd.date / 10000;
@@ -148,6 +147,15 @@ public:
               MMDD = (DDMM % 100) * 100 + (DDMM / 100);
               // set GPS ready flag
               setState(STATE_GPS_READY);
+              // output some GPS data
+              Serial.print("GPS DATA:");
+              Serial.print(count);              
+              Serial.print(" UTC:");
+              Serial.print(gd.time);
+              Serial.print(" LAT:");
+              Serial.print(gd.lat);
+              Serial.print(" LNG:");
+              Serial.println(gd.lng);
             }
         }
     }
@@ -171,7 +179,6 @@ public:
           }
         }
     }
-#endif
     uint16_t initSD()
     {
         pinMode(PIN_SD_CS, OUTPUT);
@@ -197,28 +204,17 @@ public:
 #endif
         }
     }
-    void reconnect()
-    {
-        if (obd.init()) return;
-        // try to re-connect to OBD
-        closeFile();
-        // turn off GPS power
-#if USE_GPS
-        gpsInit(0);
-#endif
-        clearState(STATE_OBD_READY | STATE_GPS_READY);
-        standby();
-    }
     void standby()
     {
-  #if ENABLE_GPS
-        if (checkState(STATE_GPS_READY)) {
+        closeFile();
+        if (checkState(STATE_GPS_FOUND)) {
           Serial.print("GPS:");
           gpsInit(0); // turn off GPS power
           Serial.println("OFF");
+          clearState(STATE_GPS_FOUND | STATE_GPS_READY);
         }
-  #endif
-        clearState(STATE_OBD_READY | STATE_GPS_READY);
+        pidErrors = 0;
+        clearState(STATE_OBD_READY);
         Serial.println("Standby");
         ble.println("Standby");
   #if MEMS_MODE
@@ -273,10 +269,11 @@ void showStats()
     Serial.print(logger.dataCount);
     Serial.print(" samples | ");
     Serial.print(sps, 1);
-    Serial.print(" sps | ");
+    Serial.print(" sps");
     if (fileSize > 0) {
       digitalWrite(PIN_LED, HIGH);
       logger.flushData(fileSize);
+      Serial.print(" | ");
       Serial.print(fileSize);
       Serial.print(" bytes");
       digitalWrite(PIN_LED, LOW);
@@ -330,7 +327,6 @@ void setup()
 
     logger.setup();
     digitalWrite(PIN_LED, LOW);
-    delay(1000);
 }
 
 void loop()
@@ -345,7 +341,6 @@ void loop()
 #endif
     if (!logger.checkState(STATE_FILE_READY) && logger.checkState(STATE_SD_READY)) {
       digitalWrite(PIN_LED, HIGH);
-#if USE_GPS
       if (logger.checkState(STATE_GPS_FOUND)) {
         // GPS connected
         logger.logGPSData();
@@ -360,14 +355,13 @@ void loop()
         }
       }
       else
-#endif
       {
         // no GPS connected
         if (logger.openFile(0)) {
           logger.setState(STATE_FILE_READY);
         }
       }
-      logger.sleep(1000);
+      delay(1000);
       digitalWrite(PIN_LED, LOW);
       return;
     }
@@ -387,7 +381,8 @@ void loop()
         ble.println(pidErrors);
         if (obd.errors >= 3) {
           obd.reset();
-          logger.reconnect();
+          logger.standby();
+          return;
         }
       }
 #endif
@@ -431,9 +426,9 @@ void loop()
     logger.log(PID_BATTERY_VOLTAGE, v);
 #endif
 
-#if USE_GPS
-    logger.logGPSData();
-#endif
+    if (logger.checkState(STATE_GPS_FOUND)) {
+      logger.logGPSData();
+    }
 
     showStats();
 }

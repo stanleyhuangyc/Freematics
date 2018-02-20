@@ -13,8 +13,6 @@
 HardwareSerial OBDUART(1);
 #endif
 
-void gps_decode_task(int timeout);
-
 #define SAFE_MODE 1
 //#define DEBUG Serial
 
@@ -772,6 +770,6 @@ void COBDSPI::sleep(unsigned int ms)
 	for (;;) {
 		uint32_t elapsed = millis() - t;
 		if (elapsed > ms) break;
-		gps_decode_task(ms - elapsed);
+		idleTasks();
 	}
 }

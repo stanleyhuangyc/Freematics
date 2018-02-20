@@ -225,7 +225,7 @@ public:
       Serial.print("Waiting GPS time..");
       for (int i = 0; gdata.date == 0 && i < 60; i++) {
         Serial.print('.');
-        sleep(1000);
+        delay(1000);
         gpsGetData(&gdata);
       }
       Serial.println();
@@ -885,6 +885,11 @@ CTeleLogger logger;
 void setup()
 {
     delay(1000);
+
+    // init LED pin
+    pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_LED, HIGH);
+
     // initialize USB serial
     Serial.begin(115200);
     Serial.print("ESP32 ");
@@ -893,12 +898,9 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
-    // init LED pin
-    pinMode(PIN_LED, OUTPUT);
     // perform initializations
     BLE.begin(BLE_DEVICE_NAME);
 
-    digitalWrite(PIN_LED, HIGH);
     logger.setup();
     digitalWrite(PIN_LED, LOW);
 }
@@ -913,7 +915,7 @@ void loop()
         logger.setup();
         digitalWrite(PIN_LED, LOW);
         if (logger.checkState(STATE_ALL_GOOD)) break;
-        logger.sleep(3000);
+        delay(3000);
       }
       return;
     }
