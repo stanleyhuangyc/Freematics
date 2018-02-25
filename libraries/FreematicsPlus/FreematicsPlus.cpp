@@ -53,7 +53,7 @@ void gps_decode_task(void* inst)
     newGPSData = 0;
     do {
         uint8_t c;
-        if (uart_read_bytes(GPS_UART_NUM, &c, 1, 200 / portTICK_RATE_MS) == -1) continue;
+        if (uart_read_bytes(GPS_UART_NUM, &c, 1, 200 / portTICK_RATE_MS) != 1) continue;
         if (c == match[idx]) idx++;
     } while (millis() - t < GPS_TIMEOUT && idx < sizeof(match));
     if (idx < sizeof(match)) {
@@ -189,6 +189,7 @@ int32_t readChipHallSensor()
 
 uint16_t getFlashSize()
 {
+#if 0
     char out;
     uint16_t size = 16384;
     do {
@@ -196,6 +197,8 @@ uint16_t getFlashSize()
             return size;
     } while ((size >>= 1));
     return 0;
+#endif
+    return (spi_flash_get_chip_size() >> 10);
 }
 
 bool Task::create(void (*task)(void*), const char* name, int priority)
