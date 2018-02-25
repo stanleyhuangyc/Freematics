@@ -194,6 +194,7 @@ public:
         static uint8_t lastFileSize = 0;
         byte dataSizeKB = fileSize >> 10;
         if (dataSizeKB != lastFileSize) {
+            digitalWrite(PIN_LED, HIGH);
             flushFile();
             lastFileSize = dataSizeKB;
 #if MAX_DATA_FILE_SIZE
@@ -202,6 +203,7 @@ public:
               clearState(STATE_FILE_READY);
             }
 #endif
+            digitalWrite(PIN_LED, LOW);
         }
     }
     void standby()
@@ -302,8 +304,6 @@ void setup()
     Serial.print("MHz ");
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
-
-    ble.begin("Freematics ONE+");
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
