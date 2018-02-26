@@ -56,34 +56,31 @@ public:
     bool netInit()
     {
       // set xBee module serial baudrate
-      bool success = false;
-      // test the module by issuing AT command and confirming response of "OK"
-      for (byte n = 0; !(success = netSendCommand("ATE0\r\n")) && n < 10; n++) {
-        sleep(100);
-      }
-      if (success && netSendCommand("AT+CWMODE=1\r\n", 100) && netSendCommand("AT+CIPMUX=0\r\n", 100)) {
-        return true;
-      } else {
-        return false;
-      }
-    }
-    bool netSetup()
-    {
-      // generate and send AT command for joining AP
-      sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
-      byte ret = netSendCommand(buffer, 10000);
-      if (ret == 1) {
-        // get IP address
-        for (byte n = 0; n < 3; n++) {
-          if (!netSendCommand("AT+CIFSR\r\n")) break;
-          if (strstr_P(buffer, PSTR("0.0.0.0"))) continue;
-          char *p = strchr(buffer, '\"');
-          char *ip = p ? p + 1 : buffer;
-          if ((p = strchr(ip, '\"')) || (p = strchr(ip, '\r'))) *p = 0;
-          // output IP address
-          Serial.println(ip);
-          return true;
+      bool gotIP = false;
+      // test the module by issuing ATE0 command and confirming response of "OK"
+      if (!netSendCommand("ATE0\r\n")) return false;
+      if (rxLen) {
+        if (strstr_P(rxBuf, "WIFI GOT IP")) {
+          // WIFI automatically connected
+          gotIP = true;
         }
+      }
+      netSendCommand("AT+CWMODE=1\r\n", 100);
+      netSendCommand("AT+CIPMUX=0\r\n", 100);
+
+      // generate and send AT command for joining AP
+      if (!gotIP) {
+        sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
+        if (!netSendCommand(buffer, 7000)) return false;
+      }
+      // get IP address
+      if (netSendCommand("AT+CIFSR\r\n") && !strstr_P(buffer, PSTR("0.0.0.0"))) {
+        char *p = strchr(buffer, '\"');
+        char *ip = p ? p + 1 : buffer;
+        if ((p = strchr(ip, '\"')) || (p = strchr(ip, '\r'))) *p = 0;
+        // output IP address
+        Serial.println(ip);
+        return true;
       }
       //Serial.println(buffer);
       return false;
@@ -210,6 +207,7 @@ public:
         }
       }
       rxLen = 0;
+      connErrors = 0;
       // verify checksum
       if (!verifyChecksum(rxBuf)) {
         Serial.println("Invalid data");
@@ -226,7 +224,6 @@ public:
         Serial.print("FEED ID:");
         Serial.println(feedid);
       }
-      connErrors = 0;
       return true;
     }
     return false;
@@ -238,6 +235,7 @@ public:
     if (!udpSend(cache, cacheBytes)) {
       connErrors++;
     } else {
+      connErrors = 0;
       txCount++;
     }
     // clear cache and write header for next transmission
@@ -353,23 +351,13 @@ public:
 
     if (!checkState(STATE_NET_READY)) {
       // attempt to join AP with pre-defined credential
-      // make sure to change WIFI_SSID and WIFI_PASSWORD to your own ones
-      // initialize ESP8266 xBee module (if present)
-      Serial.print("#ESP8266...");
       xbBegin(XBEE_BAUDRATE);
-      if (netInit()) {
-        Serial.println("OK");
-      } else {
-        Serial.println("NO");
-        return false;
-      }
-      
       connected = false;
       for (byte n = 0; n < 10 && !connected; n++) {
         Serial.print("#WIFI(SSID:");
         Serial.print(WIFI_SSID);
         Serial.print(")...");
-        connected = netSetup();
+        connected = netInit();
         if (!connected) {
           Serial.println("NO");          
         }
