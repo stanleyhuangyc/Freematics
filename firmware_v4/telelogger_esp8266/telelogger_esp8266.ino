@@ -71,10 +71,12 @@ public:
     {
       // generate and send AT command for joining AP
       sprintf_P(buffer, PSTR("AT+CWJAP=\"%s\",\"%s\"\r\n"), WIFI_SSID, WIFI_PASSWORD);
-      byte ret = netSendCommand(buffer, 5000);
-      if (ret == 1 || strstr_P(buffer, PSTR("WIFI CONNECTED"))) {
+      byte ret = netSendCommand(buffer, 10000);
+      if (ret == 1) {
         // get IP address
-        if (netSendCommand("AT+CIFSR\r\n", 5000) && !strstr_P(buffer, PSTR("0.0.0.0"))) {
+        for (byte n = 0; n < 3; n++) {
+          if (!netSendCommand("AT+CIFSR\r\n")) break;
+          if (strstr_P(buffer, PSTR("0.0.0.0"))) continue;
           char *p = strchr(buffer, '\"');
           char *ip = p ? p + 1 : buffer;
           if ((p = strchr(ip, '\"')) || (p = strchr(ip, '\r'))) *p = 0;
@@ -83,7 +85,7 @@ public:
           return true;
         }
       }
-      Serial.println(buffer);
+      //Serial.println(buffer);
       return false;
     }
     void udpClose()
