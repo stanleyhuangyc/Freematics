@@ -10,7 +10,7 @@
 #include <Wire.h>
 #include "FreematicsONE.h"
 
-#define SAFE_MODE 1
+//#define SAFE_MODE 1
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
@@ -132,7 +132,7 @@ bool COBDSPI::readPID(byte pid, int& result)
 #if SAFE_MODE
 	sleep(20);
 #else
-	sleep(1);
+	idleTasks();
 #endif
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
@@ -438,16 +438,16 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			sleep(1);
+			delay(1);
 			if (millis() - t > timeout) {
 				Serial.println("NO SPI DATA");
 				break;
 			}
 		}
 #if SAFE_MODE
-		sleep(10);
+		delay(10);
 #else
-		sleep(1);
+		delay(1);
 #endif
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
@@ -479,9 +479,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				n++;
 			}
 		}
-		sleep(1);
+		delay(1);
 		digitalWrite(SPI_PIN_CS, HIGH);
-		sleep(1);
+		delay(1);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -509,9 +509,9 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-	sleep(1);
+	delay(1);
 	digitalWrite(SPI_PIN_CS, LOW);
-	sleep(5);
+	delay(5);
 	//SPI.beginTransaction(spiSettings);
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
@@ -529,7 +529,7 @@ void COBDSPI::write(const char* s)
 	delay(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
-	sleep(1);
+	delay(1);
 }
 
 byte COBDSPI::readPID(const byte pid[], byte count, int result[])
@@ -539,7 +539,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 		if (readPID(pid[n], result[n])) {
 			results++;
 		}
-		sleep(5);
+		sleep(10);
 	}
 	return results;
 }
@@ -550,7 +550,11 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 	byte n;
 	do {
 		write(cmd);
+#if SAFE_MODE
 		sleep(20);
+#else
+		delay(1);
+#endif
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp_P(buf + 5, PSTR("NO DATA"), 7))) {
 			// data not ready
@@ -565,9 +569,8 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 void COBDSPI::sleep(unsigned int ms)
 {
 	uint32_t t = millis();
-	do {
-		idleTasks();
-	} while(millis() - t < ms);
+	if (ms >= 10) idleTasks();
+	while (millis() - t < ms);
 }
 
 bool COBDSPI::gpsInit(unsigned long baudrate)
