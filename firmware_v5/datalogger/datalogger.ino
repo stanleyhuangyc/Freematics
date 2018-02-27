@@ -378,7 +378,7 @@ void loop()
           logger.setState(STATE_FILE_READY);
         }
       }
-      logger.sleep(1000);
+      delay(1000);
       digitalWrite(PIN_LED, LOW);
       return;
     }
