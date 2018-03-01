@@ -53,28 +53,6 @@ public:
   virtual const char* netDeviceName() { return ""; }
   int transmit(const char* data, int bytes, bool wait);
   uint8_t getConnErrors() { return connErrors; }
-#ifdef ESP32
-  bool bleBegin(const char* bleDeviceName);
-  void bleEnd();
-  bool bleSend(const char* data, unsigned int len);
-  void blePrint(String s);
-  virtual size_t onRequestBLE(uint8_t* buffer, size_t len)
-  {
-    // being requested for data
-    buffer[0] = 'O';
-    buffer[1] = 'K';
-    return 2;
-  }
-  virtual void onReceiveBLE(uint8_t* buffer, size_t len)
-  {
-    // data received is in buffer
-  }
-#else
-  bool bleBegin(const char* bleDeviceName) { return false; }
-  void bleEnd() {}
-  bool bleSend(const char* data, unsigned int len) { return false; }
-  void blePrint(String s) {}
-#endif
 protected:
   byte checksum(const char* data, int len)
   {
