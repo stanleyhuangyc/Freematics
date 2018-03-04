@@ -40,20 +40,20 @@ typedef struct {
   uint8_t second;
 } NET_LOCATION;
 
-class UDPClient
+class NullClient
 {
 public:
   virtual bool begin() { return true; }
   virtual void end() {}
-  virtual bool open(const char* host, uint16_t port) { return true; }
+  virtual bool open(const char* host, uint16_t port) = 0;
   virtual void close() {}
-  virtual bool send(const char* data, unsigned int len) { return false; }
-  virtual char* receive(int* pbytes = 0, unsigned int timeout = 5000) { return 0; }
+  virtual bool send(const char* data, unsigned int len) = 0;
+  virtual char* receive(int* pbytes, unsigned int timeout) = 0;
   virtual bool getLocation(NET_LOCATION* loc) { return false; }
-  virtual const char* deviceName() { return ""; }
+  virtual const char* deviceName() = 0;
 };
 
-class UDPClientWIFI : public UDPClient
+class UDPClientWIFI : virtual NullClient
 {
 public:
     bool begin();
@@ -74,7 +74,7 @@ public:
     WiFiUDP udp;
 };
 
-class UDPClientSIM800 : public UDPClient
+class UDPClientSIM800 : virtual NullClient
 {
 public:
     bool begin(CFreematics* device);
@@ -102,7 +102,7 @@ protected:
     CFreematics* m_device = 0;
 };
 
-class UDPClientSIM5360 : public UDPClient
+class UDPClientSIM5360 : virtual NullClient
 {
 public:
     bool begin(CFreematics* device);
