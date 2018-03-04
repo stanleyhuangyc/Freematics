@@ -96,7 +96,7 @@ void UDPClientWIFI::end()
 
 bool UDPClientSIM800::begin(CFreematics* device)
 {
-  device = device;
+  m_device = device;
   if (m_stage == 0) {
     device->xbBegin(XBEE_BAUDRATE);
     m_stage = 1;
@@ -104,7 +104,7 @@ bool UDPClientSIM800::begin(CFreematics* device)
   for (byte n = 0; n < 10; n++) {
     // try turning on module
     device->xbTogglePower();
-    delay(3000);
+    delay(2000);
     // discard any stale data
     device->xbPurge();
     for (byte m = 0; m < 3; m++) {
