@@ -20,7 +20,6 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#ifdef ESP32
 #include "FreematicsGPS.h"
 
 #define _GPRMC_TERM   "GPRMC"
@@ -452,5 +451,3 @@ float TinyGPS::f_speed_kmph()
 const float TinyGPS::GPS_INVALID_F_ANGLE = 1000.0;
 const float TinyGPS::GPS_INVALID_F_ALTITUDE = 1000000.0;
 const float TinyGPS::GPS_INVALID_F_SPEED = -1.0;
-
-#endif

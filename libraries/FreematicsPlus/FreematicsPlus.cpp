@@ -22,25 +22,34 @@
 #include "FreematicsPlus.h"
 #include "FreematicsGPS.h"
 
-
 static TinyGPS gps;
-static int newGPSData = 0;
-Task taskGPS;
+static int validGPSData = 0;
+static int sentencesGPSData = 0;
+static Task taskGPS;
 
 void gps_decode_task(void* inst)
 {
+    uint8_t pattern[] = {'$', '\n'};
+    int idx = 0;
     for (;;) {
         uint8_t c;
-        int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 100 / portTICK_RATE_MS);
-        if (len == 1 && gps.encode(c)) {
-            newGPSData++;
+        int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 60000 / portTICK_RATE_MS);
+        if (len != 1) continue;
+        if (c == pattern[idx]) {
+            if (++idx >= sizeof(pattern)) {
+                idx = 0;
+                sentencesGPSData++;
+            }
+        }
+        if (gps.encode(c)) {
+            validGPSData++;
         }
     }
 }
 
 int gps_get_data(GPS_DATA* gdata)
 {
-    if (!newGPSData) return false;
+    if (!validGPSData) return 0;
     gps.get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
     gps.get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
     gdata->speed = gps.speed() * 1852 / 100000; /* km/h */
@@ -48,23 +57,15 @@ int gps_get_data(GPS_DATA* gdata)
     gdata->heading = gps.course() / 100;
     gdata->sat = gps.satellites();
     if (gdata->sat > 200) gdata->sat = 0;
-    int ret = newGPSData;
-    newGPSData = 0;
+    int ret = validGPSData;
+    validGPSData = 0;
     return ret;
 }
 
 int gps_write_string(const char* string)
 {
     if (!taskGPS.running()) return 0;
-    return uart_write_bytes(BEE_UART_NUM, string, strlen(string));
-}
-
-void gps_decode_stop()
-{
-    if (taskGPS.running()) {
-        newGPSData = 0;
-        taskGPS.suspend();
-    }
+    return uart_write_bytes(GPS_UART_NUM, string, strlen(string));
 }
 
 bool gps_decode_start()
@@ -73,21 +74,16 @@ bool gps_decode_start()
     uint32_t t = millis();
     uint8_t match[] = {'$', ',', '\n'};
     int idx = 0;
-    newGPSData = 0;
-    do {
-        uint8_t c;
-        if (uart_read_bytes(GPS_UART_NUM, &c, 1, 200 / portTICK_RATE_MS) != 1) continue;
-        if (c == match[idx]) idx++;
-    } while (millis() - t < GPS_TIMEOUT && idx < sizeof(match));
-    if (idx < sizeof(match)) {
-        // no matching pattern
-        return false;
-    }
+    validGPSData = 0;
+    sentencesGPSData = 0;
+
     // start GPS decoding thread if not started
-    taskGPS.create(gps_decode_task, "GPS", 512);
-    // resume GPS decoding thread in case it is suspended
-    taskGPS.resume();
-    return true;
+    taskGPS.create(gps_decode_task, "GPS", 0);
+
+    for (int i = 0; i < 20 && sentencesGPSData < 3; i++) {
+        delay(100);
+    }
+    return sentencesGPSData >= 3;
 }
 
 void bee_start(int baudrate)
@@ -251,16 +247,16 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate)
 		pinMode(PIN_GPS_POWER, OUTPUT);
 		// turn on GPS power
 		digitalWrite(PIN_GPS_POWER, HIGH);
+        delay(10);
 		if (gps_decode_start()) {
 			// success
 			return true;
 		}
 	} else {
-        gps_decode_stop();
 		success = true;
 	}
 	//turn off GPS power
-	digitalWrite(PIN_GPS_POWER, LOW);
+  	digitalWrite(PIN_GPS_POWER, LOW);
 	return success;
 }
 
