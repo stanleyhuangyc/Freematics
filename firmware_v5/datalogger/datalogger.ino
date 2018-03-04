@@ -32,6 +32,7 @@ uint32_t pidErrors = 0;
 
 COBDSPI obd;
 GATTServer ble;
+FreematicsESP32 sys;
 
 #if MEMS_MODE
 
@@ -72,7 +73,7 @@ void calibrateMEMS()
 }
 #endif
 
-class CLogger : public virtual CFreematicsESP32
+class CLogger
 {
 public:
     void setup()
@@ -99,7 +100,7 @@ public:
 #if USE_GPS
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("GPS ");
-        if (gpsInit(GPS_SERIAL_BAUDRATE)) {
+        if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
           setState(STATE_GPS_FOUND);
           Serial.println("OK");
           //waitGPS();
@@ -140,7 +141,7 @@ public:
     {
         // issue the command to get parsed GPS data
         GPS_DATA gd = {0};
-        if (checkState(STATE_GPS_FOUND) && gpsGetData(&gd)) {
+        if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd)) {
             store.setTimestamp(millis());
             if (gd.time && gd.time != UTC) {
               byte day = gd.date / 10000;
@@ -175,7 +176,7 @@ public:
             elapsed = t1;
           }
           // read parsed GPS data
-          if (gpsGetData(&gd) && gd.sat != 0 && gd.sat != 255) {
+          if (sys.gpsGetData(&gd) && gd.sat != 0 && gd.sat != 255) {
             Serial.print("SAT:");
             Serial.println(gd.sat);
             break;
@@ -208,7 +209,7 @@ public:
         store.close();
         // turn off GPS power
 #if USE_GPS
-        gpsInit(0);
+        sys.gpsInit(0);
 #endif
         clearState(STATE_OBD_READY | STATE_GPS_READY);
         standby();
@@ -218,7 +219,7 @@ public:
   #if ENABLE_GPS
         if (checkState(STATE_GPS_READY)) {
           Serial.print("GPS:");
-          gpsInit(0); // turn off GPS power
+          sys.gpsInit(0); // turn off GPS power
           Serial.println("OFF");
         }
   #endif
@@ -317,6 +318,7 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
+    sys.begin();
     ble.begin("Freematics ONE+");
 
     // init LED pin
