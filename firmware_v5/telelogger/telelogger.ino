@@ -417,190 +417,192 @@ void calibrateMEMS()
 *******************************************************************************/
 bool initialize()
 {
-state.clear(STATE_ALL_GOOD);
-distance = 0;
+  state.clear(STATE_ALL_GOOD);
+  distance = 0;
 
 #if MEMS_MODE
-if (!state.check(STATE_MEMS_READY)) {
-  Serial.print("MEMS...");
-  if (mems.begin(ENABLE_ORIENTATION)) {
-    state.set(STATE_MEMS_READY);
-    Serial.println("OK");
-    BLE.println("MEMS OK");
-  } else {
-    Serial.println("NO");
+  if (!state.check(STATE_MEMS_READY)) {
+    Serial.print("MEMS...");
+    if (mems.begin(ENABLE_ORIENTATION)) {
+      state.set(STATE_MEMS_READY);
+      Serial.println("OK");
+      BLE.println("MEMS OK");
+    } else {
+      Serial.println("NO");
+    }
   }
-}
 #endif
 
-#if ENABLE_OBD
-// initialize OBD communication
-if (!state.check(STATE_OBD_READY)) {
-  obd.begin();
-  Serial.print("OBD...");
-  if (!obd.init()) {
-    Serial.println("NO");
-    return false;
+  #if ENABLE_OBD
+  // initialize OBD communication
+  if (!state.check(STATE_OBD_READY)) {
+    obd.begin();
+    Serial.print("OBD...");
+    if (!obd.init()) {
+      Serial.println("NO");
+      return false;
+    }
+    timeoutsOBD = 0;
+    Serial.println("OK");
+    BLE.println("OBD OK");
+    state.set(STATE_OBD_READY);
   }
-  timeoutsOBD = 0;
-  Serial.println("OK");
-  BLE.println("OBD OK");
-  state.set(STATE_OBD_READY);
-}
-#endif
+  #endif
 
 #ifdef ENABLE_GPS
-// start serial communication with GPS receiver
-if (!state.check(STATE_GPS_READY)) {
-  Serial.print("GPS...");
-  if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
-    state.set(STATE_GPS_READY);
-    Serial.println("OK");
-    BLE.println("GPS OK");
-  } else {
-    Serial.println("NO");
+  // start serial communication with GPS receiver
+  if (!state.check(STATE_GPS_READY)) {
+    Serial.print("GPS...");
+    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+      state.set(STATE_GPS_READY);
+      Serial.println("OK");
+      BLE.println("GPS OK");
+    } else {
+      Serial.println("NO");
+    }
   }
-}
 #endif
 
 #if NET_DEVICE == NET_WIFI
-for (byte attempts = 0; attempts < 3; attempts++) {
-  Serial.print("WIFI(SSID:");
-  Serial.print(WIFI_SSID);
-  Serial.print(")...");
-  if (net.begin() && net.setup(WIFI_SSID, WIFI_PASSWORD)) {
-    BLE.println("WIFI OK");
-    Serial.println("OK");
-    state.set(STATE_NET_READY);
-    break;
-  } else {
-    Serial.println("NO");
+  for (byte attempts = 0; attempts < 3; attempts++) {
+    Serial.print("WIFI(SSID:");
+    Serial.print(WIFI_SSID);
+    Serial.print(")...");
+    if (net.begin() && net.setup(WIFI_SSID, WIFI_PASSWORD)) {
+      BLE.println("WIFI OK");
+      Serial.println("OK");
+      state.set(STATE_NET_READY);
+      break;
+    } else {
+      Serial.println("NO");
+    }
   }
-}
-if (!state.check(STATE_NET_READY)) {
-  return false;
-}
+  if (!state.check(STATE_NET_READY)) {
+    return false;
+  }
 #elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
-// initialize network module
-if (!state.check(STATE_NET_READY)) {
-  Serial.print(net.deviceName());
-  Serial.print("...");
-  if (net.begin(&sys)) {
-    Serial.println("OK");
-    BLE.println("NET OK");
-    state.set(STATE_NET_READY);
+  // initialize network module
+  if (!state.check(STATE_NET_READY)) {
+    Serial.print(net.deviceName());
+    Serial.print("...");
+    if (net.begin(&sys)) {
+      Serial.println("OK");
+      BLE.println("NET OK");
+      state.set(STATE_NET_READY);
+    } else {
+      Serial.println("NO");
+      return false;
+    }
+  }
+  Serial.print("CELL(APN:");
+  Serial.print(CELL_APN);
+  Serial.print(")");
+  if (net.setup(CELL_APN)) {
+    BLE.println("CELL OK");
+    String op = net.getOperatorName();
+    if (op.length()) {
+      Serial.println(op);
+      BLE.println(op);
+    } else {
+      Serial.println("OK");
+    }
   } else {
     Serial.println("NO");
     return false;
   }
-}
-Serial.print("CELL(APN:");
-Serial.print(CELL_APN);
-Serial.print(")");
-if (net.setup(CELL_APN)) {
-  BLE.println("CELL OK");
-  String op = net.getOperatorName();
-  if (op.length()) {
-    Serial.println(op);
-    BLE.println(op);
-  } else {
-    Serial.println("OK");
-  }
-} else {
-  Serial.println("NO");
-  return false;
-}
 #endif
-timeoutsNet = 0;
+  timeoutsNet = 0;
 
-if (state.check(STATE_MEMS_READY)) {
-  calibrateMEMS();
-}
+#if MEMS_MODE
+  if (state.check(STATE_MEMS_READY)) {
+    calibrateMEMS();
+  }
+#endif
 
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
-Serial.print("IP...");
-String ip = net.getIP();
-if (ip.length()) {
-  Serial.println(ip);
-  BLE.println(ip);
-} else {
-  Serial.println("NO");
-}
-int csq = net.getSignal();
-if (csq > 0) {
-  Serial.print("CSQ...");
-  Serial.print((float)csq / 10, 1);
-  Serial.println("dB");
-}
+  Serial.print("IP...");
+  String ip = net.getIP();
+  if (ip.length()) {
+    Serial.println(ip);
+    BLE.println(ip);
+  } else {
+    Serial.println("NO");
+  }
+  int csq = net.getSignal();
+  if (csq > 0) {
+    Serial.print("CSQ...");
+    Serial.print((float)csq / 10, 1);
+    Serial.println("dB");
+  }
 #endif
 
-txCount = 0;
-cache.init(RAM_CACHE_SIZE);
-netbuf.init(256);
-if (!login()) {
-  return false;
-}
-state.set(STATE_CONNECTED);
+  txCount = 0;
+  cache.init(RAM_CACHE_SIZE);
+  netbuf.init(256);
+  if (!login()) {
+    return false;
+  }
+  state.set(STATE_CONNECTED);
 
-cache.header(feedid);
-lastSyncTime = millis();
+  cache.header(feedid);
+  lastSyncTime = millis();
 #if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
-// log signal level
-if (csq) cache.log(PID_CSQ, csq);
+  // log signal level
+  if (csq) cache.log(PID_CSQ, csq);
 #endif
 
-// check system time
-time_t utc;
-bool utcValid = false;
-time(&utc);
-struct tm *btm = gmtime(&utc);
-if (btm->tm_year > 100) {
-  // valid system time available
-  char buf[64];
-  sprintf(buf, "%04u-%02u-%02u %02u:%02u:%02u",
-    1900 + btm->tm_year, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec);
-  Serial.print("UTC:");
-  Serial.println(buf);
-  utcValid = true;
-}
+  // check system time
+  time_t utc;
+  bool utcValid = false;
+  time(&utc);
+  struct tm *btm = gmtime(&utc);
+  if (btm->tm_year > 100) {
+    // valid system time available
+    char buf[64];
+    sprintf(buf, "%04u-%02u-%02u %02u:%02u:%02u",
+      1900 + btm->tm_year, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec);
+    Serial.print("UTC:");
+    Serial.println(buf);
+    utcValid = true;
+  }
 
 #if STORAGE_TYPE != STORAGE_NONE
-// need valid current date for data storage
-GPS_DATA gdata = {0};
-unsigned long date = 0;
-if (utcValid) {
-  date = (unsigned long)(1900 + btm->tyear) * 10000 + (btm->tmon + 1) * 100 + btm->tmday;
-} else if (state.check(STATE_GPS_READY)) {
-#if WAIT_FOR_GPS
-  // wait for GPS signal to get UTC
-  Serial.print("Waiting GPS time..");
-  for (int i = 0; gdata.date == 0 && i < 60; i++) {
-    Serial.print('.');
-    delay(1000);
-    gpsGetData(&gdata);
+  // need valid current date for data storage
+  GPS_DATA gdata = {0};
+  unsigned long date = 0;
+  if (utcValid) {
+    date = (unsigned long)(1900 + btm->tm_year) * 10000 + (btm->tm_mon + 1) * 100 + btm->tm_mday;
+  } else if (state.check(STATE_GPS_READY)) {
+  #if WAIT_FOR_GPS
+    // wait for GPS signal to get UTC
+    Serial.print("Waiting GPS time..");
+    for (int i = 0; gdata.date == 0 && i < 60; i++) {
+      Serial.print('.');
+      delay(1000);
+      gpsGetData(&gdata);
+    }
+    Serial.println();
+    if (gdata.date) {
+      unsigned int year = (gdata.date % 100) + 2000;
+      unsigned int month = (gdata.date / 100) % 100;
+      unsigned int day = (gdata.date / 10000);
+      date = (unsigned long)year * 10000 + month * 100 + day;
+    }
+  #endif
   }
-  Serial.println();
-  if (gdata.date) {
-    unsigned int year = (gdata.date % 100) + 2000;
-    unsigned int month = (gdata.date / 100) % 100;
-    unsigned int day = (gdata.date / 10000);
-    date = (unsigned long)year * 10000 + month * 100 + day;
-  }
-#endif
-}
-if (!state.check(STATE_STORAGE_READY)) {
-  // init storage
-  if (store.init()) {
-    state.set(STATE_STORAGE_READY);
-    if (store.begin(date)) {
-      cache.setForward(&store);
+  if (!state.check(STATE_STORAGE_READY)) {
+    // init storage
+    if (store.init()) {
+      state.set(STATE_STORAGE_READY);
+      if (store.begin(date)) {
+        cache.setForward(&store);
+      }
     }
   }
-}
 #endif
 
-state.set(STATE_ALL_GOOD);
-return true;
+  state.set(STATE_ALL_GOOD);
+  return true;
 }
 
 /*******************************************************************************
