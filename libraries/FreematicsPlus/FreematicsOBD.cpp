@@ -13,7 +13,7 @@
 HardwareSerial OBDUART(1);
 #endif
 
-#define SAFE_MODE 1
+//#define SAFE_MODE 1
 //#define DEBUG Serial
 
 #ifdef DEBUG
@@ -92,7 +92,6 @@ byte hex2uint8(const char *p)
 byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 {
 	write(cmd);
-	idleTasks();
 	return receive(buf, bufsize, timeout);
 }
 
@@ -425,7 +424,6 @@ int COBD::receive(char* buffer, int bufsize, unsigned int timeout)
 			    // timeout
 			    break;
 			}
-			idleTasks();
 		}
 	}
 	if (buffer) {
@@ -601,7 +599,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			sleep(1);
+			delay(1);
 			if (millis() - t > timeout) {
 #ifdef DEBUG
 				debugOutput("NO READY SIGNAL");
@@ -610,9 +608,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			}
 		}
 #if SAFE_MODE
-		sleep(10);
+		delay(10);
 #else
-		sleep(1);
+		delay(1);
 #endif
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
@@ -668,7 +666,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	debugOutput(buffer);
 #endif
 	// wait for READY pin to restore high level so SPI bus is released
-	while (digitalRead(SPI_PIN_READY) == LOW) sleep(1);
+	while (digitalRead(SPI_PIN_READY) == LOW) delay(1);
 	return n;
 }
 
@@ -679,12 +677,12 @@ void COBDSPI::write(const char* s)
 #endif
 	int len = strlen(s);
 	digitalWrite(SPI_PIN_CS, LOW);
-	sleep(1);
+	delay(1);
 	//SPI.beginTransaction(spiSettings);
 	SPI.writeBytes((uint8_t*)header, sizeof(header));
 	SPI.writeBytes((uint8_t*)s, len);
 	SPI.write(0x1B);
-	sleep(1);
+	delay(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
@@ -692,10 +690,10 @@ void COBDSPI::write(const char* s)
 void COBDSPI::write(uint8_t* data, int bytes)
 {
 	digitalWrite(SPI_PIN_CS, LOW);
-	sleep(1);
+	delay(1);
 	SPI.writeBytes(data, bytes);
 	SPI.write(0x1B);
-	sleep(1);
+	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
@@ -706,9 +704,9 @@ bool COBDSPI::readPID(byte pid, int& result)
 	sprintf(buffer, "%02X%02X\r", dataMode, pid);
 	write(buffer);
 #if SAFE_MODE
-	sleep(20);
+	delay(20);
 #else
-	sleep(1);
+	delay(1);
 #endif
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
@@ -740,24 +738,14 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 	int n;
 	do {
 		write(cmd);
-		sleep(20);
+		delay(20);
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
 			// data not ready
-			sleep(20);
+			delay(20);
 		} else {
 	  		break;
 		}
 	} while (millis() - t < timeout);
 	return n;
-}
-
-void COBDSPI::sleep(unsigned int ms)
-{
-	uint32_t t = millis();
-	for (;;) {
-		uint32_t elapsed = millis() - t;
-		if (elapsed > ms) break;
-		idleTasks();
-	}
 }

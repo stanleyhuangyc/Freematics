@@ -70,7 +70,6 @@ public:
     void resume();
     bool running();
     void sleep(uint32_t ms);
-    int status = 0;
 private:
 	void* xHandle = 0;
 };
@@ -85,29 +84,30 @@ private:
   void* xSemaphore;
 };
 
-class CFreematicsESP32 : virtual CFreematics
+class FreematicsESP32 : public CFreematics
 {
 public:
+    void begin();
     // initialize GPS (set baudrate to 0 to power off GPS)
-    virtual bool gpsInit(unsigned long baudrate = 115200L);
+    bool gpsInit(unsigned long baudrate = 115200L);
     // get parsed GPS data (returns the number of data parsed since last invoke)
-    virtual int gpsGetData(GPS_DATA* gdata);
+    int gpsGetData(GPS_DATA* gdata);
     // send command string to GPS
-    virtual void gpsSendCommand(const char* cmd);
+    void gpsSendCommand(const char* cmd);
 	// start xBee UART communication
-	virtual bool xbBegin(unsigned long baudrate = 115200L);
+	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
-	virtual int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
+	int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
 	// send data to xBee UART
-	virtual void xbWrite(const char* cmd);
+	void xbWrite(const char* cmd);
     // send data to xBee UART
-	virtual void xbWrite(const char* data, int len);
+	void xbWrite(const char* data, int len);
 	// receive data from xBee UART (returns 0/1/2)
-	virtual int xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
+	int xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
 	// purge xBee UART buffer
-	virtual void xbPurge();
+	void xbPurge();
 	// toggle xBee module power
-	virtual void xbTogglePower();
+	void xbTogglePower();
 };
 
 class CStorageNull;
