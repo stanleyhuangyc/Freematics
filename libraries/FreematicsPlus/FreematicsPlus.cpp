@@ -61,6 +61,7 @@ void gps_decode_task(void* inst)
         uart_driver_delete(GPS_UART_NUM);
         task->status = 1;
         task->destroy();
+        // never reaches here
         return;
     }
 
@@ -212,8 +213,9 @@ bool Task::create(void (*task)(void*), const char* name, int priority)
 void Task::destroy()
 {
     if (xHandle) {
-        vTaskDelete((TaskHandle_t)xHandle);
+        void* x = xHandle;
         xHandle = 0;
+        vTaskDelete((TaskHandle_t)x);
     }
 }
 
@@ -321,7 +323,7 @@ int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout,
 		if (bytesRecv >= bufsize - 16) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
+		int n = bee_read((uint8_t*)buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
 #ifdef XBEE_DEBUG
 			Serial.print("[RECV]");
