@@ -94,7 +94,9 @@
 * MEMS sensors
 **************************************/
 #define ENABLE_ORIENTATION 0
+#ifndef MEMS_MODE
 #define MEMS_MODE MEMS_9DOF
+#endif
 
 /**************************************
 * GPS
