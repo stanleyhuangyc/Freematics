@@ -9,10 +9,6 @@
 #define NET_SIM800 2
 #define NET_SIM5360 3
 
-#define MEMS_DISABLED 0
-#define MEMS_ACC 1
-#define MEMS_9DOF 2
-
 /**************************************
 * OBD-II configurations
 **************************************/
@@ -58,9 +54,9 @@
 #define SERVER_SYNC_INTERVAL 60 /* seconds, 0 to disable */
 
 /**************************************
-* MEMS sensors
+* MEMS motion sensors
 **************************************/
-#define MEMS_MODE MEMS_ACC
+#define MEMS_MODE 1 /* 0 to disable */
 
 /**************************************
 * GPS
