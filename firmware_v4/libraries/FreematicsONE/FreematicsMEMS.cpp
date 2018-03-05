@@ -2,11 +2,12 @@
 * Freematics MPU6050 helper class
 * Distributed under BSD license
 * Visit http://freematics.com for more information
-* (C)2016 Stanley Huang <support@freematics.com.au>
+* (C)2016-2018 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
 #include <Wire.h>
+#include "FreematicsBase.h"
 #include "FreematicsMEMS.h"
 
 
@@ -554,7 +555,7 @@ void MPU9250_ACC::initMPU9250()
 
 }
 
-byte MPU9250_ACC::memsInit(bool fusion)
+byte MPU9250_ACC::begin(bool fusion)
 {
   Wire.begin();
   Wire.setClock(400000);
@@ -566,7 +567,7 @@ byte MPU9250_ACC::memsInit(bool fusion)
   return (c == 0x71) ? 2 : 1;
 }
 
-bool MPU9250_ACC::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
+bool MPU9250_ACC::read(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
 {
   if (acc) {
     readAccelData(accelCount);
@@ -581,7 +582,7 @@ bool MPU9250_ACC::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, OR
   return true;
 }
 
-byte MPU9250_9DOF::memsInit(bool fusion)
+byte MPU9250_9DOF::begin(bool fusion)
 {
   byte ret = 0;
   Wire.begin();
@@ -603,7 +604,7 @@ byte MPU9250_9DOF::memsInit(bool fusion)
   return ret;
 }
 
-bool MPU9250_9DOF::memsRead(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
+bool MPU9250_9DOF::read(float* acc, float* gyr, float* mag, int16_t* temp, ORIENTATION* ori)
 {
   if (acc) {
     readAccelData(accelCount);

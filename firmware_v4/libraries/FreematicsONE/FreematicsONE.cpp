@@ -2,7 +2,7 @@
 * Arduino Library for Freematics ONE
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
-* (C)2012-2016 Stanley Huang <support@freematics.com.au
+* (C)2012-2018 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
@@ -14,16 +14,22 @@
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
+static const char targets[][4] = {
+	{'$','O','B','D'},
+	{'$','G','P','S'},
+	{'$','G','S','M'}
+};
+
 uint16_t hex2uint16(const char *p)
 {
 	char c = *p;
 	uint16_t i = 0;
-	for (char n = 0; c && n < 4; c = *(++p)) {
+	for (uint8_t n = 0; c && n < 4; c = *(++p)) {
 		if (c >= 'A' && c <= 'F') {
 			c -= 7;
 		} else if (c>='a' && c<='f') {
 			c -= 39;
-        } else if (c == ' ') {
+        } else if (c == ' ' && n == 2) {
             continue;
         } else if (c < '0' || c > '9') {
 			break;
@@ -251,12 +257,12 @@ float COBDSPI::getVoltage()
 	return 0;
 }
 
-bool COBDSPI::getVIN(char* buffer, byte bufsize)
+bool COBDSPI::getVIN(char* buffer, int bufsize)
 {
 	setTarget(TARGET_OBD);
 	for (byte n = 0; n < 5; n++) {
 		if (sendCommand("0902\r", buffer, bufsize)) {
-			int len = hex2uint16(buffer);
+			int len = hex2uint16(buffer + sizeof(targets[0]));
 			char *p = strstr_P(buffer + 4, PSTR("0: 49 02 01"));
 			if (p) {
 				char *q = buffer;
@@ -277,7 +283,7 @@ bool COBDSPI::getVIN(char* buffer, byte bufsize)
 				}
 			}
 		}
-		delay(100);
+		delay(200);
 	}
 	return false;
 }
@@ -390,12 +396,6 @@ void COBDSPI::debugOutput(const char *s)
 #endif
 
 
-static const char targets[][4] = {
-	{'$','O','B','D'},
-	{'$','G','P','S'},
-	{'$','G','S','M'}
-};
-
 byte COBDSPI::begin()
 {
 	// turn off ADC
@@ -435,6 +435,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 {
 	int n = 0;
 	bool eos = false;
+	bool matched = false;
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
@@ -453,16 +454,16 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
 			if (eos) continue;
-			if (n == 0) {
-				// match header char before we can move forward
-				if (c == '$') {
+			if (!matched) {
+				if (c == '$')  {
 					buffer[0] = c;
 					n = 1;
+					matched = true;	
 				}
 				continue;
 			}
-			if (n > 6 && buffer[1] == 'O' && c == '.' && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
-				// $OBDSEARCHING...
+			if (n > 6 && c == '.' && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
+				// SEARCHING...
 				n = 4;
 				timeout += OBD_TIMEOUT_LONG;
 			} else if (c != 0 && c != 0xff) {
@@ -544,7 +545,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 	return results;
 }
 
-byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout)
+byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
 {
 	uint32_t t = millis();  
 	byte n;
@@ -704,12 +705,12 @@ int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 	return receive(buffer, bufsize, timeout);
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char* expected)
+int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char* expected)
 {
 	return xbReceive(buffer, bufsize, timeout, expected ? &expected : 0, expected ? 1 : 0);
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
+int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
@@ -720,13 +721,10 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 500);
 		if (n > 0) {
 			buffer[bytesRecv + n] = 0;
-			if (n < 5 || memcmp(buffer + bytesRecv, "$GSM", 4)) {
+			if (n < 5 || memcmp(buffer + bytesRecv, targets[TARGET_BEE], 4)) {
 				Serial.println("[RECV ERROR]");
 				break;
 			} else if (!memcmp_P(buffer + bytesRecv + 4, PSTR("NO DATA"), 7)) {
-#ifdef XBEE_DEBUG
-				Serial.println("[NO DATA]");
-#endif
 				sleep(100);
 			} else {
 				char *p = buffer + bytesRecv + 4;
