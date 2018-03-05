@@ -70,10 +70,8 @@ UDPClientSIM5360 net;
 UDPClient net; // null client
 #endif
 
-#if MEMS_MODE == MEMS_ACC
+#if MEMS_MODE
 MPU9250_ACC mems;
-#elif MEMS_MODE == MEMS_9DOF
-MPU9250_9DOF mems;
 #endif
 
 CStorageRAM cache;
@@ -160,8 +158,6 @@ bool notifyServer(byte event, const char* serverKey, const char* payload)
 
 bool login()
 {
-  char *buf = net.buffer; /* for saving SRAM */
-  int bufsize = sizeof(net.buffer);
   // connect to telematics server
   for (byte attempts = 0; attempts < 3; attempts++) {
     Serial.print("LOGIN...");
@@ -171,6 +167,7 @@ bool login()
     }
 
 #if ENABLE_OBD
+    char *buf = net.buffer; /* for saving SRAM */
     char *p = buf + sprintf(buf, "VIN=%s", vin);
     // load DTC
     uint16_t dtc[6];
