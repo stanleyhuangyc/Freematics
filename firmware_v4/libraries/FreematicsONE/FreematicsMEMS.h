@@ -2,7 +2,7 @@
 * Freematics MPU6050 helper class
 * Distributed under BSD license
 * Visit http://freematics.com for more information
-* (C)2016 Stanley Huang <support@freematics.com.au>
+* (C)2016-2018 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #ifndef _MPU9250_H
@@ -219,12 +219,6 @@ enum {
 #define Kp 2.0f * 5.0f // these are the free parameters in the Mahony filter and fusion scheme, Kp for proportional feedback, Ki for integral
 #define Ki 0.0f
 
-typedef struct {
-  float pitch;
-  float yaw;
-  float roll;
-} ORIENTATION;
-
 class CQuaterion
 {
 public:
@@ -245,8 +239,8 @@ private:
 class MPU9250_ACC
 {
 public:
-  virtual byte memsInit(bool fusion = false);
-  virtual bool memsRead(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+  virtual byte begin(bool fusion = false);
+  virtual bool read(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
 protected:
   void getAres();
   void readAccelData(int16_t *);
@@ -261,8 +255,8 @@ protected:
 class MPU9250_9DOF : public MPU9250_ACC
 {
 public:
-  byte memsInit(bool fusion = false);
-  bool memsRead(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+  byte begin(bool fusion = false);
+  bool read(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
 private:
   void getMres();
   void getGres();
