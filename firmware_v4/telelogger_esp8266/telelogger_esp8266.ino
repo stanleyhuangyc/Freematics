@@ -55,12 +55,11 @@ public:
     }
     bool netInit()
     {
-      // set xBee module serial baudrate
       bool gotIP = false;
       // test the module by issuing ATE0 command and confirming response of "OK"
       if (!netSendCommand("ATE0\r\n")) return false;
       if (rxLen) {
-        if (strstr_P(rxBuf, "WIFI GOT IP")) {
+        if (strstr_P(rxBuf, PSTR("WIFI GOT IP"))) {
           // WIFI automatically connected
           gotIP = true;
         }
@@ -147,13 +146,13 @@ public:
       char *p = strstr_P(buffer, PSTR("+IPD,"));
       if (p) {
         p += 5;
-        if (rxBuf) free(rxBuf);
         rxLen = atoi(p);
-        if (rxLen > MAX_RECV_LEN) rxLen = MAX_RECV_LEN;
-        rxBuf = (char*)malloc(rxLen + 1);
-        rxBuf[0] = 0;
         char *q = strchr(p, ':');
         if (q++) {
+          int maxLen = buffer + sizeof(buffer) - q;
+          if (rxLen > maxLen) rxLen = maxLen;
+          if (rxBuf) free(rxBuf);
+          rxBuf = (char*)malloc(rxLen + 1);
           memcpy(rxBuf, q, rxLen);
           rxBuf[rxLen] = 0;
         } else {
@@ -311,7 +310,7 @@ public:
 #if USE_MEMS
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("#MEMS...");
-      if (mems.memsInit()) {
+      if (mems.begin()) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
       } else {
@@ -461,7 +460,7 @@ public:
           float motion = 0;
           for (byte n = 0; n < 10; n++) {
             float acc[3] = {0};
-            mems.memsRead(acc);
+            mems.read(acc);
             for (byte i = 0; i < 3; i++) {
               float m = (acc[i] - accBias[i]);
               motion += m * m;
@@ -527,7 +526,7 @@ private:
         // load accelerometer and temperature data
         float acc[3] = {0};
         int16_t temp; // device temperature (in 0.1 celcius degree)
-        mems.memsRead(acc, 0, 0, &temp);
+        mems.read(acc, 0, 0, &temp);
         logData(PID_ACC, (int)(acc[0] * 100), (int)(acc[1] * 100), (int)(acc[2] * 100));
         if ((txCount % 100) == 1) {
           logData(PID_DEVICE_TEMP, temp / 10);
@@ -571,7 +570,7 @@ private:
         int n;
         for (n = 0; n < 100; n++) {
           float acc[3] = {0};
-          mems.memsRead(acc);
+          mems.read(acc);
           accBias[0] += acc[0];
           accBias[1] += acc[1];
           accBias[2] += acc[2];

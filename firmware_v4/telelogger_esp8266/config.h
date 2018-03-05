@@ -15,7 +15,6 @@
 #define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "PASSWORD"
 #define XBEE_BAUDRATE 115200 /* 9600 for ESP8266 with older firmware */
-#define MAX_RECV_LEN 128
 
 /**************************************
 * Server settings
