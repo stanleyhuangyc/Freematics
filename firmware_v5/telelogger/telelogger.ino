@@ -31,6 +31,7 @@
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
 #endif
+char vin[18] = DEFAULT_VIN;
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
@@ -125,30 +126,27 @@ bool verifyChecksum(char* data)
 
 bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
 {
+  char buf[48];
+  byte len = sprintf_P(buf, PSTR("EV=%X"), (unsigned int)event);
   netbuf.header(feedid);
-  String req = "EV=";
-  req += (unsigned int)event;
-  req += ",TS=";
-  req += millis();
+  netbuf.dispatch(buf, len);
+  len = sprintf_P(buf, PSTR("TS=%lu"), millis());
+  netbuf.dispatch(buf, len);
   if (serverKey) {
-    req += ",SK=";
-    req += serverKey;
+    len = sprintf_P(buf, PSTR("SK=%s"), serverKey);
+    netbuf.dispatch(buf, len);
   }
   if (payload) {
-    req += ',';
-    req += payload;
+    netbuf.dispatch(payload, strlen(payload));
   }
-  netbuf.dispatch(req.c_str(), req.length());
   netbuf.tailer();
   //Serial.println(netbuf.buffer());
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.send(netbuf.buffer(), netbuf.length())) {
       Serial.print('.');
+      delay(1000);
       continue;
     }
-  #if NET_DEVICE == NET_BLE
-      return true;
-  #endif
     if (event == EVENT_ACK) return true; // no reply for ACK
     // receive reply
     int len;
@@ -190,6 +188,7 @@ bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
     }
     Serial.print(' ');
     connErrors = 0;
+    // success
     return true;
   }
   return false;
@@ -197,35 +196,6 @@ bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
 
 bool login()
 {
-  // retrieve additional vehicle data for server submission
-  String data;
-  data = "VIN=";
-#if ENABLE_OBD
-  char buf[128];
-  if (obd.getVIN(buf, sizeof(buf))) {
-    Serial.print("VIN:");
-    Serial.println(buf);
-    data += buf;
-  } else {
-    data += DEFAULT_VIN;
-  }
-  // load DTC
-  uint16_t dtc[6];
-  byte dtcCount = obd.readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-  if (dtcCount > 0) {
-    Serial.print("DTC:");
-    Serial.println(dtcCount);
-    data += ",DTC=";
-    int bytes = 0;
-    for (byte i = 0; i < dtcCount; i++) {
-      bytes += sprintf(buf + bytes, "%X;", dtc[i]);
-    }
-    buf[bytes - 1] = 0;
-    data += buf;
-  }
-#else
-  data += DEFAULT_VIN;
-#endif
   // connect to telematics server
   for (byte attempts = 0; attempts < 3; attempts++) {
     Serial.print("LOGIN...");
@@ -233,9 +203,24 @@ bool login()
       Serial.println("NO");
       continue;
     }
+    char payload[128];
+    char *p = payload + sprintf(payload, "VIN=%s", vin);
+#if ENABLE_OBD
+    // load DTC
+    uint16_t dtc[6];
+    byte dtcCount = obd.readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+    if (dtcCount > 0) {
+      Serial.print("DTC:");
+      Serial.println(dtcCount);
+      p += sprintf(p, ",DTC=");
+      for (byte i = 0; i < dtcCount; i++) {
+        p += sprintf(p, "%X;", dtc[i]);
+      }
+    }
+#endif
     serverName = SERVER_HOST;
     // login Freematics Hub
-    if (!notifyServer(EVENT_LOGIN, SERVER_KEY, data.c_str())) {
+    if (!notifyServer(EVENT_LOGIN, SERVER_KEY, payload)) {
       net.close();
       Serial.println("NO");
       continue;
@@ -267,11 +252,11 @@ void transmit()
     txCount++;
     // output some stats
     char buf[64];
-  #if STORAGE_TYPE == STORAGE_NONE
+#if STORAGE_TYPE == STORAGE_NONE
     sprintf(buf, "%u bytes sent", cache.length());
-  #else
+#else
     sprintf(buf, "%uB sent %lu KB saved", cache.length(), store.size() >> 10);
-  #endif
+#endif
     Serial.println(buf);
     BLE.println(buf);
     // purge cache and place a header
@@ -324,7 +309,6 @@ void processOBD()
   cache.log(PID_TRIP_DISTANCE, distance);
   // poll more PIDs
   const byte pids[]= {PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
-  int value;
   for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
     logOBDPID(pids[i]);
   }
@@ -433,7 +417,7 @@ bool initialize()
   }
 #endif
 
-  #if ENABLE_OBD
+#if ENABLE_OBD
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
     obd.begin();
@@ -446,8 +430,16 @@ bool initialize()
     Serial.println("OK");
     BLE.println("OBD OK");
     state.set(STATE_OBD_READY);
+
+    char buf[128];
+    Serial.print("VIN:");
+    if (obd.getVIN(buf, sizeof(buf))) {
+      strncpy(vin, buf, sizeof(vin) - 1);
+      Serial.print(vin);
+    }
+    Serial.println();
   }
-  #endif
+#endif
 
 #ifdef ENABLE_GPS
   // start serial communication with GPS receiver
@@ -539,6 +531,7 @@ bool initialize()
   txCount = 0;
   cache.init(RAM_CACHE_SIZE);
   netbuf.init(256);
+  
   if (!login()) {
     return false;
   }
@@ -610,104 +603,104 @@ bool initialize()
 *******************************************************************************/
 String executeCommand(const char* cmd)
 {
-String result;
-Serial.println(cmd);
-if (!strncmp(cmd, "LED", 3) && cmd[4]) {
-  ledMode = atoi(cmd + 4);
-  digitalWrite(PIN_LED, (ledMode == 2) ? HIGH : LOW);
-  result = "OK";
-} else if (!strcmp(cmd, "REBOOT")) {
-#if STORAGE_TYPE != STORAGE_NONE
-  if (state.check(STATE_STORAGE_READY)) {
-    store.end();
-    state.clear(STATE_STORAGE_READY);
-  }
-#endif
-  ESP.restart();
-  // never reach here
-} else if (!strcmp(cmd, "STANDBY")) {
-  state.clear(STATE_ALL_GOOD);
-  result = "OK";
-} else if (!strcmp(cmd, "WAKEUP")) {
-  state.clear(STATE_STANDBY);
-  result = "OK";
-} else if (!strncmp(cmd, "SET", 3) && cmd[3]) {
-  const char* subcmd = cmd + 4;
-  if (!strncmp(subcmd, "INTERVAL", 8) && subcmd[8]) {
-    sendingInterval = atoi(subcmd + 8 + 1);
+  String result;
+  Serial.println(cmd);
+  if (!strncmp(cmd, "LED", 3) && cmd[4]) {
+    ledMode = atoi(cmd + 4);
+    digitalWrite(PIN_LED, (ledMode == 2) ? HIGH : LOW);
     result = "OK";
-  } else if (!strncmp(subcmd, "SYNC", 4) && subcmd[4]) {
-    syncInterval = atoi(subcmd + 4 + 1);
-    result = "OK";
-  } else {
-    result = "ERROR";
-  }
-} else if (!strcmp(cmd, "STATS")) {
-  char buf[64];
-  sprintf(buf, "TX:%u OBD:%u NET:%u", txCount, timeoutsOBD, timeoutsNet);
-  result = buf;
-#if ENABLE_OBD
-} else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
-  // send OBD command
-  String obdcmd = cmd + 4;
-  obdcmd += '\r';
-  char buf[256];
-  if (obd.sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
-    Serial.println(buf);
-    for (int n = 4; buf[n]; n++) {
-      switch (buf[n]) {
-      case '\r':
-      case '\n':
-        result += ' ';
-        break;
-      default:
-        result += buf[n];
-      }
+  } else if (!strcmp(cmd, "REBOOT")) {
+  #if STORAGE_TYPE != STORAGE_NONE
+    if (state.check(STATE_STORAGE_READY)) {
+      store.end();
+      state.clear(STATE_STORAGE_READY);
     }
+  #endif
+    ESP.restart();
+    // never reach here
+  } else if (!strcmp(cmd, "STANDBY")) {
+    state.clear(STATE_ALL_GOOD);
+    result = "OK";
+  } else if (!strcmp(cmd, "WAKEUP")) {
+    state.clear(STATE_STANDBY);
+    result = "OK";
+  } else if (!strncmp(cmd, "SET", 3) && cmd[3]) {
+    const char* subcmd = cmd + 4;
+    if (!strncmp(subcmd, "INTERVAL", 8) && subcmd[8]) {
+      sendingInterval = atoi(subcmd + 8 + 1);
+      result = "OK";
+    } else if (!strncmp(subcmd, "SYNC", 4) && subcmd[4]) {
+      syncInterval = atoi(subcmd + 4 + 1);
+      result = "OK";
+    } else {
+      result = "ERROR";
+    }
+  } else if (!strcmp(cmd, "STATS")) {
+    char buf[64];
+    sprintf(buf, "TX:%u OBD:%u NET:%u", txCount, timeoutsOBD, timeoutsNet);
+    result = buf;
+  #if ENABLE_OBD
+  } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
+    // send OBD command
+    String obdcmd = cmd + 4;
+    obdcmd += '\r';
+    char buf[256];
+    if (obd.sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
+      Serial.println(buf);
+      for (int n = 4; buf[n]; n++) {
+        switch (buf[n]) {
+        case '\r':
+        case '\n':
+          result += ' ';
+          break;
+        default:
+          result += buf[n];
+        }
+      }
+    } else {
+      result = "ERROR";
+    }
+  #endif
   } else {
-    result = "ERROR";
+    return "INVALID";
   }
-#endif
-} else {
-  return "INVALID";
-}
-BLE.println(result.c_str());
-return result;
+  BLE.println(result.c_str());
+  return result;
 }
 
 bool processCommand(char* data)
 {
-char *p;
-if (!(p = strstr(data, "TK="))) return false;
-uint32_t token = atol(p + 3);
-if (!(p = strstr(data, "CMD="))) return false;
-char *cmd = p + 4;
+  char *p;
+  if (!(p = strstr(data, "TK="))) return false;
+  uint32_t token = atol(p + 3);
+  if (!(p = strstr(data, "CMD="))) return false;
+  char *cmd = p + 4;
 
-if (token > lastCmdToken) {
-  // new command
-  String result = executeCommand(cmd);
-  // send command response
-  char buf[256];
-  snprintf(buf, sizeof(buf), "TK=%lu,MSG=%s", token, result.c_str());
-  for (byte attempts = 0; attempts < 3; attempts++) {
-    Serial.println("Sending ACK...");
-    if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
-      Serial.println("ACK sent");
-      break;
+  if (token > lastCmdToken) {
+    // new command
+    String result = executeCommand(cmd);
+    // send command response
+    char buf[256];
+    snprintf(buf, sizeof(buf), "TK=%lu,MSG=%s", token, result.c_str());
+    for (byte attempts = 0; attempts < 3; attempts++) {
+      Serial.println("ACK...");
+      if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
+        Serial.println("sent");
+        break;
+      }
+    }
+  } else {
+    // previously executed command
+    char buf[64];
+    snprintf(buf, sizeof(buf), "TK=%lu,DUP=1", token);
+    for (byte attempts = 0; attempts < 3; attempts++) {
+      Serial.println("ACK...");
+      if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
+        Serial.println("sent");
+        break;
+      }
     }
   }
-}else {
-  // previously executed command
-  char buf[64];
-  snprintf(buf, sizeof(buf), "TK=%lu,DUP=1", token);
-  for (byte attempts = 0; attempts < 3; attempts++) {
-    Serial.println("Sending ACK...");
-    if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
-      Serial.println("ACK sent");
-      break;
-    }
-  }
-}
 }
 
 /*******************************************************************************
@@ -800,7 +793,7 @@ void standby()
 {
   if (state.check(STATE_NET_READY)) {
     if (state.check(STATE_CONNECTED)) {
-      notifyServer(EVENT_LOGOUT, SERVER_KEY);
+      notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
     }
   }
   shutDownNet();
@@ -968,7 +961,7 @@ void loop()
       digitalWrite(PIN_LED, LOW);
       return;
     }
+
     // collect and transmit data
-    
     process();
 }
