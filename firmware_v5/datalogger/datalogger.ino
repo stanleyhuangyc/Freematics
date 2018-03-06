@@ -44,6 +44,7 @@ MPU9250_9DOF mems;
 MPU9250_DMP mems;
 #endif
 
+char vin[18] = {0};
 float accBias[3];
 
 void calibrateMEMS()
@@ -93,6 +94,13 @@ public:
         reconnect();
       }
       setState(STATE_OBD_READY);
+      char buf[128];
+      Serial.print("VIN:");
+      if (obd.getVIN(buf, sizeof(buf))) {
+        strncpy(vin, buf, sizeof(vin) - 1);
+        Serial.print(vin);
+      }
+      Serial.println();
 #else
       SPI.begin();
 #endif
