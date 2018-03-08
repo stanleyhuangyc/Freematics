@@ -88,19 +88,13 @@ public:
         if (obd.getVIN(buffer, sizeof(buffer))) {
           Serial.print("VIN:");
           Serial.println(buffer);
+          strncpy(vin, buffer, sizeof(vin) - 1);
         }
       } else {
         Serial.println("NO");
         reconnect();
       }
       setState(STATE_OBD_READY);
-      char buf[128];
-      Serial.print("VIN:");
-      if (obd.getVIN(buf, sizeof(buf))) {
-        strncpy(vin, buf, sizeof(vin) - 1);
-        Serial.print(vin);
-      }
-      Serial.println();
 #else
       SPI.begin();
 #endif
@@ -318,6 +312,7 @@ void showStats()
 void setup()
 {
     delay(1000);
+
     // initialize USB serial
     Serial.begin(115200);
     Serial.print("ESP32 ");
