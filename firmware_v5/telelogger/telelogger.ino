@@ -53,7 +53,7 @@ String serialCommand;
 
 byte ledMode = 0;
 
-void idleTasks(uint32_t idleTime = 1);
+void idleTasks();
 
 class State {
 public:
@@ -273,7 +273,9 @@ void transmit()
   }
   if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
     net.close();
-    net.open(SERVER_HOST, SERVER_PORT);
+    if (!net.open(SERVER_HOST, SERVER_PORT)) {
+      delay(1000);
+    }
   }
 }
 
@@ -284,7 +286,7 @@ void transmit()
 int logOBDPID(byte pid)
 {
   int value;
-  idleTasks(5);
+  idleTasks();
   if (obd.readPID(pid, value)) {
     cache.log((uint16_t)0x100 | pid, (int16_t)value);
   } else {
@@ -361,7 +363,9 @@ void processMEMS()
     int16_t temp;
 #if ENABLE_ORIENTATION
     ORIENTATION ori;
-    mems.read(acc, 0, 0, &temp, &ori);
+    float gyr[3];
+    float mag[3];
+    mems.read(acc, gyr, mag, &temp, &ori);
     cache.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
 #else
     mems.read(acc, 0, 0, &temp);
@@ -407,48 +411,12 @@ bool initialize()
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
     Serial.print("MEMS...");
-    if (mems.begin(ENABLE_ORIENTATION)) {
+    byte ret = mems.begin(ENABLE_ORIENTATION);
+    if (ret) {
       state.set(STATE_MEMS_READY);
+      if (ret == 2) Serial.print("9-DOF ");
       Serial.println("OK");
-      BLE.println("MEMS OK");
-    } else {
-      Serial.println("NO");
-    }
-  }
-#endif
-
-#if ENABLE_OBD
-  // initialize OBD communication
-  if (!state.check(STATE_OBD_READY)) {
-    obd.begin();
-    Serial.print("OBD...");
-    if (!obd.init()) {
-      Serial.println("NO");
-      return false;
-    }
-    timeoutsOBD = 0;
-    Serial.println("OK");
-    BLE.println("OBD OK");
-    state.set(STATE_OBD_READY);
-
-    char buf[128];
-    Serial.print("VIN:");
-    if (obd.getVIN(buf, sizeof(buf))) {
-      strncpy(vin, buf, sizeof(vin) - 1);
-      Serial.print(vin);
-    }
-    Serial.println();
-  }
-#endif
-
-#ifdef ENABLE_GPS
-  // start serial communication with GPS receiver
-  if (!state.check(STATE_GPS_READY)) {
-    Serial.print("GPS...");
-    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
-      state.set(STATE_GPS_READY);
-      Serial.println("OK");
-      BLE.println("GPS OK");
+      calibrateMEMS();
     } else {
       Serial.println("NO");
     }
@@ -457,10 +425,11 @@ bool initialize()
 
 #if NET_DEVICE == NET_WIFI
   for (byte attempts = 0; attempts < 3; attempts++) {
+    if (!net.begin()) continue;
     Serial.print("WIFI(SSID:");
     Serial.print(WIFI_SSID);
     Serial.print(")...");
-    if (net.begin() && net.setup(WIFI_SSID, WIFI_PASSWORD)) {
+    if (net.setup(WIFI_SSID, WIFI_PASSWORD)) {
       BLE.println("WIFI OK");
       Serial.println("OK");
       state.set(STATE_NET_READY);
@@ -504,6 +473,44 @@ bool initialize()
   }
 #endif
   timeoutsNet = 0;
+
+#if ENABLE_OBD
+  // initialize OBD communication
+  if (!state.check(STATE_OBD_READY)) {
+    obd.begin();
+    Serial.print("OBD...");
+    if (!obd.init()) {
+      Serial.println("NO");
+      return false;
+    }
+    timeoutsOBD = 0;
+    Serial.println("OK");
+    BLE.println("OBD OK");
+    state.set(STATE_OBD_READY);
+
+    char buf[128];
+    Serial.print("VIN:");
+    if (obd.getVIN(buf, sizeof(buf))) {
+      strncpy(vin, buf, sizeof(vin) - 1);
+      Serial.print(vin);
+    }
+    Serial.println();
+  }
+#endif
+
+#ifdef ENABLE_GPS
+  // start serial communication with GPS receiver
+  if (!state.check(STATE_GPS_READY)) {
+    Serial.print("GPS...");
+    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+      state.set(STATE_GPS_READY);
+      Serial.println("OK");
+      BLE.println("GPS OK");
+    } else {
+      Serial.println("NO");
+    }
+  }
+#endif
 
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
@@ -761,11 +768,7 @@ void process()
     lastSyncTime = millis();
   }
 
-  // maintain minimum loop time
-#if MIN_LOOP_TIME
-  int waitTime = MIN_LOOP_TIME - (millis() - startTime);
-  idleTasks(waitTime > 0 ? waitTime : 0);
-#endif
+  idleTasks();
 
 #if ENABLE_OBD
   if (obd.errors > MAX_OBD_ERRORS) {
@@ -774,6 +777,12 @@ void process()
     obd.reset();
     state.clear(STATE_OBD_READY | STATE_ALL_GOOD);
   }
+#endif
+
+  // maintain minimum loop time
+#if MIN_LOOP_TIME
+  int waitTime = MIN_LOOP_TIME - (millis() - startTime);
+  if (waitTime > 0) delay(waitTime);
 #endif
 }
 
@@ -854,54 +863,50 @@ void standby()
 /*******************************************************************************
   Tasks to perform in idle/waiting time
 *******************************************************************************/
-void idleTasks(uint32_t idleTime)
+void idleTasks()
 {
-  uint32_t t = millis();
+  // check incoming datagram
   do {
-    // check incoming datagram
-    do {
-      int len = 0;
-      char *data = net.receive(&len, 0);
-      if (data) {
-        data[len] = 0;
-        if (!verifyChecksum(data)) {
-          Serial.print("Checksum mismatch:");
-          Serial.print(data);
-          break;
-        }
-        char *p = strstr(data, "EV=");
-        if (!p) break;
-        int eventID = atoi(p + 3);
-        switch (eventID) {
-        case EVENT_COMMAND:
-          processCommand(data);
-          break;
-        case EVENT_SYNC:
-          lastSyncTime = millis();
-          break;
-        }
-      }
-    } while(0);
-    // check serial input for command
-    while (Serial.available()) {
-      char c = Serial.read();
-      if (c == '\r' || c == '\n') {
-        if (serialCommand.length() > 0) {
-          String result = executeCommand(serialCommand.c_str());
-          serialCommand = "";
-          Serial.println(result);
-        }
-      } else if (serialCommand.length() < 32) {
-        serialCommand += c;
-      }
+    int len = 0;
+    char *data = net.receive(&len, 0);
+    if (!data) break;
+    data[len] = 0;
+    if (!verifyChecksum(data)) {
+      Serial.print("Checksum mismatch:");
+      Serial.print(data);
+      break;
     }
+    char *p = strstr(data, "EV=");
+    if (!p) break;
+    int eventID = atoi(p + 3);
+    switch (eventID) {
+    case EVENT_COMMAND:
+      processCommand(data);
+      break;
+    case EVENT_SYNC:
+      lastSyncTime = millis();
+      break;
+    }
+  } while(0);
+  // check serial input for command
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\r' || c == '\n') {
+      if (serialCommand.length() > 0) {
+        String result = executeCommand(serialCommand.c_str());
+        serialCommand = "";
+        Serial.println(result);
+      }
+    } else if (serialCommand.length() < 32) {
+      serialCommand += c;
+    }
+  }
 #if ENABLE_GPS
-    // process GPS data if connected
-    if (state.check(STATE_GPS_READY)) {
-      processGPS();
-    }
+  // process GPS data if connected
+  if (state.check(STATE_GPS_READY)) {
+    processGPS();
+  }
 #endif
-  } while (millis() - t < idleTime);
 }
 
 void MyGATTServer::onReceiveBLE(uint8_t* buffer, size_t len)
