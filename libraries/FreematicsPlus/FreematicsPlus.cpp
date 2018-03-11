@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
+#include "esp_pm.h"
 #include "nvs_flash.h"
 #include "driver/uart.h"
 #include "freertos/queue.h"
@@ -78,7 +79,7 @@ bool gps_decode_start()
     sentencesGPSData = 0;
 
     // start GPS decoding thread if not started
-    taskGPS.create(gps_decode_task, "GPS", 0);
+    taskGPS.create(gps_decode_task, "GPS", 1);
 
     for (int i = 0; i < 20 && sentencesGPSData < 3; i++) {
         delay(100);
@@ -238,6 +239,18 @@ void FreematicsESP32::begin()
     //Install UART driver (we don't need an event queue here)
     //In this example we don't even use a buffer for sending data.
     uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
+
+    // Configure dynamic frequency scaling
+    rtc_cpu_freq_t max_freq;
+    rtc_clk_cpu_freq_from_mhz(CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ, &max_freq);
+    esp_pm_config_esp32_t pm_config = {
+            .max_cpu_freq = max_freq,
+            .min_cpu_freq = RTC_CPU_FREQ_XTAL
+    };
+    esp_err_t ret = esp_pm_configure(&pm_config);
+    if (ret == ESP_ERR_NOT_SUPPORTED) {
+        Serial.println("Power-saving disabled");
+    }
 }
 
 bool FreematicsESP32::gpsInit(unsigned long baudrate)
