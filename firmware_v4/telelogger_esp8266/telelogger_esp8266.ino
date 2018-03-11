@@ -66,6 +66,7 @@ public:
       }
       netSendCommand("AT+CWMODE=1\r\n", 100);
       netSendCommand("AT+CIPMUX=0\r\n", 100);
+      netSendCommand("AT+CWDHCP=1,1\r\n", 100);      
 
       // generate and send AT command for joining AP
       if (!gotIP) {
