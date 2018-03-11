@@ -468,7 +468,7 @@ uint8_t MPU9250_ACC::readByte(uint8_t subAddress)
   // write sub-address
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
   i2c_master_start(cmd);
-  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_DIS);
   i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
   i2c_master_stop(cmd);
   i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
@@ -481,6 +481,7 @@ uint8_t MPU9250_ACC::readByte(uint8_t subAddress)
   i2c_master_read_byte(cmd, &data, NACK_VAL);
   i2c_master_stop(cmd);
   i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
   return data;
 }
 
@@ -489,11 +490,13 @@ bool MPU9250_ACC::readBytes(uint8_t subAddress, uint8_t count, uint8_t * dest)
   // write sub-address
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
   i2c_master_start(cmd);
-  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_DIS);
   i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
   i2c_master_stop(cmd);
-  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
   i2c_cmd_link_delete(cmd);
+  if (ret != ESP_OK) return false;
+
   // read data
   cmd = i2c_cmd_link_create();
   i2c_master_start(cmd);
@@ -503,7 +506,7 @@ bool MPU9250_ACC::readBytes(uint8_t subAddress, uint8_t count, uint8_t * dest)
   }
   i2c_master_read_byte(cmd, dest + count - 1, NACK_VAL);
   i2c_master_stop(cmd);
-  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
   i2c_cmd_link_delete(cmd);
   return ret == ESP_OK;
 }
@@ -526,7 +529,7 @@ uint8_t MPU9250_9DOF::readByteAK(uint8_t subAddress)
   // write sub-address
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
   i2c_master_start(cmd);
-  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_DIS);
   i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
   i2c_master_stop(cmd);
   i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
@@ -539,6 +542,7 @@ uint8_t MPU9250_9DOF::readByteAK(uint8_t subAddress)
   i2c_master_read_byte(cmd, &data, NACK_VAL);
   i2c_master_stop(cmd);
   i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
   return data;
 }
 
@@ -547,11 +551,12 @@ bool MPU9250_9DOF::readBytesAK(uint8_t subAddress, uint8_t count, uint8_t * dest
   // write sub-address
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
   i2c_master_start(cmd);
-  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_DIS);
   i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
   i2c_master_stop(cmd);
-  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
   i2c_cmd_link_delete(cmd);
+  if (ret != ESP_OK) return false;
   // read data
   cmd = i2c_cmd_link_create();
   i2c_master_start(cmd);
@@ -561,7 +566,7 @@ bool MPU9250_9DOF::readBytesAK(uint8_t subAddress, uint8_t count, uint8_t * dest
   }
   i2c_master_read_byte(cmd, dest + count - 1, NACK_VAL);
   i2c_master_stop(cmd);
-  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
   i2c_cmd_link_delete(cmd);
   return ret == ESP_OK;
 }
