@@ -58,7 +58,7 @@ class UDPClientWIFI : virtual NullClient
 public:
     bool begin();
     void end();
-    bool setup(const char* ssid, const char* password, unsigned int timeout = 10000);
+    bool setup(const char* ssid, const char* password, unsigned int timeout = 15000);
     String getIP();
     int getSignal() { return 0; }
     bool open(const char* host, uint16_t port);
@@ -68,6 +68,7 @@ public:
     String queryIP(const char* host);
     const char* deviceName() { return "WIFI"; }
   private:
+    void listAPs();
     char m_buffer[256] = {0};
     IPAddress udpIP;
     uint16_t udpPort;

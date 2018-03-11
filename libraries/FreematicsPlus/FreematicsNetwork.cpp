@@ -20,7 +20,11 @@ bool UDPClientWIFI::setup(const char* ssid, const char* password, unsigned int t
 {
   WiFi.begin(ssid, password);
   for (uint32_t t = millis(); millis() - t < timeout;) {
-    if (WiFi.status() == WL_CONNECTED) return true;
+    if (WiFi.status() == WL_CONNECTED) {
+      // enable power-saving mode
+      esp_wifi_set_ps(WIFI_PS_MODEM);
+      return true;
+    }
     delay(50);
   }
   return false;
@@ -36,11 +40,11 @@ bool UDPClientWIFI::open(const char* host, uint16_t port)
   if (udp.beginPacket(host, port)) {
     udpIP = udp.remoteIP();
     udpPort = port;
-    udp.endPacket();
-    return true;
-  } else {
-    return false;
+    if (udp.endPacket()) {
+      return true;
+    }
   }
+  return false;
 }
 
 bool UDPClientWIFI::send(const char* data, unsigned int len)
@@ -79,16 +83,34 @@ void UDPClientWIFI::close()
 
 bool UDPClientWIFI::begin()
 {
-  //esp_wifi_set_mode(WIFI_MODE_STA);
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  listAPs();
   return true;
 }
 
 void UDPClientWIFI::end()
 {
-  // deactivate WIFI
-  //esp_wifi_set_mode(WIFI_MODE_NULL);
 }
 
+void UDPClientWIFI::listAPs()
+{
+  int n = WiFi.scanNetworks();
+  if (n <= 0) {
+      Serial.println("No WIFI AP found");
+  } else {
+      Serial.println("WIFI APs found:");
+      for (int i = 0; i < n; ++i) {
+          // Print SSID and RSSI for each network found
+          Serial.print(i + 1);
+          Serial.print(": ");
+          Serial.print(WiFi.SSID(i));
+          Serial.print(" (");
+          Serial.print(WiFi.RSSI(i));
+          Serial.println("dB)");
+      }
+  }
+}
 
 /*******************************************************************************
   Implementation for SIM800 (SIM800 AT command-set)
