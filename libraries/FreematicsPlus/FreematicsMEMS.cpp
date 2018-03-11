@@ -5,8 +5,15 @@
 * (C)2016 Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
-#include <Wire.h>
+#include <driver/i2c.h>
 #include "FreematicsMEMS.h"
+
+#define WRITE_BIT         I2C_MASTER_WRITE /*!< I2C master write */
+#define READ_BIT          I2C_MASTER_READ  /*!< I2C master read */
+#define ACK_CHECK_EN      0x1              /*!< I2C master will check ack from slave*/
+#define ACK_CHECK_DIS     0x0              /*!< I2C master will not check ack from slave */
+#define ACK_VAL           (i2c_ack_type_t)0x0              /*!< I2C ack value */
+#define NACK_VAL          (i2c_ack_type_t)0x1 /*!< I2C nack value */
 
 // Implementation of Sebastian Madgwick's "...efficient orientation filter for... inertial/magnetic sensor arrays"
 // (see http://www.x-io.co.uk/category/open-source/ for examples and more details)
@@ -141,7 +148,7 @@ void MPU9250_9DOF::readMagData(int16_t * destination)
 {
   if(readByteAK(AK8963_ST1) & 0x01) { // wait for magnetometer data ready bit to be set
     uint8_t rawData[7];  // x/y/z gyro register data, ST2 register stored here, must read ST2 at end of data acquisition
-    readBytesAK(AK8963_XOUT_L, 7, &rawData[0]);  // Read the six raw data and ST2 registers sequentially into data array
+    readBytesAK(AK8963_XOUT_L, 7, rawData);  // Read the six raw data and ST2 registers sequentially into data array
     uint8_t c = rawData[6]; // End data read by reading ST2 register
     if(!(c & 0x08)) { // Check if magnetic sensor overflow set, if not then report data
       destination[0] = ((int16_t)rawData[1] << 8) | rawData[0] ;  // Turn the MSB and LSB into a signed 16-bit value
@@ -177,17 +184,17 @@ bool MPU9250_9DOF::initAK8963(float * destination)
   }
   */
   rawData[0] = readByteAK(AK8963_ASAX);
-  rawData[1] = readByteAK(AK8963_ASAX);
-  rawData[2] = readByteAK(AK8963_ASAX);
+  rawData[1] = readByteAK(AK8963_ASAY);
+  rawData[2] = readByteAK(AK8963_ASAZ);
   destination[0] =  (float)(rawData[0] - 128)/256. + 1.;   // Return x-axis sensitivity adjustment values, etc.
   destination[1] =  (float)(rawData[1] - 128)/256. + 1.;
   destination[2] =  (float)(rawData[2] - 128)/256. + 1.;
-  writeByte(AK8963_CNTL, 0x00); // Power down magnetometer
+  writeByteAK(AK8963_CNTL, 0x00); // Power down magnetometer
   delay(10);
   // Configure the magnetometer for continuous read and highest resolution
   // set Mscale bit 4 to 1 (0) to enable 16 (14) bit resolution in CNTL register,
   // and enable continuous mode data acquisition Mmode (bits [3:0]), 0010 for 8 Hz and 0110 for 100 Hz sample rates
-  writeByte(AK8963_CNTL, MFS_16BITS << 4 | Mmode); // Set magnetometer data resolution and sample ODR
+  writeByteAK(AK8963_CNTL, MFS_16BITS << 4 | Mmode); // Set magnetometer data resolution and sample ODR
   delay(10);
   return true;
 }
@@ -429,68 +436,134 @@ void MPU9250_9DOF::MPU9250SelfTest(float * destination) // Should return percent
   }
 }
 
+bool MPU9250_ACC::initI2C()
+{
+    i2c_port_t i2c_master_port = I2C_NUM_0;
+    i2c_config_t conf;
+    conf.mode = I2C_MODE_MASTER;
+    conf.sda_io_num = (gpio_num_t)21;
+    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+    conf.scl_io_num = (gpio_num_t)22;
+    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+    conf.master.clk_speed = 100000;
+    return i2c_param_config(i2c_master_port, &conf) == ESP_OK &&
+      i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0) == ESP_OK;
+}
 
-// Wire.h read and write protocols
 void MPU9250_ACC::writeByte(uint8_t subAddress, uint8_t data)
 {
-  Wire.beginTransmission(MPU9250_ADDRESS);  // Initialize the Tx buffer
-  Wire.write(subAddress);           // Put slave register address in Tx buffer
-  Wire.write(data);                 // Put data in Tx buffer
-  Wire.endTransmission();           // Send the Tx buffer
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  // write sub-address and data
+  uint8_t buf[2] = {subAddress, data};
+  i2c_master_write(cmd, buf, sizeof(buf), ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
 }
 
 uint8_t MPU9250_ACC::readByte(uint8_t subAddress)
 {
-  uint8_t data; // `data` will store the register data
-  Wire.beginTransmission(MPU9250_ADDRESS);         // Initialize the Tx buffer
-  Wire.write(subAddress);                  // Put slave register address in Tx buffer
-  Wire.endTransmission(false);             // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom((uint8_t)MPU9250_ADDRESS, (uint8_t) 1);  // Read one byte from slave register address
-  data = Wire.read();                      // Fill Rx buffer with result
-  return data;                             // Return data read from slave register
+  // write sub-address
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  // read data
+  uint8_t data = 0;
+  cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | READ_BIT, ACK_CHECK_EN);
+  i2c_master_read_byte(cmd, &data, NACK_VAL);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  return data;
 }
 
-void MPU9250_ACC::readBytes(uint8_t subAddress, uint8_t count, uint8_t * dest)
+bool MPU9250_ACC::readBytes(uint8_t subAddress, uint8_t count, uint8_t * dest)
 {
-  Wire.beginTransmission(MPU9250_ADDRESS);   // Initialize the Tx buffer
-  Wire.write(subAddress);            // Put slave register address in Tx buffer
-  Wire.endTransmission(false);       // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom((uint8_t)MPU9250_ADDRESS, count);  // Read bytes from slave register address
-  uint8_t i = 0;
-  while (Wire.available() && i < count) {
-        dest[i++] = Wire.read();
+  // write sub-address
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  // read data
+  cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( MPU9250_ADDRESS << 1 ) | READ_BIT, ACK_CHECK_EN);
+  if (count > 1) {
+      i2c_master_read(cmd, dest, count - 1, ACK_VAL);
   }
+  i2c_master_read_byte(cmd, dest + count - 1, NACK_VAL);
+  i2c_master_stop(cmd);
+  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  return ret == ESP_OK;
 }
 
 void MPU9250_9DOF::writeByteAK(uint8_t subAddress, uint8_t data)
 {
-  Wire.beginTransmission(MPU9250_ADDRESS);  // Initialize the Tx buffer
-  Wire.write(subAddress);           // Put slave register address in Tx buffer
-  Wire.write(data);                 // Put data in Tx buffer
-  Wire.endTransmission();           // Send the Tx buffer
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  // write sub-address and data
+  uint8_t buf[2] = {subAddress, data};
+  i2c_master_write(cmd, buf, sizeof(buf), ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
 }
 
 uint8_t MPU9250_9DOF::readByteAK(uint8_t subAddress)
 {
-  uint8_t data; // `data` will store the register data
-  Wire.beginTransmission(AK8963_ADDRESS);         // Initialize the Tx buffer
-  Wire.write(subAddress);                  // Put slave register address in Tx buffer
-  Wire.endTransmission(false);             // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom((uint8_t)AK8963_ADDRESS, (uint8_t) 1);  // Read one byte from slave register address
-  data = Wire.read();                      // Fill Rx buffer with result
-  return data;                             // Return data read from slave register
+  // write sub-address
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  // read data
+  uint8_t data = 0;
+  cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | READ_BIT, ACK_CHECK_EN);
+  i2c_master_read_byte(cmd, &data, NACK_VAL);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  return data;
 }
 
-void MPU9250_9DOF::readBytesAK(uint8_t subAddress, uint8_t count, uint8_t * dest)
+bool MPU9250_9DOF::readBytesAK(uint8_t subAddress, uint8_t count, uint8_t * dest)
 {
-  Wire.beginTransmission(AK8963_ADDRESS);   // Initialize the Tx buffer
-  Wire.write(subAddress);            // Put slave register address in Tx buffer
-  Wire.endTransmission(false);       // Send the Tx buffer, but send a restart to keep connection alive
-  Wire.requestFrom((uint8_t)AK8963_ADDRESS, count);  // Read bytes from slave register address
-  uint8_t i = 0;
-  while (Wire.available() && i < count) {
-        dest[i++] = Wire.read();
+  // write sub-address
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  // read data
+  cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( AK8963_ADDRESS << 1 ) | READ_BIT, ACK_CHECK_EN);
+  if (count > 1) {
+      i2c_master_read(cmd, dest, count - 1, ACK_VAL);
   }
+  i2c_master_read_byte(cmd, dest + count - 1, NACK_VAL);
+  i2c_master_stop(cmd);
+  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  return ret == ESP_OK;
 }
 
 void MPU9250_ACC::initMPU9250()
@@ -554,9 +627,8 @@ void MPU9250_ACC::initMPU9250()
 
 byte MPU9250_ACC::begin(bool fusion)
 {
+  if (!initI2C()) return 0;
   byte ret = 0;
-  Wire.begin();
-  //Wire.setClock(400000);
   for (byte attempt = 0; attempt < 2; attempt++) {
     //float SelfTest[6];
     //MPU9250SelfTest(SelfTest);
@@ -586,9 +658,8 @@ bool MPU9250_ACC::read(float* acc, float* gyr, float* mag, int16_t* temp, ORIENT
 
 byte MPU9250_9DOF::begin(bool fusion)
 {
+  if (!initI2C()) return 0;
   byte ret = 0;
-  Wire.begin();
-  //Wire.setClock(400000);
   for (byte attempt = 0; attempt < 2; attempt++) {
     //float SelfTest[6];
     //MPU9250SelfTest(SelfTest);
@@ -630,6 +701,7 @@ bool MPU9250_9DOF::read(float* acc, float* gyr, float* mag, int16_t* temp, ORIEN
 
     // Calculate the magnetometer values in milliGauss
     // Include factory calibration per data sheet and user environmental corrections
+    readMagData(magCount);
     mag[0] = (float)magCount[0]*mRes*magCalibration[0] - magbias[0];  // get actual magnetometer value, this depends on scale being set
     mag[1] = (float)magCount[1]*mRes*magCalibration[1] - magbias[1];
     mag[2] = (float)magCount[2]*mRes*magCalibration[2] - magbias[2];

@@ -244,13 +244,14 @@ public:
   virtual byte begin(bool fusion = false);
   virtual bool read(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
 protected:
+  bool initI2C();
   void getAres();
   void readAccelData(int16_t *);
   int16_t readTempData();
   void initMPU9250();
   void writeByte(uint8_t, uint8_t);
   uint8_t readByte(uint8_t);
-  void readBytes(uint8_t, uint8_t, uint8_t *);
+  bool readBytes(uint8_t, uint8_t, uint8_t *);
   int16_t accelCount[3] = {0};
 };
 
@@ -269,7 +270,7 @@ private:
   void MPU9250SelfTest(float * destination);
   void writeByteAK(uint8_t, uint8_t);
   uint8_t readByteAK(uint8_t);
-  void readBytesAK(uint8_t, uint8_t, uint8_t *);
+  bool readBytesAK(uint8_t, uint8_t, uint8_t *);
   float gyroBias[3] = {0};
   float accelBias[3] = {0};      // Bias corrections for gyro and accelerometer
   float magCalibration[3] = {0};
