@@ -820,11 +820,13 @@ void standby()
   }
 #endif
 #if ENABLE_OBD
-  if (obd.errors > MAX_OBD_ERRORS) {
-    // inaccessible OBD treated as end of trip
-    feedid = 0;
+  if (state.check(STATE_OBD_READY)) {
+    if (obd.errors > MAX_OBD_ERRORS) {
+      // inaccessible OBD treated as end of trip
+      feedid = 0;
+    }
+    obd.reset();
   }
-  obd.reset();
 #endif
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
   state.set(STATE_STANDBY);
