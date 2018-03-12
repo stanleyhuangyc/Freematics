@@ -101,7 +101,7 @@ class UDPClientSIM5360 : virtual NullClient
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, bool only3G = false, unsigned int timeout = 60000);
+    bool setup(const char* apn, bool only3G = false, bool roaming = false, unsigned int timeout = 60000);
     String getIP();
     int getSignal();
     String getOperatorName();
