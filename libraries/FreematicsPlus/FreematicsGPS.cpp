@@ -376,8 +376,12 @@ void TinyGPS::get_position(long *latitude, long *longitude, unsigned long *fix_a
 {
   if (latitude) *latitude = _latitude;
   if (longitude) *longitude = _longitude;
-  if (fix_age) *fix_age = _last_position_fix == GPS_INVALID_FIX_TIME ?
-GPS_INVALID_AGE : millis() - _last_position_fix;
+  if (fix_age) {
+    if (_last_position_fix == GPS_INVALID_FIX_TIME)
+      *fix_age = GPS_INVALID_AGE;
+    else
+      *fix_age = millis() - _last_position_fix;
+  }
 }
 
 // date as ddmmyy, time as hhmmsscc, and age in milliseconds
@@ -385,8 +389,12 @@ void TinyGPS::get_datetime(unsigned long *date, unsigned long *time, unsigned lo
 {
   if (date) *date = _date;
   if (time) *time = _time;
-  if (age) *age = _last_time_fix == GPS_INVALID_FIX_TIME ?
-GPS_INVALID_AGE : millis() - _last_time_fix;
+  if (age) {
+    if (_last_time_fix == GPS_INVALID_FIX_TIME)
+      *age = GPS_INVALID_AGE;
+    else
+      *age = millis() - _last_time_fix;
+  }
 }
 
 void TinyGPS::f_get_position(float *latitude, float *longitude, unsigned long *fix_age)
