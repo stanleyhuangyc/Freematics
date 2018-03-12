@@ -374,7 +374,7 @@ void UDPClientSIM5360::end()
   }
 }
 
-bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
+bool UDPClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -396,12 +396,12 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
     if (!success) break;
 
     do {
-      success = sendCommand("AT+CREG?\r", 5000, "+CREG: 0,1");
+      success = sendCommand("AT+CREG?\r", 5000, roaming ? "+CREG: 0,5" : "+CREG: 0,1");
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
     do {
-      success = sendCommand("AT+CGREG?\r",1000, "+CGREG: 0,1");
+      success = sendCommand("AT+CGREG?\r",1000, roaming ? "+CGREG: 0,5" : "+CGREG: 0,1");
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
@@ -411,8 +411,9 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
+    //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
+
     sendCommand("AT+CSOCKSETPN=1\r");
-    //sendCommand("AT+CSOCKAUTH=,,\"password\",\"password\"\r");
     sendCommand("AT+CIPMODE=0\r");
     sendCommand("AT+NETOPEN\r");
   } while(0);
