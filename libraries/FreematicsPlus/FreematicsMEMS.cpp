@@ -496,7 +496,6 @@ bool MPU9250_ACC::readBytes(uint8_t subAddress, uint8_t count, uint8_t * dest)
   esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
   i2c_cmd_link_delete(cmd);
   if (ret != ESP_OK) return false;
-
   // read data
   cmd = i2c_cmd_link_create();
   i2c_master_start(cmd);

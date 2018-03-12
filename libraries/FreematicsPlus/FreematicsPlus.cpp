@@ -79,9 +79,6 @@ int gps_write_string(const char* string)
 bool gps_decode_start()
 {
     // quick check of input data format
-    uint32_t t = millis();
-    uint8_t match[] = {'$', ',', '\n'};
-    int idx = 0;
     validGPSData = 0;
     sentencesGPSData = 0;
 
@@ -416,7 +413,7 @@ bool GATTServer::send(uint8_t* data, size_t len)
 
 size_t GATTServer::write(uint8_t c)
 {
-    bool success = true;
+    bool success = false;
     if (sendbuf.length() >= MAX_BLE_MSG_LEN) {
         success = send((uint8_t*)sendbuf.c_str(), sendbuf.length());
         sendbuf = "";
@@ -426,7 +423,7 @@ size_t GATTServer::write(uint8_t c)
         success = send((uint8_t*)sendbuf.c_str(), sendbuf.length());
         sendbuf = "";
     }
-    return 1;
+    return success ? sendbuf.length() : 0;
 }
 
 extern "C" {
