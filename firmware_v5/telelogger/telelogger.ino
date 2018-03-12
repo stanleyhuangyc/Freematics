@@ -255,7 +255,7 @@ void transmit()
 #if STORAGE_TYPE == STORAGE_NONE
     sprintf(buf, "%u bytes sent", cache.length());
 #else
-    sprintf(buf, "%uB sent %lu KB saved", cache.length(), store.size() >> 10);
+    sprintf(buf, "%uB sent %u KB saved", cache.length(), store.size() >> 10);
 #endif
     Serial.println(buf);
     BLE.println(buf);
@@ -347,7 +347,7 @@ void processGPS()
         cache.log(PID_GPS_SAT_COUNT, gd.sat);
         lastUTC = (uint16_t)gd.time;
         char buf[32];
-        sprintf(buf, "UTC:%08lu SAT:%u", gd.time, (unsigned int)gd.sat);
+        sprintf(buf, "UTC:%08u SAT:%u", gd.time, (unsigned int)gd.sat);
         Serial.println(buf);
         BLE.println(buf);
       }
@@ -568,7 +568,6 @@ bool initialize()
 
 #if STORAGE_TYPE != STORAGE_NONE
   // need valid current date for data storage
-  GPS_DATA gdata = {0};
   unsigned long date = 0;
   if (utcValid) {
     date = (unsigned long)(1900 + btm->tm_year) * 10000 + (btm->tm_mon + 1) * 100 + btm->tm_mday;
@@ -576,10 +575,11 @@ bool initialize()
   #if WAIT_FOR_GPS
     // wait for GPS signal to get UTC
     Serial.print("Waiting GPS time..");
-    for (int i = 0; gdata.date == 0 && i < 60; i++) {
+    for (int i = 0; i < 60; i++) {
       Serial.print('.');
       delay(1000);
-      gpsGetData(&gdata);
+      GPS_DATA gdata;
+      if (gpsGetData(&gdata) && gdata.date != 0) break;
     }
     Serial.println();
     if (gdata.date) {
@@ -688,7 +688,7 @@ bool processCommand(char* data)
     String result = executeCommand(cmd);
     // send command response
     char buf[256];
-    snprintf(buf, sizeof(buf), "TK=%lu,MSG=%s", token, result.c_str());
+    snprintf(buf, sizeof(buf), "TK=%u,MSG=%s", token, result.c_str());
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.println("ACK...");
       if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
@@ -699,7 +699,7 @@ bool processCommand(char* data)
   } else {
     // previously executed command
     char buf[64];
-    snprintf(buf, sizeof(buf), "TK=%lu,DUP=1", token);
+    snprintf(buf, sizeof(buf), "TK=%u,DUP=1", token);
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.println("ACK...");
       if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
@@ -708,6 +708,7 @@ bool processCommand(char* data)
       }
     }
   }
+  return true;
 }
 
 /*******************************************************************************
