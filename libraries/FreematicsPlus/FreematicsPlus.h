@@ -121,19 +121,19 @@ public:
     virtual void log(uint16_t pid, int16_t value)
     {
         char buf[16];
-        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
+        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, (int)value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, int32_t value)
     {
         char buf[20];
-        byte len = sprintf_P(buf, PSTR("%X=%ld"), pid, value);
+        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, uint32_t value)
     {
         char buf[20];
-        byte len = sprintf_P(buf, PSTR("%X=%lu"), pid, value);
+        byte len = sprintf_P(buf, PSTR("%X=%u"), pid, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, int value1, int value2, int value3)
@@ -145,7 +145,7 @@ public:
     virtual void logCoordinate(uint16_t pid, int32_t value)
     {
         char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d.%06lu"), pid, (int)(value / 1000000), abs(value) % 1000000);
+        byte len = sprintf_P(buf, PSTR("%X=%d.%06u"), pid, (int)(value / 1000000), abs(value) % 1000000);
         dispatch(buf, len);
     }
     virtual void timestamp(uint32_t ts)
@@ -269,7 +269,7 @@ public:
         sprintf(path, "%04u", (unsigned int)(dateTime / 10000));
         SD.mkdir(path);
         // using date and time as file name
-        sprintf(path + 4, "/%08lu.CSV", dateTime);
+        sprintf(path + 4, "/%08u.CSV", dateTime);
       } else {
         strcpy(path, "DATA");
         SD.mkdir(path);

@@ -50,7 +50,7 @@
 
 static inline int reg_int_cb(struct int_param_s *int_param)
 {
-
+    return 0;
 }
 
 #if !defined MPU6050 && !defined MPU9150 && !defined MPU6500 && !defined MPU9250
@@ -2795,7 +2795,7 @@ int mpu_load_firmware(unsigned short length, const unsigned char *firmware,
     if (!firmware)
         return -1;
     for (ii = 0; ii < length; ii += this_write) {
-        char buf[LOAD_CHUNK];
+        unsigned char buf[LOAD_CHUNK];
         this_write = min(LOAD_CHUNK, length - ii);
         memcpy_P(buf, firmware + ii, this_write);
         if (mpu_write_mem(ii, this_write, buf))

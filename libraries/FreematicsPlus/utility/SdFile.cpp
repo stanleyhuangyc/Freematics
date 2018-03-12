@@ -262,7 +262,7 @@ uint8_t SdFile::make83Name(const char* str, uint8_t* name) {
 #if defined(__AVR__)
       PGM_P p = PSTR("|<>^+=?/[];,*\"\\");
       while ((b = pgm_read_byte(p++))) if (b == c) return false;
-#elif defined(__arm__)
+#else
       const uint8_t valid[] = "|<>^+=?/[];,*\"\\";
       const uint8_t *p = valid;
       while ((b = *p++)) if (b == c) return false;
