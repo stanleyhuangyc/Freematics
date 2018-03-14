@@ -10,7 +10,7 @@
 #include <Wire.h>
 #include "FreematicsONE.h"
 
-//#define SAFE_MODE 1
+#define SAFE_MODE 1
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
