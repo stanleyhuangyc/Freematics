@@ -158,12 +158,12 @@ public:
 
     void header(uint16_t feedid)
     {
-        m_cacheBytes = sprintf(m_cache, "%X#", (unsigned int)feedid);
+        m_cacheBytes = sprintf_P(m_cache, PSTR("%X#"), (unsigned int)feedid);
     }
     void tailer()
     {
         if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
-        m_cacheBytes += sprintf(m_cache + m_cacheBytes, "*%X", (unsigned int)checksum(m_cache, m_cacheBytes));
+        m_cacheBytes += sprintf_P(m_cache + m_cacheBytes, PSTR("*%X"), (unsigned int)checksum(m_cache, m_cacheBytes));
     }
     void untailer()
     {

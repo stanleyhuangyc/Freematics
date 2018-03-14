@@ -14,10 +14,10 @@
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
-static const char targets[][4] = {
-	{'$','O','B','D'},
-	{'$','G','P','S'},
-	{'$','G','S','M'}
+static const uint8_t targets[][4] = {
+	{0x24, 0x4f, 0x42, 0x44},
+	{0x24, 0x47, 0x50, 0x53},
+	{0x24, 0x47, 0x53, 0x4D}
 };
 
 uint16_t hex2uint16(const char *p)
@@ -136,10 +136,9 @@ bool COBDSPI::readPID(byte pid, int& result)
 	char buffer[64];
 	char* data = 0;
 #if SAFE_MODE
-	sleep(20);
-#else
-	idleTasks();
+	sleep(10);
 #endif
+	idleTasks();
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
 		while ((p = strstr(p, "41 "))) {

@@ -69,9 +69,9 @@ String UDPClientESP8266AT::getIP()
 String UDPClientESP8266AT::queryIP(const char* host)
 {
   sprintf_P(buffer, PSTR("AT+CIPDOMAIN=\"%s\"\r\n"), host);
-  if (sendCommand(buffer, 5000, "+CIPDOMAIN")) {
-    char *p;
-    if ((p = strstr_P(buffer, PSTR("+CIPDOMAIN"))) && (p = strchr(p, ':'))) {
+  if (sendCommand(buffer, 5000)) {
+    char *p = strchr(buffer, ':');
+    if (p) {
       char *ip = p + 1;
       p = strchr(ip, '\r');
       if (p) *p = 0;

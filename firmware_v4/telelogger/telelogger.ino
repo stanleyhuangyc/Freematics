@@ -1,10 +1,10 @@
 /******************************************************************************
 * Reference sketch for a vehicle telematics data feed for Freematics Hub
-* Works with Freematics ONE+
-* Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
+* Works with Freematics ONE
+* Developed by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
-* Visit http://freematics.com/hub for information about Freematics Hub
-* Visit http://freematics.com/products for hardware information
+* Visit https://freematics.com/hub for information about Freematics Hub
+* Visit https://freematics.com/products for hardware information
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -47,7 +47,7 @@ uint8_t connErrors = 0;
 
 uint32_t lastCmdToken = 0;
 
-void idleTasks(uint32_t idleTime = 1);
+void idleTasks();
 
 class State {
 public:
@@ -99,9 +99,9 @@ bool verifyChecksum(char* data)
 
 bool notifyServer(byte event, const char* serverKey, const char* payload)
 {
-  char buf[32];
-  byte len = sprintf_P(buf, PSTR("EV=%X"), (unsigned int)event);
   cache.header(feedid);
+  char buf[16];
+  byte len = sprintf_P(buf, PSTR("EV=%X"), (unsigned int)event);
   cache.dispatch(buf, len);
   len = sprintf_P(buf, PSTR("TS=%lu"), millis());
   cache.dispatch(buf, len);
@@ -115,7 +115,7 @@ bool notifyServer(byte event, const char* serverKey, const char* payload)
     cache.dispatch(payload, strlen(payload));
   }
   cache.tailer();
-  Serial.println(cache.buffer());
+  //Serial.println(cache.buffer());
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.send(cache.buffer(), cache.length())) {
       Serial.print('.');
@@ -134,8 +134,7 @@ bool notifyServer(byte event, const char* serverKey, const char* payload)
     data[len] = 0;
     // verify checksum
     if (!verifyChecksum(data)) {
-      Serial.print("Checksum mismatch:");
-      Serial.print(data);
+      Serial.println(data);
       continue;
     }
     char pattern[16];
@@ -166,21 +165,8 @@ bool login()
       continue;
     }
 
-#if ENABLE_OBD
-    char *buf = net.buffer; /* for saving SRAM */
-    char *p = buf + sprintf(buf, "VIN=%s", vin);
-    // load DTC
-    uint16_t dtc[6];
-    byte dtcCount = obd.readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-    if (dtcCount > 0) {
-      Serial.print("DTC:");
-      Serial.println(dtcCount);
-      p += sprintf(p, ",DTC=");
-      for (byte i = 0; i < dtcCount; i++) {
-        p += sprintf(p, "%X;", dtc[i]);
-      }
-    }
-#endif
+    char *buf = net.buffer; /* re-use static buffer, for saving SRAM */
+    sprintf(buf, "VIN=%s", vin);
 
     // login Freematics Hub
     if (!notifyServer(EVENT_LOGIN, SERVER_KEY, buf)) {
@@ -233,7 +219,6 @@ void transmit()
 int logOBDPID(byte pid)
 {
   int value;
-  idleTasks(5);
   if (obd.readPID(pid, value)) {
     cache.log((uint16_t)0x100 | pid, (int16_t)value);
   } else {
@@ -589,7 +574,7 @@ void process()
     transmit();
   }
 
-  idleTasks(0);
+  idleTasks();
 
 #if ENABLE_OBD
   if (obd.errors > MAX_OBD_ERRORS) {
@@ -667,40 +652,37 @@ void standby()
 /*******************************************************************************
   Tasks to perform in idle/waiting time
 *******************************************************************************/
-void idleTasks(uint32_t idleTime)
+void idleTasks()
 {
-  uint32_t t = millis();
+  // check incoming datagram
   do {
-    // check incoming datagram
-    do {
-      int len = 0;
-      char *data = net.receive(&len, 0);
-      if (data) {
-        data[len] = 0;
-        if (!verifyChecksum(data)) {
-          Serial.print(data);
-          break;
-        }
-        char *p = strstr(data, "EV=");
-        if (!p) break;
-        int eventID = atoi(p + 3);
-        switch (eventID) {
-        case EVENT_COMMAND:
-          processCommand(data);
-          break;
-        case EVENT_SYNC:
-          lastSyncTime = millis();
-          break;
-        }
+    int len = 0;
+    char *data = net.receive(&len, 0);
+    if (data) {
+      data[len] = 0;
+      if (!verifyChecksum(data)) {
+        Serial.println(data);
+        break;
       }
-    } while(0);
-#if ENABLE_GPS
-    // process GPS data if connected
-    if (state.check(STATE_GPS_READY)) {
-      processGPS();
+      char *p = strstr(data, "EV=");
+      if (!p) break;
+      int eventID = atoi(p + 3);
+      switch (eventID) {
+      case EVENT_COMMAND:
+        processCommand(data);
+        break;
+      case EVENT_SYNC:
+        lastSyncTime = millis();
+        break;
+      }
     }
+  } while(0);
+#if ENABLE_GPS
+  // process GPS data if connected
+  if (state.check(STATE_GPS_READY)) {
+    processGPS();
+  }
 #endif
-  } while (millis() - t < idleTime);
 }
 
 void setup()
