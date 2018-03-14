@@ -571,9 +571,7 @@ int16_t COBD::getTemperatureValue(char* data)
 * OBD-II SPI bridge
 *************************************************************************/
 
-static const char header[] = {'$','O','B','D'};
-
-//SPISettings spiSettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
+static const uint8_t header[] = {0x24, 0x4f, 0x42, 0x44};
 
 byte COBDSPI::begin()
 {
@@ -678,12 +676,10 @@ void COBDSPI::write(const char* s)
 	int len = strlen(s);
 	digitalWrite(SPI_PIN_CS, LOW);
 	delay(1);
-	//SPI.beginTransaction(spiSettings);
 	SPI.writeBytes((uint8_t*)header, sizeof(header));
 	SPI.writeBytes((uint8_t*)s, len);
 	SPI.write(0x1B);
 	delay(1);
-	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
