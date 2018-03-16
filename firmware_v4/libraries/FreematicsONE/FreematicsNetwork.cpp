@@ -19,7 +19,12 @@ bool UDPClientESP8266AT::begin(CFreematics* device)
 {
   m_device = device;
   m_device->xbBegin(XBEE_BAUDRATE);
-  return true;
+  for (byte n = 0; n < 5; n++) {
+    if (sendCommand("AT\r\n", 200)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void UDPClientESP8266AT::end()
@@ -33,10 +38,11 @@ bool UDPClientESP8266AT::setup(const char* ssid, const char* password, unsigned 
   // test the module by issuing ATE0 command and confirming response of "OK"
   const char* cmds[] = {"ATE0\r\n", "AT+CWMODE=1\r\n", "AT+CIPMUX=0\r\n", "AT+CWDHCP=1,1\r\n"};
   for (byte n = 0; n < sizeof(cmds) / sizeof(cmds[0]); n++) {
-    delay(200);
+    delay(100);
     if (!sendCommand(cmds[n], 100)) {
-      Serial.println(cmds[n]);
-      return false;
+      Serial.println();
+      Serial.print(cmds[n]);
+      Serial.print(buffer);
     }
     if (rxLen) {
       if (strstr_P(rxBuf, PSTR("WIFI GOT IP"))) {

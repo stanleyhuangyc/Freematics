@@ -173,24 +173,29 @@ bool login()
 
 void transmit()
 {
-  //Serial.println(cache.buffer()); // print the content to be sent
-  Serial.print('[');
-  Serial.print(txCount);
-  Serial.print("] ");
   cache.tailer();
+  //Serial.println(cache.buffer()); // print the content to be sent
+  long sec = millis() / 1000;
+  Serial.print(sec / 60);
+  Serial.print(':');
+  Serial.print(sec % 60);
+  Serial.print(' ');
+
   // transmit data
   if (net.send(cache.buffer(), cache.length())) {
     connErrors = 0;
     txCount++;
     // output some stats
-    char buf[64];
-    sprintf(buf, "%u bytes sent", cache.length());
-    Serial.println(buf);
-    // purge cache and place a header
+    Serial.print("Packet#");
+    Serial.print(txCount);
+    Serial.print(' ');
+    Serial.print(cache.length());
+    Serial.println(" bytes");
     lastSentTime = millis();
   } else {
     connErrors++;
   }
+  // purge cache and place a header
   cache.header(feedid);
   if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
     net.close();
@@ -354,11 +359,23 @@ bool initialize()
   }
 #endif
 
+  // initialize network module
+  if (!state.check(STATE_NET_READY)) {
+    Serial.print(net.deviceName());
+    Serial.print("...");
+    if (net.begin(&sys)) {
+      Serial.println("OK");
+      state.set(STATE_NET_READY);
+    } else {
+      Serial.println("NO");
+      return false;
+    }
+  }
   for (byte attempts = 0; attempts < 3; attempts++) {
     Serial.print("WIFI(SSID:");
     Serial.print(WIFI_SSID);
     Serial.print(")...");
-    if (net.begin(&sys) && net.setup(WIFI_SSID, WIFI_PASSWORD)) {
+    if (net.setup(WIFI_SSID, WIFI_PASSWORD)) {
       Serial.println("OK");
       state.set(STATE_NET_READY);
       break;

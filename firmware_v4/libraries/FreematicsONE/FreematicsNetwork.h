@@ -51,7 +51,7 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
-    const char* deviceName() { return "WIFI"; }
+    const char* deviceName() { return "ESP8266-AT"; }
     char buffer[96];
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK");
