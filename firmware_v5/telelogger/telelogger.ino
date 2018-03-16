@@ -423,6 +423,15 @@ bool initialize()
   }
 #endif
 
+#if STORAGE_TYPE != STORAGE_NONE
+  if (!state.check(STATE_STORAGE_READY)) {
+    // init storage
+    if (store.init()) {
+      state.set(STATE_STORAGE_READY);
+    }
+  }
+#endif
+
 #if NET_DEVICE == NET_WIFI
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.begin()) continue;
@@ -590,13 +599,9 @@ bool initialize()
     }
   #endif
   }
-  if (!state.check(STATE_STORAGE_READY)) {
-    // init storage
-    if (store.init()) {
-      state.set(STATE_STORAGE_READY);
-      if (store.begin(date)) {
-        cache.setForward(&store);
-      }
+  if (state.check(STATE_STORAGE_READY)) {
+    if (store.begin(date)) {
+      cache.setForward(&store);
     }
   }
 #endif
@@ -853,10 +858,12 @@ void standby()
       }
     }
   }
-#else
+#elif ENABLE_OBD
   do {
     delay(5000);
   } while (obd.getVoltage() < JUMPSTART_VOLTAGE);
+#else
+  delay(5000);
 #endif
   state.clear(STATE_STANDBY);
   Serial.println("Wakeup");
