@@ -187,11 +187,11 @@ bool login()
 
 void transmit()
 {
+  cache.tailer();
   //Serial.println(cache.buffer()); // print the content to be sent
   Serial.print('[');
   Serial.print(txCount);
   Serial.print("] ");
-  cache.tailer();
   // transmit data
   if (net.send(cache.buffer(), cache.length())) {
     connErrors = 0;
@@ -205,6 +205,7 @@ void transmit()
   } else {
     connErrors++;
   }
+  // purge cache and place a header
   cache.header(feedid);
   if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
     net.close();
@@ -297,27 +298,27 @@ void processMEMS()
 
 void calibrateMEMS()
 {
-    Serial.print("ACC BIAS...");
-    accBias[0] = 0;
-    accBias[1] = 0;
-    accBias[2] = 0;
-    int n;
-    for (n = 0; n < 100; n++) {
-      float acc[3] = {0};
-      mems.read(acc);
-      accBias[0] += acc[0];
-      accBias[1] += acc[1];
-      accBias[2] += acc[2];
-      delay(10);
-    }
-    accBias[0] /= n;
-    accBias[1] /= n;
-    accBias[2] /= n;
-    Serial.print(accBias[0]);
-    Serial.print('/');
-    Serial.print(accBias[1]);
-    Serial.print('/');
-    Serial.println(accBias[2]);
+  Serial.print("ACC BIAS...");
+  accBias[0] = 0;
+  accBias[1] = 0;
+  accBias[2] = 0;
+  int n;
+  for (n = 0; n < 100; n++) {
+    float acc[3] = {0};
+    mems.read(acc);
+    accBias[0] += acc[0];
+    accBias[1] += acc[1];
+    accBias[2] += acc[2];
+    delay(10);
+  }
+  accBias[0] /= n;
+  accBias[1] /= n;
+  accBias[2] /= n;
+  Serial.print(accBias[0]);
+  Serial.print('/');
+  Serial.print(accBias[1]);
+  Serial.print('/');
+  Serial.println(accBias[2]);
 }
 #endif
 
@@ -376,23 +377,6 @@ bool initialize()
   }
 #endif
 
-#if NET_DEVICE == NET_WIFI
-  for (byte attempts = 0; attempts < 3; attempts++) {
-    Serial.print("WIFI(SSID:");
-    Serial.print(WIFI_SSID);
-    Serial.print(")...");
-    if (net.begin(&sys) && net.setup(WIFI_SSID, WIFI_PASSWORD)) {
-      Serial.println("OK");
-      state.set(STATE_NET_READY);
-      break;
-    } else {
-      Serial.println("NO");
-    }
-  }
-  if (!state.check(STATE_NET_READY)) {
-    return false;
-  }
-#elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
     Serial.print(net.deviceName());
@@ -405,6 +389,23 @@ bool initialize()
       return false;
     }
   }
+#if NET_DEVICE == NET_WIFI
+  for (byte attempts = 0; attempts < 3; attempts++) {
+    Serial.print("WIFI(SSID:");
+    Serial.print(WIFI_SSID);
+    Serial.print(")...");
+    if (net.setup(WIFI_SSID, WIFI_PASSWORD)) {
+      Serial.println("OK");
+      state.set(STATE_NET_READY);
+      break;
+    } else {
+      Serial.println("NO");
+    }
+  }
+  if (!state.check(STATE_NET_READY)) {
+    return false;
+  }
+#elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
   Serial.print("CELL(APN:");
   Serial.print(CELL_APN);
   Serial.print(")");
@@ -695,22 +696,22 @@ void setup()
 
 void loop()
 {
-    // error handling
-    if (!state.check(STATE_ALL_GOOD)) {
-      standby();
-      for (byte n = 0; n < 3; n++) {
-        initialize();
-        if (state.check(STATE_ALL_GOOD)) break;
-        delay(3000);
-      }
-      return;
-    }
-
-    if (connErrors >= MAX_CONN_ERRORS) {
-      shutDownNet();
+  // error handling
+  if (!state.check(STATE_ALL_GOOD)) {
+    standby();
+    for (byte n = 0; n < 3; n++) {
       initialize();
-      return;
+      if (state.check(STATE_ALL_GOOD)) break;
+      delay(3000);
     }
-    // collect and transmit data
-    process();
+    return;
+  }
+
+  if (connErrors >= MAX_CONN_ERRORS) {
+    shutDownNet();
+    initialize();
+    return;
+  }
+  // collect and transmit data
+  process();
 }
