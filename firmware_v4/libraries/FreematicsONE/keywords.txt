@@ -5,6 +5,9 @@ COBDSPI	KEYWORD1
 MPU9250_ACC	KEYWORD1
 MPU9250_9DOF KEYWORD1
 MPU9250_DMP KEYWORD1
+UDPClientESP8266AT KEYWORD1
+UDPClientSIM800 KEYWORD1
+UDPClientSIM5360 KEYWORD1
 
 ################################################################################
 # Methods and Functions (KEYWORD2)
@@ -14,12 +17,9 @@ end	KEYWORD2
 init	KEYWORD2
 uninit	KEYWORD2
 reset	KEYWORD2
-getState	KEYWORD2
-sleepSec	KEYWORD2
 sleep	KEYWORD2
 enterLowPowerMode	KEYWORD2
 leaveLowPowerMode	KEYWORD2
-
 readPID	KEYWORD2
 readDTC	KEYWORD2
 clearDTC	KEYWORD2
@@ -39,9 +39,6 @@ xbReceive	KEYWORD2
 xbPurge	KEYWORD2
 xbTogglePower	KEYWORD2
 
-memsInit KEYWORD2
-memsRead KEYWORD2
-
 ################################################################################
 # Constants (LITERAL1)
 ################################################################################
@@ -53,3 +50,9 @@ INV_X_GYRO	LITERAL1
 INV_Y_GYRO	LITERAL1
 INV_Z_GYRO	LITERAL1
 ORIENTATION	LITERAL1
+EVENT_LOGIN	LITERAL1
+EVENT_LOGOUT	LITERAL1
+EVENT_SYNC	LITERAL1
+EVENT_RECONNECT	LITERAL1
+EVENT_COMMAND	LITERAL1
+EVENT_ACK	LITERAL1
