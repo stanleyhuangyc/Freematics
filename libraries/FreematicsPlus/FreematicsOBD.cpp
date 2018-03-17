@@ -13,7 +13,7 @@
 HardwareSerial OBDUART(1);
 #endif
 
-//#define SAFE_MODE 1
+#define SAFE_MODE 1
 //#define DEBUG Serial
 
 #ifdef DEBUG
