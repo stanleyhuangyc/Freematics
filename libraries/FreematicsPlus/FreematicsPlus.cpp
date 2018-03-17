@@ -226,7 +226,7 @@ void Mutex::unlock()
   xSemaphoreGive(xSemaphore);
 }
 
-void FreematicsESP32::begin()
+void FreematicsESP32::begin(int cpuMHz)
 {
     uart_config_t uart_config = {
         .baud_rate = 115200,
@@ -246,7 +246,7 @@ void FreematicsESP32::begin()
 
     // Configure dynamic frequency scaling
     rtc_cpu_freq_t max_freq;
-    rtc_clk_cpu_freq_from_mhz(CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ, &max_freq);
+    rtc_clk_cpu_freq_from_mhz(cpuMHz, &max_freq);
     esp_pm_config_esp32_t pm_config = {
             .max_cpu_freq = max_freq,
             .min_cpu_freq = RTC_CPU_FREQ_XTAL

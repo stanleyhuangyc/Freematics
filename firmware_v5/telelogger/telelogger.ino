@@ -497,11 +497,12 @@ bool initialize()
     BLE.println("OBD OK");
     state.set(STATE_OBD_READY);
 
-    char buf[128];
-    Serial.print("VIN:");
+    char buf[192];
     if (obd.getVIN(buf, sizeof(buf))) {
       strncpy(vin, buf, sizeof(vin) - 1);
+      Serial.print("VIN:");
       Serial.print(vin);
+      BLE.println(vin);
     }
     Serial.println();
   }
