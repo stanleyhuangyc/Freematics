@@ -438,16 +438,21 @@ void MPU9250_9DOF::MPU9250SelfTest(float * destination) // Should return percent
 
 bool MPU9250_ACC::initI2C()
 {
-    i2c_port_t i2c_master_port = I2C_NUM_0;
-    i2c_config_t conf;
-    conf.mode = I2C_MODE_MASTER;
-    conf.sda_io_num = (gpio_num_t)21;
-    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.scl_io_num = (gpio_num_t)22;
-    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = 100000;
-    return i2c_param_config(i2c_master_port, &conf) == ESP_OK &&
-      i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0) == ESP_OK;
+  i2c_port_t i2c_master_port = I2C_NUM_0;
+  i2c_config_t conf;
+  conf.mode = I2C_MODE_MASTER;
+  conf.sda_io_num = (gpio_num_t)21;
+  conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+  conf.scl_io_num = (gpio_num_t)22;
+  conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+  conf.master.clk_speed = 100000;
+  return i2c_param_config(i2c_master_port, &conf) == ESP_OK &&
+    i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0) == ESP_OK;
+}
+
+void MPU9250_ACC::uninitI2C()
+{
+  i2c_driver_delete((i2c_port_t)I2C_NUM_0);
 }
 
 void MPU9250_ACC::writeByte(uint8_t subAddress, uint8_t data)

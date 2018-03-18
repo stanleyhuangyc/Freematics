@@ -242,9 +242,11 @@ class MPU9250_ACC
 {
 public:
   virtual byte begin(bool fusion = false);
+  virtual void end() { uninitI2C(); }
   virtual bool read(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
 protected:
   bool initI2C();
+  void uninitI2C();
   void getAres();
   void readAccelData(int16_t *);
   int16_t readTempData();
