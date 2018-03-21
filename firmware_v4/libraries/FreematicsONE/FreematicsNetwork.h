@@ -51,8 +51,8 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
+    char* getBuffer() { return buffer; }
     const char* deviceName() { return "ESP8266-AT"; }
-    char buffer[96];
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK");
     bool connected = false;
@@ -61,6 +61,7 @@ private:
     char* rxBuf = 0;
     int rxLen = 0;
     CFreematics* m_device = 0;
+    char buffer[96];
 };
 
 class UDPClientSIM800 : virtual NullClient
@@ -78,6 +79,7 @@ public:
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
+    char* getBuffer() { return m_buffer; }
     const char* deviceName() { return "SIM800"; }
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
@@ -105,6 +107,7 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
+    char* getBuffer() { return m_buffer; }
     const char* deviceName() { return "SIM5360"; }
 private:
     // send command and check for expected response
