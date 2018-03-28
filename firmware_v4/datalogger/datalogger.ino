@@ -15,6 +15,8 @@
 
 #include <SPI.h>
 #include <SD.h>
+#include <avr/wdt.h>
+#include <avr/sleep.h>
 #include <FreematicsONE.h>
 #include "config.h"
 #include "datalogger.h"
@@ -22,7 +24,6 @@
 // states
 #define STATE_SD_READY 0x1
 #define STATE_OBD_READY 0x2
-
 #define STATE_GPS_FOUND 0x4
 #define STATE_GPS_READY 0x8
 #define STATE_MEMS_READY 0x10
@@ -30,6 +31,56 @@
 
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
+
+#if USE_MEMS
+MPU9250_ACC mems;
+float acc[3];
+float accBias[3];
+bool memsUpdated = false;
+
+void calibrateMEMS()
+{
+    // MEMS data collected while sleeping
+    accBias[0] = 0;
+    accBias[1] = 0;
+    accBias[2] = 0;
+    int n;
+    for (n = 0; n < 100; n++) {
+      float acc[3] = {0};
+      mems.read(acc);
+      accBias[0] += acc[0];
+      accBias[1] += acc[1];
+      accBias[2] += acc[2];
+      delay(10);
+    }
+    accBias[0] /= n;
+    accBias[1] /= n;
+    accBias[2] /= n;
+}
+
+#endif
+
+SIGNAL(WDT_vect) {
+  wdt_disable();
+  wdt_reset();
+  WDTCSR &= ~_BV(WDIE);
+}
+
+void deepSleep(uint8_t wdt_period) {
+	wdt_enable(wdt_period);
+	wdt_reset();
+	WDTCSR |= _BV(WDIE);
+	set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+	sleep_mode();
+	wdt_disable();
+	WDTCSR &= ~_BV(WDIE);
+}
+
+void resetMCU()
+{
+	void(* resetFunc) (void) = 0; //declare reset function @ address 0
+	resetFunc();
+}
 
 class ONE : public COBDSPI, public CDataLogger
 {
@@ -76,6 +127,8 @@ public:
         Serial.print("VIN:");
         Serial.println(buffer);
       }
+
+      calibrateMEMS();
     }
 #if USE_GPS
     void logGPSData()
@@ -155,23 +208,29 @@ public:
 #if USE_GPS
         gpsInit(0);
 #endif
-        state &= ~(STATE_OBD_READY | STATE_GPS_READY);
+        state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
         Serial.println("Standby");
         // put OBD chips into low power mode
-        while (!init()) {
-          Serial.print('.');
-          delay(10000);
+        reset();
+        for (;;) {
+          deepSleep(WDTO_4S);
+          float v = getVoltage();
+          Serial.println(v);
+          if (v >= JUMPSTART_VOLTAGE) break;
         }
         Serial.println("Wakeup");
-        setup();
+        delay(100);
+        resetMCU();
+    }
+    // library idle callback from sleep()
+    void idleTasks()
+    {
+      memsUpdated = mems.read(acc);
     }
     byte state;
 };
 
 ONE one;
-#if USE_MEMS
-MPU9250_ACC mems;
-#endif
 
 void setup()
 {
@@ -184,7 +243,7 @@ void setup()
 
 #if USE_MEMS
     Serial.print("MEMS ");
-    if (mems.memsInit()) {
+    if (mems.begin()) {
       one.state |= STATE_MEMS_READY;
       Serial.println("OK");
     } else {
@@ -235,11 +294,9 @@ void loop()
             one.log((uint16_t)pids[i] | 0x100, value);
           }
 #if USE_MEMS
-          // process MEMS data every time a PID is read to ensure data frequency
-          float acc[3];
-          bool updated = mems.memsRead(acc);
-          if (updated) {
-            one.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+          if (memsUpdated) {
+            one.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+            memsUpdated = false;
           }
 #endif
         }
@@ -272,11 +329,13 @@ void loop()
     Serial.print((float)one.dataCount * 1000 / t, 1);
     Serial.print(" sps ");
 #if ENABLE_DATA_LOG
-    uint32_t fileSize = sdfile.size();
-    one.flushData(fileSize);
-    Serial.print(fileSize);
-    Serial.print(" bytes");
+    if (one.state & STATE_FILE_READY) {
+      uint32_t fileSize = sdfile.size();
+      one.flushData(fileSize);
+      Serial.print(fileSize);
+      Serial.print(" bytes");
 #endif
+    }
     Serial.println();
 #endif
 }

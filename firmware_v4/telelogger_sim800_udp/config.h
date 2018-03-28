@@ -25,6 +25,4 @@
 
 #define GPS_SERIAL_BAUDRATE 115200L
 
-#define RAM_CACHE_SIZE 80 /* bytes */
-
 #endif // CONFIG_H_INCLUDED

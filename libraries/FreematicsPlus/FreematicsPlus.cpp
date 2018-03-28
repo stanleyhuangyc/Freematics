@@ -13,6 +13,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
+#include "esp_pm.h"
+#include "esp_bt.h"
+#include "bta_api.h"
+#include "esp_gatt_defs.h"
+#include "esp_gap_ble_api.h"
+#include "esp_gatts_api.h"
+#include "esp_bt_defs.h"
+#include "esp_bt_main.h"
 #include "nvs_flash.h"
 #include "driver/uart.h"
 #include "freertos/queue.h"
@@ -22,101 +30,65 @@
 #include "FreematicsPlus.h"
 #include "FreematicsGPS.h"
 
-static TinyGPS* gps = 0;
-static bool newGPSData = false;
+static TinyGPS gps;
+static int validGPSData = 0;
+static int sentencesGPSData = 0;
+static Task taskGPS;
 
-#define BEE_UART_PIN_RXD  (16)
-#define BEE_UART_PIN_TXD  (17)
-#define BEE_UART_NUM UART_NUM_1
-
-#define GPS_UART_PIN_RXD  (32)
-#define GPS_UART_PIN_TXD  (33)
-#define GPS_UART_NUM UART_NUM_2
-
-#define UART_BUF_SIZE (2048)
-
-void gps_decode_task(int timeout)
+void gps_decode_task(void* inst)
 {
-    if (!gps) {
-        delay(timeout);
-        return;
-    }
-    uint8_t buf[32];
-    int len = uart_read_bytes(GPS_UART_NUM, buf, sizeof(buf), timeout / portTICK_RATE_MS);
-    for (int n = 0; n < len; n++) {
-        if (gps->encode(buf[n])) {
-            newGPSData = true;
+    uint8_t pattern[] = {'$', '\n'};
+    int idx = 0;
+    for (;;) {
+        uint8_t c;
+        int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 60000 / portTICK_RATE_MS);
+        if (len != 1) continue;
+        if (c == pattern[idx]) {
+            if (++idx >= sizeof(pattern)) {
+                idx = 0;
+                sentencesGPSData++;
+            }
+        }
+        if (gps.encode(c)) {
+            validGPSData++;
         }
     }
 }
 
-bool gps_get_data(GPS_DATA* gdata)
+int gps_get_data(GPS_DATA* gdata)
 {
-    gps_decode_task(0);
-    if (!newGPSData) return false;
-    gps->get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
-    gps->get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
-    gdata->speed = gps->speed() * 1852 / 100000; /* km/h */
-    gdata->alt = gps->altitude();
-    gdata->heading = gps->course() / 100;
-    gdata->sat = gps->satellites();
+    if (!validGPSData) return 0;
+    gps.get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
+    gps.get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
+    gdata->speed = gps.speed() * 1852 / 100000; /* km/h */
+    gdata->alt = gps.altitude();
+    gdata->heading = gps.course() / 100;
+    gdata->sat = gps.satellites();
     if (gdata->sat > 200) gdata->sat = 0;
-    newGPSData = false;
-    return true;
+    int ret = validGPSData;
+    validGPSData = 0;
+    return ret;
 }
 
 int gps_write_string(const char* string)
 {
-    if (!gps) return 0;
-    return uart_write_bytes(BEE_UART_NUM, string, strlen(string));
-}
-
-void gps_decode_stop()
-{
-    if (gps) {
-        uart_driver_delete(GPS_UART_NUM);
-        delete gps;
-        gps = 0;
-    }
+    if (!taskGPS.running()) return 0;
+    return uart_write_bytes(GPS_UART_NUM, string, strlen(string));
 }
 
 bool gps_decode_start()
 {
-    if (gps) return true;
-
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .rx_flow_ctrl_thresh = 122,
-    };
-    //Configure UART parameters
-    uart_param_config(GPS_UART_NUM, &uart_config);
-    //Set UART pins
-    uart_set_pin(GPS_UART_NUM, GPS_UART_PIN_TXD, GPS_UART_PIN_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    //Install UART driver (we don't need an event queue here)
-    //In this example we don't even use a buffer for sending data.
-    uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
-
     // quick check of input data format
-    uint32_t t = millis();
-    uint8_t match[] = {'$', ',', '\n'};
-    int idx = 0;
-    do {
-        uint8_t c;
-        if (uart_read_bytes(GPS_UART_NUM, &c, 1, 200 / portTICK_RATE_MS) == -1) continue;
-        if (c == match[idx]) idx++;
-    } while (millis() - t < GPS_INIT_TIMEOUT && idx < sizeof(match));
-    if (idx < sizeof(match)) {
-        // no matching pattern
-        uart_driver_delete(GPS_UART_NUM);
-        return false;
-    }
+    validGPSData = 0;
+    sentencesGPSData = 0;
 
-    gps = new TinyGPS;
-    return true;
+    // start GPS decoding thread if not started
+    taskGPS.create(gps_decode_task, "GPS", 1);
+
+    for (int i = 0; i < 20 && sentencesGPSData < 3; i++) {
+        delay(100);
+    }
+    return sentencesGPSData >= 3;
 }
 
 void bee_start(int baudrate)
@@ -155,7 +127,6 @@ int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout)
     do {
         uint8_t c;
         int len = uart_read_bytes(BEE_UART_NUM, &c, 1, 0);
-        gps_decode_task(0);
         if (len == 1) {
             if (c >= 0xA && c <= 0x7E) {
                 buffer[recv++] = c;
@@ -190,6 +161,7 @@ int32_t readChipHallSensor()
 
 uint16_t getFlashSize()
 {
+#if 0
     char out;
     uint16_t size = 16384;
     do {
@@ -197,27 +169,45 @@ uint16_t getFlashSize()
             return size;
     } while ((size >>= 1));
     return 0;
+#endif
+    return (spi_flash_get_chip_size() >> 10);
 }
 
 bool Task::create(void (*task)(void*), const char* name, int priority)
 {
     if (xHandle) return false;
     /* Create the task, storing the handle. */
-    BaseType_t xReturned = xTaskCreate(task, name, 4096, (void*)this, priority, &xHandle);
+    BaseType_t xReturned = xTaskCreate(task, name, 1024, (void*)this, priority, &xHandle);
     return xReturned == pdPASS;
 }
 
 void Task::destroy()
 {
-  if (xHandle) {
-    vTaskDelete((TaskHandle_t)xHandle);
-    xHandle = 0;
-  }
+    if (xHandle) {
+        void* x = xHandle;
+        xHandle = 0;
+        vTaskDelete((TaskHandle_t)x);
+    }
 }
 
 void Task::sleep(uint32_t ms)
 {
-  vTaskDelay(ms / portTICK_PERIOD_MS);
+    vTaskDelay(ms / portTICK_PERIOD_MS);
+}
+
+bool Task::running()
+{
+    return xHandle != 0;
+}
+
+void Task::suspend()
+{
+    if (xHandle) vTaskSuspend(xHandle);
+}
+
+void Task::resume()
+{
+    if (xHandle) vTaskResume(xHandle);
 }
 
 Mutex::Mutex()
@@ -236,37 +226,68 @@ void Mutex::unlock()
   xSemaphoreGive(xSemaphore);
 }
 
-bool CFreematicsESP32::gpsInit(unsigned long baudrate)
+void FreematicsESP32::begin(int cpuMHz)
+{
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 122,
+    };
+    //Configure UART parameters
+    uart_param_config(GPS_UART_NUM, &uart_config);
+    //Set UART pins
+    uart_set_pin(GPS_UART_NUM, GPS_UART_PIN_TXD, GPS_UART_PIN_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    //Install UART driver (we don't need an event queue here)
+    //In this example we don't even use a buffer for sending data.
+    uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
+
+    // Configure dynamic frequency scaling
+    rtc_cpu_freq_t max_freq;
+    rtc_clk_cpu_freq_from_mhz(cpuMHz, &max_freq);
+    esp_pm_config_esp32_t pm_config = {
+            .max_cpu_freq = max_freq,
+            .min_cpu_freq = RTC_CPU_FREQ_XTAL
+    };
+    esp_err_t ret = esp_pm_configure(&pm_config);
+    if (ret == ESP_ERR_NOT_SUPPORTED) {
+        Serial.println("Power-saving disabled");
+    }
+}
+
+bool FreematicsESP32::gpsInit(unsigned long baudrate)
 {
 	bool success = false;
 	if (baudrate) {
 		pinMode(PIN_GPS_POWER, OUTPUT);
 		// turn on GPS power
 		digitalWrite(PIN_GPS_POWER, HIGH);
+        delay(10);
 		if (gps_decode_start()) {
 			// success
 			return true;
 		}
 	} else {
-    gps_decode_stop();
 		success = true;
 	}
 	//turn off GPS power
-	digitalWrite(PIN_GPS_POWER, LOW);
+  	digitalWrite(PIN_GPS_POWER, LOW);
 	return success;
 }
 
-bool CFreematicsESP32::gpsGetData(GPS_DATA* gdata)
+int FreematicsESP32::gpsGetData(GPS_DATA* gdata)
 {
   return gps_get_data(gdata);
 }
 
-void CFreematicsESP32::gpsSendCommand(const char* cmd)
+void FreematicsESP32::gpsSendCommand(const char* cmd)
 {
 	gps_write_string(cmd);
 }
 
-bool CFreematicsESP32::xbBegin(unsigned long baudrate)
+bool FreematicsESP32::xbBegin(unsigned long baudrate)
 {
 #ifdef PIN_XBEE_PWR
 	pinMode(PIN_XBEE_PWR, OUTPUT);
@@ -276,7 +297,7 @@ bool CFreematicsESP32::xbBegin(unsigned long baudrate)
   return true;
 }
 
-void CFreematicsESP32::xbWrite(const char* cmd)
+void FreematicsESP32::xbWrite(const char* cmd)
 {
 	bee_write_string(cmd);
 #ifdef XBEE_DEBUG
@@ -286,17 +307,17 @@ void CFreematicsESP32::xbWrite(const char* cmd)
 #endif
 }
 
-void CFreematicsESP32::xbWrite(const char* data, int len)
+void FreematicsESP32::xbWrite(const char* data, int len)
 {
 	bee_write_data((uint8_t*)data, len);
 }
 
-int CFreematicsESP32::xbRead(char* buffer, int bufsize, unsigned int timeout)
+int FreematicsESP32::xbRead(char* buffer, int bufsize, unsigned int timeout)
 {
 	return bee_read((uint8_t*)buffer, bufsize, timeout);
 }
 
-int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
+int FreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
     int bytesRecv = 0;
 	uint32_t t = millis();
@@ -304,7 +325,7 @@ int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout,
 		if (bytesRecv >= bufsize - 16) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
+		int n = bee_read((uint8_t*)buffer + bytesRecv, bufsize - bytesRecv - 1, 100);
 		if (n > 0) {
 #ifdef XBEE_DEBUG
 			Serial.print("[RECV]");
@@ -330,80 +351,69 @@ int CFreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout,
 	return 0;
 }
 
-void CFreematicsESP32::xbPurge()
+void FreematicsESP32::xbPurge()
 {
 	bee_flush();
 }
 
-void CFreematicsESP32::xbTogglePower()
+void FreematicsESP32::xbTogglePower()
 {
 #ifdef PIN_XBEE_PWR
-  digitalWrite(PIN_XBEE_PWR, HIGH);
-  sleep(50);
+    digitalWrite(PIN_XBEE_PWR, HIGH);
+    delay(50);
 #ifdef XBEE_DEBUG
 	Serial.println("xBee power pin set to low");
 #endif
 	digitalWrite(PIN_XBEE_PWR, LOW);
-	sleep(2000);
+	delay(2000);
 #ifdef XBEE_DEBUG
 	Serial.println("xBee power pin set to high");
 #endif
-  digitalWrite(PIN_XBEE_PWR, HIGH);
-  sleep(1000);
-  digitalWrite(PIN_XBEE_PWR, LOW);
+    digitalWrite(PIN_XBEE_PWR, HIGH);
+    delay(1000);
+    digitalWrite(PIN_XBEE_PWR, LOW);
 #endif
 }
 
-void CFreematicsESP32::sleep(unsigned int ms)
-{
-	uint32_t t = millis();
-	for (;;) {
-		uint32_t elapsed = millis() - t;
-		if (elapsed > ms) break;
-		gps_decode_task(ms - elapsed);
-	}
-}
-
-
 extern "C" {
-  void gatts_init(const char* device_name);
-  int gatts_send(uint8_t* data, size_t len);
+void gatts_init(const char* device_name);
+int gatts_send(uint8_t* data, size_t len);
 }
 
 bool GATTServer::initBLE()
 {
-  btStart();
-  esp_err_t ret = esp_bluedroid_init();
-  if (ret) {
-      Serial.println("Bluetooth failed");
-      return false;
-  }
-  ret = esp_bluedroid_enable();
-  if (ret) {
-      Serial.println("Error enabling bluetooth");
-      return false;
-  }
-  return true;
+    btStart();
+    esp_err_t ret = esp_bluedroid_init();
+    if (ret) {
+        Serial.println("Bluetooth failed");
+        return false;
+    }
+    ret = esp_bluedroid_enable();
+    if (ret) {
+        Serial.println("Error enabling bluetooth");
+        return false;
+    }
+    return true;
 }
 
 static GATTServer* gatts_inst;
 
 bool GATTServer::begin(const char* deviceName)
 {
-  gatts_inst = this;
-  if (!initBLE()) return false;
-  gatts_init(deviceName);
-  return true;
+    gatts_inst = this;
+    if (!initBLE()) return false;
+    gatts_init(deviceName);
+    return true;
 }
 
 bool GATTServer::send(uint8_t* data, size_t len)
 {
-  return gatts_send(data, len);
+    return gatts_send(data, len);
 }
 
 size_t GATTServer::write(uint8_t c)
 {
-    bool success = true;
+    bool success = false;
     if (sendbuf.length() >= MAX_BLE_MSG_LEN) {
         success = send((uint8_t*)sendbuf.c_str(), sendbuf.length());
         sendbuf = "";
@@ -413,7 +423,7 @@ size_t GATTServer::write(uint8_t c)
         success = send((uint8_t*)sendbuf.c_str(), sendbuf.length());
         sendbuf = "";
     }
-    return 1;
+    return success ? sendbuf.length() : 0;
 }
 
 extern "C" {

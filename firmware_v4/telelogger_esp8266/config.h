@@ -2,56 +2,49 @@
 #define CONFIG_H_INCLUDED
 
 /**************************************
-* Data logging settings
+* OBD-II configurations
 **************************************/
-#define CACHE_SIZE 128 /* bytes */
-#define DATASET_INTERVAL 0 /* ms */
-#define ENABLE_DATA_OUT 0
-
-/**************************************
-* WIFI and server settings
-**************************************/
-#define XBEE_BAUDRATE 115200 /* 9600 for older ESP8266 modules */
-// change YOUR_SSID and YOUR_PASSWORD to your own
-#define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
-
-/**************************************
-* Server settings
-**************************************/
-// change YOUR_SERVER_KEY to your server key
-#define SERVER_KEY "TEST_SERVER_KEY"
-#define SERVER_URL "hub.freematics.com"
-#define SERVER_PORT 8081
-
 // maximum consecutive OBD-II access errors before entering standby
-#define MAX_OBD_ERRORS 10
+#define MAX_OBD_ERRORS 3
+// maximum allowed time for re-establishing OBD connection
+#define MAX_OBD_RETRY_TIME 15000 /* ms */
+// VIN used when real one unavailable
+#define DEFAULT_VIN "FREEMATICS"
+
+/**************************************
+* Networking configurations
+**************************************/
+// WIFI settings
+#define WIFI_SSID "HOTSPOT"
+#define WIFI_PASSWORD "PASSWORD"
+// Freematics Hub server settings
+#define SERVER_HOST "hub.freematics.com"
+#define SERVER_PORT 8081
+#define SERVER_KEY "TEST_SERVER_KEY"
+
 // maximum consecutive communication errors before entering standby
-#define MAX_CONN_ERRORS 10
+#define MAX_CONN_ERRORS 20
 // maximum consecutive communication errors before reconnecting
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
-#define MAX_CONN_TIME 5000 /* ms */
+#define MAX_CONN_TIME 10000 /* ms */
 
 /**************************************
-* MEMS settings
+* Data storage configurations
 **************************************/
-#define USE_MEMS 1
+#define SERVER_SYNC_INTERVAL 60 /* seconds, 0 to disable */
 
 /**************************************
-* GPS settings
+* GPS
 **************************************/
-#define USE_GPS 1
+// change the following line to enable (1)/disable (0) GPS
+#define ENABLE_GPS 1
 #define GPS_SERIAL_BAUDRATE 115200L
 
 /**************************************
-* Motion detection
+* Standby/wakeup
 **************************************/
-#define WAKEUP_MOTION_THRESHOLD 2 /* for wakeup on movement */
-
-/**************************************
-* Other options
-**************************************/
-#define COOLING_DOWN_TEMP 65 /* celsius degrees */
+// motion threshold for waking up
+#define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
 
 #endif // CONFIG_H_INCLUDED

@@ -93,11 +93,10 @@
 /**************************************
 * MEMS sensors
 **************************************/
-#ifndef MEMS_MODE
-#define MEMS_MODE MEMS_ACC
-#endif
-
 #define ENABLE_ORIENTATION 0
+#ifndef MEMS_MODE
+#define MEMS_MODE MEMS_9DOF
+#endif
 
 /**************************************
 * GPS
@@ -109,9 +108,12 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 
 /**************************************
-* Motion detection
+* Standby/wakeup
 **************************************/
+// motion threshold for waking up
 #define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
+// engine jumpstart voltage
+#define JUMPSTART_VOLTAGE 14 /* V */
 
 /**************************************
 * Other options

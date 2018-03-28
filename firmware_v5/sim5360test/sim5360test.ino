@@ -35,17 +35,19 @@ typedef enum {
   HTTP_POST,
 } HTTP_METHOD;
 
-class CSIM5360 : public CFreematicsESP32 {
+FreematicsESP32 sys;
+
+class SIM5360 {
 public:
-    CSIM5360() { buffer[0] = 0; }
+    SIM5360() { buffer[0] = 0; }
     bool netInit()
     {
       for (byte n = 0; n < 10; n++) {
         // try turning on module
-        xbTogglePower();
-        sleep(3000);
+        sys.xbTogglePower();
+        delay(3000);
         // discard any stale data
-        xbPurge();
+        sys.xbPurge();
         for (byte m = 0; m < 3; m++) {
           if (netSendCommand("AT\r"))
             return true;
@@ -62,7 +64,7 @@ public:
       do {
         do {
           Serial.print('.');
-          sleep(500);
+          delay(500);
           success = netSendCommand("AT+CPSI?\r", 1000, "Online");
           if (success) {
             if (!strstr_P(buffer, PSTR("NO SERVICE")))
@@ -116,7 +118,7 @@ public:
             }
           }
         }
-        sleep(500);
+        delay(500);
         ip = 0;
       } while (millis() - t < 15000);
       return ip;
@@ -158,7 +160,7 @@ public:
     {
       sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, ip, port);
       if (netSendCommand(buffer, 100, ">")) {
-        xbWrite(data, len);
+        sys.xbWrite(data, len);
         return netSendCommand(0, 1000);
       } else {
         Serial.println(buffer);
@@ -217,9 +219,9 @@ public:
       }
       // send HTTP header
       genHttpHeader(method, path, keepAlive, payload, payloadSize);
-      xbWrite(buffer);
+      sys.xbWrite(buffer);
       // send POST payload if any
-      if (payload) xbWrite(payload);
+      if (payload) sys.xbWrite(payload);
       buffer[0] = 0;
       if (netSendCommand("AT+CHTTPSSEND\r")) {
         checkTimer = millis();
@@ -261,7 +263,7 @@ public:
         return 1;
       }
       // if not, receive a chunk of data from xBee module and look for expected string
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1) != 0;
+      byte ret = sys.xbReceive(buffer, sizeof(buffer), timeout, &expected, 1) != 0;
       if (ret == 0) {
         // timeout
         return (millis() - checkTimer < timeout) ? 0 : 2;
@@ -272,10 +274,10 @@ public:
     bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK\r\n", bool terminated = false)
     {
       if (cmd) {
-        xbWrite(cmd);
+        sys.xbWrite(cmd);
       }
       buffer[0] = 0;
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
+      byte ret = sys.xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
       if (ret) {
         if (terminated) {
           char *p = strstr(buffer, expected);
@@ -291,7 +293,7 @@ private:
     uint32_t checkTimer;
 };
 
-CSIM5360 sim;
+SIM5360 net;
 byte netState = NET_DISCONNECTED;
 byte errors = 0;
 
@@ -303,8 +305,8 @@ void setup()
 
     // initialize SIM5360 xBee module (if present)
     Serial.print("Init SIM5360...");
-    sim.xbBegin(XBEE_BAUDRATE);
-    if (sim.netInit()) {
+    sys.xbBegin(XBEE_BAUDRATE);
+    if (net.netInit()) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
@@ -312,27 +314,27 @@ void setup()
     }
 
     Serial.print("Connecting network");
-    if (sim.netSetup(APN, true)) {
+    if (net.netSetup(APN, true)) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
       for (;;);
     }
 
-    if (sim.getOperatorName()) {
+    if (net.getOperatorName()) {
       Serial.print("Operator:");
-      Serial.println(sim.buffer);
+      Serial.println(net.buffer);
     }
 
     Serial.print("Obtaining IP address...");
-    const char *ip = sim.getIP();
+    const char *ip = net.getIP();
     if (ip) {
       Serial.print(ip);
     } else {
       Serial.println("failed");
     }
 
-    int signal = sim.getSignal();
+    int signal = net.getSignal();
     if (signal > 0) {
       Serial.print("CSQ:");
       Serial.print((float)signal / 10, 1);
@@ -340,10 +342,10 @@ void setup()
     }
 
     Serial.print("Init UDP...");
-    Serial.println(sim.udpInit() ? "OK" : "NO");
+    Serial.println(net.udpInit() ? "OK" : "NO");
 
     Serial.print("Init HTTP...");
-    if (sim.httpOpen()) {
+    if (net.httpOpen()) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
@@ -353,7 +355,7 @@ void setup()
 void loop()
 {
   if (errors > 0) {
-    sim.httpClose();
+    net.httpClose();
     netState = NET_DISCONNECTED;
     if (errors > 3) {
       // re-initialize 3G module
@@ -367,11 +369,11 @@ void loop()
   uint32_t t = millis();
   char buf[16];
   int len = sprintf(buf, "%lu", t);
-  if (sim.udpSend(UDP_SERVER_IP, UDP_SERVER_PORT, buf, len))
+  if (net.udpSend(UDP_SERVER_IP, UDP_SERVER_PORT, buf, len))
     Serial.println("OK");
   else
     Serial.println("failed");
-  char *data = sim.udpReceive(&len);
+  char *data = net.udpReceive(&len);
   if (data) {
     Serial.print(len);
     Serial.print(" bytes UDP datagram received [");
@@ -384,10 +386,10 @@ void loop()
   // connect to HTTP server
   if (netState != NET_CONNECTED) {
     Serial.println("Connecting...");
-    sim.xbPurge();
-    if (!sim.httpConnect()) {
+    sys.xbPurge();
+    if (!net.httpConnect()) {
       Serial.println("Error connecting");
-      Serial.println(sim.buffer);
+      Serial.println(net.buffer);
       errors++;
       return;
     }
@@ -395,9 +397,9 @@ void loop()
 
   // send HTTP request
   Serial.print("Sending HTTP request...");
-  if (!sim.httpSend(HTTP_GET, "/test", true)) {
+  if (!net.httpSend(HTTP_GET, "/test", true)) {
     Serial.println("failed");
-    sim.httpClose();
+    net.httpClose();
     errors++;
     netState = NET_DISCONNECTED;
     return;
@@ -407,7 +409,7 @@ void loop()
 
   Serial.print("Receiving...");
   char *payload;
-  if (sim.httpReceive(&payload)) {
+  if (net.httpReceive(&payload)) {
     Serial.println("OK");
     Serial.println("-----HTTP RESPONSE-----");
     Serial.println(payload);

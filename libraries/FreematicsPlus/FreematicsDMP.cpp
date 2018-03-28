@@ -583,7 +583,7 @@ float MPU9250_DMP::calcQuat(long axis)
 
 float MPU9250_DMP::qToFloat(long number, unsigned char q)
 {
-	unsigned long mask;
+	unsigned long mask = 0;
 	for (int i=0; i<q; i++)
 	{
 		mask |= (1<<i);

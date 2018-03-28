@@ -8,8 +8,62 @@
 SDClass SD;
 File sdfile;
 
-class CDataLogger {
+class NullLogger {
 public:
+    virtual int begin() { return 0; }
+    virtual void record(const char* buf, byte len) {}
+    virtual void log(uint16_t pid, int16_t value)
+    {
+        char buf[24];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%d"), m_dataTime, pid, value) ;
+        record(buf, len);
+    }
+    virtual void log(uint16_t pid, int32_t value)
+    {
+        char buf[28];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%ld"), m_dataTime, pid, value);
+        record(buf, len);
+    }
+    virtual void log(uint16_t pid, uint32_t value)
+    {
+        char buf[28];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%lu"), m_dataTime, pid, value);
+        record(buf, len);
+    }
+    virtual void log(uint16_t pid, int value1, int value2, int value3)
+    {
+        char buf[32];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%d;%d;%d"), m_dataTime, pid, value1, value2, value3);
+        record(buf, len);
+    }
+    virtual void logCoordinate(uint16_t pid, int32_t value)
+    {
+        char buf[32];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%d.%06lu"), m_dataTime, pid, (int)(value / 1000000), abs(value) % 1000000);
+        record(buf, len);
+    }
+    virtual bool open(uint32_t dateTime = 0) { m_dataCount = 0; }
+    virtual void close() {}
+    virtual void flush() {}
+    virtual void setTimestamp(uint32_t ts) { m_dataTime = ts; }
+    virtual uint32_t getDataCount() { return m_dataCount; }
+protected:
+    uint32_t m_dataTime = 0;
+    uint32_t m_dataCount = 0;
+};
+
+class SDLogger : public NullLogger {
+public:
+    int begin()
+    {
+        m_dataCount = 0;
+        pinMode(PIN_SD_CS, OUTPUT);
+        if (SD.begin(PIN_SD_CS)) {
+          return SD.cardSize();
+        } else {
+          return -1;
+        }
+    }
     void record(const char* buf, byte len)
     {
         sdfile.write((uint8_t*)buf, len);
@@ -21,42 +75,13 @@ public:
           Serial.println(p);
         }
 #endif
-        dataCount++;
+        m_dataCount++;
     }
-    void log(uint16_t pid, int16_t value)
-    {
-        char buf[24];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%d"), dataTime, pid, value) ;
-        record(buf, len);
-    }
-    void log(uint16_t pid, int32_t value)
-    {
-        char buf[28];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%ld"), dataTime, pid, value);
-        record(buf, len);
-    }
-    void log(uint16_t pid, uint32_t value)
-    {
-        char buf[28];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%lu"), dataTime, pid, value);
-        record(buf, len);
-    }
-    void log(uint16_t pid, int value1, int value2, int value3)
-    {
-        char buf[32];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%d;%d;%d"), dataTime, pid, value1, value2, value3);
-        record(buf, len);
-    }
-    void logCoordinate(uint16_t pid, int32_t value)
-    {
-        char buf[32];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%d.%06lu"), dataTime, pid, (int)(value / 1000000), abs(value) % 1000000);
-        record(buf, len);
-    }
-    bool openFile(uint32_t dateTime = 0)
+    bool open(uint32_t dateTime = 0)
     {
         char path[16]; // = "/DATA";
 
+        m_dataCount = 0;
         if (dateTime) {
            // using date and time as file name
            sprintf_P(path, PSTR("%08lu.CSV"), dateTime);
@@ -82,14 +107,12 @@ public:
         }
         return true;
     }
-    void closeFile()
+    void close()
     {
         sdfile.close();
     }
-    void flushFile()
+    void flush()
     {
         sdfile.flush();
     }
-    uint32_t dataTime = 0;
-    uint32_t dataCount = 0;
 };
