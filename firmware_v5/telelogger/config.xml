@@ -5,8 +5,8 @@
   <define name="Enable GPS" type="bool" const="ENABLE_GPS" default="true"/>
   <define name="Motion Sensor">
     <option name="Disabled" const="MEMS_MODE=MEMS_DISABLED"/>
-    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC" default="true"/>
-    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF"/>
+    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC"/>
+    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF" default="true"/>
     <option name="DMP" const="MEMS_MODE=MEMS_DMP"/>
   </define>
   <define name="Networking">
@@ -16,13 +16,13 @@
   </define>
   <define name="Storage">
     <option name="None" const="STORAGE_TYPE=STORAGE_NONE"/>
-    <option name="MicroSD" const="STORAGE_TYPE=STORAGE_SD"/>
+    <option name="MicroSD" const="STORAGE_TYPE=STORAGE_SD" default="true"/>
     <option name="Flash" const="STORAGE_TYPE=STORAGE_FLASH"/>
   </define>
   <define name="WIFI SSID" const="WIFI_SSID" type="string" default="FREEMATICS" dep="NET_WIFI"/>
   <define name="WIFI Password" const="WIFI_PASSWORD" type="string" default="PASSWORD" dep="NET_WIFI"/>
   <define name="Cellular Network APN" const="CELL_APN" type="string" default="connect" dep="NET_SIM5360 NET_SIM800"/>
-  <define name="Transmission Interval (ms)" const="DATA_SENDING_INTERVAL" type="number" default="1000"/>
+  <define name="Transmission Interval (ms)" const="DATA_SENDING_INTERVAL" type="number" default="500"/>
   <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
   <define name="Server Port" const="SERVER_PORT" type="number" default="8081"/>
   <define name="Device ID" const="DEVICE_ID" type="string" default="FreematicsDevice"/>

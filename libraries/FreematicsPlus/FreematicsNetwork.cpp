@@ -16,45 +16,48 @@
   Implementation for ESP32 built-in WIFI (Arduino WIFI library)
 *******************************************************************************/
 
-bool CTeleClientWIFI::netSetup(const char* ssid, const char* password, unsigned int timeout)
+bool UDPClientWIFI::setup(const char* ssid, const char* password, unsigned int timeout)
 {
   WiFi.begin(ssid, password);
   for (uint32_t t = millis(); millis() - t < timeout;) {
-    if (WiFi.status() == WL_CONNECTED) return true;
+    if (WiFi.status() == WL_CONNECTED) {
+      // enable power-saving mode
+      esp_wifi_set_ps(WIFI_PS_MODEM);
+      return true;
+    }
     delay(50);
   }
   return false;
 }
 
-String CTeleClientWIFI::getIP()
+String UDPClientWIFI::getIP()
 {
   return WiFi.localIP().toString();
 }
 
-bool CTeleClientWIFI::netOpen(const char* host, uint16_t port)
+bool UDPClientWIFI::open(const char* host, uint16_t port)
 {
   if (udp.beginPacket(host, port)) {
     udpIP = udp.remoteIP();
     udpPort = port;
-    udp.endPacket();
-    return true;
-  } else {
-    return false;
-  }
-}
-
-bool CTeleClientWIFI::netSend(const char* data, unsigned int len)
-{
-  if (udp.beginPacket(udpIP, udpPort)) {
-    if (udp.write((uint8_t*)data, len) == len && udp.endPacket()) {
-      m_bytesCount += len;
+    if (udp.endPacket()) {
       return true;
     }
   }
   return false;
 }
 
-char* CTeleClientWIFI::netReceive(int* pbytes, unsigned int timeout)
+bool UDPClientWIFI::send(const char* data, unsigned int len)
+{
+  if (udp.beginPacket(udpIP, udpPort)) {
+    if (udp.write((uint8_t*)data, len) == len && udp.endPacket()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+char* UDPClientWIFI::receive(int* pbytes, unsigned int timeout)
 {
   uint32_t t = millis();
   do {
@@ -68,36 +71,66 @@ char* CTeleClientWIFI::netReceive(int* pbytes, unsigned int timeout)
   return 0;
 }
 
-String CTeleClientWIFI::queryIP(const char* host)
+String UDPClientWIFI::queryIP(const char* host)
 {
   return udpIP.toString();
 }
 
-void CTeleClientWIFI::netEnd()
+void UDPClientWIFI::close()
 {
   WiFi.disconnect(true);
-  // deactivate WIFI
-  //esp_wifi_set_mode(WIFI_MODE_NULL);
+}
+
+bool UDPClientWIFI::begin()
+{
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  listAPs();
+  return true;
+}
+
+void UDPClientWIFI::end()
+{
+}
+
+void UDPClientWIFI::listAPs()
+{
+  int n = WiFi.scanNetworks();
+  if (n <= 0) {
+      Serial.println("No WIFI AP found");
+  } else {
+      Serial.println("WIFI APs found:");
+      for (int i = 0; i < n; ++i) {
+          // Print SSID and RSSI for each network found
+          Serial.print(i + 1);
+          Serial.print(": ");
+          Serial.print(WiFi.SSID(i));
+          Serial.print(" (");
+          Serial.print(WiFi.RSSI(i));
+          Serial.println("dB)");
+      }
+  }
 }
 
 /*******************************************************************************
   Implementation for SIM800 (SIM800 AT command-set)
 *******************************************************************************/
 
-bool CTeleClientSIM800::netBegin()
+bool UDPClientSIM800::begin(CFreematics* device)
 {
+  m_device = device;
   if (m_stage == 0) {
-    xbBegin(XBEE_BAUDRATE);
+    device->xbBegin(XBEE_BAUDRATE);
     m_stage = 1;
   }
   for (byte n = 0; n < 10; n++) {
     // try turning on module
-    xbTogglePower();
-    sleep(3000);
+    device->xbTogglePower();
+    delay(2000);
     // discard any stale data
-    xbPurge();
+    device->xbPurge();
     for (byte m = 0; m < 3; m++) {
-      if (netSendCommand("AT\r")) {
+      if (sendCommand("AT\r")) {
         m_stage = 2;
         return true;
       }
@@ -106,37 +139,37 @@ bool CTeleClientSIM800::netBegin()
   return false;
 }
 
-void CTeleClientSIM800::netEnd()
+void UDPClientSIM800::end()
 {
-  netSendCommand("AT+CPOWD=1\r");
+  sendCommand("AT+CPOWD=1\r");
   m_stage = 1;
 }
 
-bool CTeleClientSIM800::netSetup(const char* apn, unsigned int timeout)
+bool UDPClientSIM800::setup(const char* apn, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
-  netSendCommand("ATE0\r");
+  sendCommand("ATE0\r");
   do {
-    success = netSendCommand("AT+CREG?\r", 3000, "+CREG: 0,1") != 0;
+    success = sendCommand("AT+CREG?\r", 3000, "+CREG: 0,1") != 0;
     Serial.print('.');
   } while (!success && millis() - t < timeout);
   if (!success) return false;
   do {
-    success = netSendCommand("AT+CGATT?\r", 3000, "+CGATT: 1");
+    success = sendCommand("AT+CGATT?\r", 3000, "+CGATT: 1");
   } while (!success && millis() - t < timeout);
   sprintf(m_buffer, "AT+CSTT=\"%s\"\r", apn);
-  if (!netSendCommand(m_buffer)) {
+  if (!sendCommand(m_buffer)) {
     return false;
   }
-  netSendCommand("AT+CIICR\r");
+  sendCommand("AT+CIICR\r");
   return success;
 }
 
-String CTeleClientSIM800::getIP()
+String UDPClientSIM800::getIP()
 {
   for (uint32_t t = millis(); millis() - t < 60000; ) {
-    if (netSendCommand("AT+CIFSR\r", 3000, ".")) {
+    if (sendCommand("AT+CIFSR\r", 3000, ".")) {
       char *p;
       for (p = m_buffer; *p && !isdigit(*p); p++);
       char *q = strchr(p, '\r');
@@ -147,9 +180,9 @@ String CTeleClientSIM800::getIP()
   return "";
 }
 
-int CTeleClientSIM800::getSignal()
+int UDPClientSIM800::getSignal()
 {
-    if (netSendCommand("AT+CSQ\r", 500)) {
+    if (sendCommand("AT+CSQ\r", 500)) {
         char *p = strchr(m_buffer, ':');
         if (p) {
           p += 2;
@@ -161,10 +194,10 @@ int CTeleClientSIM800::getSignal()
     }
     return -1;
 }
-String CTeleClientSIM800::getOperatorName()
+String UDPClientSIM800::getOperatorName()
 {
     // display operator name
-    if (netSendCommand("AT+COPS?\r") == 1) {
+    if (sendCommand("AT+COPS?\r") == 1) {
         char *p = strstr(m_buffer, ",\"");
         if (p) {
             p += 2;
@@ -176,7 +209,7 @@ String CTeleClientSIM800::getOperatorName()
     return "";
 }
 
-bool CTeleClientSIM800::netOpen(const char* host, uint16_t port)
+bool UDPClientSIM800::open(const char* host, uint16_t port)
 {
 #if 0
   if (host) {
@@ -188,42 +221,42 @@ bool CTeleClientSIM800::netOpen(const char* host, uint16_t port)
     }
   }
 #endif
-  //netSendCommand("AT+CLPORT=\"UDP\",8000\r");
-  netSendCommand("AT+CIPSRIP=1\r");
-  //netSendCommand("AT+CIPUDPMODE=1\r");
+  //sendCommand("AT+CLPORT=\"UDP\",8000\r");
+  sendCommand("AT+CIPSRIP=1\r");
+  //sendCommand("AT+CIPUDPMODE=1\r");
   sprintf(m_buffer, "AT+CIPSTART=\"UDP\",\"%s\",\"%u\"\r", host, port);
-  return netSendCommand(m_buffer, 3000);
+  return sendCommand(m_buffer, 3000);
 }
 
-void CTeleClientSIM800::netClose()
+void UDPClientSIM800::close()
 {
-  netSendCommand("AT+CIPCLOSE\r");
+  sendCommand("AT+CIPCLOSE\r");
 }
 
-bool CTeleClientSIM800::netSend(const char* data, unsigned int len)
+bool UDPClientSIM800::send(const char* data, unsigned int len)
 {
   sprintf(m_buffer, "AT+CIPSEND=%u\r", len);
-  if (netSendCommand(m_buffer, 200, ">")) {
-    xbWrite(data, len);
-    xbWrite("\r", 1);
-    if (netSendCommand(0, 5000, "\r\nSEND OK")) {
+  if (sendCommand(m_buffer, 200, ">")) {
+    m_device->xbWrite(data, len);
+    m_device->xbWrite("\r", 1);
+    if (sendCommand(0, 5000, "\r\nSEND OK")) {
       return true;
     }
   }
   return false;
 }
 
-char* CTeleClientSIM800::netReceive(int* pbytes, unsigned int timeout)
+char* UDPClientSIM800::receive(int* pbytes, unsigned int timeout)
 {
 	char *data = checkIncoming(pbytes);
 	if (data) return data;
-  if (netSendCommand(0, timeout, "RECV FROM:")) {
+  if (sendCommand(0, timeout, "RECV FROM:")) {
 		return checkIncoming(pbytes);
   }
   return 0;
 }
 
-char* CTeleClientSIM800::checkIncoming(int* pbytes)
+char* UDPClientSIM800::checkIncoming(int* pbytes)
 {
 	char *p = strstr(m_buffer, "RECV FROM:");
 	if (p) p = strchr(p, '\r');
@@ -234,7 +267,7 @@ char* CTeleClientSIM800::checkIncoming(int* pbytes)
 		if (pbytes) *pbytes = len;
 		return p;
 	} else {
-		if (netSendCommand("AT\r", 1000, "\r\nOK", true)) {
+		if (sendCommand("AT\r", 1000, "\r\nOK", true)) {
 			p = m_buffer;
 			while (*p && (*p == '\r' || *p == '\n')) p++;
 			if (pbytes) *pbytes = strlen(p);
@@ -244,10 +277,10 @@ char* CTeleClientSIM800::checkIncoming(int* pbytes)
 	return 0;
 }
 
-String CTeleClientSIM800::queryIP(const char* host)
+String UDPClientSIM800::queryIP(const char* host)
 {
   sprintf(m_buffer, "AT+CDNSGIP=\"%s\"\r", host);
-  if (netSendCommand(m_buffer, 10000)) {
+  if (sendCommand(m_buffer, 10000)) {
     char *p = strstr(m_buffer, host);
     if (p) {
       p = strstr(p, ",\"");
@@ -262,13 +295,13 @@ String CTeleClientSIM800::queryIP(const char* host)
   return "";
 }
 
-bool CTeleClientSIM800::netSendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
+bool UDPClientSIM800::sendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
 {
   if (cmd) {
-    xbWrite(cmd);
+    m_device->xbWrite(cmd);
   }
   m_buffer[0] = 0;
-  byte ret = xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
+  byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
   if (ret) {
     if (terminated) {
       char *p = strstr(m_buffer, expected);
@@ -280,9 +313,9 @@ bool CTeleClientSIM800::netSendCommand(const char* cmd, unsigned int timeout, co
   }
 }
 
-bool CTeleClientSIM800::getLocation(NET_LOCATION* loc)
+bool UDPClientSIM800::getLocation(NET_LOCATION* loc)
 {
-  if (netSendCommand("AT+CIPGSMLOC=1,1\r", 3000)) do {
+  if (sendCommand("AT+CIPGSMLOC=1,1\r", 3000)) do {
     char *p;
     if (!(p = strchr(m_buffer, ':'))) break;
     if (!(p = strchr(p, ','))) break;
@@ -310,20 +343,21 @@ bool CTeleClientSIM800::getLocation(NET_LOCATION* loc)
   Implementation for SIM5360
 *******************************************************************************/
 
-bool CTeleClientSIM5360::netBegin()
+bool UDPClientSIM5360::begin(CFreematics* device)
 {
+  m_device = device;
   if (m_stage == 0) {
-    xbBegin(XBEE_BAUDRATE);
+    device->xbBegin(XBEE_BAUDRATE);
     m_stage = 1;
   }
   for (byte n = 0; n < 10; n++) {
     // try turning on module
-    xbTogglePower();
-    sleep(3000);
+    device->xbTogglePower();
+    delay(2000);
     // discard any stale data
-    xbPurge();
+    device->xbPurge();
     for (byte m = 0; m < 5; m++) {
-      if (netSendCommand("AT\r")) {
+      if (sendCommand("AT\r")) {
         m_stage = 2;
         return true;
       }
@@ -332,25 +366,25 @@ bool CTeleClientSIM5360::netBegin()
   return false;
 }
 
-void CTeleClientSIM5360::netEnd()
+void UDPClientSIM5360::end()
 {
-  if (m_stage == 2 || netSendCommand("AT\r")) {
-    xbTogglePower();
+  if (m_stage == 2 || sendCommand("AT\r")) {
+    m_device->xbTogglePower();
     m_stage = 1;
   }
 }
 
-bool CTeleClientSIM5360::netSetup(const char* apn, bool only3G, unsigned int timeout)
+bool UDPClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
-  netSendCommand("ATE0\r");
-  if (only3G) netSendCommand("AT+CNMP=14\r"); // use WCDMA only
+  sendCommand("ATE0\r");
+  if (only3G) sendCommand("AT+CNMP=14\r"); // use WCDMA only
   do {
     do {
       Serial.print('.');
-      sleep(500);
-      success = netSendCommand("AT+CPSI?\r", 1000, "Online");
+      delay(500);
+      success = sendCommand("AT+CPSI?\r", 1000, "Online");
       if (success) {
         if (!strstr(m_buffer, "NO SERVICE"))
           break;
@@ -362,34 +396,36 @@ bool CTeleClientSIM5360::netSetup(const char* apn, bool only3G, unsigned int tim
     if (!success) break;
 
     do {
-      success = netSendCommand("AT+CREG?\r", 5000, "+CREG: 0,1");
+      success = sendCommand("AT+CREG?\r", 5000, roaming ? "+CREG: 0,5" : "+CREG: 0,1");
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
     do {
-      success = netSendCommand("AT+CGREG?\r",1000, "+CGREG: 0,1");
+      success = sendCommand("AT+CGREG?\r",1000, roaming ? "+CGREG: 0,5" : "+CGREG: 0,1");
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
     do {
       sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
-      success = netSendCommand(m_buffer);
+      success = sendCommand(m_buffer);
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
-    netSendCommand("AT+CSOCKSETPN=1\r");
-    netSendCommand("AT+CIPMODE=0\r");
-    netSendCommand("AT+NETOPEN\r");
+    //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
+
+    sendCommand("AT+CSOCKSETPN=1\r");
+    sendCommand("AT+CIPMODE=0\r");
+    sendCommand("AT+NETOPEN\r");
   } while(0);
   if (!success) Serial.println(m_buffer);
   return success;
 }
 
-String CTeleClientSIM5360::getIP()
+String UDPClientSIM5360::getIP()
 {
   uint32_t t = millis();
   do {
-    if (netSendCommand("AT+IPADDR\r", 5000, "\r\nOK\r\n", true)) {
+    if (sendCommand("AT+IPADDR\r", 3000, "\r\nOK\r\n", true)) {
       char *p = strstr(m_buffer, "+IPADDR:");
       if (p) {
         char *ip = p + 9;
@@ -400,14 +436,14 @@ String CTeleClientSIM5360::getIP()
         }
       }
     }
-    sleep(500);
+    delay(500);
   } while (millis() - t < 15000);
   return "";
 }
 
-int CTeleClientSIM5360::getSignal()
+int UDPClientSIM5360::getSignal()
 {
-    if (netSendCommand("AT+CSQ\r", 500)) {
+    if (sendCommand("AT+CSQ\r", 500)) {
         char *p = strchr(m_buffer, ':');
         if (p) {
           p += 2;
@@ -419,10 +455,10 @@ int CTeleClientSIM5360::getSignal()
     }
     return -1;
 }
-String CTeleClientSIM5360::getOperatorName()
+String UDPClientSIM5360::getOperatorName()
 {
     // display operator name
-    if (netSendCommand("AT+COPS?\r") == 1) {
+    if (sendCommand("AT+COPS?\r") == 1) {
         char *p = strstr(m_buffer, ",\"");
         if (p) {
             p += 2;
@@ -434,7 +470,7 @@ String CTeleClientSIM5360::getOperatorName()
     return "";
 }
 
-bool CTeleClientSIM5360::netOpen(const char* host, uint16_t port)
+bool UDPClientSIM5360::open(const char* host, uint16_t port)
 {
   if (host) {
     String ip = queryIP(host);
@@ -446,35 +482,35 @@ bool CTeleClientSIM5360::netOpen(const char* host, uint16_t port)
     udpPort = port;
   }
   sprintf(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP, udpPort);
-  return netSendCommand(m_buffer, 3000);
+  return sendCommand(m_buffer, 3000);
 }
 
-void CTeleClientSIM5360::netClose()
+void UDPClientSIM5360::close()
 {
-  netSendCommand("AT+CIPCLOSE\r");
+  sendCommand("AT+CIPCLOSE\r");
 }
 
-bool CTeleClientSIM5360::netSend(const char* data, unsigned int len)
+bool UDPClientSIM5360::send(const char* data, unsigned int len)
 {
   sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP, udpPort);
-  if (netSendCommand(m_buffer, 100, ">")) {
-    xbWrite(data, len);
-    return netSendCommand(0, 1000);
+  if (sendCommand(m_buffer, 100, ">")) {
+    m_device->xbWrite(data, len);
+    return sendCommand(0, 1000);
   }
   return false;
 }
 
-char* CTeleClientSIM5360::netReceive(int* pbytes, unsigned int timeout)
+char* UDPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 {
 	char *data = checkIncoming(pbytes);
 	if (data) return data;
-  if (netSendCommand(0, timeout, "+IPD")) {
+  if (sendCommand(0, timeout, "+IPD")) {
 		return checkIncoming(pbytes);
   }
   return 0;
 }
 
-char* CTeleClientSIM5360::checkIncoming(int* pbytes)
+char* UDPClientSIM5360::checkIncoming(int* pbytes)
 {
 	char *p = strstr(m_buffer, "+IPD");
 	if (!p) return 0;
@@ -489,10 +525,10 @@ char* CTeleClientSIM5360::checkIncoming(int* pbytes)
 	return 0;
 }
 
-String CTeleClientSIM5360::queryIP(const char* host)
+String UDPClientSIM5360::queryIP(const char* host)
 {
   sprintf(m_buffer, "AT+CDNSGIP=\"%s\"\r", host);
-  if (netSendCommand(m_buffer, 10000)) {
+  if (sendCommand(m_buffer, 10000)) {
     char *p = strstr(m_buffer, host);
     if (p) {
       p = strstr(p, ",\"");
@@ -507,13 +543,13 @@ String CTeleClientSIM5360::queryIP(const char* host)
   return "";
 }
 
-bool CTeleClientSIM5360::netSendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
+bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
 {
   if (cmd) {
-    xbWrite(cmd);
+    m_device->xbWrite(cmd);
   }
   m_buffer[0] = 0;
-  byte ret = xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
+  byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
   if (ret) {
     if (terminated) {
       char *p = strstr(m_buffer, expected);

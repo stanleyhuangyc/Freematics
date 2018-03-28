@@ -1,10 +1,11 @@
 /*************************************************************************
 * Arduino Library for Freematics ONE
 * Distributed under BSD license
-* Visit http://freematics.com/products/freematics-one for more information
-* (C)2012-2016 Stanley Huang <stanleyhuangyc@gmail.com>
+* Visit https://freematics.com/products/freematics-one for more information
+* (C)2012-2018 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
+#include "FreematicsBase.h"
 #include "FreematicsMEMS.h"
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
@@ -67,28 +68,6 @@
 #define PID_ENGINE_TORQUE_PERCENTAGE 0x62
 #define PID_ENGINE_REF_TORQUE 0x63
 
-// non-OBD/custom PIDs (no mode number)
-#define PID_GPS_LATITUDE 0xA
-#define PID_GPS_LONGITUDE 0xB
-#define PID_GPS_ALTITUDE 0xC
-#define PID_GPS_SPEED 0xD
-#define PID_GPS_HEADING 0xE
-#define PID_GPS_SAT_COUNT 0xF
-#define PID_GPS_TIME 0x10
-#define PID_GPS_DATE 0x11
-#define PID_ACC 0x20
-#define PID_GYRO 0x21
-#define PID_COMPASS 0x22
-#define PID_MEMS_TEMP 0x23
-#define PID_BATTERY_VOLTAGE 0x24
-#define PID_TRIP_DISTANCE 0x30
-#define PID_DATA_SIZE 0x80
-#define PID_CSQ 0x81
-#define PID_DEVICE_TEMP 0x82
-
-// custom PIDs for calculated data
-#define PID_TRIP_DISTANCE 0x30
-
 typedef enum {
     PROTO_AUTO = 0,
     PROTO_ISO_9141_2 = 3,
@@ -130,29 +109,22 @@ uint8_t hex2uint8(const char *p);
 #define TARGET_BEE 2
 #define TARGET_RAW 3
 
-class COBDSPI {
+class COBDSPI : public CFreematics {
 public:
 	COBDSPI():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	byte begin();
-  // initialize OBD-II connection
+    // initialize OBD-II connection
 	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
-	void uninit();
-	void reset();
 	// un-initialize OBD-II connection
-	void end();
-	// set SPI data target
-	void setTarget(byte target) { m_target = target; }
-	// receive data (up to 255 bytes) from SPI bus
-	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
+	void uninit();
+	// reset OBD
+	void reset();
 	// read specified OBD-II PID value
 	bool readPID(byte pid, int& result);
 	// read multiple (up to 4) OBD-II PID value
 	byte readPID(const byte pid[], byte count, int result[]);
-	// write data to SPI bus
-	void write(const char* s);
-	void write(byte* data, int len);
 	// send AT command and receive response
-	byte sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
+	byte sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
 	// initialize GPS (set baudrate to 0 to power off GPS)
 	bool gpsInit(unsigned long baudrate = 115200L);
 	// get parsed GPS data
@@ -161,7 +133,6 @@ public:
 	int gpsGetRawData(char* buf, int bufsize);
 	// send command string to GPS
 	void gpsSendCommand(const char* cmd);
-
 	// start xBee UART communication
 	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
@@ -169,22 +140,16 @@ public:
 	// send data to xBee UART
 	void xbWrite(const char* cmd);
 	// receive data from xBee UART
-	byte xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char* expected = 0);
-	byte xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount);
+	int xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char* expected = 0);
+	int xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount);
 	// purge xBee UART buffer
 	void xbPurge();
 	// toggle xBee module power
 	void xbTogglePower();
 	// get connection state
 	OBD_STATES getState() { return m_state; }
-	// hardware sleep (timer counter will stop for AVR)
-	void sleepSec(unsigned int seconds);
 	// delay specified number of ms
 	void sleep(unsigned int ms);
-	// enter low power mode
-	void enterLowPowerMode();
-	// leave low power mode
-	void leaveLowPowerMode();
 	// read diagnostic trouble codes (return number of DTCs read)
 	byte readDTC(uint16_t codes[], byte maxCodes = 1);
 	// clear diagnostic trouble code
@@ -192,7 +157,7 @@ public:
 	// get battery voltage (works without ECU)
 	float getVoltage();
 	// get VIN as a string, buffer length should be >= OBD_RECV_BUF_SIZE
-	bool getVIN(char* buffer, byte bufsize);
+	bool getVIN(char* buffer, int bufsize);
 	// send query for specified PID
 	void sendQuery(byte pid);
 	// determine if the PID is supported
@@ -204,9 +169,15 @@ public:
 	// bit map of supported PIDs
 	byte pidmap[4 * 4];
 protected:
+	// write data to SPI bus
+	void write(const char* s);
+	// receive data from SPI bus
+	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
+	// set SPI data target
+	void setTarget(byte target) { m_target = target; }
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
-	virtual void dataIdleLoop() { delay(10); }
+	virtual void idleTasks() { delay(1); }
 	OBD_STATES m_state;
 private:
 	// get firmware version

@@ -2,38 +2,34 @@
 * Arduino Library for Freematics ONE
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
-* (C)2012-2016 Stanley Huang <support@freematics.com.au
+* (C)2012-2018 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <avr/io.h>
-#include <avr/interrupt.h>
-#include <avr/common.h>
-#include <avr/wdt.h>
-#include <avr/sleep.h>
 #include "FreematicsONE.h"
 
+#define SAFE_MODE 1
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
-SIGNAL(WDT_vect) {
-  wdt_disable();
-  wdt_reset();
-  WDTCSR &= ~_BV(WDIE);
-}
+static const uint8_t targets[][4] = {
+	{0x24, 0x4f, 0x42, 0x44},
+	{0x24, 0x47, 0x50, 0x53},
+	{0x24, 0x47, 0x53, 0x4D}
+};
 
 uint16_t hex2uint16(const char *p)
 {
 	char c = *p;
 	uint16_t i = 0;
-	for (char n = 0; c && n < 4; c = *(++p)) {
+	for (uint8_t n = 0; c && n < 4; c = *(++p)) {
 		if (c >= 'A' && c <= 'F') {
 			c -= 7;
 		} else if (c>='a' && c<='f') {
 			c -= 39;
-        } else if (c == ' ') {
+        } else if (c == ' ' && n == 2) {
             continue;
         } else if (c < '0' || c > '9') {
 			break;
@@ -139,7 +135,10 @@ bool COBDSPI::readPID(byte pid, int& result)
 	// receive and parse the response
 	char buffer[64];
 	char* data = 0;
-	sleep(20);
+#if SAFE_MODE
+	sleep(10);
+#endif
+	idleTasks();
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
 		while ((p = strstr(p, "41 "))) {
@@ -247,19 +246,6 @@ int COBDSPI::normalizeData(byte pid, char* data)
 	return result;
 }
 
-void COBDSPI::enterLowPowerMode()
-{
-	setTarget(TARGET_OBD);
-	write("ATLP\r");
-}
-
-void COBDSPI::leaveLowPowerMode()
-{
-	// simply send any command to wake the device up
-	char buf[16];
-	sendCommand("AT\r", buf, sizeof(buf));
-}
-
 float COBDSPI::getVoltage()
 {
 	char buf[32];
@@ -270,12 +256,12 @@ float COBDSPI::getVoltage()
 	return 0;
 }
 
-bool COBDSPI::getVIN(char* buffer, byte bufsize)
+bool COBDSPI::getVIN(char* buffer, int bufsize)
 {
 	setTarget(TARGET_OBD);
 	for (byte n = 0; n < 5; n++) {
 		if (sendCommand("0902\r", buffer, bufsize)) {
-			int len = hex2uint16(buffer);
+			int len = hex2uint16(buffer + sizeof(targets[0]));
 			char *p = strstr_P(buffer + 4, PSTR("0: 49 02 01"));
 			if (p) {
 				char *q = buffer;
@@ -296,7 +282,7 @@ bool COBDSPI::getVIN(char* buffer, byte bufsize)
 				}
 			}
 		}
-		delay(100);
+		delay(200);
 	}
 	return false;
 }
@@ -340,63 +326,59 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 	byte stage;
 
 	m_state = OBD_DISCONNECTED;
-
 	for (byte n = 0; n < 3; n++) {
 		stage = 0;
+		if (n != 0) reset();
 		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
+			delay(10);
 			if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
 				continue;
 			}
 		}
 		stage = 1;
 		if (protocol != PROTO_AUTO) {
-			sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
-			if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr_P(buffer, PSTR("OK"))) {
+			sprintf(buffer, "ATSP%u\r", protocol);
+			delay(10);
+			if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
 				continue;
 			}
 		}
 		stage = 2;
+		delay(10);
 		if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
 			continue;
 		}
 		stage = 3;
 		// load pid map
-		memset(pidmap, 0, sizeof(pidmap));
-		bool success = false;
+		memset(pidmap, 0xff, sizeof(pidmap));
 		for (byte i = 0; i < 4; i++) {
 			byte pid = i * 0x20;
-			sendQuery(pid);
-			if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0) {
-				if (checkErrorMessage(buffer)) {
-					break;
-				}
-				char *p = buffer;
-				while ((p = strstr(p, "41 "))) {
-					p += 3;
-					if (hex2uint8(p) == pid) {
-						p += 2;
-						for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
-							pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
-						}
-						success = true;
+			sprintf(buffer, "%02X%02X\r", dataMode, pid);
+			delay(10);
+			write(buffer);
+			delay(10);
+			if (!receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) break;
+			for (char *p = buffer; (p = strstr(p, "41 ")); ) {
+				p += 3;
+				if (hex2uint8(p) == pid) {
+					p += 2;
+					for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
+						pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 					}
 				}
-			} else {
-				break;
 			}
 		}
-		if (success) {
-			stage = 0xff;
-			break;
-		}
+		break;
 	}
-	if (stage == 0xff) {
+	if (stage == 3) {
 		m_state = OBD_CONNECTED;
 		errors = 0;
 		return true;
 	} else {
-		Serial.print("Stage:");
-		Serial.println(stage);
+#ifdef DEBUG
+		DEBUG.print("Stage:");
+		DEBUG.println(stage);
+#endif
 		reset();
 		return false;
 	}
@@ -413,12 +395,6 @@ void COBDSPI::debugOutput(const char *s)
 #endif
 
 
-static const char targets[][4] = {
-	{'$','O','B','D'},
-	{'$','G','P','S'},
-	{'$','G','S','M'}
-};
-
 byte COBDSPI::begin()
 {
 	// turn off ADC
@@ -434,10 +410,6 @@ byte COBDSPI::begin()
 	SPI.setClockDivider(SPI_CLOCK_DIV64);
 	reset();
 	return getVersion();
-}
-
-void COBDSPI::end()
-{
 }
 
 byte COBDSPI::getVersion()
@@ -462,30 +434,35 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 {
 	int n = 0;
 	bool eos = false;
+	bool matched = false;
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			sleep(1);
+			delay(1);
 			if (millis() - t > timeout) {
 				Serial.println("NO SPI DATA");
 				break;
 			}
 		}
-		sleep(10);
+#if SAFE_MODE
+		delay(10);
+#else
+		delay(1);
+#endif
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
 			if (eos) continue;
-			if (n == 0) {
-				// match header char before we can move forward
-				if (c == '$') {
+			if (!matched) {
+				if (c == '$')  {
 					buffer[0] = c;
 					n = 1;
+					matched = true;	
 				}
 				continue;
 			}
-			if (n > 6 && buffer[1] == 'O' && c == '.' && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
-				// $OBDSEARCHING...
+			if (n > 6 && c == '.' && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
+				// SEARCHING...
 				n = 4;
 				timeout += OBD_TIMEOUT_LONG;
 			} else if (c != 0 && c != 0xff) {
@@ -502,9 +479,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				n++;
 			}
 		}
-		sleep(1);
+		delay(1);
 		digitalWrite(SPI_PIN_CS, HIGH);
-		sleep(1);
+		delay(1);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -532,37 +509,27 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-	sleep(1);
+	delay(1);
 	digitalWrite(SPI_PIN_CS, LOW);
-	sleep(5);
+	delay(5);
 	//SPI.beginTransaction(spiSettings);
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
 		}
 	}
+	char c = 0;
 	for (; *s ;s++) {
-		SPI.transfer((byte)*s);
+		c = *s;
+		SPI.transfer((byte)c);
 	}
-	// send terminating byte (ESC)
+	if (c != '\r') SPI.transfer('\r');
+	// send terminating byte
 	SPI.transfer(0x1B);
 	delay(1);
 	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
-	sleep(1);
-}
-
-void COBDSPI::write(byte* data, int len)
-{
-	digitalWrite(SPI_PIN_CS, LOW);
-	//SPI.beginTransaction(spiSettings);
-	for (int i = 0; i < len; i++) {
-		SPI.transfer(data[i]);
-		delayMicroseconds(5);
-	}
-	//SPI.endTransaction();
-	digitalWrite(SPI_PIN_CS, HIGH);
-	sleep(1);
+	delay(1);
 }
 
 byte COBDSPI::readPID(const byte pid[], byte count, int result[])
@@ -572,18 +539,22 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 		if (readPID(pid[n], result[n])) {
 			results++;
 		}
-		sleep(5);
+		sleep(10);
 	}
 	return results;
 }
 
-byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int timeout)
+byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
 {
 	uint32_t t = millis();  
 	byte n;
 	do {
 		write(cmd);
+#if SAFE_MODE
 		sleep(20);
+#else
+		delay(1);
+#endif
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp_P(buf + 5, PSTR("NO DATA"), 7))) {
 			// data not ready
@@ -597,12 +568,9 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, byte bufsize, unsigned int
 
 void COBDSPI::sleep(unsigned int ms)
 {
-	delay(ms);
-}
-
-void COBDSPI::sleepSec(unsigned int seconds)
-{
-	sleep(seconds * 1000);
+	uint32_t t = millis();
+	if (ms >= 10) idleTasks();
+	while (millis() - t < ms);
 }
 
 bool COBDSPI::gpsInit(unsigned long baudrate)
@@ -632,12 +600,6 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 
 bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 {
-#ifdef ESP32
-	if (!m_internalGPS) {
-		return gps_get_data(gdata);
-	}
-#endif
-
 	char buf[128];
 	m_target = TARGET_OBD;
 	if (sendCommand("ATGPS\r", buf, sizeof(buf), GPS_READ_TIMEOUT) == 0) {
@@ -695,18 +657,6 @@ bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 
 int COBDSPI::gpsGetRawData(char* buf, int bufsize)
 {
-#if 0 //def ESP32
-	if (!m_internalGPS && uartGPS) {
-		int bytes = 0;
-		for (uint32_t t = millis(); uartGPS.available() && millis() - t < GPS_READ_TIMEOUT && bytes < bufsize - 1;) {
-			char c = uartGPS.read();
-			gps.encode(c);
-			buf[bytes++] = c;
-		}
-		buf[bytes] = 0;
-		return bytes;
-	}
-#endif
 	m_target = TARGET_OBD;
 	int n = sendCommand("ATGRR\r", buf, bufsize, GPS_READ_TIMEOUT);
 	if (n > 2) {
@@ -718,12 +668,6 @@ int COBDSPI::gpsGetRawData(char* buf, int bufsize)
 
 void COBDSPI::gpsSendCommand(const char* cmd)
 {
-#ifdef ESP32
-	if (!m_internalGPS) {
-		gps_write_string(cmd);
-		return;
-	}
-#endif
 	setTarget(TARGET_GPS);
 	write(cmd);
 }
@@ -743,30 +687,29 @@ bool COBDSPI::xbBegin(unsigned long baudrate)
 	
 void COBDSPI::xbWrite(const char* cmd)
 {
-	setTarget(TARGET_BEE);
-	sleep(10);
-	write(cmd);
 #ifdef XBEE_DEBUG
 	Serial.print("[SEND]");
 	Serial.print(cmd);
 	Serial.println("[/SEND]");
 #endif
+	setTarget(TARGET_BEE);
+	write(cmd);
 }
 
 int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
 {
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");
-	sleep(20);
+	sleep(10);
 	return receive(buffer, bufsize, timeout);
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char* expected)
+int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char* expected)
 {
 	return xbReceive(buffer, bufsize, timeout, expected ? &expected : 0, expected ? 1 : 0);
 }
 
-byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
+int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
@@ -777,13 +720,10 @@ byte COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const c
 		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 500);
 		if (n > 0) {
 			buffer[bytesRecv + n] = 0;
-			if (n < 5 || memcmp(buffer + bytesRecv, "$GSM", 4)) {
+			if (n < 5 || memcmp(buffer + bytesRecv, targets[TARGET_BEE], 4)) {
 				Serial.println("[RECV ERROR]");
 				break;
 			} else if (!memcmp_P(buffer + bytesRecv + 4, PSTR("NO DATA"), 7)) {
-#ifdef XBEE_DEBUG
-				Serial.println("[NO DATA]");
-#endif
 				sleep(100);
 			} else {
 				char *p = buffer + bytesRecv + 4;

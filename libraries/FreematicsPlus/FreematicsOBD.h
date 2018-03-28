@@ -77,10 +77,8 @@ protected:
 	virtual int normalizeData(byte pid, char* data);
 	virtual byte checkErrorMessage(const char* buffer);
 	virtual char* getResultValue(char* buf);
+	virtual void recover();
 	OBD_STATES m_state = OBD_DISCONNECTED;
-private:
-	void recover();
-	virtual void idleTasks() {}
 };
 
 class COBDSPI : public COBD {
@@ -98,6 +96,4 @@ public:
 	bool readPID(byte pid, int& result);
 	// send AT command and receive response
 	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
-	// delay specified number of ms while still receiving and processing GPS data
-	void sleep(unsigned int ms);
 };

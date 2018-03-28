@@ -97,7 +97,7 @@ void _mwRedirect(HttpSocket* phsSocket, char* pchFilename);
 int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket);
 int _mwStartSendRawData(HttpParam *hp, HttpSocket* phsSocket);
 int _mwGetToken(char* pchBuffer,int iTokenNumber,char** ppchToken);
-__inline char _mwDecodeCharacter(char* pchEncodedChar);
+char _mwDecodeCharacter(char* pchEncodedChar);
 int _mwLoadFileChunk(HttpParam *hp, HttpSocket* phsSocket);
 BOOL _mwCheckAuthentication(HttpParam *hp, HttpSocket* phsSocket);
 int _GetContentType(char *pchFilename);

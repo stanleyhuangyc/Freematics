@@ -269,106 +269,6 @@ bool CTeleClientSIM800::getLocation(NET_LOCATION* loc)
   return false;
 }
 
-class CStorageRAM {
-public:
-    bool init(unsigned int cacheSize)
-    {
-      if (m_cacheSize != cacheSize) {
-        uninit();
-        m_cache = new char[m_cacheSize = cacheSize];
-      }
-      return true;
-    }
-    void uninit()
-    {
-        if (m_cache) {
-            delete m_cache;
-            m_cache = 0;
-            m_cacheSize = 0;
-        }
-    }
-    void purge() { m_cacheBytes = 0; m_samples = 0; }
-    unsigned int length() { return m_cacheBytes; }
-    char* buffer() { return m_cache; }
-    void dispatch(const char* buf, byte len)
-    {
-        // reserve some space for checksum
-        int remain = m_cacheSize - m_cacheBytes - len - 3;
-        if (remain < 0) {
-          // m_cache full
-          return;
-        }
-        if (m_dataTime) {
-          // log timestamp
-          uint32_t ts = m_dataTime;
-          m_dataTime = 0;
-          log(0, ts);
-        }
-        // store data in m_cache
-        memcpy(m_cache + m_cacheBytes, buf, len);
-        m_cacheBytes += len;
-        m_cache[m_cacheBytes++] = ',';
-        m_samples++;
-    }
-
-    void header(uint16_t feedid)
-    {
-        m_cacheBytes = sprintf(m_cache, "%X#", (unsigned int)feedid);
-    }
-    void tailer()
-    {
-        if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
-        m_cacheBytes += sprintf(m_cache + m_cacheBytes, "*%X", (unsigned int)checksum(m_cache, m_cacheBytes));
-    }
-    virtual void log(uint16_t pid, int16_t value)
-    {
-        char buf[16];
-        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
-        dispatch(buf, len);
-    }
-    virtual void log(uint16_t pid, int32_t value)
-    {
-        char buf[20];
-        byte len = sprintf_P(buf, PSTR("%X=%ld"), pid, value);
-        dispatch(buf, len);
-    }
-    virtual void log(uint16_t pid, uint32_t value)
-    {
-        char buf[20];
-        byte len = sprintf_P(buf, PSTR("%X=%lu"), pid, value);
-        dispatch(buf, len);
-    }
-    virtual void log(uint16_t pid, int value1, int value2, int value3)
-    {
-        char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d;%d;%d"), pid, value1, value2, value3);
-        dispatch(buf, len);
-    }
-    virtual void logCoordinate(uint16_t pid, int32_t value)
-    {
-        char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d.%06lu"), pid, (int)(value / 1000000), abs(value) % 1000000);
-        dispatch(buf, len);
-    }
-    virtual void timestamp(uint32_t ts)
-    {
-        m_dataTime = ts;
-    }
-    virtual uint16_t samples() { return m_samples; }
-protected:
-    byte checksum(const char* data, int len)
-    {
-        byte sum = 0;
-        for (int i = 0; i < len; i++) sum += data[i];
-        return sum;
-    }
-    uint32_t m_dataTime = 0;
-    uint16_t m_samples = 0;
-    unsigned int m_cacheSize = 0;
-    unsigned int m_cacheBytes = 0;
-    char* m_cache = 0;
-};
-
 class CTeleLogger : public CTeleClientSIM800
 {
 public:
@@ -401,7 +301,7 @@ public:
 
     if (!checkState(STATE_MEMS_READY)) {
       Serial.print("MEMS...");
-      if (mems.memsInit()) {
+      if (mems.begin()) {
         setState(STATE_MEMS_READY);
         Serial.println("OK");
       } else {
@@ -439,11 +339,6 @@ public:
 
     txCount = 0;
 
-    if (!checkState(STATE_STORAGE_READY)) {
-      cache.init(RAM_CACHE_SIZE);
-      setState(STATE_STORAGE_READY);
-    }
-
     if (!login()) {
       return false;
     }
@@ -453,12 +348,7 @@ public:
   }
   void loop()
   {
-#if RAM_CACHE_SIZE <= 128
-    cache.purge();
-#endif
-    if (cache.length() == 0) {
-      cache.header(feedid);
-    }
+    cache.header(feedid);
     cache.timestamp(millis());
 
     // process GPS data if connected
@@ -518,7 +408,6 @@ public:
 
       if ((txCount % SERVER_SYNC_INTERVAL) == (SERVER_SYNC_INTERVAL - 1)) {
         // sync
-        bool success = false;
         for (byte n = 0; n < MAX_CONN_ERRORS; n++) {
           Serial.print("SYNC...");
           if (!notifyServer(EVENT_SYNC)) {
@@ -528,7 +417,6 @@ public:
             connErrors = 0;
             txCount++;
             Serial.println("OK");
-            success = true;
             break;
           }
         }
@@ -628,7 +516,6 @@ public:
         shutDownNet();
       }
       cache.uninit();
-      clearState(STATE_STORAGE_READY);
       if (errors > MAX_OBD_ERRORS) {
         // inaccessible OBD treated as end of trip
         feedid = 0;
@@ -712,7 +599,7 @@ private:
     {
         float acc[3];
         int16_t temp;
-        mems.memsRead(acc, 0, 0, &temp);
+        mems.read(acc, 0, 0, &temp);
         cache.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
         cache.log(PID_DEVICE_TEMP, temp / 10);
     }

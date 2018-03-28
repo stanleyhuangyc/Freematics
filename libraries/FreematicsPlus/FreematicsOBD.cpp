@@ -13,8 +13,6 @@
 HardwareSerial OBDUART(1);
 #endif
 
-void gps_decode_task(int timeout);
-
 #define SAFE_MODE 1
 //#define DEBUG Serial
 
@@ -94,7 +92,6 @@ byte hex2uint8(const char *p)
 byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 {
 	write(cmd);
-	idleTasks();
 	return receive(buf, bufsize, timeout);
 }
 
@@ -427,7 +424,6 @@ int COBD::receive(char* buffer, int bufsize, unsigned int timeout)
 			    // timeout
 			    break;
 			}
-			idleTasks();
 		}
 	}
 	if (buffer) {
@@ -452,8 +448,7 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 	byte stage;
 
 	m_state = OBD_DISCONNECTED;
-
-	for (byte n = 0; n < 2; n++) {
+	for (byte n = 0; n < 3; n++) {
 		stage = 0;
 		if (n != 0) reset();
 		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
@@ -477,45 +472,34 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		}
 		stage = 3;
 		// load pid map
-		memset(pidmap, 0, sizeof(pidmap));
-		bool success = false;
+		memset(pidmap, 0xff, sizeof(pidmap));
 		for (byte i = 0; i < 4; i++) {
 			byte pid = i * 0x20;
 			sprintf(buffer, "%02X%02X\r", dataMode, pid);
 			delay(10);
 			write(buffer);
-			if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0) {
-				if (checkErrorMessage(buffer)) {
-					break;
-				}
-				char *p = buffer;
-				while ((p = strstr(p, "41 "))) {
-					p += 3;
-					if (hex2uint8(p) == pid) {
-						p += 2;
-						for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
-							pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
-						}
-						success = true;
+			delay(10);
+			if (!receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) break;
+			for (char *p = buffer; (p = strstr(p, "41 ")); ) {
+				p += 3;
+				if (hex2uint8(p) == pid) {
+					p += 2;
+					for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
+						pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 					}
 				}
-			} else {
-				break;
 			}
 		}
-		if (success) {
-			stage = 0xff;
-			break;
-		}
+		break;
 	}
-	if (stage == 0xff) {
+	if (stage == 3) {
 		m_state = OBD_CONNECTED;
 		errors = 0;
 		return true;
 	} else {
 #ifdef DEBUG
-		Serial.print("Stage:");
-		Serial.println(stage);
+		DEBUG.print("Stage:");
+		DEBUG.println(stage);
 #endif
 		reset();
 		return false;
@@ -587,9 +571,7 @@ int16_t COBD::getTemperatureValue(char* data)
 * OBD-II SPI bridge
 *************************************************************************/
 
-static const char header[] = {'$','O','B','D'};
-
-//SPISettings spiSettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
+static const uint8_t header[] = {0x24, 0x4f, 0x42, 0x44};
 
 byte COBDSPI::begin()
 {
@@ -615,7 +597,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			sleep(1);
+			delay(1);
 			if (millis() - t > timeout) {
 #ifdef DEBUG
 				debugOutput("NO READY SIGNAL");
@@ -624,9 +606,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			}
 		}
 #if SAFE_MODE
-		sleep(10);
+		delay(10);
 #else
-		sleep(1);
+		delay(1);
 #endif
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
@@ -682,7 +664,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	debugOutput(buffer);
 #endif
 	// wait for READY pin to restore high level so SPI bus is released
-	while (digitalRead(SPI_PIN_READY) == LOW) sleep(1);
+	while (digitalRead(SPI_PIN_READY) == LOW) delay(1);
 	return n;
 }
 
@@ -693,23 +675,21 @@ void COBDSPI::write(const char* s)
 #endif
 	int len = strlen(s);
 	digitalWrite(SPI_PIN_CS, LOW);
-	sleep(1);
-	//SPI.beginTransaction(spiSettings);
+	delay(1);
 	SPI.writeBytes((uint8_t*)header, sizeof(header));
 	SPI.writeBytes((uint8_t*)s, len);
 	SPI.write(0x1B);
-	sleep(1);
-	//SPI.endTransaction();
+	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
 void COBDSPI::write(uint8_t* data, int bytes)
 {
 	digitalWrite(SPI_PIN_CS, LOW);
-	sleep(1);
+	delay(1);
 	SPI.writeBytes(data, bytes);
 	SPI.write(0x1B);
-	sleep(1);
+	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
@@ -720,9 +700,9 @@ bool COBDSPI::readPID(byte pid, int& result)
 	sprintf(buffer, "%02X%02X\r", dataMode, pid);
 	write(buffer);
 #if SAFE_MODE
-	sleep(20);
+	delay(20);
 #else
-	sleep(1);
+	delay(1);
 #endif
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
@@ -754,24 +734,14 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 	int n;
 	do {
 		write(cmd);
-		sleep(20);
+		delay(20);
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
 			// data not ready
-			sleep(20);
+			delay(20);
 		} else {
 	  		break;
 		}
 	} while (millis() - t < timeout);
 	return n;
-}
-
-void COBDSPI::sleep(unsigned int ms)
-{
-	uint32_t t = millis();
-	for (;;) {
-		uint32_t elapsed = millis() - t;
-		if (elapsed > ms) break;
-		gps_decode_task(ms - elapsed);
-	}
 }

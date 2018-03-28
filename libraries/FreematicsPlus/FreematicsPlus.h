@@ -23,8 +23,17 @@
 #define PIN_LED 4
 #define PIN_SD_CS 5
 
-#define GPS_READ_TIMEOUT 200 /* ms */
-#define GPS_INIT_TIMEOUT 1000 /* ms */
+#define BEE_UART_PIN_RXD  (16)
+#define BEE_UART_PIN_TXD  (17)
+#define BEE_UART_NUM UART_NUM_1
+
+#define GPS_UART_PIN_RXD  (32)
+#define GPS_UART_PIN_TXD  (33)
+#define GPS_UART_NUM UART_NUM_2
+
+#define UART_BUF_SIZE (256)
+
+#define GPS_TIMEOUT 1000 /* ms */
 
 typedef struct {
     uint32_t date;
@@ -39,7 +48,7 @@ typedef struct {
 
 bool gps_decode_start();
 void gps_decode_stop();
-bool gps_get_data(GPS_DATA* gdata);
+int gps_get_data(GPS_DATA* gdata);
 int gps_write_string(const char* string);
 void gps_decode_task(int timeout);
 void bee_start();
@@ -54,12 +63,15 @@ uint16_t getFlashSize(); /* KB */
 class Task
 {
 public:
-  Task():xHandle(0) {}
-	bool create(void (*task)(void*), const char* name, int priority = 0);
-  void destroy();
-  static void sleep(uint32_t ms);
+    Task():xHandle(0) {}
+    bool create(void (*task)(void*), const char* name, int priority = 0);
+    void destroy();
+    void suspend();
+    void resume();
+    bool running();
+    void sleep(uint32_t ms);
 private:
-	void* xHandle;
+	void* xHandle = 0;
 };
 
 class Mutex
@@ -72,31 +84,30 @@ private:
   void* xSemaphore;
 };
 
-class CFreematicsESP32 : virtual CFreematics
+class FreematicsESP32 : public CFreematics
 {
 public:
+    void begin(int cpuMHz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ);
     // initialize GPS (set baudrate to 0 to power off GPS)
-    virtual bool gpsInit(unsigned long baudrate = 115200L);
-    // get parsed GPS data
-    virtual bool gpsGetData(GPS_DATA* gdata);
+    bool gpsInit(unsigned long baudrate = 115200L);
+    // get parsed GPS data (returns the number of data parsed since last invoke)
+    int gpsGetData(GPS_DATA* gdata);
     // send command string to GPS
-    virtual void gpsSendCommand(const char* cmd);
+    void gpsSendCommand(const char* cmd);
 	// start xBee UART communication
-	virtual bool xbBegin(unsigned long baudrate = 115200L);
+	bool xbBegin(unsigned long baudrate = 115200L);
 	// read data to xBee UART
-	virtual int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
+	int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
 	// send data to xBee UART
-	virtual void xbWrite(const char* cmd);
+	void xbWrite(const char* cmd);
     // send data to xBee UART
-	virtual void xbWrite(const char* data, int len);
+	void xbWrite(const char* data, int len);
 	// receive data from xBee UART (returns 0/1/2)
-	virtual int xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
+	int xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
 	// purge xBee UART buffer
-	virtual void xbPurge();
+	void xbPurge();
 	// toggle xBee module power
-	virtual void xbTogglePower();
-    // delay specified number of ms while still receiving and processing GPS data
-    virtual void sleep(unsigned int ms);
+	void xbTogglePower();
 };
 
 class CStorageNull;
@@ -110,19 +121,19 @@ public:
     virtual void log(uint16_t pid, int16_t value)
     {
         char buf[16];
-        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
+        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, (int)value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, int32_t value)
     {
         char buf[20];
-        byte len = sprintf_P(buf, PSTR("%X=%ld"), pid, value);
+        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, uint32_t value)
     {
         char buf[20];
-        byte len = sprintf_P(buf, PSTR("%X=%lu"), pid, value);
+        byte len = sprintf_P(buf, PSTR("%X=%u"), pid, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, int value1, int value2, int value3)
@@ -134,7 +145,7 @@ public:
     virtual void logCoordinate(uint16_t pid, int32_t value)
     {
         char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d.%06lu"), pid, (int)(value / 1000000), abs(value) % 1000000);
+        byte len = sprintf_P(buf, PSTR("%X=%d.%06u"), pid, (int)(value / 1000000), abs(value) % 1000000);
         dispatch(buf, len);
     }
     virtual void timestamp(uint32_t ts)
@@ -258,7 +269,7 @@ public:
         sprintf(path, "%04u", (unsigned int)(dateTime / 10000));
         SD.mkdir(path);
         // using date and time as file name
-        sprintf(path + 4, "/%08lu.CSV", dateTime);
+        sprintf(path + 4, "/%08u.CSV", dateTime);
       } else {
         strcpy(path, "DATA");
         SD.mkdir(path);

@@ -32,6 +32,7 @@ uint32_t pidErrors = 0;
 
 COBDSPI obd;
 GATTServer ble;
+FreematicsESP32 sys;
 
 #if MEMS_MODE
 
@@ -43,6 +44,7 @@ MPU9250_9DOF mems;
 MPU9250_DMP mems;
 #endif
 
+char vin[18] = {0};
 float accBias[3];
 
 void calibrateMEMS()
@@ -72,7 +74,7 @@ void calibrateMEMS()
 }
 #endif
 
-class CLogger : public virtual CFreematicsESP32, public CDataLogger
+class CLogger
 {
 public:
     void setup()
@@ -86,6 +88,7 @@ public:
         if (obd.getVIN(buffer, sizeof(buffer))) {
           Serial.print("VIN:");
           Serial.println(buffer);
+          strncpy(vin, buffer, sizeof(vin) - 1);
         }
       } else {
         Serial.println("NO");
@@ -99,7 +102,7 @@ public:
 #if USE_GPS
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("GPS ");
-        if (gpsInit(GPS_SERIAL_BAUDRATE)) {
+        if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
           setState(STATE_GPS_FOUND);
           Serial.println("OK");
           //waitGPS();
@@ -110,38 +113,49 @@ public:
 #endif
 
       if (!checkState(STATE_SD_READY)) {
+#if STORAGE == STORAGE_SD
         Serial.print("SD ");
-        uint16_t volsize = initSD();
-        if (volsize) {
+        int volsize = store.begin();
+        if (volsize > 0) {
           Serial.print(volsize);
           Serial.println("MB");
           setState(STATE_SD_READY);
         } else {
           Serial.println("NO");
         }
+#elif STORAGE == STORAGE_SPIFFS
+        Serial.print("SPIFFS ");
+        int volsize = store.begin();
+        if (volsize >= 0) {
+          Serial.print(volsize);
+          Serial.println("bytes free");
+          setState(STATE_SD_READY);
+        } else {
+          Serial.println("NO");
+        }
+        for (;;) delay(1000);
+#endif
       }
-
       startTime = millis();
-      dataCount = 0;
     }
 #if USE_GPS
     void logGPSData()
     {
         // issue the command to get parsed GPS data
         GPS_DATA gd = {0};
-        if (checkState(STATE_GPS_FOUND) && gpsGetData(&gd)) {
-            dataTime = millis();
+        if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd)) {
+            store.setTimestamp(millis());
             if (gd.time && gd.time != UTC) {
               byte day = gd.date / 10000;
               if (MMDD % 100 != day) {
-                log(PID_GPS_DATE, gd.date);
+                store.log(PID_GPS_DATE, gd.date);
               }
-              log(PID_GPS_TIME, gd.time);
-              log(PID_GPS_LATITUDE, gd.lat);
-              log(PID_GPS_LONGITUDE, gd.lng);
-              log(PID_GPS_ALTITUDE, gd.alt);
-              log(PID_GPS_SPEED, gd.speed);
-              log(PID_GPS_SAT_COUNT, gd.sat);
+              store.log(PID_GPS_TIME, gd.time);
+              store.log(PID_GPS_LATITUDE, gd.lat);
+              store.log(PID_GPS_LONGITUDE, gd.lng);
+              store.log(PID_GPS_ALTITUDE, gd.alt);
+              store.log(PID_GPS_SPEED, gd.speed);
+              store.log(PID_GPS_SAT_COUNT, gd.sat);
               // save current date in MMDD format
               unsigned int DDMM = gd.date / 100;
               UTC = gd.time;
@@ -164,7 +178,7 @@ public:
             elapsed = t1;
           }
           // read parsed GPS data
-          if (gpsGetData(&gd) && gd.sat != 0 && gd.sat != 255) {
+          if (sys.gpsGetData(&gd) && gd.sat != 0 && gd.sat != 255) {
             Serial.print("SAT:");
             Serial.println(gd.sat);
             break;
@@ -172,39 +186,32 @@ public:
         }
     }
 #endif
-    uint16_t initSD()
-    {
-        pinMode(PIN_SD_CS, OUTPUT);
-        if (SD.begin(PIN_SD_CS)) {
-          return SD.cardSize();
-        } else {
-          return 0;
-        }
-    }
     void flushData(uint32_t fileSize)
     {
       // flush SD data every 1KB
         static uint8_t lastFileSize = 0;
         byte dataSizeKB = fileSize >> 10;
         if (dataSizeKB != lastFileSize) {
-            flushFile();
+            digitalWrite(PIN_LED, HIGH);
+            store.flush();
             lastFileSize = dataSizeKB;
 #if MAX_DATA_FILE_SIZE
             if (fileSize >= 1024L * MAX_DATA_FILE_SIZE) {
-              closeFile();
+              store.close();
               clearState(STATE_FILE_READY);
             }
 #endif
+            digitalWrite(PIN_LED, LOW);
         }
     }
     void reconnect()
     {
         if (obd.init()) return;
         // try to re-connect to OBD
-        closeFile();
+        store.close();
         // turn off GPS power
 #if USE_GPS
-        gpsInit(0);
+        sys.gpsInit(0);
 #endif
         clearState(STATE_OBD_READY | STATE_GPS_READY);
         standby();
@@ -214,7 +221,7 @@ public:
   #if ENABLE_GPS
         if (checkState(STATE_GPS_READY)) {
           Serial.print("GPS:");
-          gpsInit(0); // turn off GPS power
+          sys.gpsInit(0); // turn off GPS power
           Serial.println("OFF");
         }
   #endif
@@ -252,6 +259,11 @@ public:
     bool checkState(byte flags) { return (m_state & flags) == flags; }
     void setState(byte flags) { m_state |= flags; }
     void clearState(byte flags) { m_state &= ~flags; }
+#if STORAGE == STORAGE_SD
+    SDLogger store;
+#elif STORAGE == STORAGE_SPIFFS
+    SPIFFSLogger store;
+#endif
 private:
     byte m_state = 0;
 };
@@ -261,8 +273,9 @@ CLogger logger;
 void showStats()
 {
     uint32_t t = millis() - startTime;
+    uint32_t dataCount = logger.store.getDataCount();
     // calculate samples per second
-    float sps = (float)logger.dataCount * 1000 / t;
+    float sps = (float)dataCount * 1000 / t;
     // output to serial monitor
     char timestr[24];
     sprintf(timestr, "%02u:%02u.%c", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
@@ -270,7 +283,7 @@ void showStats()
 #if !ENABLE_DATA_OUT
     Serial.print(timestr);
     Serial.print(" | ");
-    Serial.print(logger.dataCount);
+    Serial.print(dataCount);
     Serial.print(" samples | ");
     Serial.print(sps, 1);
     Serial.print(" sps");
@@ -301,6 +314,7 @@ void showStats()
 void setup()
 {
     delay(1000);
+
     // initialize USB serial
     Serial.begin(115200);
     Serial.print("ESP32 ");
@@ -309,6 +323,7 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
+    sys.begin();
     ble.begin("Freematics ONE+");
 
     // init LED pin
@@ -354,7 +369,7 @@ void loop()
         logger.logGPSData();
         if (logger.checkState(STATE_GPS_READY)) {
           uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
-          if (logger.openFile(dateTime)) {
+          if (logger.store.open(dateTime)) {
             MMDD = 0;
             logger.setState(STATE_FILE_READY);
           }
@@ -366,22 +381,22 @@ void loop()
 #endif
       {
         // no GPS connected
-        if (logger.openFile(0)) {
+        if (logger.store.open(0)) {
           logger.setState(STATE_FILE_READY);
         }
       }
-      logger.sleep(1000);
+      delay(1000);
       digitalWrite(PIN_LED, LOW);
       return;
     }
 #if USE_OBD
     byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
-    logger.dataTime = millis();
+    logger.store.setTimestamp(millis());
     for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
       int value;
       byte pid = pids[i];
       if (obd.readPID(pid, value)) {
-        logger.log((uint16_t)pids[i] | 0x100, value);
+        logger.store.log((uint16_t)pids[i] | 0x100, value);
       } else {
         pidErrors++;
         Serial.print("PID errors: ");
@@ -417,13 +432,13 @@ void loop()
           Serial.print(ori.pitch, 2);
           Serial.print(' ');
           Serial.println(ori.roll, 2);
-          logger.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-          logger.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
+          logger.store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+          logger.store.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
         }
 #else
         updated = mems.read(acc);
         if (updated) {
-          logger.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+          logger.store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
         }
 #endif
       }
@@ -433,7 +448,7 @@ void loop()
 #if USE_OBD
     // log battery voltage (from voltmeter), data in 0.01v
     int v = obd.getVoltage() * 100;
-    logger.log(PID_BATTERY_VOLTAGE, v);
+    logger.store.log(PID_BATTERY_VOLTAGE, v);
 #endif
 
 #if USE_GPS
