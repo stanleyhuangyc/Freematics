@@ -151,7 +151,7 @@ bool login()
       continue;
     }
 
-    char *buf = net.buffer; /* re-use static buffer, for saving SRAM */
+    char *buf = net.getBuffer(); /* re-use static buffer, for saving SRAM */
     sprintf(buf, "VIN=%s", vin);
 
     // login Freematics Hub
