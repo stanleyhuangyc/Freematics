@@ -300,7 +300,7 @@ void showStats()
     // output via BLE
     ble.print(timestr);
     ble.print(' ');
-    ble.print(logger.dataCount);
+    ble.print(dataCount);
     ble.print(' ');
     ble.print(sps, 1);
     if (fileSize > 0) {
