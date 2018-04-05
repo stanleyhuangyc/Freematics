@@ -30,8 +30,11 @@
 // time for OBD-II attempt before entering non-OBD mode
 #define OBD_ATTEMPT_TIME 180000
 
-// motion detection
-#define WAKEUP_MOTION_THRESHOLD 20 /* for wakeup on movement */
+// motion threshold for waking up
+#define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
+
+// engine jumpstart voltage
+#define JUMPSTART_VOLTAGE 14 /* V */
 
 #define SD_CS_PIN 10
 
