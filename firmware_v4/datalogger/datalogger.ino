@@ -212,12 +212,34 @@ public:
         Serial.println("Standby");
         // put OBD chips into low power mode
         reset();
+#if USE_MEMS
+        if (state & STATE_MEMS_READY) {
+          calibrateMEMS();
+          for (;;) {
+            delay(100);
+            // calculate relative movement
+            float motion = 0;
+            float acc[3];
+            mems.read(acc);
+            for (byte i = 0; i < 3; i++) {
+              float m = (acc[i] - accBias[i]);
+              motion += m * m;
+            }
+            //Serial.println(motion);
+            // check movement
+            if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+              break;
+            }
+          }
+        }
+#else
         for (;;) {
           deepSleep(WDTO_4S);
           float v = getVoltage();
           Serial.println(v);
           if (v >= JUMPSTART_VOLTAGE) break;
         }
+#endif
         Serial.println("Wakeup");
         delay(100);
         resetMCU();
