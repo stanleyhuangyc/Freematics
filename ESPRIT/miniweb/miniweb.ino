@@ -16,15 +16,22 @@
 #if defined(ESP32)
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include <SPIFFS.h>
 #include <apps/sntp/sntp.h>
 #include <esp_spi_flash.h>
+#include <esp_err.h>
+#elif defined(ESP8266)
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
 #else
 #error Unsupported board type
 #endif
 #include <httpd.h>
 
-#define ENABLE_SOFT_AP 1
-#define WIFI_SSID "Freematics Esprit"
+#define ENABLE_SOFT_AP 0
+#define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "..."
 #define WIFI_TIMEOUT 5000
 #define PIN_LED 4
@@ -149,7 +156,7 @@ UrlHandler urlHandlerList[]={
 	{"info", handlerInfo},
   {"digital", handlerDigitalPins},
   {"analog", handlerAnalogPins},
-  {"", handlerRoot},
+  //{"", handlerRoot},
   {0}
 };
 
@@ -164,12 +171,45 @@ void obtainTime()
 
 uint16_t getFlashSize()
 {
+#ifdef ESP32
     char out;
     uint16_t size = 16384;
     do {
         if (spi_flash_read((size_t)size * 1024 - 1, &out, 1) == ESP_OK) return size;
     } while ((size >>= 1));
     return 0;
+#else
+  return 4096;
+#endif
+}
+
+void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
+    Serial.printf("Listing directory: %s\n", dirname);
+    File root = fs.open(dirname);
+    if(!root){
+        Serial.println("Failed to open directory");
+        return;
+    }
+    if(!root.isDirectory()){
+        Serial.println("Not a directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while(file){
+        if(file.isDirectory()){
+            Serial.println(file.name());
+            if(levels){
+                listDir(fs, file.name(), levels -1);
+            }
+        } else {
+            Serial.print(file.name());
+            Serial.print(' ');
+            Serial.print(file.size());
+            Serial.println(" bytes");
+        }
+        file = root.openNextFile();
+    }
 }
 
 void setup()
@@ -188,6 +228,7 @@ void setup()
   Serial.println("MB Flash");
 
 #if ENABLE_SOFT_AP
+  WiFi.mode ( WIFI_AP );
   WiFi.softAP(WIFI_SSID);
   Serial.print("AP IP address: ");
   Serial.println(WiFi.softAPIP());
@@ -221,8 +262,15 @@ void setup()
   obtainTime();
 #endif
 
-  mwInitParam(&httpParam, 80, 0);
+  mwInitParam(&httpParam, 80, "/htdoc");
   httpParam.pxUrlHandler = urlHandlerList;
+
+  if (SPIFFS.begin(true, httpParam.pchWebPath)) {
+    Serial.println();
+    listDir(SPIFFS, "/", 0);
+    Serial.println();
+  }
+
   if (mwServerStart(&httpParam)) {
   		Serial.println("Error starting");
       for (;;);
