@@ -390,7 +390,7 @@ void _mwInitSocketData(HttpSocket *phsSocket)
 	phsSocket->request.iCSeq = 0;
 	phsSocket->request.pucAuthInfo = NULL;
 	phsSocket->response.statusCode = 200;
-	phsSocket->fd = 0;
+	phsSocket->fp = 0;
 	phsSocket->flags = FLAG_RECEIVING;
 	phsSocket->pucData = phsSocket->buffer;
 	phsSocket->dataLength = 0;
@@ -984,9 +984,6 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 			} else if (ret & FLAG_DATA_REDIRECT) {
 				phsSocket->pucData = up.pucBuffer;
 				DBG("URL handler: redirect\n");
-			} else if (ret & FLAG_DATA_FD) {
-				SETFLAG(phsSocket, FLAG_DATA_FILE);
-				DBG("URL handler: file descriptor\n");
 			}
 			_mwFreeJSONPairs(&up);
 			break;
@@ -1187,10 +1184,10 @@ int _mwProcessWriteSocket(HttpParam *hp, HttpSocket* phsSocket)
 void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 {
   if (phsSocket->socket == 0) return;
-	if (phsSocket->fd > 0) {
-		close(phsSocket->fd);
+	if (phsSocket->fp) {
+		fclose(phsSocket->fp);
+		phsSocket->fp = 0;		
 	}
-	phsSocket->fd = 0;
 	if (phsSocket->request.pucPayload) {
 		free(phsSocket->request.pucPayload);
 		phsSocket->request.pucPayload = 0;
@@ -1341,39 +1338,25 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 	HttpFilePath hfp;
 	BOOL isDirPath = FALSE;
 
-
 	if (rootPath == NULL || filePath == NULL)
 		return -1;
 
 	hfp.pchRootPath=rootPath; //hp->pchWebPath;
 	// check type of file requested
-	if (!ISFLAGSET(phsSocket, FLAG_DATA_FD)) {
-		hfp.pchHttpPath=filePath; //phsSocket->request.pucPath;
-		mwGetLocalFileName(&hfp);
-		isDirPath = IsDir(hfp.cFilePath);
-		stat(hfp.cFilePath, &st);
-		// open file
-		if (!isDirPath) {
-			phsSocket->fd = open(hfp.cFilePath, OPEN_FLAG);
-		}
-		else {
-			phsSocket->fd = -1;
-		}
-	} else if ((phsSocket->flags & FLAG_DATA_FD) && phsSocket->fd > 0) {
-		strcpy(hfp.cFilePath, phsSocket->request.pucPath);
-		hfp.pchExt = strrchr(hfp.cFilePath, '.');
-		if (hfp.pchExt) hfp.pchExt++;
-		st.st_mtime = 0;
-		st.st_size = 0;
-		fstat(phsSocket->fd, &st);
-	} else {
-		return -1;
+	hfp.pchHttpPath=filePath; //phsSocket->request.pucPath;
+	mwGetLocalFileName(&hfp);
+	if (stat(hfp.cFilePath, &st) == 0) {
+		isDirPath = S_ISDIR(st.st_mode);
+	}
+	if (!*filePath) isDirPath = TRUE;
+
+	// open file
+	if (!isDirPath) {
+		phsSocket->fp = fopen(hfp.cFilePath, "rb");
 	}
 
-#ifndef ARDUINO
-	if (phsSocket->fd < 0) {
+	if (!phsSocket->fp) {
 		char *p;
-		int i;
 
 		if (!isDirPath) {
 			// file/dir not found
@@ -1384,17 +1367,17 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 		//requesting for directory, first try opening default pages
 		for (p = hfp.cFilePath; *p; p++);
 		*(p++)=SLASH;
-		for (i=0; i<sizeof(defaultPages)/sizeof(defaultPages[0]); i++) {
+		for (int i = 0; i<sizeof(defaultPages)/sizeof(defaultPages[0]); i++) {
+			stat(hfp.cFilePath, &st);
 			strcpy(p,defaultPages[i]);
-			phsSocket->fd=open(hfp.cFilePath,OPEN_FLAG);
-			if (phsSocket->fd > 0) {
-				fstat(phsSocket->fd, &st);
+			phsSocket->fp = fopen(hfp.cFilePath, "rb");
+			if (phsSocket->fp) {
 				hfp.pchExt = strchr(defaultPages[i], '.') + 1;
 				break;
 			}
 		}
 
-		if (phsSocket->fd <= 0 && (hp->flags & FLAG_DIR_LISTING)) {
+		if (!phsSocket->fp && (hp->flags & FLAG_DIR_LISTING)) {
 			SETFLAG(phsSocket,FLAG_DATA_RAW);
 			if (!hfp.fTailSlash) {
 				p=phsSocket->request.pucPath;
@@ -1414,8 +1397,8 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 			return _mwStartSendRawData(hp, phsSocket);
 		}
 	}
-#endif
-	if (phsSocket->fd > 0) {
+
+	if (phsSocket->fp) {
 		DWORD fileSize = st.st_size;
 		phsSocket->response.contentLength = fileSize - phsSocket->request.startByte;
 		if (phsSocket->response.contentLength <= 0) {
@@ -1423,7 +1406,7 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 			phsSocket->response.contentLength = fileSize;
 		}
 		if (phsSocket->request.startByte) {
-			lseek(phsSocket->fd, (long)phsSocket->request.startByte, SEEK_SET);
+			fseek(phsSocket->fp, (long)phsSocket->request.startByte, SEEK_SET);
 			phsSocket->response.statusCode = 206;
 		}
 		if (!phsSocket->response.fileType && hfp.pchExt) {
@@ -1492,8 +1475,8 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 			// close connection
 			DBG("[%d] error sending data\n", phsSocket->socket);
 			SETFLAG(phsSocket,FLAG_CONN_CLOSE);
-			close(phsSocket->fd);
-			phsSocket->fd = 0;
+			fclose(phsSocket->fp);
+			phsSocket->fp = 0;
 			return -1;
 		}
 		SETFLAG(phsSocket, FLAG_HEADER_SENT);
@@ -1509,7 +1492,7 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 
 	// used all buffered data - load next chunk of file
 	phsSocket->pucData=phsSocket->buffer;
-	iBytesRead=read(phsSocket->fd,phsSocket->buffer,HTTP_BUFFER_SIZE);
+	iBytesRead = fread(phsSocket->buffer, 1, HTTP_BUFFER_SIZE, phsSocket->fp);
 	if (iBytesRead == -1 && errno == 8)
 		return 0; // try reading again next time
 	if (iBytesRead<=0) {
@@ -1526,10 +1509,11 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 			if (phsSocket->flags & FLAG_CHUNK) {
 				send(phsSocket->socket, "0\r\n\r\n", 5, 0);
 			}
-			DBG("Closing file (fd=%d)\n",phsSocket->fd);
-			if (phsSocket->fd > 0) close(phsSocket->fd);
-
-			phsSocket->fd = 0;
+			if (phsSocket->fp > 0) {
+				DBG("Closing file\n");
+				fclose(phsSocket->fp);
+				phsSocket->fp = 0;
+			}
 			return 1;
 		}
 	}

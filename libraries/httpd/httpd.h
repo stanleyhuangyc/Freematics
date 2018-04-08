@@ -168,7 +168,7 @@ typedef struct _HttpSocket{
 	char *pucData;
 	unsigned int bufferSize;			// the size of buffer pucData pointing to
 	unsigned int dataLength;
-	int fd;
+	FILE* fp;
 	unsigned int flags;
 	void* handler;				// http handler function address
 	void* ptr;
