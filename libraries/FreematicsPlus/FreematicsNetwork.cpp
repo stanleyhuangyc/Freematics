@@ -21,8 +21,6 @@ bool UDPClientWIFI::setup(const char* ssid, const char* password, unsigned int t
   WiFi.begin(ssid, password);
   for (uint32_t t = millis(); millis() - t < timeout;) {
     if (WiFi.status() == WL_CONNECTED) {
-      // enable power-saving mode
-      esp_wifi_set_ps(WIFI_PS_MODEM);
       return true;
     }
     delay(50);
