@@ -253,7 +253,7 @@ void FreematicsESP32::begin(int cpuMHz)
     };
     esp_err_t ret = esp_pm_configure(&pm_config);
     if (ret == ESP_ERR_NOT_SUPPORTED) {
-        Serial.println("Power-saving disabled");
+        //Serial.println("Power-saving disabled");
     }
 }
 
