@@ -11,9 +11,9 @@ It is based on their Emedded MotionDriver 6.12 library.
 ******************************************************************************/
 
 #include <Arduino.h>
-#include <Wire.h>
-#include "FreematicsDMP.h"
+#include <driver/i2c.h>
 #include "utility/MPU9250_RegisterMap.h"
+#include "FreematicsDMP.h"
 
 static unsigned char mpu9250_orientation;
 static unsigned char tap_count;
@@ -233,12 +233,12 @@ inv_error_t MPU9250_DMP::updateFifo(void)
 		ay = accel[Y_AXIS];
 		az = accel[Z_AXIS];
 	}
-	if (sensors & INV_X_GYRO)
+	if (sensors & INV_XYZ_GYRO)
+	{
 		gx = gyro[X_AXIS];
-	if (sensors & INV_Y_GYRO)
 		gy = gyro[Y_AXIS];
-	if (sensors & INV_Z_GYRO)
 		gz = gyro[Z_AXIS];
+	}
 
 	time = timestamp;
 
@@ -675,24 +675,30 @@ static void orient_cb(unsigned char orient)
 
 byte MPU9250_DMP::begin(bool fusion, int rate)
 {
-	inv_error_t result;
+	i2c_port_t i2c_master_port = I2C_NUM_0;
+	i2c_config_t conf;
+	conf.mode = I2C_MODE_MASTER;
+	conf.sda_io_num = (gpio_num_t)21;
+	conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+	conf.scl_io_num = (gpio_num_t)22;
+	conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+	conf.master.clk_speed = 100000;
+	if (i2c_param_config(i2c_master_port, &conf) != ESP_OK || i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0) != ESP_OK)
+		return 0;
+
     struct int_param_s int_param;
-
-	Wire.begin();
-
-	result = mpu_init(&int_param);
-
+	inv_error_t result = mpu_init(&int_param);
 	if (result)
 		return 0;
 
 	mpu_set_bypass(1); // Place all slaves (including compass) on primary bus
 
-	setSensors(INV_XYZ_GYRO | INV_XYZ_ACCEL | INV_XYZ_COMPASS);
+	setSensors(INV_XYZ_GYRO | INV_XYZ_ACCEL | INV_XYZ_COMPASS | INV_XYZ_COMPASS);
 
 	_gSense = getGyroSens();
 	_aSense = getAccelSens();
 
-	_features = DMP_FEATURE_SEND_RAW_ACCEL | DMP_FEATURE_GYRO_CAL;
+	_features = DMP_FEATURE_SEND_RAW_ACCEL | DMP_FEATURE_GYRO_CAL | DMP_FEATURE_SEND_CAL_GYRO;
 	if (fusion) _features |= DMP_FEATURE_6X_LP_QUAT;
 	// Set DMP FIFO rate to 10 Hz
 	if (dmpBegin(_features, rate) == INV_ERROR)
@@ -711,15 +717,24 @@ bool MPU9250_DMP::read(float* acc, float* gyr, float* mag, int16_t* temp, ORIENT
 			acc[2] = calcAccel(az);
 		}
 		if (gyr) {
-			gyr[0] = calcAccel(gx);
-			gyr[1] = calcAccel(gy);
-			gyr[2] = calcAccel(gz);
+			gyr[0] = calcGyro(gx);
+			gyr[1] = calcGyro(gy);
+			gyr[2] = calcGyro(gz);
+		}
+		if (mag) {
+			mag[0] = calcMag(mx);
+			mag[1] = calcMag(my);
+			mag[2] = calcMag(mz);
 		}
 		if ((_features & DMP_FEATURE_6X_LP_QUAT) && ori) {
 			computeEulerAngles();
 			ori->pitch = pitch;
 			ori->yaw = yaw;
 			ori->roll = roll;
+		}
+		if (temp) {
+			updateTemperature();
+			*temp = temperature;
 		}
 		return true;
 	}
