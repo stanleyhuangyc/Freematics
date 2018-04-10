@@ -40,9 +40,8 @@ bool UDPClientESP8266AT::setup(const char* ssid, const char* password, unsigned 
   for (byte n = 0; n < sizeof(cmds) / sizeof(cmds[0]); n++) {
     delay(100);
     if (!sendCommand(cmds[n], 100)) {
-      Serial.println();
-      Serial.print(cmds[n]);
-      Serial.print(buffer);
+      delay(100);
+      sendCommand(cmds[n], 100);
     }
     if (rxLen) {
       if (strstr_P(rxBuf, PSTR("WIFI GOT IP"))) {
@@ -62,12 +61,15 @@ bool UDPClientESP8266AT::setup(const char* ssid, const char* password, unsigned 
 String UDPClientESP8266AT::getIP()
 {
   // get IP address
-  if (sendCommand("AT+CIFSR\r\n") && !strstr_P(buffer, PSTR("0.0.0.0"))) {
-    char *p = strchr(buffer, '\"');
-    char *ip = p ? p + 1 : buffer;
-    if ((p = strchr(ip, '\"')) || (p = strchr(ip, '\r'))) *p = 0;
-    // output IP address
-    return ip;
+  for (uint32_t t = millis(); millis() - t < 10000; ) {
+    if (sendCommand("AT+CIFSR\r\n") && !strstr_P(buffer, PSTR("0.0.0.0"))) {
+      char *p = strchr(buffer, '\"');
+      char *ip = p ? p + 1 : buffer;
+      if ((p = strchr(ip, '\"')) || (p = strchr(ip, '\r'))) *p = 0;
+      // output IP address
+      return ip;
+    }
+    delay(500);
   }
   return "";
 }
@@ -119,7 +121,7 @@ void UDPClientESP8266AT::close()
 bool UDPClientESP8266AT::send(const char* data, unsigned int len)
 {
   sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), len);
-  if (sendCommand(buffer, 100, ">") && sendCommand(data, 1000, "SEND OK")) {
+  if (sendCommand(buffer, 100, ">") && sendCommand(data, 1000, "OK\r\n")) {
     return true;
   } else {
     Serial.println(buffer);
@@ -213,7 +215,7 @@ bool UDPClientSIM800::setup(const char* apn, unsigned int timeout)
   do {
     success = sendCommand("AT+CGATT?\r", 3000, "+CGATT: 1");
   } while (!success && millis() - t < timeout);
-  sprintf(m_buffer, "AT+CSTT=\"%s\"\r", apn);
+  sprintf_P(m_buffer, PSTR("AT+CSTT=\"%s\"\r"), apn);
   if (!sendCommand(m_buffer)) {
     return false;
   }
@@ -279,7 +281,7 @@ bool UDPClientSIM800::open(const char* host, uint16_t port)
   //sendCommand("AT+CLPORT=\"UDP\",8000\r");
   sendCommand("AT+CIPSRIP=1\r");
   //sendCommand("AT+CIPUDPMODE=1\r");
-  sprintf(m_buffer, "AT+CIPSTART=\"UDP\",\"%s\",\"%u\"\r", host, port);
+  sprintf_P(m_buffer, PSTR("AT+CIPSTART=\"UDP\",\"%s\",\"%u\"\r"), host, port);
   return sendCommand(m_buffer, 3000);
 }
 
@@ -290,7 +292,7 @@ void UDPClientSIM800::close()
 
 bool UDPClientSIM800::send(const char* data, unsigned int len)
 {
-  sprintf(m_buffer, "AT+CIPSEND=%u\r", len);
+  sprintf_P(m_buffer, PSTR("AT+CIPSEND=%u\r"), len);
   if (sendCommand(m_buffer, 200, ">")) {
     m_device->xbWrite(data, len);
     m_device->xbWrite("\r", 1);
@@ -322,7 +324,7 @@ char* UDPClientSIM800::checkIncoming(int* pbytes)
 		if (pbytes) *pbytes = len;
 		return p;
 	} else {
-		if (sendCommand("AT\r", 1000, "\r\nOK", true)) {
+		if (sendCommand("AT\r", 1000, "OK\r\n", true)) {
 			p = m_buffer;
 			while (*p && (*p == '\r' || *p == '\n')) p++;
 			if (pbytes) *pbytes = strlen(p);
@@ -334,7 +336,7 @@ char* UDPClientSIM800::checkIncoming(int* pbytes)
 
 String UDPClientSIM800::queryIP(const char* host)
 {
-  sprintf(m_buffer, "AT+CDNSGIP=\"%s\"\r", host);
+  sprintf_P(m_buffer, PSTR("AT+CDNSGIP=\"%s\"\r"), host);
   if (sendCommand(m_buffer, 10000)) {
     char *p = strstr(m_buffer, host);
     if (p) {
@@ -441,11 +443,12 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
       delay(500);
       success = sendCommand("AT+CPSI?\r", 1000, "Online");
       if (success) {
-        if (!strstr(m_buffer, "NO SERVICE"))
+        if (!strstr_P(m_buffer, PSTR("NO SERVICE")))
           break;
         success = false;
+        if (strstr_P(m_buffer, PSTR("ERROR"))) break;
       } else {
-        if (strstr(m_buffer, "Off")) break;
+        if (strstr_P(m_buffer, PSTR("Off"))) break;
       }
     } while (millis() - t < timeout);
     if (!success) break;
@@ -461,7 +464,7 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
     if (!success) break;
 
     do {
-      sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
+      sprintf_P(m_buffer, PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), apn);
       success = sendCommand(m_buffer);
     } while (!success && millis() - t < timeout);
     if (!success) break;
@@ -479,7 +482,7 @@ String UDPClientSIM5360::getIP()
 {
   uint32_t t = millis();
   do {
-    if (sendCommand("AT+IPADDR\r", 3000, "\r\nOK\r\n", true)) {
+    if (sendCommand("AT+IPADDR\r", 3000, "OK\r\n", true)) {
       char *p = strstr(m_buffer, "+IPADDR:");
       if (p) {
         char *ip = p + 9;
@@ -535,7 +538,7 @@ bool UDPClientSIM5360::open(const char* host, uint16_t port)
     }
     udpPort = port;
   }
-  sprintf(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP, udpPort);
+  sprintf_P(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP, udpPort);
   return sendCommand(m_buffer, 3000);
 }
 
@@ -546,7 +549,7 @@ void UDPClientSIM5360::close()
 
 bool UDPClientSIM5360::send(const char* data, unsigned int len)
 {
-  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP, udpPort);
+  sprintf_P(m_buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, udpIP, udpPort);
   if (sendCommand(m_buffer, 100, ">")) {
     m_device->xbWrite(data, len);
     return sendCommand(0, 1000);
@@ -581,7 +584,7 @@ char* UDPClientSIM5360::checkIncoming(int* pbytes)
 
 String UDPClientSIM5360::queryIP(const char* host)
 {
-  sprintf(m_buffer, "AT+CDNSGIP=\"%s\"\r", host);
+  sprintf_P(m_buffer, PSTR("AT+CDNSGIP=\"%s\"\r"), host);
   if (sendCommand(m_buffer, 10000)) {
     char *p = strstr(m_buffer, host);
     if (p) {
