@@ -18,6 +18,9 @@
 // VIN used when real one unavailable
 #define DEFAULT_VIN "FREEMATICS"
 
+// minimum processing loop time
+#define MIN_LOOP_TIME 500 /* ms */
+
 /**************************************
 * Networking configurations
 **************************************/
