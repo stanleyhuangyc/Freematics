@@ -12,13 +12,8 @@
 /**************************************
 * OBD-II configurations
 **************************************/
-#ifndef ENABLE_OBD
-#define ENABLE_OBD 1
-#endif
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 3
-// maximum allowed time for re-establishing OBD connection
-#define MAX_OBD_RETRY_TIME 15000 /* ms */
 
 // VIN used when real one unavailable
 #define DEFAULT_VIN "FREEMATICS"
@@ -70,6 +65,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
+#define RESET_AFTER_WAKEUP 1
 // motion threshold for waking up
 #define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
 // engine jumpstart voltage
