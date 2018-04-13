@@ -47,7 +47,6 @@ uint8_t connErrors = 0;
 
 uint32_t lastCmdToken = 0;
 
-void(* resetFunc) (void) = 0; //declare reset function @ address 0
 
 void idleTasks();
 
@@ -78,10 +77,8 @@ MPU9250_ACC mems;
 
 CStorageRAM cache;
 
-#if ENABLE_OBD
 COBDSPI obd;
 #define sys obd
-#endif
 
 /*******************************************************************************
   Freematics Hub client implementation
@@ -221,7 +218,6 @@ void transmit()
 /*******************************************************************************
   Reading and processing OBD data
 *******************************************************************************/
-#if ENABLE_OBD
 int logOBDPID(byte pid)
 {
   int value;
@@ -250,16 +246,14 @@ void processOBD()
   for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
     logOBDPID(pids[i]);
   }
-  static byte count = 0;
-  if ((count++ % 50) == 0) {
-    const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP, PID_ENGINE_FUEL_RATE};
-    byte pid = pidTier2[count / 50];
-    if (obd.isValidPID(pid)) {
-      logOBDPID(pid);
-    }
+  const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP};
+  static byte idx = 0;
+  byte pid = pidTier2[idx];
+  if (obd.isValidPID(pid)) {
+    logOBDPID(pid);
   }
+  if (++idx >= sizeof(pidTier2)) idx = 0;
 }
-#endif
 
 #if ENABLE_GPS
 void processGPS()
@@ -347,7 +341,6 @@ bool initialize()
   }
 #endif
 
-#if ENABLE_OBD
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
     obd.begin();
@@ -367,7 +360,6 @@ bool initialize()
     }
     Serial.println();
   }
-#endif
 
 #ifdef ENABLE_GPS
   // start serial communication with GPS receiver
@@ -467,6 +459,11 @@ bool initialize()
 
 void shutDownNet()
 {
+  if (state.check(STATE_NET_READY)) {
+    if (state.check(STATE_CONNECTED)) {
+      notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
+    }
+  }
   Serial.print(net.deviceName());
   net.close();
   net.end();
@@ -483,6 +480,7 @@ String executeCommand(const char* cmd)
   Serial.println(cmd);
   if (!strcmp(cmd, "REBOOT")) {
     shutDownNet();
+    void(* resetFunc) (void) = 0;
     resetFunc();
     // never reach here
   } else if (!strcmp(cmd, "STANDBY")) {
@@ -491,7 +489,6 @@ String executeCommand(const char* cmd)
   } else if (!strcmp(cmd, "WAKEUP")) {
     state.clear(STATE_STANDBY);
     result = "OK";
-#if ENABLE_OBD
   } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
     // send OBD command
     String obdcmd = cmd + 4;
@@ -512,7 +509,6 @@ String executeCommand(const char* cmd)
     } else {
       result = "ERROR";
     }
-#endif
   } else {
     return "INVALID";
   }
@@ -531,7 +527,7 @@ bool processCommand(char* data)
     // new command
     String result = executeCommand(cmd);
     // send command response
-    char buf[256];
+    char buf[128];
     snprintf(buf, sizeof(buf), "TK=%lu,MSG=%s", token, result.c_str());
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.println("ACK...");
@@ -563,12 +559,10 @@ void process()
   cache.header(feedid);
   cache.timestamp(millis());
 
-#if ENABLE_OBD
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
     processOBD();
   }
-#endif
 
 #if MEMS_MODE
   // process MEMS data if available
@@ -577,10 +571,15 @@ void process()
   }
 #endif
 
-#if ENABLE_OBD
   // read and log car battery voltage, data in 0.01v
   int v = obd.getVoltage() * 100;
   cache.log(PID_BATTERY_VOLTAGE, v);
+
+#if ENABLE_GPS
+  // process GPS data if connected
+  if (state.check(STATE_GPS_READY)) {
+    processGPS();
+  }
 #endif
 
   if (syncInterval > 10000 && millis() - lastSyncTime > syncInterval) {
@@ -593,12 +592,10 @@ void process()
 
   idleTasks();
 
-#if ENABLE_OBD
   if (obd.errors > MAX_OBD_ERRORS) {
     obd.reset();
     state.clear(STATE_OBD_READY | STATE_ALL_GOOD);
   }
-#endif
 }
 
 /*******************************************************************************
@@ -606,11 +603,6 @@ void process()
 *******************************************************************************/
 void standby()
 {
-  if (state.check(STATE_NET_READY)) {
-    if (state.check(STATE_CONNECTED)) {
-      notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
-    }
-  }
   shutDownNet();
 #if ENABLE_GPS
   if (state.check(STATE_GPS_READY)) {
@@ -618,13 +610,10 @@ void standby()
     sys.gpsInit(0); // turn off GPS power
   }
 #endif
-#if ENABLE_OBD
   if (obd.errors > MAX_OBD_ERRORS) {
     // inaccessible OBD treated as end of trip
     feedid = 0;
   }
-  obd.reset();
-#endif
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
   state.set(STATE_STANDBY);
   Serial.println("Standby");
@@ -655,6 +644,10 @@ void standby()
 #endif
   state.clear(STATE_STANDBY);
   Serial.println("Wakeup");
+#if RESET_AFTER_WAKEUP
+    void(* resetFunc) (void) = 0;
+    resetFunc();
+#endif  
 }
 
 /*******************************************************************************
@@ -685,19 +678,13 @@ void idleTasks()
       }
     }
   } while(0);
-#if ENABLE_GPS
-  // process GPS data if connected
-  if (state.check(STATE_GPS_READY)) {
-    processGPS();
-  }
-#endif
 }
 
 void setup()
 {
   Serial.begin(115200);
   delay(1000);
-  // initializing components
+  // initializing all components
   initialize();
 }
 
@@ -713,7 +700,7 @@ void loop()
     }
     return;
   }
-
+  // deal with network errors
   if (connErrors >= MAX_CONN_ERRORS) {
     shutDownNet();
     initialize();
