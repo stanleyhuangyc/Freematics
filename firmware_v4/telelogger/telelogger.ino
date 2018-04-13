@@ -556,8 +556,10 @@ bool processCommand(char* data)
 *******************************************************************************/
 void process()
 {
+  uint32_t startTime = millis();
+
   cache.header(feedid);
-  cache.timestamp(millis());
+  cache.timestamp(startTime);
 
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
@@ -596,6 +598,14 @@ void process()
     obd.reset();
     state.clear(STATE_OBD_READY | STATE_ALL_GOOD);
   }
+
+  // maintain minimum loop time
+#if MIN_LOOP_TIME
+  while (millis() - startTime < MIN_LOOP_TIME) {
+    delay(100);
+    idleTasks();
+  }
+#endif
 }
 
 /*******************************************************************************
@@ -683,7 +693,7 @@ void idleTasks()
 void setup()
 {
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
   // initializing all components
   initialize();
 }
