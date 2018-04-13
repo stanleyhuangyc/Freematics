@@ -121,7 +121,7 @@ void UDPClientESP8266AT::close()
 bool UDPClientESP8266AT::send(const char* data, unsigned int len)
 {
   sprintf_P(buffer, PSTR("AT+CIPSEND=%u\r\n"), len);
-  if (sendCommand(buffer, 100, ">") && sendCommand(data, 1000, "OK\r\n")) {
+  if (sendCommand(buffer, 100, ">") && sendCommand(data, 1000, "OK")) {
     return true;
   } else {
     Serial.println(buffer);
