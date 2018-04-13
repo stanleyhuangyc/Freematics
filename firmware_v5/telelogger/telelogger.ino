@@ -314,14 +314,13 @@ void processOBD()
   for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
     logOBDPID(pids[i]);
   }
-  static byte count = 0;
-  if ((count++ % 50) == 0) {
-    const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP, PID_ENGINE_FUEL_RATE};
-    byte pid = pidTier2[count / 50];
-    if (obd.isValidPID(pid)) {
-      logOBDPID(pid);
-    }
+  const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP};
+  static byte idx = 0;
+  byte pid = pidTier2[idx];
+  if (obd.isValidPID(pid)) {
+    logOBDPID(pid);
   }
+  if (++idx >= sizeof(pidTier2)) idx = 0;
 }
 #endif
 
@@ -611,6 +610,11 @@ bool initialize()
 
 void shutDownNet()
 {
+  if (state.check(STATE_NET_READY)) {
+    if (state.check(STATE_CONNECTED)) {
+      notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
+    }
+  }
   Serial.print(net.deviceName());
   net.close();
   net.end();
@@ -668,7 +672,7 @@ String executeCommand(const char* cmd)
     char buf[256];
     if (obd.sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
       Serial.println(buf);
-      for (int n = 4; buf[n]; n++) {
+      for (int n = 0; buf[n]; n++) {
         switch (buf[n]) {
         case '\r':
         case '\n':
@@ -815,11 +819,6 @@ void process()
 *******************************************************************************/
 void standby()
 {
-  if (state.check(STATE_NET_READY)) {
-    if (state.check(STATE_CONNECTED)) {
-      notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
-    }
-  }
   shutDownNet();
 #if STORAGE_TYPE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
