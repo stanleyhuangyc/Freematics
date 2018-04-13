@@ -416,7 +416,6 @@ bool initialize()
       state.set(STATE_MEMS_READY);
       if (ret == 2) Serial.print("9-DOF ");
       Serial.println("OK");
-      calibrateMEMS();
     } else {
       Serial.println("NO");
     }
@@ -501,10 +500,9 @@ bool initialize()
     if (obd.getVIN(buf, sizeof(buf))) {
       strncpy(vin, buf, sizeof(vin) - 1);
       Serial.print("VIN:");
-      Serial.print(vin);
+      Serial.println(vin);
       BLE.println(vin);
     }
-    Serial.println();
   }
 #endif
 
@@ -611,6 +609,15 @@ bool initialize()
   return true;
 }
 
+void shutDownNet()
+{
+  Serial.print(net.deviceName());
+  net.close();
+  net.end();
+  state.clear(STATE_NET_READY);
+  Serial.println(" OFF");
+}
+
 /*******************************************************************************
   Executing a command
 *******************************************************************************/
@@ -629,6 +636,7 @@ String executeCommand(const char* cmd)
       state.clear(STATE_STORAGE_READY);
     }
   #endif
+    shutDownNet();
     ESP.restart();
     // never reach here
   } else if (!strcmp(cmd, "STANDBY")) {
@@ -753,6 +761,13 @@ void process()
   cache.log(PID_BATTERY_VOLTAGE, v);
 #endif
 
+#if ENABLE_GPS
+  // process GPS data if connected
+  if (state.check(STATE_GPS_READY)) {
+    processGPS();
+  }
+#endif
+
   if (syncInterval > 10000 && millis() - lastSyncTime > syncInterval) {
     Serial.println("NO SYNC");
     BLE.println("NO SYNC");
@@ -788,23 +803,16 @@ void process()
 
   // maintain minimum loop time
 #if MIN_LOOP_TIME
-  int waitTime = MIN_LOOP_TIME - (millis() - startTime);
-  if (waitTime > 0) delay(waitTime);
+  while (millis() - startTime < MIN_LOOP_TIME) {
+    delay(100);
+    idleTasks();
+  }
 #endif
 }
 
 /*******************************************************************************
   Implementing stand-by mode
 *******************************************************************************/
-void shutDownNet()
-{
-  Serial.print(net.deviceName());
-  net.close();
-  net.end();
-  state.clear(STATE_NET_READY);
-  Serial.println(" OFF");
-}
-
 void standby()
 {
   if (state.check(STATE_NET_READY)) {
@@ -832,7 +840,6 @@ void standby()
       // inaccessible OBD treated as end of trip
       feedid = 0;
     }
-    obd.reset();
   }
 #endif
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
@@ -860,15 +867,25 @@ void standby()
     }
   }
 #elif ENABLE_OBD
+  float v;
+  obd.reset();
   do {
     delay(5000);
-  } while (obd.getVoltage() < JUMPSTART_VOLTAGE);
+    v = obd.getVoltage();
+    Serial.println(v);
+  } while (v < JUMPSTART_VOLTAGE);
 #else
   delay(5000);
 #endif
   state.clear(STATE_STANDBY);
   Serial.println("Wakeup");
   BLE.println("Wakeup");
+#if RESET_AFTER_WAKEUP
+#if MEMS_MODE
+  mems.end();  
+#endif
+  ESP.restart();
+#endif  
 }
 
 /*******************************************************************************
@@ -912,12 +929,6 @@ void idleTasks()
       serialCommand += c;
     }
   }
-#if ENABLE_GPS
-  // process GPS data if connected
-  if (state.check(STATE_GPS_READY)) {
-    processGPS();
-  }
-#endif
 }
 
 void MyGATTServer::onReceiveBLE(uint8_t* buffer, size_t len)
