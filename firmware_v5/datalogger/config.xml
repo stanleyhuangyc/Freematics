@@ -1,16 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
-<target name="Freematics ONE/ONE+" board="esp32" monitor_baudrate="115200">
+<target name="Freematics ONE/ONE+" board="esp32 esp32_16m" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
   <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
   <define name="Enable GPS" type="bool" const="USE_GPS" default="true"/>
   <define name="Motion Sensor">
     <option name="Disabled" const="MEMS_MODE=MEMS_DISABLED"/>
-    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC" default="true"/>
-    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF"/>
+    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC"/>
+    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF" default="true"/>
     <option name="DMP" const="MEMS_MODE=MEMS_DMP"/>
   </define>
   <define name="Enable Quaternion" type="bool" const="ENABLE_ORIENTATION" default="false"/>
-  <define name="Enable Data Output" type="bool" const="ENABLE_DATA_OUT" default="false"/>
-  <define name="Data File Size Limit (KB)" const="MAX_DATA_FILE_SIZE" type="number" default="1024"/>
+  <define name="Storage">
+    <option name="MicroSD" const="STORAGE=STORAGE_SD" default="true"/>
+    <option name="Flash (SPIFFS)" const="STORAGE=STORAGE_SPIFFS"/>
+  </define>
+  <define name="Data File Size Limit (MB)" const="MAX_DATA_FILE_SIZE" type="number" default="100"/>
+  <define name="Data Output via Serial" type="bool" const="ENABLE_SERIAL_OUT"/>
+  <define name="Enable WIFI AP" type="bool" const="ENABLE_WIFI_AP" default="true"/>
+  <define name="Connect to a WIFI Hotspot" type="bool" const="ENABLE_WIFI_STATION"/>
+  <define name="WIFI AP SSID" type="string" const="WIFI_AP_SSID" default="DATALOGGER" dep="ENABLE_WIFI_AP=1"/>
+  <define name="WIFI Hotspot SSID" type="string" const="WIFI_SSID" default="HOTSPOT" dep="ENABLE_WIFI_STATION=1"/>
+  <define name="WIFI Hotspot Password" type="string" const="WIFI_PASSWORD" default="PASSWORD" dep="ENABLE_WIFI_STATION=1"/>
 </target>
 </config>

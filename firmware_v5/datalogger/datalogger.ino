@@ -1,6 +1,7 @@
 /*************************************************************************
-* OBD-II/MEMS/GPS Data Logger Sketch for Freematics ONE+
+* OBD/MEMS/GPS Data Logger for Freematics ONE+
 * Distributed under BSD license
+*
 * Visit http://freematics.com/products/freematics-one-plus for more information
 * Developed by Stanley Huang <stanley@freematics.com.au>
 *
@@ -13,12 +14,13 @@
 * THE SOFTWARE.
 *************************************************************************/
 
+#include <SPIFFS.h>
 #include <FreematicsPlus.h>
 #include "config.h"
 #include "datalogger.h"
 
 // states
-#define STATE_SD_READY 0x1
+#define STATE_STORE_READY 0x1
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_FOUND 0x4
 #define STATE_GPS_READY 0x8
@@ -47,6 +49,9 @@ MPU9250_DMP mems;
 char vin[18] = {0};
 float accBias[3];
 
+void serverProcess(int timeout);
+bool serverSetup();
+
 void calibrateMEMS()
 {
     // MEMS data collected while sleeping
@@ -74,7 +79,37 @@ void calibrateMEMS()
 }
 #endif
 
-class CLogger
+void listDir(fs::FS &fs, const char * dirname, uint8_t levels)
+{
+    Serial.printf("Listing directory: %s\n", dirname);
+    fs::File root = fs.open(dirname);
+    if(!root){
+        Serial.println("Failed to open directory");
+        return;
+    }
+    if(!root.isDirectory()){
+        Serial.println("Not a directory");
+        return;
+    }
+
+    fs::File file = root.openNextFile();
+    while(file){
+        if(file.isDirectory()){
+            Serial.println(file.name());
+            if(levels){
+                listDir(fs, file.name(), levels -1);
+            }
+        } else {
+            Serial.print(file.name());
+            Serial.print(' ');
+            Serial.print(file.size());
+            Serial.println(" bytes");
+        }
+        file = root.openNextFile();
+    }
+}
+
+class DataLogger
 {
 public:
     void setup()
@@ -92,7 +127,7 @@ public:
         }
       } else {
         Serial.println("NO");
-        reconnect();
+        standby();
       }
       setState(STATE_OBD_READY);
 #else
@@ -112,28 +147,28 @@ public:
       }
 #endif
 
-      if (!checkState(STATE_SD_READY)) {
+      if (!checkState(STATE_STORE_READY)) {
 #if STORAGE == STORAGE_SD
         Serial.print("SD ");
         int volsize = store.begin();
         if (volsize > 0) {
           Serial.print(volsize);
           Serial.println("MB");
-          setState(STATE_SD_READY);
+          setState(STATE_STORE_READY);
         } else {
           Serial.println("NO");
         }
 #elif STORAGE == STORAGE_SPIFFS
         Serial.print("SPIFFS ");
-        int volsize = store.begin();
-        if (volsize >= 0) {
-          Serial.print(volsize);
-          Serial.println("bytes free");
-          setState(STATE_SD_READY);
+        int ret = store.begin();
+        if (ret >= 0) {
+          Serial.print(ret);
+          Serial.println(" bytes free");
+          setState(STATE_STORE_READY);
+          listDir(SPIFFS, "/spiffs", 0);
         } else {
           Serial.println("NO");
         }
-        for (;;) delay(1000);
 #endif
       }
       startTime = millis();
@@ -196,7 +231,7 @@ public:
             store.flush();
             lastFileSize = dataSizeKB;
 #if MAX_DATA_FILE_SIZE
-            if (fileSize >= 1024L * MAX_DATA_FILE_SIZE) {
+            if (fileSize >= 1024L * 1024 * MAX_DATA_FILE_SIZE) {
               store.close();
               clearState(STATE_FILE_READY);
             }
@@ -241,7 +276,11 @@ public:
                 float m = (acc[i] - accBias[i]);
                 motion += m * m;
               }
+#if ENABLE_HTTPD
+              serverProcess(100);
+#else
               delay(100);
+#endif
             }
             Serial.println(motion);
             // check movement
@@ -264,11 +303,12 @@ public:
 #elif STORAGE == STORAGE_SPIFFS
     SPIFFSLogger store;
 #endif
+
 private:
     byte m_state = 0;
 };
 
-CLogger logger;
+DataLogger logger;
 
 void showStats()
 {
@@ -279,8 +319,8 @@ void showStats()
     // output to serial monitor
     char timestr[24];
     sprintf(timestr, "%02u:%02u.%c", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
-    uint32_t fileSize = sdfile.size();
-#if !ENABLE_DATA_OUT
+    uint32_t fileSize = logger.store.size();
+#if !ENABLE_SERIAL_OUT
     Serial.print(timestr);
     Serial.print(" | ");
     Serial.print(dataCount);
@@ -326,6 +366,8 @@ void setup()
     sys.begin();
     ble.begin("Freematics ONE+");
 
+    serverSetup();
+
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
@@ -353,6 +395,7 @@ void setup()
 
 void loop()
 {
+    // re-initialize when OBD is disconnected
 #if USE_OBD
     if (!logger.checkState(STATE_OBD_READY)) {
       digitalWrite(PIN_LED, HIGH);
@@ -361,7 +404,9 @@ void loop()
       return;
     }
 #endif
-    if (!logger.checkState(STATE_FILE_READY) && logger.checkState(STATE_SD_READY)) {
+
+    // if file not opened, create a new file
+    if (!logger.checkState(STATE_FILE_READY) && logger.checkState(STATE_STORE_READY)) {
       digitalWrite(PIN_LED, HIGH);
 #if USE_GPS
       if (logger.checkState(STATE_GPS_FOUND)) {
@@ -389,9 +434,11 @@ void loop()
       digitalWrite(PIN_LED, LOW);
       return;
     }
+
+    // poll and log OBD data
+    logger.store.setTimestamp(millis());
 #if USE_OBD
     byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
-    logger.store.setTimestamp(millis());
     for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
       int value;
       byte pid = pids[i];
@@ -408,42 +455,40 @@ void loop()
           logger.reconnect();
         }
       }
-#else
-    {
+#if ENABLE_HTTPD
+      serverProcess(0);
+#endif
+    }
 #endif
 
 #if MEMS_MODE
-      if (logger.checkState(STATE_MEMS_READY)) {
-        float acc[3];
-        bool updated;
+    if (logger.checkState(STATE_MEMS_READY)) {
+      float acc[3];
+      float gyr[3];
+      float mag[3];
+      bool updated;
 #if ENABLE_ORIENTATION
-        ORIENTATION ori;
-#if !ENABLE_DMP
-        float gyr[3];
-        float mag[3];
-        updated = mems.read(acc, gyr, mag, 0, &ori);
+      ORIENTATION ori;
+      updated = mems.read(acc, gyr, mag, 0, &ori);
+      if (updated) {
+        Serial.print("Orientation: ");
+        Serial.print(ori.yaw, 2);
+        Serial.print(' ');
+        Serial.print(ori.pitch, 2);
+        Serial.print(' ');
+        Serial.println(ori.roll, 2);
+        logger.store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+        logger.store.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
+      }
 #else
-        updated = mems.read(acc, 0, 0, 0, &ori);
-#endif
-        if (updated) {
-          Serial.print("Orientation: ");
-          Serial.print(ori.yaw, 2);
-          Serial.print(' ');
-          Serial.print(ori.pitch, 2);
-          Serial.print(' ');
-          Serial.println(ori.roll, 2);
-          logger.store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-          logger.store.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
-        }
-#else
-        updated = mems.read(acc);
-        if (updated) {
-          logger.store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-        }
-#endif
+      updated = mems.read(acc, gyr, mag);
+      if (updated) {
+        logger.store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+        //logger.store.log(PID_GYRO, (int16_t)(gyr[0] * 100), (int16_t)(gyr[1] * 100), (int16_t)(gyr[2] * 100));
       }
 #endif
     }
+#endif
 
 #if USE_OBD
     // log battery voltage (from voltmeter), data in 0.01v
@@ -455,5 +500,9 @@ void loop()
     logger.logGPSData();
 #endif
 
+#if ENABLE_HTTPD
+    serverProcess(10);
+#endif
+    
     showStats();
 }
