@@ -443,3 +443,71 @@ void gatts_write_callback(uint8_t* data, size_t len)
 }
 
 }
+
+bool CStorageSD::init()
+{
+    pinMode(PIN_SD_CS, OUTPUT);
+    if(!SD.begin(PIN_SD_CS)){
+        Serial.println("No SD card");
+        return false;
+    }
+    int cardSize = SD.cardSize();
+    Serial.print("SD card size:");
+    Serial.print(cardSize);
+    Serial.println("MB");
+    return true;
+}
+
+bool CStorageSD::begin(uint32_t dateTime)
+{
+    uint16_t fileIndex;
+    char path[20];
+    if (dateTime) {
+        // using year as directory name
+        sprintf(path, "%04u", (unsigned int)(dateTime / 10000));
+        SD.mkdir(path);
+        // using date and time as file name
+        sprintf(path + 4, "/%08u.CSV", dateTime);
+        } else {
+        strcpy(path, "DATA");
+        SD.mkdir(path);
+        // use index number as file name
+        for (fileIndex = 1; fileIndex; fileIndex++) {
+            sprintf(path + 4, "/DAT%05u.CSV", fileIndex);
+            if (!SD.exists(path)) {
+                break;
+            }
+        }
+        if (fileIndex == 0) return false;
+    }
+    Serial.print("File:");
+    Serial.println(path);
+    file = SD.open(path, SD_FILE_WRITE);
+    if (!file) {
+        Serial.println("File error");
+        return false;
+    }
+    return true;
+}
+
+void CStorageSD::end()
+{
+    file.close();
+}
+
+void CStorageSD::dispatch(const char* buf, byte len)
+{
+    if (file.write((uint8_t*)buf, len) == len) {
+        file.write('\n');
+        uint16_t sizeKB = file.size() >> 10;
+        if (sizeKB != m_sizeKB) {
+            file.flush();
+            m_sizeKB = sizeKB;
+        }
+    }
+}
+
+uint32_t CStorageSD::size()
+{
+    return file.size();
+}

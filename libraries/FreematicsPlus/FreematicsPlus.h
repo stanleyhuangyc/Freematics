@@ -15,8 +15,8 @@
 #include "FreematicsNetwork.h"
 #include "FreematicsMEMS.h"
 #include "FreematicsDMP.h"
-#include "FreematicsSD.h"
 #include "FreematicsOBD.h"
+#include "FreematicsSD.h"
 
 #define PIN_XBEE_PWR 27
 #define PIN_GPS_POWER 15
@@ -246,77 +246,15 @@ protected:
 
 class CStorageSD : public CStorageNull {
 public:
-  CStorageSD() {}
-  bool init()
-  {
-      pinMode(PIN_SD_CS, OUTPUT);
-      if(!SD.begin(PIN_SD_CS)){
-          Serial.println("No SD card");
-          return false;
-      }
-      int cardSize = SD.cardSize();
-      Serial.print("SD card size:");
-      Serial.print(cardSize);
-      Serial.println("MB");
-      return true;
-    }
-    bool begin(uint32_t dateTime = 0)
-    {
-      uint16_t fileIndex;
-      char path[20];
-      if (dateTime) {
-        // using year as directory name
-        sprintf(path, "%04u", (unsigned int)(dateTime / 10000));
-        SD.mkdir(path);
-        // using date and time as file name
-        sprintf(path + 4, "/%08u.CSV", dateTime);
-      } else {
-        strcpy(path, "DATA");
-        SD.mkdir(path);
-        // use index number as file name
-        for (fileIndex = 1; fileIndex; fileIndex++) {
-          sprintf(path + 4, "/DAT%05u.CSV", fileIndex);
-          if (!SD.exists(path)) {
-              break;
-          }
-        }
-        if (fileIndex == 0) return false;
-      }
-
-      Serial.print("File:");
-      Serial.println(path);
-      // O_READ | O_WRITE | O_CREAT = 0x13
-      sdfile = SD.open(path, 0x13);
-      if (!sdfile) {
-          Serial.println("File error");
-          return false;
-      }
-      return true;
-  }
-  void end()
-  {
-      if (sdfile) sdfile.close();
-  }
-  void dispatch(const char* buf, byte len)
-  {
-      if (sdfile) {
-        sdfile.write((uint8_t*)buf, len);
-        sdfile.write('\n');
-        uint16_t sizeKB = sdfile.size() >> 10;
-        if (sizeKB != m_sizeKB) {
-            sdfile.flush();
-            m_sizeKB = sizeKB;
-        }
-      }
-  }
-  uint32_t size()
-  {
-    return sdfile.size();
-  }
+    bool init();
+    bool begin(uint32_t dateTime = 0);
+    void end();
+    void dispatch(const char* buf, byte len);
+    uint32_t size();
 private:
-  SDClass SD;
-  File sdfile;
-  uint16_t m_sizeKB = 0;
+    SDClass SD;
+    SDLib::File file;
+    uint16_t m_sizeKB = 0;
 };
 
 #define MAX_BLE_MSG_LEN 160
