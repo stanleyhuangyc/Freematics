@@ -20,8 +20,8 @@
 #include <utility/SdFat.h>
 #include <utility/SdFatUtil.h>
 
-#define FILE_READ SD_O_READ
-#define FILE_WRITE (SD_O_READ | SD_O_WRITE | SD_O_CREAT)
+#define SD_FILE_READ SD_O_READ
+#define SD_FILE_WRITE (SD_O_READ | SD_O_WRITE | SD_O_CREAT)
 
 namespace SDLib {
 
@@ -73,8 +73,8 @@ public:
   // Open the specified file/directory with the supplied mode (e.g. read or
   // write, etc). Returns a File object for interacting with the file.
   // Note that currently only one file can be open at a time.
-  File open(const char *filename, uint8_t mode = FILE_READ);
-  File open(const String &filename, uint8_t mode = FILE_READ) { return open( filename.c_str(), mode ); }
+  File open(const char *filename, uint8_t mode = SD_FILE_READ);
+  File open(const String &filename, uint8_t mode = SD_FILE_READ) { return open( filename.c_str(), mode ); }
 
   // Methods to determine if the requested file path exists.
   boolean exists(const char *filepath);
