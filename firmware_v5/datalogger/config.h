@@ -13,9 +13,12 @@
 #ifndef HAVE_CONFIG
 // enable(1)/disable(0) data streaming
 #define ENABLE_SERIAL_OUT 0
+// specify storage type
+#define STORAGE STORAGE_SPIFFS
+#endif
+
 // file size limit
 #define MAX_DATA_FILE_SIZE 100 /* MB */
-#endif
 
 /**************************************
 * WIFI and HTTP server
@@ -29,7 +32,7 @@
 #define WIFI_PASSWORD "..."
 #endif
 
-#define WIFI_JOIN_TIMEOUT 10000
+#define WIFI_JOIN_TIMEOUT 30000
 
 /**************************************
 * Hardware setup
@@ -43,8 +46,6 @@
 #define MEMS_MODE MEMS_9DOF
 // enable(1)/disable(0) quaternion calculation to get orientation
 #define ENABLE_ORIENTATION 0
-// specify storage type
-#define STORAGE STORAGE_SPIFFS
 #endif
 
 // GPS parameters
