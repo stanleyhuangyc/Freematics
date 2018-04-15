@@ -154,28 +154,23 @@ public:
     }
     bool open(uint32_t dateTime = 0)
     {
-        char path[24] = "/DATA";
-
-        SPIFFS.mkdir(path);
+        char path[24];
+        unsigned int idx = 0;
         m_dataCount = 0;
-        if (dateTime) {
-           // using date and time as file name
-           sprintf(path, "/DATA/%08lu.CSV", dateTime);
+        fs::File root = SPIFFS.open("/");
+        if (!root) {
+            return false;
         } else {
-          // use index number as file name
-          uint16_t fileIndex;
-          for (fileIndex = 1; fileIndex; fileIndex++) {
-              sprintf(path, "/DATA/LOG%05u.CSV", fileIndex);
-              Serial.print("Checking ");
-              Serial.println(path);
-              if (!SPIFFS.exists(path)) {
-                  break;
-              }
-          }
-          if (fileIndex == 0)
-              return false;
+            fs::File file;
+            while(file = root.openNextFile()) {
+                if (!strncmp(file.name(), "/DATA/", 6)) {
+                    int n = atoi(file.name() + 6);
+                    if (n > idx) idx = n;
+                }
+            }
         }
-        Serial.print("File:");
+        sprintf(path, "/DATA/%08u.CSV", ++idx);
+        Serial.print("New file: ");
         Serial.println(path);
         file = SPIFFS.open(path, FILE_WRITE);
         if (!file) {

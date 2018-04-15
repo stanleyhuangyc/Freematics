@@ -51,6 +51,7 @@ float accBias[3];
 
 void serverProcess(int timeout);
 bool serverSetup();
+void serverCheckup();
 
 void calibrateMEMS()
 {
@@ -165,7 +166,7 @@ public:
           Serial.print(ret);
           Serial.println(" bytes free");
           setState(STATE_STORE_READY);
-          listDir(SPIFFS, "/spiffs", 0);
+          listDir(SPIFFS, "/", 0);
         } else {
           Serial.println("NO");
         }
@@ -366,7 +367,9 @@ void setup()
     sys.begin();
     ble.begin("Freematics ONE+");
 
+#if ENABLE_HTTPD
     serverSetup();
+#endif
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
@@ -502,7 +505,8 @@ void loop()
 
 #if ENABLE_HTTPD
     serverProcess(10);
+    serverCheckup();
 #endif
-    
+
     showStats();
 }

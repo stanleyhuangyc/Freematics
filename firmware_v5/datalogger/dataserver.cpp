@@ -71,11 +71,8 @@ int handlerInfo(UrlHandlerParam* param)
 int handlerTripFile(UrlHandlerParam* param)
 {
     int id = mwGetVarValueInt(param->pxVars, "id", 0);
-    unsigned int dateTime = mwGetVarValueInt(param->pxVars, "dt", 0);
     if (id) {
-        sprintf(param->pucBuffer, "DATA/LOG%05u.CSV", id);
-    } else if (dateTime) {
-        sprintf(param->pucBuffer, "DATA/%08u.CSV", dateTime);
+        sprintf(param->pucBuffer, "DATA/%08u.CSV", id);
     } else {
         return 0;
     }
@@ -98,42 +95,21 @@ void obtainTime()
     sntp_init();
 }
 
-bool serverSetup()
+void serverProcess(int timeout)
 {
-#if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
-    WiFi.mode (WIFI_AP_STA);
-#elif ENABLE_WIFI_AP
-    WiFi.mode (WIFI_AP);
-#elif ENABLE_WIFI_STATION
-    WiFi.mode (WIFI_STA);
-#endif
-
-#if ENABLE_WIFI_AP
-    WiFi.softAP(WIFI_AP_SSID);
-    Serial.print("AP IP address: ");
-    Serial.println(WiFi.softAPIP());
-#endif
-
-    mwInitParam(&httpParam, 80, "/spiffs");
-    httpParam.pxUrlHandler = urlHandlerList;
-
-    if (mwServerStart(&httpParam)) {
-        Serial.println("Error starting HTTPd");
-        return false;
-    }
-    return true;
+    mwHttpLoop(&httpParam, timeout);
 }
 
-void serverProcess(int timeout)
+void serverCheckup()
 {
 #if ENABLE_WIFI_STATION
     static uint32_t wifiStartTime = 0;
     if (WiFi.status() != WL_CONNECTED) {
-        if (millis() - wifiStartTime > WIFI_JOIN_TIMEOUT) {
+        if (wifiStartTime == 0 || millis() - wifiStartTime > WIFI_JOIN_TIMEOUT) {
+            WiFi.disconnect(false);
             Serial.print("Connecting to hotspot (SSID:");
             Serial.print(WIFI_SSID);
             Serial.println(')');
-            WiFi.disconnect(false);
             WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
             wifiStartTime = millis();
         }
@@ -153,5 +129,55 @@ void serverProcess(int timeout)
 
     }
 #endif
-    mwHttpLoop(&httpParam, timeout);
+}
+
+void listAPs()
+{
+    int n = WiFi.scanNetworks();
+    if (n <= 0) {
+        Serial.println("No WIFI AP found");
+    } else {
+        Serial.println("WIFI APs found:");
+        for (int i = 0; i < n; ++i) {
+            // Print SSID and RSSI for each network found
+            Serial.print(i + 1);
+            Serial.print(": ");
+            Serial.print(WiFi.SSID(i));
+            Serial.print(" (");
+            Serial.print(WiFi.RSSI(i));
+            Serial.println("dB)");
+        }
+    }
+}
+
+bool serverSetup()
+{
+#if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
+    WiFi.mode (WIFI_AP_STA);
+#elif ENABLE_WIFI_AP
+    WiFi.mode (WIFI_AP);
+#elif ENABLE_WIFI_STATION
+    WiFi.mode (WIFI_STA);
+#endif
+
+#if ENABLE_WIFI_STATION
+    listAPs();
+#endif
+
+#if ENABLE_WIFI_AP
+    WiFi.softAP(WIFI_AP_SSID);
+    Serial.print("AP IP address: ");
+    Serial.println(WiFi.softAPIP());
+#endif
+
+    mwInitParam(&httpParam, 80, "/spiffs");
+    httpParam.pxUrlHandler = urlHandlerList;
+
+    if (mwServerStart(&httpParam)) {
+        Serial.println("Error starting HTTPd");
+        return false;
+    }
+
+    serverCheckup();
+    return true;
 }
