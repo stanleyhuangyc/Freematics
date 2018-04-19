@@ -31,6 +31,9 @@ uint16_t MMDD = 0;
 uint32_t UTC = 0;
 uint32_t startTime = 0;
 uint32_t pidErrors = 0;
+char vin[18] = {0};
+float accBias[3];
+uint32_t fileid = 0;
 
 COBDSPI obd;
 GATTServer ble;
@@ -45,9 +48,6 @@ MPU9250_9DOF mems;
 #elif MEMS_MODE == MEMS_DMP
 MPU9250_DMP mems;
 #endif
-
-char vin[18] = {0};
-float accBias[3];
 
 void serverProcess(int timeout);
 bool serverSetup();
@@ -410,31 +410,10 @@ void loop()
 
     // if file not opened, create a new file
     if (!logger.checkState(STATE_FILE_READY) && logger.checkState(STATE_STORE_READY)) {
-      digitalWrite(PIN_LED, HIGH);
-#if USE_GPS
-      if (logger.checkState(STATE_GPS_FOUND)) {
-        // GPS connected
-        logger.logGPSData();
-        if (logger.checkState(STATE_GPS_READY)) {
-          uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
-          if (logger.store.open(dateTime)) {
-            MMDD = 0;
-            logger.setState(STATE_FILE_READY);
-          }
-        } else {
-          Serial.println("Waiting for GPS...");
-        }
+      fileid = logger.store.open();
+      if (fileid) {
+        logger.setState(STATE_FILE_READY);
       }
-      else
-#endif
-      {
-        // no GPS connected
-        if (logger.store.open(0)) {
-          logger.setState(STATE_FILE_READY);
-        }
-      }
-      delay(1000);
-      digitalWrite(PIN_LED, LOW);
       return;
     }
 
@@ -459,7 +438,7 @@ void loop()
         }
       }
 #if ENABLE_HTTPD
-      serverProcess(0);
+      serverProcess(5);
 #endif
     }
 #endif

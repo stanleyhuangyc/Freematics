@@ -41,11 +41,13 @@ uint32_t hall_sens_read();
 
 HttpParam httpParam;
 
+extern uint32_t fileid;
+
 int handlerInfo(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
-    int bytes = snprintf(buf, bufsize, "{\"httpd\":{\"uptime\":%u,\"clients\":%u,\"requests\":%u,\"traffic\":%u},",
+    int bytes = snprintf(buf, bufsize, "{\"httpd\":{\"uptime\":%u,\"clients\":%u,\"requests\":%u,\"traffic\":%u},\n",
         millis(), httpParam.stats.clientCount, httpParam.stats.reqCount, (unsigned int)(httpParam.stats.totalSentBytes >> 10));
 
     time_t now;
@@ -53,13 +55,13 @@ int handlerInfo(UrlHandlerParam* param)
     struct tm timeinfo = { 0 };
     localtime_r(&now, &timeinfo);
     if (timeinfo.tm_year) {
-        bytes += snprintf(buf + bytes, bufsize - bytes, "\"rtc\":{\"date\":\"%04u-%02u-%02u\",\"time\":\"%02u:%02u:%02u\"},",
+        bytes += snprintf(buf + bytes, bufsize - bytes, "\"rtc\":{\"date\":\"%04u-%02u-%02u\",\"time\":\"%02u:%02u:%02u\"},\n",
         timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     }
 
     int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
-    bytes += snprintf(buf + bytes, bufsize - bytes, "\"cpu\":{\"temperature\":%d,\"magnetic\":%d},",
+    bytes += snprintf(buf + bytes, bufsize - bytes, "\"cpu\":{\"temperature\":%d,\"magnetic\":%d},\n",
         deviceTemp, hall_sens_read());
 
     bytes += snprintf(buf + bytes, bufsize - bytes, "\"spiffs\":{\"total\":%u,\"used\":%u}",
@@ -72,19 +74,15 @@ int handlerInfo(UrlHandlerParam* param)
     return FLAG_DATA_RAW;
 }
 
-int handlerTripFile(UrlHandlerParam* param)
+int handlerLogFile(UrlHandlerParam* param)
 {
     int id = mwGetVarValueInt(param->pxVars, "id", 0);
-    if (id) {
-        sprintf(param->pucBuffer, "DATA/%08u.CSV", id);
-    } else {
-        return 0;
-    }
+    sprintf(param->pucBuffer, "DATA/%u.CSV", id == 0 ? fileid : id);
     param->fileType=HTTPFILETYPE_TEXT;
     return FLAG_DATA_FILE;
 }
 
-int handlerTripList(UrlHandlerParam* param)
+int handlerLogList(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
@@ -100,8 +98,12 @@ int handlerTripList(UrlHandlerParam* param)
                 Serial.println(" bytes");
                 unsigned int id = atoi(file.name() + 6);
                 if (id) {
-                    n += snprintf(buf + n, bufsize - n, "{\"id\":%u,\"size\":%u},",
+                    n += snprintf(buf + n, bufsize - n, "{\"id\":%u,\"size\":%u",
                         id, file.size());
+                    if (id == fileid) {
+                        n += snprintf(buf + n, bufsize - n, ",\"active\":true");
+                    }
+                    n += snprintf(buf + n, bufsize - n, "},");
                 }
             }
         }
@@ -115,9 +117,9 @@ int handlerTripList(UrlHandlerParam* param)
 
 UrlHandler urlHandlerList[]={
   {"info", handlerInfo},
-  {"trips", handlerTripList},
+  {"list", handlerLogList},
 #if STORAGE == STORAGE_SPIFFS
-  {"trip", handlerTripFile},
+  {"log", handlerLogFile},
 #endif
   {0}
 };
