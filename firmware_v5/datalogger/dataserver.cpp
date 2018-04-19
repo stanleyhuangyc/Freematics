@@ -45,7 +45,7 @@ int handlerInfo(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
-    int bytes = snprintf(buf, bufsize, "{\"uptime\":%u,\"clients\":%u,\"requests\":%u,\"traffic\":%u,",
+    int bytes = snprintf(buf, bufsize, "{\"httpd\":{\"uptime\":%u,\"clients\":%u,\"requests\":%u,\"traffic\":%u},",
         millis(), httpParam.stats.clientCount, httpParam.stats.reqCount, (unsigned int)(httpParam.stats.totalSentBytes >> 10));
 
     time_t now;
@@ -53,14 +53,18 @@ int handlerInfo(UrlHandlerParam* param)
     struct tm timeinfo = { 0 };
     localtime_r(&now, &timeinfo);
     if (timeinfo.tm_year) {
-        bytes += snprintf(buf + bytes, bufsize - bytes, "\"date\":\"%04u-%02u-%02u\",\"time\":\"%02u:%02u:%02u\",",
+        bytes += snprintf(buf + bytes, bufsize - bytes, "\"rtc\":{\"date\":\"%04u-%02u-%02u\",\"time\":\"%02u:%02u:%02u\"},",
         timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     }
 
     int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
-    bytes += snprintf(buf + bytes, bufsize - bytes, "\"temperature\":%d,", deviceTemp);
-    bytes += snprintf(buf + bytes, bufsize - bytes, "\"magnetic\":%d", hall_sens_read());
+    bytes += snprintf(buf + bytes, bufsize - bytes, "\"cpu\":{\"temperature\":%d,\"magnetic\":%d},",
+        deviceTemp, hall_sens_read());
+
+    bytes += snprintf(buf + bytes, bufsize - bytes, "\"spiffs\":{\"total\":%u,\"used\":%u}",
+        SPIFFS.totalBytes(), SPIFFS.usedBytes());
+
     if (bytes < bufsize - 1) buf[bytes++] = '}';
 
     param->contentLength = bytes;
@@ -80,8 +84,38 @@ int handlerTripFile(UrlHandlerParam* param)
     return FLAG_DATA_FILE;
 }
 
+int handlerTripList(UrlHandlerParam* param)
+{
+    char *buf = param->pucBuffer;
+    int bufsize = param->bufSize;
+    fs::File root = SPIFFS.open("/");
+    int n = snprintf(buf + n, bufsize - n, "{\"trips\":[");
+    if (root) {
+        fs::File file;
+        while(file = root.openNextFile()) {
+            if (!strncmp(file.name(), "/DATA/", 6)) {
+                Serial.print(file.name());
+                Serial.print(' ');
+                Serial.print(file.size());
+                Serial.println(" bytes");
+                unsigned int id = atoi(file.name() + 6);
+                if (id) {
+                    n += snprintf(buf + n, bufsize - n, "{\"id\":%u,\"size\":%u},",
+                        id, file.size());
+                }
+            }
+        }
+        if (buf[n - 1] == ',') n--;
+    }
+    n += snprintf(buf + n, bufsize - n, "]}");
+    param->fileType=HTTPFILETYPE_JSON;
+    param->contentLength = n;
+    return FLAG_DATA_RAW;
+}
+
 UrlHandler urlHandlerList[]={
   {"info", handlerInfo},
+  {"trips", handlerTripList},
 #if STORAGE == STORAGE_SPIFFS
   {"trip", handlerTripFile},
 #endif
