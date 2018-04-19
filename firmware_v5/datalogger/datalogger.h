@@ -145,8 +145,8 @@ public:
     }
     void write(const char* buf, byte len)
     {
-        file.write((uint8_t*)buf, len);
-        file.write('\n');
+        m_file.write((uint8_t*)buf, len);
+        m_file.write('\n');
         m_dataCount++;
 #if ENABLE_SERIAL_OUT
         Serial.println(buf);
@@ -164,7 +164,7 @@ public:
             fs::File file;
             while(file = root.openNextFile()) {
                 if (!strncmp(file.name(), "/DATA/", 6)) {
-                    int n = atoi(file.name() + 6);
+                    unsigned int n = atoi(file.name() + 6);
                     if (n > idx) idx = n;
                 }
             }
@@ -172,8 +172,8 @@ public:
         sprintf(path, "/DATA/%08u.CSV", ++idx);
         Serial.print("New file: ");
         Serial.println(path);
-        file = SPIFFS.open(path, FILE_WRITE);
-        if (!file) {
+        m_file = SPIFFS.open(path, FILE_WRITE);
+        if (!m_file) {
             Serial.println("File error");
             return false;
         }
@@ -181,16 +181,39 @@ public:
     }
     uint32_t size()
     {
-        return file.size();
+        return m_file.size();
     }
     void close()
     {
-        file.close();
+        m_file.close();
     }
     void flush()
     {
-        file.flush();
+        m_file.flush();
+
+        int remainBytes = SPIFFS.totalBytes() - SPIFFS.usedBytes();
+        if (remainBytes < 1024) {
+            // remove oldest file when unused space is insufficient
+            fs::File root = SPIFFS.open("/");
+            fs::File file;
+            int idx = 0;
+            while(file = root.openNextFile()) {
+                if (!strncmp(file.name(), "/DATA/", 6)) {
+                    unsigned int n = atoi(file.name() + 6);
+                    if (n != 0 && (idx == 0 || n < idx)) idx = n;
+                }
+            }
+            if (idx) {
+                Serial.print("BEFORE:");
+                Serial.print(SPIFFS.usedBytes());
+                Serial.print(" AFTER:");
+                char path[32];
+                sprintf(path, "/DATA/%08u.CSV", idx);
+                SPIFFS.remove(path);
+                Serial.println(SPIFFS.usedBytes());
+            }
+        }
     }
 private:
-    fs::File file;
+    fs::File m_file;
 };
