@@ -16,8 +16,8 @@
 
 #include <SPIFFS.h>
 #include <FreematicsPlus.h>
-#include "config.h"
 #include "datalogger.h"
+#include "config.h"
 
 // states
 #define STATE_STORE_READY 0x1
@@ -26,6 +26,10 @@
 #define STATE_GPS_READY 0x8
 #define STATE_MEMS_READY 0x10
 #define STATE_FILE_READY 0x20
+
+void serverProcess(int timeout);
+bool serverSetup();
+void serverCheckup();
 
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
@@ -39,8 +43,26 @@ COBDSPI obd;
 GATTServer ble;
 FreematicsESP32 sys;
 
-#if MEMS_MODE
+class DataOutputter : public NullLogger
+{
+    void write(const char* buf, byte len)
+    {
+#if ENABLE_SERIAL_OUT
+        Serial.println(buf);
+#endif
+        ble.println(buf);
+    }
+};
 
+#if STORAGE == STORAGE_SD
+SDLogger store(new DataOutputter);
+#elif STORAGE == STORAGE_SPIFFS
+SPIFFSLogger store(new DataOutputter);
+#else
+NullLogger store(new DataOutputter);
+#endif
+
+#if MEMS_MODE
 #if MEMS_MODE == MEMS_ACC
 MPU9250_ACC mems;
 #elif MEMS_MODE == MEMS_9DOF
@@ -48,10 +70,6 @@ MPU9250_9DOF mems;
 #elif MEMS_MODE == MEMS_DMP
 MPU9250_DMP mems;
 #endif
-
-void serverProcess(int timeout);
-bool serverSetup();
-void serverCheckup();
 
 void calibrateMEMS()
 {
@@ -113,7 +131,7 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels)
 class DataLogger
 {
 public:
-    void setup()
+    void init()
     {
 #if USE_OBD
       Serial.print("OBD ");
@@ -240,28 +258,17 @@ public:
             digitalWrite(PIN_LED, LOW);
         }
     }
-    void reconnect()
-    {
-        if (obd.init()) return;
-        // try to re-connect to OBD
-        store.close();
-        // turn off GPS power
-#if USE_GPS
-        sys.gpsInit(0);
-#endif
-        clearState(STATE_OBD_READY | STATE_GPS_READY);
-        standby();
-    }
     void standby()
     {
-  #if ENABLE_GPS
+  #if USE_GPS
         if (checkState(STATE_GPS_READY)) {
           Serial.print("GPS:");
           sys.gpsInit(0); // turn off GPS power
           Serial.println("OFF");
         }
   #endif
-        clearState(STATE_OBD_READY | STATE_GPS_READY);
+        store.close();
+        clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
         Serial.println("Standby");
         ble.println("Standby");
   #if MEMS_MODE
@@ -299,12 +306,6 @@ public:
     bool checkState(byte flags) { return (m_state & flags) == flags; }
     void setState(byte flags) { m_state |= flags; }
     void clearState(byte flags) { m_state &= ~flags; }
-#if STORAGE == STORAGE_SD
-    SDLogger store;
-#elif STORAGE == STORAGE_SPIFFS
-    SPIFFSLogger store;
-#endif
-
 private:
     byte m_state = 0;
 };
@@ -314,14 +315,13 @@ DataLogger logger;
 void showStats()
 {
     uint32_t t = millis() - startTime;
-    uint32_t dataCount = logger.store.getDataCount();
+    uint32_t dataCount = store.getDataCount();
     // calculate samples per second
     float sps = (float)dataCount * 1000 / t;
     // output to serial monitor
     char timestr[24];
     sprintf(timestr, "%02u:%02u.%c", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
-    uint32_t fileSize = logger.store.size();
-#if !ENABLE_SERIAL_OUT
+    uint32_t fileSize = store.size();
     Serial.print(timestr);
     Serial.print(" | ");
     Serial.print(dataCount);
@@ -337,7 +337,6 @@ void showStats()
       digitalWrite(PIN_LED, LOW);
     }
     Serial.println();
-#endif
     // output via BLE
     ble.print(timestr);
     ble.print(' ');
@@ -391,50 +390,48 @@ void setup()
     }
 #endif
 
-    logger.setup();
+    logger.init();
     digitalWrite(PIN_LED, LOW);
     delay(1000);
 }
 
 void loop()
 {
+    // if file not opened, create a new file
+    if (logger.checkState(STATE_STORE_READY) && !logger.checkState(STATE_FILE_READY)) {
+      fileid = store.open();
+      if (fileid) {
+        logger.setState(STATE_FILE_READY);
+      }
+    }
+
     // re-initialize when OBD is disconnected
 #if USE_OBD
     if (!logger.checkState(STATE_OBD_READY)) {
       digitalWrite(PIN_LED, HIGH);
-      logger.setup();
+      logger.init();
       digitalWrite(PIN_LED, LOW);
       return;
     }
 #endif
 
-    // if file not opened, create a new file
-    if (!logger.checkState(STATE_FILE_READY) && logger.checkState(STATE_STORE_READY)) {
-      fileid = logger.store.open();
-      if (fileid) {
-        logger.setState(STATE_FILE_READY);
-      }
-      return;
-    }
-
     // poll and log OBD data
-    logger.store.setTimestamp(millis());
+    store.setTimestamp(millis());
 #if USE_OBD
     byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
     for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
       int value;
       byte pid = pids[i];
       if (obd.readPID(pid, value)) {
-        logger.store.log((uint16_t)pids[i] | 0x100, value);
+        store.log((uint16_t)pids[i] | 0x100, value);
       } else {
         pidErrors++;
         Serial.print("PID errors: ");
         Serial.println(pidErrors);
         ble.print("PID errors: ");
         ble.println(pidErrors);
-        if (obd.errors >= 3) {
-          obd.reset();
-          logger.reconnect();
+        if (obd.errors >= 3 && !obd.init()) {
+            logger.standby();
         }
       }
 #if ENABLE_HTTPD
@@ -459,14 +456,14 @@ void loop()
         Serial.print(ori.pitch, 2);
         Serial.print(' ');
         Serial.println(ori.roll, 2);
-        logger.store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-        logger.store.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
+        store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+        store.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
       }
 #else
       updated = mems.read(acc, gyr, mag);
       if (updated) {
-        logger.store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-        //logger.store.log(PID_GYRO, (int16_t)(gyr[0] * 100), (int16_t)(gyr[1] * 100), (int16_t)(gyr[2] * 100));
+        store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+        //store.log(PID_GYRO, (int16_t)(gyr[0] * 100), (int16_t)(gyr[1] * 100), (int16_t)(gyr[2] * 100));
       }
 #endif
     }
@@ -475,7 +472,7 @@ void loop()
 #if USE_OBD
     // log battery voltage (from voltmeter), data in 0.01v
     int v = obd.getVoltage() * 100;
-    logger.store.log(PID_BATTERY_VOLTAGE, v);
+    store.log(PID_BATTERY_VOLTAGE, v);
 #endif
 
 #if USE_GPS
@@ -487,5 +484,7 @@ void loop()
     serverCheckup();
 #endif
 
+#if !ENABLE_SERIAL_OUT
     showStats();
+#endif
 }

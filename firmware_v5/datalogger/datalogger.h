@@ -19,39 +19,45 @@ class NullLogger {
 public:
     virtual int begin()
     {
-        return 0;
+        return 1;
     }
     virtual void log(uint16_t pid, int16_t value)
     {
         char buf[24];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%d"), m_dataTime, pid, value) ;
+        byte len = sprintf(buf, "%X,%d", pid, value) ;
         write(buf, len);
     }
     virtual void log(uint16_t pid, int32_t value)
     {
-        char buf[28];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%ld"), m_dataTime, pid, value);
+        char buf[24];
+        byte len = sprintf(buf, "%X,%ld", pid, value);
         write(buf, len);
     }
     virtual void log(uint16_t pid, uint32_t value)
     {
-        char buf[28];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%lu"), m_dataTime, pid, value);
+        char buf[24];
+        byte len = sprintf(buf, "%X,%lu", pid, value);
         write(buf, len);
     }
     virtual void log(uint16_t pid, int value1, int value2, int value3)
     {
-        char buf[32];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%d;%d;%d"), m_dataTime, pid, value1, value2, value3);
+        char buf[24];
+        byte len = sprintf(buf, "%X,%d;%d;%d", pid, value1, value2, value3);
         write(buf, len);
     }
     virtual void logCoordinate(uint16_t pid, int32_t value)
     {
-        char buf[32];
-        byte len = sprintf_P(buf, PSTR("%lu,%X,%d.%06lu"), m_dataTime, pid, (int)(value / 1000000), abs(value) % 1000000);
+        char buf[24];
+        byte len = sprintf(buf, "%X,%d.%06lu", pid, (int)(value / 1000000), abs(value) % 1000000);
         write(buf, len);
     }
-    virtual bool open(uint32_t dateTime = 0) { m_dataCount = 0; }
+    virtual void setTimestamp(uint32_t ts)
+    {
+        char buf[16];
+        byte len = sprintf(buf, "0,%u", m_dataTime = ts);
+        write(buf, len);
+    }
+    virtual uint32_t open() { return 0; }
     virtual uint32_t size() { return 0; }
     virtual void close() {}
     virtual void flush() {}
@@ -59,15 +65,17 @@ public:
     {
         Serial.println(buf);
     }
-    virtual void setTimestamp(uint32_t ts) { m_dataTime = ts; }
     virtual uint32_t getDataCount() { return m_dataCount; }
 protected:
     uint32_t m_dataTime = 0;
     uint32_t m_dataCount = 0;
+    uint32_t m_id = 0;
+    NullLogger* m_next = 0;
 };
 
 class SDLogger : public NullLogger {
 public:
+    SDLogger(NullLogger* next = 0) { m_next = next; }
     int begin()
     {
         m_dataCount = 0;
@@ -80,111 +88,41 @@ public:
     }
     void write(const char* buf, byte len)
     {
-        file.write((uint8_t*)buf, len);
-        file.write('\n');
-        m_dataCount++;
-#if ENABLE_SERIAL_OUT
-        Serial.println(buf);
-#endif
-    }
-    bool open(uint32_t dateTime = 0)
-    {
-        char path[24] = "/DATA";
-
-        SD.mkdir(path);
-        m_dataCount = 0;
-        if (dateTime) {
-           // using date and time as file name
-           sprintf(path, "/DATA/%08lu.CSV", dateTime);
-        } else {
-          // use index number as file name
-          uint16_t fileIndex;
-          for (fileIndex = 1; fileIndex; fileIndex++) {
-              sprintf(path, "/DATA/LOG%05u.CSV", fileIndex);
-              if (!SD.exists(path)) {
-                  break;
-              }
-          }
-          if (fileIndex == 0)
-              return false;
-        }
-        Serial.print("File:");
-        Serial.println(path);
-        file = SD.open(path, SD_FILE_WRITE);
-        if (!file) {
-            Serial.println("File error");
-            return false;
-        }
-        return true;
-    }
-    uint32_t size()
-    {
-        return file.size();
-    }
-    void close()
-    {
-        file.close();
-    }
-    void flush()
-    {
-        file.flush();
-    }
-private:
-    SDClass SD;
-    SDLib::File file;
-};
-
-class SPIFFSLogger : public NullLogger {
-public:
-    int begin()
-    {
-        if (SPIFFS.begin(true)) {
-            return SPIFFS.totalBytes() - SPIFFS.usedBytes();
-        }
-        return -1;
-    }
-    void write(const char* buf, byte len)
-    {
-#if ENABLE_SERIAL_OUT
-        Serial.println(buf);
-#endif
-        if (m_file.write((uint8_t*)buf, len) != len) {
-            purge();
-            close();
-            open();
-            if (m_file.write((uint8_t*)buf, len) != len) {
-                return;
-            }
-        }
+        if (m_next) m_next->write(buf, len);
+        m_file.write((uint8_t*)buf, len);
         m_file.write('\n');
         m_dataCount++;
     }
-    bool open(uint32_t dateTime = 0)
+    uint32_t open()
     {
-        char path[24];
-        unsigned int idx = 0;
+        char path[24] = "/DATA";
         m_dataCount = 0;
-        fs::File root = SPIFFS.open("/");
+        SD.mkdir(path);
+        SDLib::File root = SD.open(path);
         if (!root) {
-            return false;
+            return 0;
         } else {
-            fs::File file;
+            SDLib::File file;
+            m_id = 0;
             while(file = root.openNextFile()) {
                 if (!strncmp(file.name(), "/DATA/", 6)) {
                     unsigned int n = atoi(file.name() + 6);
-                    if (n > idx) idx = n;
+                    if (n > m_id) m_id = n;
                 }
             }
+            m_id++;
         }
-        sprintf(path, "/DATA/%08u.CSV", ++idx);
+
+        sprintf(path, "/DATA/%u.CSV", m_id);
         Serial.print("New file: ");
         Serial.println(path);
-        m_file = SPIFFS.open(path, FILE_WRITE);
+        m_file = SD.open(path, SD_FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
-            return false;
+            m_id = 0;
+            return 0;
         }
-        return true;
+        return m_id;
     }
     uint32_t size()
     {
@@ -197,11 +135,77 @@ public:
     void flush()
     {
         m_file.flush();
+    }
+private:
+    SDClass SD;
+    SDLib::File m_file;
+};
 
-        int remainBytes = SPIFFS.totalBytes() - SPIFFS.usedBytes();
-        if (remainBytes < 16 * 1024) {
-            purge();
+class SPIFFSLogger : public NullLogger {
+public:
+    SPIFFSLogger(NullLogger* next = 0) { m_next = next; }
+    int begin()
+    {
+        if (SPIFFS.begin(true)) {
+            return SPIFFS.totalBytes() - SPIFFS.usedBytes();
         }
+        return -1;
+    }
+    void write(const char* buf, byte len)
+    {
+        if (m_next) m_next->write(buf, len);
+        if (m_id == 0) return;
+        if (m_file.write((uint8_t*)buf, len) != len) {
+            purge();
+            if (m_file.write((uint8_t*)buf, len) != len) {
+                Serial.println("Error writing data");
+                return;
+            }
+        }
+        m_file.write('\n');
+        m_dataCount++;
+    }
+    uint32_t open()
+    {
+        m_dataCount = 0;
+        fs::File root = SPIFFS.open("/");
+        if (!root) {
+            return 0;
+        } else {
+            fs::File file;
+            m_id = 0;
+            while(file = root.openNextFile()) {
+                if (!strncmp(file.name(), "/DATA/", 6)) {
+                    unsigned int n = atoi(file.name() + 6);
+                    if (n > m_id) m_id = n;
+                }
+            }
+            m_id++;
+        }
+        char path[24];
+        sprintf(path, "/DATA/%u.CSV", m_id);
+        Serial.print("New file: ");
+        Serial.println(path);
+        m_file = SPIFFS.open(path, FILE_WRITE);
+        if (!m_file) {
+            Serial.println("File error");
+            m_id = 0;
+            return 0;
+        }
+        return m_id;
+    }
+    uint32_t size()
+    {
+        return m_file.size();
+    }
+    void close()
+    {
+        m_file.close();
+        m_id = 0;
+    }
+    void flush()
+    {
+        m_file.flush();
     }
 private:
     void purge()
@@ -217,11 +221,15 @@ private:
             }
         }
         if (idx) {
+            m_file.close();
             char path[32];
-            sprintf(path, "/DATA/%08u.CSV", idx);
+            sprintf(path, "/DATA/%u.CSV", idx);
             SPIFFS.remove(path);
             Serial.print(path);
             Serial.println(" removed");
+            sprintf(path, "/DATA/%u.CSV", m_id);
+            m_file = SPIFFS.open(path, FILE_APPEND);
+            if (!m_file) m_id = 0;
         }
     }
     fs::File m_file;
