@@ -17,8 +17,8 @@
   <define name="Data Output via Serial" type="bool" const="ENABLE_SERIAL_OUT"/>
   <define name="Enable HTTP Server" type="bool" const="ENABLE_HTTPD" default="true"/>
   <define name="Enable WIFI AP" type="bool" const="ENABLE_WIFI_AP" default="true" dep="ENABLE_HTTPD=1"/>
-  <define name="Connect to a WIFI Hotspot" type="bool" const="ENABLE_WIFI_STATION" dep="ENABLE_HTTPD=1"/>
   <define name="WIFI AP SSID" type="string" const="WIFI_AP_SSID" default="DATALOGGER" dep="ENABLE_WIFI_AP=1"/>
+  <define name="Connect to a WIFI Hotspot" type="bool" const="ENABLE_WIFI_STATION" dep="ENABLE_HTTPD=1"/>
   <define name="WIFI Hotspot SSID" type="string" const="WIFI_SSID" default="HOTSPOT" dep="ENABLE_WIFI_STATION=1"/>
   <define name="WIFI Hotspot Password" type="string" const="WIFI_PASSWORD" default="PASSWORD" dep="ENABLE_WIFI_STATION=1"/>
 </target>
