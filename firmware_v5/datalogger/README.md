@@ -31,6 +31,13 @@ HTTP Server
 
 The sketch runs a [HTTP server](https://github.com/stanleyhuangyc/Freematics/tree/master/libraries/httpd) through ESP32's WiFi (AP and/or station). Implemented HTTP APIs provide remote access for device running status, statistics and logged/logging data.
 
+Implemented HTTP APIs:
+
+* /api/info - device info
+* /api/list - list of log files
+* /api/log - raw CSV format log file
+* /api/data - timestamped PID data in JSON array
+
 BLE
 ---
 
