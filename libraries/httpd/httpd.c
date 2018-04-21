@@ -1,7 +1,9 @@
 /******************************************************************************
 * MiniWeb - a mini and high efficiency HTTP server implementation
+* Developed by Stanley Huang <stanley@freematics.com.au>
+* Based on the original MiniWeb developed and hosted at
+* https://sourceforge.net/projects/miniweb/
 * Distributed under BSD license
-* Developed by Stanley Huang https://facebook.com/stanleyhuangyc
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -1131,12 +1133,9 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 
 	phsSocket->iRequestCount++;
 
-	if (hp->pxUrlHandler) {
-		if (!_mwCheckUrlHandlers(hp,phsSocket))
-			SETFLAG(phsSocket,FLAG_DATA_FILE);
-	} else {
-			SETFLAG(phsSocket,FLAG_DATA_FILE);
-	}
+	if (!hp->pxUrlHandler || !_mwCheckUrlHandlers(hp,phsSocket))
+		SETFLAG(phsSocket,FLAG_DATA_FILE);
+		
 	// set state to SENDING (actual sending will occur on next select)
 	CLRFLAG(phsSocket,FLAG_RECEIVING)
 	SETFLAG(phsSocket,FLAG_SENDING);
