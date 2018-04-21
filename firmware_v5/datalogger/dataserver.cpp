@@ -1,10 +1,9 @@
 /*************************************************************************
-* OBD/MEMS/GPS Data Logger for Freematics ONE+
-* HTTP server for trip data access via WIFI
+* Vehicle Telemetry Data Logger for Freematics ONE+
 *
-* Distributed under BSD license
-* Visit http://freematics.com/products/freematics-one-plus for more information
 * Developed by Stanley Huang <stanley@freematics.com.au>
+* Distributed under BSD license
+* Visit https://freematics.com/products/freematics-one-plus for more info
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -13,6 +12,12 @@
 * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 * THE SOFTWARE.
+*
+* Implemented HTTP APIs:
+* http://ip/api/info - device info
+* http://ip/api/list - list of log files
+* http://ip/api/log - raw CSV format log file
+* http://ip/api/data - timestamped PID data in JSON array
 *************************************************************************/
 
 #include <Arduino.h>
@@ -31,17 +36,17 @@
 
 #define WIFI_TIMEOUT 5000
 
-#ifdef ESP32
+int hex2uint16(const char *p);
+extern uint32_t fileid;
+
 extern "C"
 {
 uint8_t temprature_sens_read();
 uint32_t hall_sens_read();
 }
-#endif
 
 HttpParam httpParam;
 
-extern uint32_t fileid;
 
 int handlerInfo(UrlHandlerParam* param)
 {
@@ -82,6 +87,101 @@ int handlerLogFile(UrlHandlerParam* param)
     return FLAG_DATA_FILE;
 }
 
+typedef struct {
+    FILE* fp;
+    uint32_t ts;
+    int minVal;
+    int maxVal;
+    int sum;
+    int count;
+    uint16_t pid;
+} DATA_CONTEXT;
+
+int handlerLogData(UrlHandlerParam* param)
+{
+    DATA_CONTEXT* ctx = 0;
+    if (param->hs->ptr) {
+        ctx = (DATA_CONTEXT*)param->hs->ptr;
+		if (!param->pucBuffer) {
+			// connection being closed, last calling, cleanup
+			fclose(ctx->fp);
+            free(ctx);
+			param->hs->ptr = 0;
+			return 0;
+		}
+    } else if (!param->pucBuffer) {
+        return 0;
+    } else {
+        int id = mwGetVarValueInt(param->pxVars, "id", 0);
+        sprintf(param->pucBuffer, "%s/DATA/%u.CSV", httpParam.pchWebPath, id == 0 ? fileid : id);
+        FILE *fp = fopen(param->pucBuffer, "r");
+        if (!fp) return 0;
+        param->hs->ptr = calloc(1, sizeof(DATA_CONTEXT));
+        ctx = (DATA_CONTEXT*)param->hs->ptr;
+        ctx->fp = fp;
+        ctx->pid = mwGetVarValueInt(param->pxVars, "pid", 0);
+    }
+    
+    int len = 0;
+    char buf[64];
+    int jsonlen = 0;
+    uint32_t ts = 0;
+
+    jsonlen = sprintf(param->pucBuffer, "{\"data\":[");
+    for (;;) {
+        int c = fgetc(ctx->fp);
+        if (c < 0) {
+            if (len == 0) {
+                // no more data
+                return 0;
+            }
+            // EOF, tailing JSON
+            if (param->pucBuffer[jsonlen - 1] == ',') jsonlen--;
+            jsonlen += snprintf(param->pucBuffer + jsonlen, param->bufSize - jsonlen,
+                "],\"stats\":{\"count\":%u,\"average\":%d,\"min\":%d,\"max\":%d,\"duration\":%u}}",
+                ctx->count, ctx->sum / ctx->count, ctx->minVal, ctx->maxVal, ts - ctx->ts);
+            break;
+        }
+        if (c == '\n') {
+            // line end, process the line
+            buf[len] = 0;
+            char *value = strchr(buf, ',');
+            if (value++) {
+                uint16_t pid = hex2uint16(buf);
+                if (pid == 0) {
+                    // timestamp
+                    ts = atoi(value);
+                } else if (pid == ctx->pid) {
+                    // generate json array element
+                    jsonlen += snprintf(param->pucBuffer + jsonlen, param->bufSize - jsonlen,
+                        "[%u,%s],", ts, value);
+                    // stats
+                    int v = atoi(value);
+                    if (ctx->count == 0) {
+                        ctx->minVal = v;
+                        ctx->maxVal = v;
+                        ctx->ts = ts;
+                    } else {
+                        if (v < ctx->minVal)
+                            ctx->minVal = v;
+                        else if (v > ctx->maxVal)
+                            ctx->maxVal = v;
+                    }
+                    ctx->count++;
+                    ctx->sum += v;
+                }
+            }
+            len = 0;
+            if (jsonlen + 32 > param->bufSize) break;
+        } else {
+            buf[len++] = c;
+        }
+    }
+    param->contentLength = jsonlen;
+    param->fileType = HTTPFILETYPE_JSON;
+    return FLAG_DATA_STREAM;
+}
+
 int handlerLogList(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
@@ -116,12 +216,13 @@ int handlerLogList(UrlHandlerParam* param)
 }
 
 UrlHandler urlHandlerList[]={
-  {"info", handlerInfo},
-  {"list", handlerLogList},
+    {"api/info", handlerInfo},
+    {"api/list", handlerLogList},
 #if STORAGE == STORAGE_SPIFFS
-  {"log", handlerLogFile},
+    {"api/data", handlerLogData},
+    {"api/log", handlerLogFile},
 #endif
-  {0}
+{0}
 };
 
 void obtainTime()

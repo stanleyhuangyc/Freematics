@@ -1,9 +1,9 @@
 /*************************************************************************
-* OBD/MEMS/GPS Data Logger for Freematics ONE+
-* Distributed under BSD license
+* Vehicle Telemetry Data Logger for Freematics ONE+
 *
-* Visit http://freematics.com/products/freematics-one-plus for more information
 * Developed by Stanley Huang <stanley@freematics.com.au>
+* Distributed under BSD license
+* Visit https://freematics.com/products/freematics-one-plus for more info
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -137,6 +137,7 @@ public:
       Serial.print("OBD ");
       if (obd.init()) {
         Serial.println("OK");
+        pidErrors = 0;
         // retrieve VIN
         char buffer[128];
         if (obd.getVIN(buffer, sizeof(buffer))) {
@@ -302,6 +303,7 @@ public:
   #endif
         Serial.println("Wakeup");
         ble.println("Wakeup");
+        ESP.restart();
     }
     bool checkState(byte flags) { return (m_state & flags) == flags; }
     void setState(byte flags) { m_state |= flags; }
@@ -405,16 +407,6 @@ void loop()
       }
     }
 
-    // re-initialize when OBD is disconnected
-#if USE_OBD
-    if (!logger.checkState(STATE_OBD_READY)) {
-      digitalWrite(PIN_LED, HIGH);
-      logger.init();
-      digitalWrite(PIN_LED, LOW);
-      return;
-    }
-#endif
-
     // poll and log OBD data
     store.setTimestamp(millis());
 #if USE_OBD
@@ -437,6 +429,16 @@ void loop()
 #if ENABLE_HTTPD
       serverProcess(5);
 #endif
+    }
+#endif
+
+    // re-initialize when OBD is disconnected
+#if USE_OBD
+    if (!logger.checkState(STATE_OBD_READY)) {
+      digitalWrite(PIN_LED, HIGH);
+      logger.init();
+      digitalWrite(PIN_LED, LOW);
+      return;
     }
 #endif
 

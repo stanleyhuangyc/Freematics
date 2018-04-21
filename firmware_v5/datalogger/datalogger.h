@@ -42,13 +42,7 @@ public:
     virtual void log(uint16_t pid, int value1, int value2, int value3)
     {
         char buf[24];
-        byte len = sprintf(buf, "%X,%d;%d;%d", pid, value1, value2, value3);
-        write(buf, len);
-    }
-    virtual void logCoordinate(uint16_t pid, int32_t value)
-    {
-        char buf[24];
-        byte len = sprintf(buf, "%X,%d.%06lu", pid, (int)(value / 1000000), abs(value) % 1000000);
+        byte len = sprintf(buf, "%X,%d,%d,%d", pid, value1, value2, value3);
         write(buf, len);
     }
     virtual void setTimestamp(uint32_t ts)
