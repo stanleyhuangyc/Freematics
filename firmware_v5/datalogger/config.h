@@ -28,6 +28,7 @@
 #define ENABLE_WIFI_AP 1
 #define ENABLE_WIFI_STATION 1
 #define WIFI_AP_SSID "DATALOGGER"
+#define WIFI_AP_PASSWORD "PASSWORD"
 #define WIFI_SSID "HOTSPOT"
 #define WIFI_PASSWORD "..."
 #endif

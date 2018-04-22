@@ -35,9 +35,14 @@ uint16_t MMDD = 0;
 uint32_t UTC = 0;
 uint32_t startTime = 0;
 uint32_t pidErrors = 0;
-char vin[18] = {0};
 float accBias[3];
 uint32_t fileid = 0;
+// live data
+float acc[3];
+char vin[18] = {0};
+byte obdPID[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD, 0};
+int16_t obdValue[] = {0, 0, 0, 0};
+GPS_DATA gd = {0};
 
 COBDSPI obd;
 GATTServer ble;
@@ -49,8 +54,8 @@ class DataOutputter : public NullLogger
     {
 #if ENABLE_SERIAL_OUT
         Serial.println(buf);
-#endif
         ble.println(buf);
+#endif
     }
 };
 
@@ -197,7 +202,6 @@ public:
     void logGPSData()
     {
         // issue the command to get parsed GPS data
-        GPS_DATA gd = {0};
         if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd)) {
             store.setTimestamp(millis());
             if (gd.time && gd.time != UTC) {
@@ -279,7 +283,6 @@ public:
             // calculate relative movement
             float motion = 0;
             for (byte n = 0; n < 10; n++) {
-              float acc[3];
               mems.read(acc);
               for (byte i = 0; i < 3; i++) {
                 float m = (acc[i] - accBias[i]);
@@ -331,12 +334,10 @@ void showStats()
     Serial.print(sps, 1);
     Serial.print(" sps");
     if (fileSize > 0) {
-      digitalWrite(PIN_LED, HIGH);
       logger.flushData(fileSize);
       Serial.print(" | ");
       Serial.print(fileSize);
       Serial.print(" bytes");
-      digitalWrite(PIN_LED, LOW);
     }
     Serial.println();
     // output via BLE
@@ -374,7 +375,6 @@ void setup()
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
-    digitalWrite(PIN_LED, HIGH);
     byte ver = obd.begin();
     Serial.print("Firmware Ver. ");
     Serial.println(ver);
@@ -393,7 +393,6 @@ void setup()
 #endif
 
     logger.init();
-    digitalWrite(PIN_LED, LOW);
     delay(1000);
 }
 
@@ -435,16 +434,13 @@ void loop()
     // re-initialize when OBD is disconnected
 #if USE_OBD
     if (!logger.checkState(STATE_OBD_READY)) {
-      digitalWrite(PIN_LED, HIGH);
       logger.init();
-      digitalWrite(PIN_LED, LOW);
       return;
     }
 #endif
 
 #if MEMS_MODE
     if (logger.checkState(STATE_MEMS_READY)) {
-      float acc[3];
       float gyr[3];
       float mag[3];
       bool updated;
@@ -465,7 +461,6 @@ void loop()
       updated = mems.read(acc, gyr, mag);
       if (updated) {
         store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
-        //store.log(PID_GYRO, (int16_t)(gyr[0] * 100), (int16_t)(gyr[1] * 100), (int16_t)(gyr[2] * 100));
       }
 #endif
     }

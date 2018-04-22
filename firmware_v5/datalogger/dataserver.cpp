@@ -15,12 +15,13 @@
 *
 * Implemented HTTP APIs:
 * http://ip/api/info - device info
+* http://ip/api/live - live data (OBD/GPS/MEMS)
 * http://ip/api/list - list of log files
 * http://ip/api/log - raw CSV format log file
 * http://ip/api/data - timestamped PID data in JSON array
 *************************************************************************/
 
-#include <Arduino.h>
+#include <FreematicsPlus.h>
 #if defined(ESP32)
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -36,8 +37,13 @@
 
 #define WIFI_TIMEOUT 5000
 
-int hex2uint16(const char *p);
 extern uint32_t fileid;
+extern float accBias[];
+extern float acc[];
+extern char vin[];
+extern byte obdPID[];
+extern int16_t obdValue[];
+extern GPS_DATA gd;
 
 extern "C"
 {
@@ -100,6 +106,7 @@ typedef struct {
 int handlerLogData(UrlHandlerParam* param)
 {
     DATA_CONTEXT* ctx = 0;
+    uint32_t tsStart = 0;
     if (param->hs->ptr) {
         ctx = (DATA_CONTEXT*)param->hs->ptr;
 		if (!param->pucBuffer) {
@@ -113,6 +120,7 @@ int handlerLogData(UrlHandlerParam* param)
         return 0;
     } else {
         int id = mwGetVarValueInt(param->pxVars, "id", 0);
+        tsStart = mwGetVarValueInt(param->pxVars, "ts", 0);
         sprintf(param->pucBuffer, "%s/DATA/%u.CSV", httpParam.pchWebPath, id == 0 ? fileid : id);
         FILE *fp = fopen(param->pucBuffer, "r");
         if (!fp) return 0;
@@ -151,7 +159,7 @@ int handlerLogData(UrlHandlerParam* param)
                 if (pid == 0) {
                     // timestamp
                     ts = atoi(value);
-                } else if (pid == ctx->pid) {
+                } else if (pid == ctx->pid && ts >= tsStart) {
                     // generate json array element
                     jsonlen += snprintf(param->pucBuffer + jsonlen, param->bufSize - jsonlen,
                         "[%u,%s],", ts, value);
@@ -215,7 +223,27 @@ int handlerLogList(UrlHandlerParam* param)
     return FLAG_DATA_RAW;
 }
 
+int handlerLiveData(UrlHandlerParam* param)
+{
+    char *buf = param->pucBuffer;
+    int bufsize = param->bufSize;
+    int n = snprintf(buf + n, bufsize - n, "{\"obd\":{\"vin\":\"%s\",\"pid\":[", vin);
+    for (int i = 0; obdPID[i]; i++) {
+        n += snprintf(buf + n, bufsize - n, "[%u,%d],", 0x100 | obdPID[i], obdValue[i]);
+    }
+    n--;
+    n += snprintf(buf + n, bufsize - n, "]}");
+    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}}",
+        acc[0] - accBias[0], acc[1] - accBias[1], acc[2] - accBias[2]);
+    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}}",
+        gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
+    param->contentLength = n;
+    param->fileType=HTTPFILETYPE_JSON;
+    return FLAG_DATA_RAW;
+}
+
 UrlHandler urlHandlerList[]={
+    {"api/live", handlerLiveData},
     {"api/info", handlerInfo},
     {"api/list", handlerLogList},
 #if STORAGE == STORAGE_SPIFFS
@@ -302,7 +330,7 @@ bool serverSetup()
 #endif
 
 #if ENABLE_WIFI_AP
-    WiFi.softAP(WIFI_AP_SSID);
+    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
     Serial.print("AP IP address: ");
     Serial.println(WiFi.softAPIP());
 #endif
