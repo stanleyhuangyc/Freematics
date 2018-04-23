@@ -21,6 +21,7 @@
 #include "esp_gatts_api.h"
 #include "esp_bt_defs.h"
 #include "esp_bt_main.h"
+#include "esp_task_wdt.h"
 #include "nvs_flash.h"
 #include "driver/uart.h"
 #include "freertos/queue.h"
@@ -255,6 +256,9 @@ void FreematicsESP32::begin(int cpuMHz)
     if (ret == ESP_ERR_NOT_SUPPORTED) {
         //Serial.println("Power-saving disabled");
     }
+
+    // set watchdog timeout to 30 seconds
+    esp_task_wdt_init(30, 0);
 }
 
 bool FreematicsESP32::gpsInit(unsigned long baudrate)
