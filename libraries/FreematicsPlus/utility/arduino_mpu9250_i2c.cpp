@@ -26,7 +26,7 @@ int arduino_i2c_write(unsigned char slave_addr, unsigned char reg_addr,
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	i2c_master_write_byte(cmd, ( slave_addr << 1 ) | WRITE_BIT, ACK_CHECK_EN);
-	i2c_master_write_byte(cmd, reg_addr, ACK_CHECK_DIS);
+	i2c_master_write_byte(cmd, reg_addr, ACK_CHECK_EN);
 	i2c_master_write(cmd, data, length, ACK_CHECK_DIS);
 	i2c_master_stop(cmd);
 	esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
@@ -41,7 +41,7 @@ int arduino_i2c_read(unsigned char slave_addr, unsigned char reg_addr,
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	i2c_master_write_byte(cmd, ( slave_addr << 1 ) | WRITE_BIT, ACK_CHECK_EN);
-	i2c_master_write_byte(cmd, reg_addr, ACK_CHECK_DIS);
+	i2c_master_write_byte(cmd, reg_addr, ACK_CHECK_EN);
 	i2c_master_stop(cmd);
 	esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
 	i2c_cmd_link_delete(cmd);
