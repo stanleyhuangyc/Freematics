@@ -34,6 +34,7 @@ The sketch runs a [HTTP server](https://github.com/stanleyhuangyc/Freematics/tre
 Implemented HTTP APIs:
 
 * /api/info - device info
+* /api/live - live data (OBD/GPS/MEMS)
 * /api/list - list of log files
 * /api/log - raw CSV format log file
 * /api/data - timestamped PID data in JSON array
