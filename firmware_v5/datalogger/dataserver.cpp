@@ -145,9 +145,11 @@ int handlerLogData(UrlHandlerParam* param)
             }
             // EOF, tailing JSON
             if (param->pucBuffer[jsonlen - 1] == ',') jsonlen--;
-            jsonlen += snprintf(param->pucBuffer + jsonlen, param->bufSize - jsonlen,
-                "],\"stats\":{\"count\":%u,\"average\":%d,\"min\":%d,\"max\":%d,\"duration\":%u}}",
-                ctx->count, ctx->sum / ctx->count, ctx->minVal, ctx->maxVal, ts - ctx->ts);
+            if (ctx->count) {
+                jsonlen += snprintf(param->pucBuffer + jsonlen, param->bufSize - jsonlen,
+                    "],\"stats\":{\"count\":%u,\"average\":%d,\"min\":%d,\"max\":%d,\"duration\":%u}}",
+                    ctx->count, ctx->sum / ctx->count, ctx->minVal, ctx->maxVal, ts - ctx->ts);
+            }
             break;
         }
         if (c == '\n') {
@@ -287,7 +289,6 @@ void serverCheckup()
             // start mDNS responder
             MDNS.begin("datalogger");
             MDNS.addService("http", "tcp", 80);
-            obtainTime();
 
             wifiStartTime = 0;
         }
@@ -300,9 +301,9 @@ void listAPs()
 {
     int n = WiFi.scanNetworks();
     if (n <= 0) {
-        Serial.println("No WIFI AP found");
+        Serial.println("No WiFi AP found");
     } else {
-        Serial.println("WIFI APs found:");
+        Serial.println("WiFi APs found:");
         for (int i = 0; i < n; ++i) {
             // Print SSID and RSSI for each network found
             Serial.print(i + 1);
@@ -342,6 +343,8 @@ bool serverSetup()
         Serial.println("Error starting HTTPd");
         return false;
     }
+
+    obtainTime();
 
     serverCheckup();
     return true;

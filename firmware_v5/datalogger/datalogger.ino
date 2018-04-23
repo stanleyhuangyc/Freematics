@@ -139,7 +139,7 @@ public:
     void init()
     {
 #if USE_OBD
-      Serial.print("OBD ");
+      Serial.print("OBD...");
       if (obd.init()) {
         Serial.println("OK");
         pidErrors = 0;
@@ -153,6 +153,7 @@ public:
       } else {
         Serial.println("NO");
         standby();
+        return;
       }
       setState(STATE_OBD_READY);
 #else
@@ -161,7 +162,7 @@ public:
 
 #if USE_GPS
       if (!checkState(STATE_GPS_FOUND)) {
-        Serial.print("GPS ");
+        Serial.print("GPS...");
         if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
           setState(STATE_GPS_FOUND);
           Serial.println("OK");
@@ -184,11 +185,12 @@ public:
           Serial.println("NO");
         }
 #elif STORAGE == STORAGE_SPIFFS
-        Serial.print("SPIFFS ");
+        Serial.print("SPIFFS...");
         int ret = store.begin();
         if (ret >= 0) {
+          Serial.print("OK (");
           Serial.print(ret);
-          Serial.println(" bytes free");
+          Serial.println(" bytes free)");
           setState(STATE_STORE_READY);
           listDir(SPIFFS, "/", 0);
         } else {
@@ -247,20 +249,21 @@ public:
 #endif
     void flushData(uint32_t fileSize)
     {
-      // flush SD data every 1KB
-        static uint8_t lastFileSize = 0;
-        byte dataSizeKB = fileSize >> 10;
-        if (dataSizeKB != lastFileSize) {
+      // flush storage every 1KB
+        static uint8_t lastSizeKB = 0;
+        static uint8_t flushCount = 0;
+        uint8_t sizeKB = fileSize >> 10;
+        if (sizeKB != lastSizeKB) {
             digitalWrite(PIN_LED, HIGH);
             store.flush();
-            lastFileSize = dataSizeKB;
-#if MAX_DATA_FILE_SIZE
-            if (fileSize >= 1024L * 1024 * MAX_DATA_FILE_SIZE) {
-              store.close();
-              clearState(STATE_FILE_READY);
-            }
-#endif
+            lastSizeKB = sizeKB;
+            flushCount = 0;
             digitalWrite(PIN_LED, LOW);
+        } else if (++flushCount == 100) {
+          // if file size does not increase after many flushes, close file
+          store.close();
+          clearState(STATE_FILE_READY);
+          flushCount = 0;
         }
     }
     void standby()
@@ -369,18 +372,15 @@ void setup()
     sys.begin();
     ble.begin("Freematics ONE+");
 
-#if ENABLE_HTTPD
-    serverSetup();
-#endif
-
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
+    pinMode(PIN_LED, HIGH);
     byte ver = obd.begin();
     Serial.print("Firmware Ver. ");
     Serial.println(ver);
 
 #if MEMS_MODE
-    Serial.print("MEMS ");
+    Serial.print("MEMS...");
     byte ret = mems.begin(ENABLE_ORIENTATION);
     if (ret) {
       logger.setState(STATE_MEMS_READY);
@@ -392,8 +392,13 @@ void setup()
     }
 #endif
 
+#if ENABLE_HTTPD
+    serverSetup();
+#endif
+
+    pinMode(PIN_LED, LOW);
+
     logger.init();
-    delay(1000);
 }
 
 void loop()
