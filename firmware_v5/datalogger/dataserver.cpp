@@ -95,12 +95,14 @@ int handlerLogFile(UrlHandlerParam* param)
 
 typedef struct {
     FILE* fp;
+    uint32_t tsStart;
+    uint32_t tsEnd;
     uint16_t pid;
 } DATA_CONTEXT;
 
 int handlerLogData(UrlHandlerParam* param)
 {
-    uint32_t tsStart = 0;
+    uint32_t duration = 0;
     DATA_CONTEXT* ctx = (DATA_CONTEXT*)param->hs->ptr;
     if (ctx) {
 		if (!param->pucBuffer) {
@@ -113,7 +115,6 @@ int handlerLogData(UrlHandlerParam* param)
 		}
     } else {
         int id = mwGetVarValueInt(param->pxVars, "id", 0);
-        tsStart = mwGetVarValueInt(param->pxVars, "ts", 0);
         sprintf(param->pucBuffer, "%s/DATA/%u.CSV", httpParam.pchWebPath, id == 0 ? fileid : id);
         FILE *fp = fopen(param->pucBuffer, "r");
         if (!fp) {
@@ -125,6 +126,13 @@ int handlerLogData(UrlHandlerParam* param)
         ctx = (DATA_CONTEXT*)param->hs->ptr;
         ctx->fp = fp;
         ctx->pid = mwGetVarValueInt(param->pxVars, "pid", 0);
+        ctx->tsStart = mwGetVarValueInt(param->pxVars, "start", 0);
+        ctx->tsEnd = 0xffffffff;
+        duration = mwGetVarValueInt(param->pxVars, "duration", 0);
+        if (ctx->tsStart && duration) {
+            ctx->tsEnd = ctx->tsStart + duration;
+            duration = 0;
+        }
         // JSON head
         param->contentLength = sprintf(param->pucBuffer, "[");
     }
@@ -136,13 +144,14 @@ int handlerLogData(UrlHandlerParam* param)
     for (;;) {
         int c = fgetc(ctx->fp);
         if (c < 0) {
-            if (param->contentLength <= 1) {
+            if (param->contentLength == 0) {
                 // no more data
                 Serial.println("EOF");
                 return 0;
             }
             // JSON tail
-            param->pucBuffer[param->contentLength - 1] = ']';
+            if (param->pucBuffer[param->contentLength - 1] == ',') param->contentLength--;
+            param->pucBuffer[param->contentLength++] = ']';
             break;
         }
         if (c == '\n') {
@@ -154,7 +163,11 @@ int handlerLogData(UrlHandlerParam* param)
                 if (pid == 0) {
                     // timestamp
                     ts = atoi(value);
-                } else if (pid == ctx->pid && ts >= tsStart) {
+                    if (duration) {
+                        ctx->tsEnd = ts + duration;
+                        duration = 0;
+                    }
+                } else if (pid == ctx->pid && ts >= ctx->tsStart && ts < ctx->tsEnd) {
                     // generate json array element
                     param->contentLength += snprintf(param->pucBuffer + param->contentLength, param->bufSize - param->contentLength,
                         "[%u,%s],", ts, value);
