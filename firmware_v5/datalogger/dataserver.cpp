@@ -95,61 +95,54 @@ int handlerLogFile(UrlHandlerParam* param)
 
 typedef struct {
     FILE* fp;
-    uint32_t ts;
-    int minVal;
-    int maxVal;
-    int sum;
-    int count;
     uint16_t pid;
 } DATA_CONTEXT;
 
 int handlerLogData(UrlHandlerParam* param)
 {
-    DATA_CONTEXT* ctx = 0;
     uint32_t tsStart = 0;
-    if (param->hs->ptr) {
-        ctx = (DATA_CONTEXT*)param->hs->ptr;
+    DATA_CONTEXT* ctx = (DATA_CONTEXT*)param->hs->ptr;
+    if (ctx) {
 		if (!param->pucBuffer) {
 			// connection being closed, last calling, cleanup
+            Serial.println("CLEAN UP");
 			fclose(ctx->fp);
             free(ctx);
 			param->hs->ptr = 0;
 			return 0;
 		}
-    } else if (!param->pucBuffer) {
-        return 0;
     } else {
         int id = mwGetVarValueInt(param->pxVars, "id", 0);
         tsStart = mwGetVarValueInt(param->pxVars, "ts", 0);
         sprintf(param->pucBuffer, "%s/DATA/%u.CSV", httpParam.pchWebPath, id == 0 ? fileid : id);
         FILE *fp = fopen(param->pucBuffer, "r");
-        if (!fp) return 0;
+        if (!fp) {
+            Serial.print("Unable to open ");
+            Serial.println(param->pucBuffer);
+            return 0;
+        }
         param->hs->ptr = calloc(1, sizeof(DATA_CONTEXT));
         ctx = (DATA_CONTEXT*)param->hs->ptr;
         ctx->fp = fp;
         ctx->pid = mwGetVarValueInt(param->pxVars, "pid", 0);
+        // JSON head
+        param->contentLength = sprintf(param->pucBuffer, "[");
     }
     
     int len = 0;
     char buf[64];
-    int jsonlen = 0;
     uint32_t ts = 0;
 
-    jsonlen = sprintf(param->pucBuffer, "{\"data\":[");
     for (;;) {
         int c = fgetc(ctx->fp);
         if (c < 0) {
-            if (len == 0) {
+            if (param->contentLength <= 1) {
                 // no more data
+                Serial.println("EOF");
                 return 0;
             }
-            // EOF, tailing JSON
-            if (param->pucBuffer[jsonlen - 1] == ',') jsonlen--;
-            if (ctx->count) {
-                jsonlen += snprintf(param->pucBuffer + jsonlen, param->bufSize - jsonlen,
-                    "],\"stats\":{\"count\":%u,\"average\":%d,\"min\":%d,\"max\":%d,\"duration\":%u}}",
-                    ctx->count, ctx->sum / ctx->count, ctx->minVal, ctx->maxVal, ts - ctx->ts);
-            }
+            // JSON tail
+            param->pucBuffer[param->contentLength - 1] = ']';
             break;
         }
         if (c == '\n') {
@@ -163,31 +156,16 @@ int handlerLogData(UrlHandlerParam* param)
                     ts = atoi(value);
                 } else if (pid == ctx->pid && ts >= tsStart) {
                     // generate json array element
-                    jsonlen += snprintf(param->pucBuffer + jsonlen, param->bufSize - jsonlen,
+                    param->contentLength += snprintf(param->pucBuffer + param->contentLength, param->bufSize - param->contentLength,
                         "[%u,%s],", ts, value);
-                    // stats
-                    int v = atoi(value);
-                    if (ctx->count == 0) {
-                        ctx->minVal = v;
-                        ctx->maxVal = v;
-                        ctx->ts = ts;
-                    } else {
-                        if (v < ctx->minVal)
-                            ctx->minVal = v;
-                        else if (v > ctx->maxVal)
-                            ctx->maxVal = v;
-                    }
-                    ctx->count++;
-                    ctx->sum += v;
                 }
             }
             len = 0;
-            if (jsonlen + 32 > param->bufSize) break;
-        } else {
+            if (param->contentLength + 32 > param->bufSize) break;
+        } else if (len < sizeof(buf) - 1) {
             buf[len++] = c;
         }
     }
-    param->contentLength = jsonlen;
     param->fileType = HTTPFILETYPE_JSON;
     return FLAG_DATA_STREAM;
 }
@@ -197,7 +175,7 @@ int handlerLogList(UrlHandlerParam* param)
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
     fs::File root = SPIFFS.open("/");
-    int n = snprintf(buf + n, bufsize - n, "{\"trips\":[");
+    int n = snprintf(buf + n, bufsize - n, "[");
     if (root) {
         fs::File file;
         while(file = root.openNextFile()) {
@@ -219,7 +197,7 @@ int handlerLogList(UrlHandlerParam* param)
         }
         if (buf[n - 1] == ',') n--;
     }
-    n += snprintf(buf + n, bufsize - n, "]}");
+    n += snprintf(buf + n, bufsize - n, "]");
     param->fileType=HTTPFILETYPE_JSON;
     param->contentLength = n;
     return FLAG_DATA_RAW;
@@ -326,7 +304,7 @@ bool serverSetup()
     WiFi.mode (WIFI_STA);
 #endif
 
-#if ENABLE_WIFI_STATION
+#if ENABLE_WIFI_AP
     listAPs();
 #endif
 
