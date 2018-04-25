@@ -481,7 +481,7 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		}
 		// check expiration timer (for non-listening, in-use sockets)
 		if (tmCurrentTime > phsSocketCur->tmExpirationTime) {
-			SYSLOG(LOG_INFO,"[%d] Http socket expired\n",phsSocketCur->socket);
+			SYSLOG(LOG_INFO,"[%d] Socket expired and closed\n",phsSocketCur->socket);
 			// close connection
 			phsSocketCur->flags=FLAG_CONN_CLOSE;
 			_mwCloseSocket(hp, phsSocketCur);
@@ -1075,6 +1075,8 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 			phsSocket->request.pucPath = malloc(pathLen + 1);
 			memcpy(phsSocket->request.pucPath, path, pathLen);
 			phsSocket->request.pucPath[pathLen] = 0;
+			SYSLOG(LOG_INFO, "[%d] Request path: %s\n", phsSocket->socket, phsSocket->request.pucPath);
+
 			if (ISFLAGSET(phsSocket,FLAG_REQUEST_POST)) {
 				if (!phsSocket->request.pucPayload) {
 					// first receive of payload, prepare for next receive
@@ -1194,11 +1196,12 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 	if (phsSocket->handler && (ISFLAGSET(phsSocket,FLAG_DATA_STREAM) || ISFLAGSET(phsSocket,FLAG_CLOSE_CALLBACK | FLAG_CONN_CLOSE) == (FLAG_CLOSE_CALLBACK | FLAG_CONN_CLOSE))) {
 		UrlHandlerParam up;
 		UrlHandler* pfnHandler = (UrlHandler*)phsSocket->handler;
+		memset(&up, 0, sizeof(up));
 		up.hs = phsSocket;
 		up.hp = hp;
-		up.pucBuffer = 0;	// indicate connection closed
-		up.bufSize = 0;
+		//notify the handler of closed connection
 		(pfnHandler->pfnUrlHandler)(&up);
+		//unbind handler
 		phsSocket->handler = 0;
 	}
 	if (ISFLAGSET(phsSocket,FLAG_TO_FREE) && phsSocket->ptr) {
@@ -1345,7 +1348,7 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 	hfp.pchHttpPath=filePath; //phsSocket->request.pucPath;
 	mwGetLocalFileName(&hfp);
 	if (stat(hfp.cFilePath, &st) == 0) {
-		isDirPath = S_ISDIR(st.st_mode);
+		isDirPath = (st.st_mode & S_IFDIR);
 	}
 	if (!*filePath) isDirPath = TRUE;
 
@@ -1581,6 +1584,7 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 			//load next chuck of raw data
 			UrlHandlerParam up;
 			UrlHandler* pfnHandler = (UrlHandler*)phsSocket->handler;
+			memset(&up, 0, sizeof(up));
 			up.hs = phsSocket;
 			up.hp = hp;
 			up.pucBuffer=phsSocket->buffer;
@@ -1592,6 +1596,7 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 				}
 				hp->stats.totalSentBytes+=iBytesWritten;
 				SETFLAG(phsSocket, FLAG_CONN_CLOSE);
+				DBG("[%d] End of stream", phsSocket->socket);
 				return 1;	// EOF
 			}
 			phsSocket->dataLength = up.contentLength;
