@@ -173,31 +173,6 @@ public:
       }
 #endif
 
-      if (!checkState(STATE_STORE_READY)) {
-#if STORAGE == STORAGE_SD
-        Serial.print("SD ");
-        int volsize = store.begin();
-        if (volsize > 0) {
-          Serial.print(volsize);
-          Serial.println("MB");
-          setState(STATE_STORE_READY);
-        } else {
-          Serial.println("NO");
-        }
-#elif STORAGE == STORAGE_SPIFFS
-        Serial.print("SPIFFS...");
-        int ret = store.begin();
-        if (ret >= 0) {
-          Serial.print("OK (");
-          Serial.print(ret);
-          Serial.println(" bytes free)");
-          setState(STATE_STORE_READY);
-          listDir(SPIFFS, "/", 0);
-        } else {
-          Serial.println("NO");
-        }
-#endif
-      }
       startTime = millis();
     }
 #if USE_GPS
@@ -268,48 +243,51 @@ public:
     }
     void standby()
     {
-  #if USE_GPS
-        if (checkState(STATE_GPS_READY)) {
-          Serial.print("GPS:");
-          sys.gpsInit(0); // turn off GPS power
-          Serial.println("OFF");
-        }
-  #endif
-        store.close();
-        clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
-        Serial.println("Standby");
-        ble.println("Standby");
-  #if MEMS_MODE
-        if (checkState(STATE_MEMS_READY)) {
-          calibrateMEMS();
-          for (;;) {
-            // calculate relative movement
-            float motion = 0;
-            for (byte n = 0; n < 10; n++) {
-              mems.read(acc);
-              for (byte i = 0; i < 3; i++) {
-                float m = (acc[i] - accBias[i]);
-                motion += m * m;
-              }
-#if ENABLE_HTTPD
-              serverProcess(100);
-#else
-              delay(100);
+#if USE_GPS
+      if (checkState(STATE_GPS_READY)) {
+        Serial.print("GPS:");
+        sys.gpsInit(0); // turn off GPS power
+        Serial.println("OFF");
+      }
 #endif
+      store.close();
+      clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
+#if ENABLE_HTTPD
+      serverCheckup();
+#endif
+      Serial.println("Standby");
+      ble.println("Standby");
+#if MEMS_MODE
+      if (checkState(STATE_MEMS_READY)) {
+        calibrateMEMS();
+        for (;;) {
+          // calculate relative movement
+          float motion = 0;
+          for (byte n = 0; n < 10; n++) {
+            mems.read(acc);
+            for (byte i = 0; i < 3; i++) {
+              float m = (acc[i] - accBias[i]);
+              motion += m * m;
             }
-            Serial.println(motion);
-            // check movement
-            if (motion > WAKEUP_MOTION_THRESHOLD) {
-              break;
-            }
+#if ENABLE_HTTPD
+            serverProcess(100);
+#else
+            delay(100);
+#endif
+          }
+          //Serial.println(motion);
+          // check movement
+          if (motion > WAKEUP_MOTION_THRESHOLD) {
+            break;
           }
         }
-  #else
-        while (!obd.init()) Serial.print('.');
-  #endif
-        Serial.println("Wakeup");
-        ble.println("Wakeup");
-        ESP.restart();
+      }
+#else
+      while (!obd.init()) Serial.print('.');
+#endif
+      Serial.println("Wakeup");
+      ble.println("Wakeup");
+      //ESP.restart();
     }
     bool checkState(byte flags) { return (m_state & flags) == flags; }
     void setState(byte flags) { m_state |= flags; }
@@ -392,8 +370,37 @@ void setup()
     }
 #endif
 
+#if STORAGE == STORAGE_SD
+    Serial.print("SD...");
+    int volsize = store.begin();
+    if (volsize > 0) {
+      Serial.print(volsize);
+      Serial.println("MB");
+      logger.setState(STATE_STORE_READY);
+    } else {
+      Serial.println("NO");
+    }
+#elif STORAGE == STORAGE_SPIFFS
+    Serial.print("SPIFFS...");
+    int freebytes = store.begin();
+    if (freebytes >= 0) {
+      Serial.print(freebytes >> 10);
+      Serial.println(" KB free");
+      logger.setState(STATE_STORE_READY);
+      listDir(SPIFFS, "/", 0);
+    } else {
+      Serial.println("NO");
+    }
+#endif
+
 #if ENABLE_HTTPD
-    serverSetup();
+    Serial.print("HTTP Server...");
+    if (serverSetup()) {
+      Serial.println("OK");
+    } else {
+      Serial.println("NO");
+    }
+    serverCheckup();
 #endif
 
     pinMode(PIN_LED, LOW);
