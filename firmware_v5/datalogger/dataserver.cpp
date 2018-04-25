@@ -14,11 +14,11 @@
 * THE SOFTWARE.
 *
 * Implemented HTTP APIs:
-* http://ip/api/info - device info
-* http://ip/api/live - live data (OBD/GPS/MEMS)
-* http://ip/api/list - list of log files
-* http://ip/api/log - raw CSV format log file
-* http://ip/api/data - timestamped PID data in JSON array
+* /api/info - device info
+* /api/live - live data (OBD/GPS/MEMS)
+* /api/list - list of log files
+* /api/log/<file #> - raw CSV format log file
+* /api/data/<file #>?pid=<PID in decimal> - JSON array of PID data
 *************************************************************************/
 
 #include <FreematicsPlus.h>
@@ -87,7 +87,10 @@ int handlerInfo(UrlHandlerParam* param)
 
 int handlerLogFile(UrlHandlerParam* param)
 {
-    int id = mwGetVarValueInt(param->pxVars, "id", 0);
+    int id = 0;
+    if (param->pucRequest[0] == '/') {
+        id = atoi(param->pucRequest + 1);
+    }
     sprintf(param->pucBuffer, "DATA/%u.CSV", id == 0 ? fileid : id);
     param->fileType=HTTPFILETYPE_TEXT;
     return FLAG_DATA_FILE;
@@ -107,19 +110,19 @@ int handlerLogData(UrlHandlerParam* param)
     if (ctx) {
 		if (!param->pucBuffer) {
 			// connection being closed, last calling, cleanup
-            Serial.println("CLEAN UP");
 			fclose(ctx->fp);
             free(ctx);
 			param->hs->ptr = 0;
 			return 0;
 		}
     } else {
-        int id = mwGetVarValueInt(param->pxVars, "id", 0);
+        int id = 0;
+        if (param->pucRequest[0] == '/') {
+            id = atoi(param->pucRequest + 1);
+        }
         sprintf(param->pucBuffer, "%s/DATA/%u.CSV", httpParam.pchWebPath, id == 0 ? fileid : id);
         FILE *fp = fopen(param->pucBuffer, "r");
         if (!fp) {
-            Serial.print("Unable to open ");
-            Serial.println(param->pucBuffer);
             return 0;
         }
         param->hs->ptr = calloc(1, sizeof(DATA_CONTEXT));
@@ -331,12 +334,9 @@ bool serverSetup()
     httpParam.pxUrlHandler = urlHandlerList;
 
     if (mwServerStart(&httpParam)) {
-        Serial.println("Error starting HTTPd");
         return false;
     }
 
     obtainTime();
-
-    serverCheckup();
     return true;
 }
