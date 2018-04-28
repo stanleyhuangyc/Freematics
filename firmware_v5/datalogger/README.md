@@ -36,8 +36,8 @@ Implemented HTTP APIs:
 * /api/info - device info
 * /api/live - live data (OBD/GPS/MEMS)
 * /api/list - list of log files
-* /api/log/[file #] - raw CSV format log file
-* /api/data/[file #]?pid=[PID in decimal] - JSON array of PID data
+* /api/log/[file #] - content of CSV format log file
+* /api/data/[file #]?pid=[PID # in HEX] - JSON array of PID data
 
 BLE
 ---

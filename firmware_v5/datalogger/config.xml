@@ -5,13 +5,14 @@
   <define name="Enable GPS" type="bool" const="USE_GPS" default="true"/>
   <define name="Motion Sensor">
     <option name="Disabled" const="MEMS_MODE=MEMS_DISABLED"/>
-    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC"/>
-    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF" default="true"/>
+    <option name="6-DOF" const="MEMS_MODE=MEMS_6DOF" default="true"/>
+    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF"/>
     <option name="DMP" const="MEMS_MODE=MEMS_DMP"/>
   </define>
   <define name="Enable Quaternion" type="bool" const="ENABLE_ORIENTATION" default="false"/>
   <define name="Storage">
-    <option name="Flash (SPIFFS)" const="STORAGE=STORAGE_SPIFFS"/>
+    <option name="None" const="STORAGE=STORAGE_NONE"/>
+    <option name="Flash (SPIFFS)" const="STORAGE=STORAGE_SPIFFS" default="true"/>
     <option name="MicroSD" const="STORAGE=STORAGE_SD"/>
   </define>
   <define name="Data Output via Serial" type="bool" const="ENABLE_SERIAL_OUT"/>
