@@ -39,8 +39,6 @@ uint32_t pidErrors = 0;
 float accBias[3];
 uint32_t fileid = 0;
 // live data
-float acc[3];
-
 char vin[18] = {0};
 
 typedef struct {
@@ -63,7 +61,16 @@ PID_POLLING_INFO obdData[]= {
   {0, 0},
 };
 
+#if MEMS_MODE
+float acc[3] = {0};
+float gyr[3] = {0};
+float mag[3] = {0};
+ORIENTATION ori = {0};
+#endif
+
+#if USE_GPS
 GPS_DATA gd = {0};
+#endif
 
 COBDSPI obd;
 GATTServer ble;
@@ -136,10 +143,26 @@ int handlerLiveData(UrlHandlerParam* param)
     }
     n--;
     n += snprintf(buf + n, bufsize - n, "]}");
-    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}}",
+#if MEMS_MODE
+    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
         acc[0] - accBias[0], acc[1] - accBias[1], acc[2] - accBias[2]);
-    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}}",
+    n += snprintf(buf + n, bufsize - n, ",\"gyro\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
+        gyr[0], gyr[1], gyr[2]);
+#if MEMS_MODE == MEMS_9DOF
+    n += snprintf(buf + n, bufsize - n, ",\"mag\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
+        mag[0], mag[1], mag[2]);
+#endif
+#if ENABLE_ORIENTATION
+    n += snprintf(buf + n, bufsize - n, ",\"orientation\":{\"pitch\":\"%f\",\"roll\":\"%f\",\"yaw\":\"%f\"}",
+        ori.pitch, ori.roll, ori.yaw);
+#endif
+    buf[n++] = '}';
+#endif
+#if USE_GPS
+    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}",
         gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
+#endif
+    buf[n++] = '}';
     param->contentLength = n;
     param->fileType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
@@ -509,11 +532,8 @@ void loop()
 
 #if MEMS_MODE
     if (logger.checkState(STATE_MEMS_READY)) {
-      float gyr[3];
-      float mag[3];
       bool updated;
 #if ENABLE_ORIENTATION
-      ORIENTATION ori;
       updated = mems.read(acc, gyr, mag, 0, &ori);
       if (updated) {
         Serial.print("Orientation: ");

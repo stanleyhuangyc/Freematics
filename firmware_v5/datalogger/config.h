@@ -1,5 +1,5 @@
 #define MEMS_DISABLED 0
-#define MEMS_ACC 1
+#define MEMS_6DOF 1
 #define MEMS_9DOF 2
 #define MEMS_DMP 3
 
@@ -16,9 +16,6 @@
 // specify storage type
 #define STORAGE STORAGE_SPIFFS
 #endif
-
-// file size limit
-#define MAX_DATA_FILE_SIZE 100 /* MB */
 
 /**************************************
 * WIFI and HTTP server
