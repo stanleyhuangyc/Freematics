@@ -143,7 +143,7 @@ int handlerLogData(UrlHandlerParam* param)
         param->hs->ptr = calloc(1, sizeof(DATA_CONTEXT));
         ctx = (DATA_CONTEXT*)param->hs->ptr;
         ctx->fp = fp;
-        ctx->pid = mwGetVarValueInt(param->pxVars, "pid", 0);
+        ctx->pid = mwGetVarValueHex(param->pxVars, "pid", 0);
         ctx->tsStart = mwGetVarValueInt(param->pxVars, "start", 0);
         ctx->tsEnd = 0xffffffff;
         duration = mwGetVarValueInt(param->pxVars, "duration", 0);
