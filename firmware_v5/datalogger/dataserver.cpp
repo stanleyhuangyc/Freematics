@@ -21,7 +21,7 @@
 * /api/data/<file #>?pid=<PID in decimal> - JSON array of PID data
 *************************************************************************/
 
-#include <FreematicsPlus.h>
+#include <Arduino.h>
 #if defined(ESP32)
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -38,12 +38,6 @@
 #define WIFI_TIMEOUT 5000
 
 extern uint32_t fileid;
-extern float accBias[];
-extern float acc[];
-extern char vin[];
-extern byte obdPID[];
-extern int16_t obdValue[];
-extern GPS_DATA gd;
 
 extern "C"
 {
@@ -53,6 +47,27 @@ uint32_t hall_sens_read();
 
 HttpParam httpParam;
 
+int handlerLiveData(UrlHandlerParam* param);
+
+static uint16_t hex2uint16(const char *p)
+{
+	char c = *p;
+	uint16_t i = 0;
+	for (uint8_t n = 0; c && n < 4; c = *(++p)) {
+		if (c >= 'A' && c <= 'F') {
+			c -= 7;
+		} else if (c>='a' && c<='f') {
+			c -= 39;
+        } else if (c == ' ' && n == 2) {
+            continue;
+        } else if (c < '0' || c > '9') {
+			break;
+        }
+		i = (i << 4) | (c & 0xF);
+		n++;
+	}
+	return i;
+}
 
 int handlerInfo(UrlHandlerParam* param)
 {
@@ -219,30 +234,11 @@ int handlerLogList(UrlHandlerParam* param)
     return FLAG_DATA_RAW;
 }
 
-int handlerLiveData(UrlHandlerParam* param)
-{
-    char *buf = param->pucBuffer;
-    int bufsize = param->bufSize;
-    int n = snprintf(buf + n, bufsize - n, "{\"obd\":{\"vin\":\"%s\",\"pid\":[", vin);
-    for (int i = 0; obdPID[i]; i++) {
-        n += snprintf(buf + n, bufsize - n, "[%u,%d],", 0x100 | obdPID[i], obdValue[i]);
-    }
-    n--;
-    n += snprintf(buf + n, bufsize - n, "]}");
-    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}}",
-        acc[0] - accBias[0], acc[1] - accBias[1], acc[2] - accBias[2]);
-    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}}",
-        gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
-    param->contentLength = n;
-    param->fileType=HTTPFILETYPE_JSON;
-    return FLAG_DATA_RAW;
-}
-
 UrlHandler urlHandlerList[]={
     {"api/live", handlerLiveData},
     {"api/info", handlerInfo},
-    {"api/list", handlerLogList},
 #if STORAGE == STORAGE_SPIFFS
+    {"api/list", handlerLogList},
     {"api/data", handlerLogData},
     {"api/log", handlerLogFile},
 #endif
@@ -291,25 +287,6 @@ void serverCheckup()
 #endif
 }
 
-void listAPs()
-{
-    int n = WiFi.scanNetworks();
-    if (n <= 0) {
-        Serial.println("No WiFi AP found");
-    } else {
-        Serial.println("WiFi APs found:");
-        for (int i = 0; i < n; ++i) {
-            // Print SSID and RSSI for each network found
-            Serial.print(i + 1);
-            Serial.print(": ");
-            Serial.print(WiFi.SSID(i));
-            Serial.print(" (");
-            Serial.print(WiFi.RSSI(i));
-            Serial.println("dB)");
-        }
-    }
-}
-
 bool serverSetup()
 {
 #if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
@@ -321,13 +298,10 @@ bool serverSetup()
 #endif
 
 #if ENABLE_WIFI_AP
-    listAPs();
-#endif
-
-#if ENABLE_WIFI_AP
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
-    Serial.print("AP IP address: ");
-    Serial.println(WiFi.softAPIP());
+    Serial.print("AP:");
+    Serial.print(WiFi.softAPIP());
+    Serial.print(' ');
 #endif
 
     mwInitParam(&httpParam, 80, "/spiffs");
