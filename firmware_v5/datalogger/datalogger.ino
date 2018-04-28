@@ -16,6 +16,7 @@
 
 #include <SPIFFS.h>
 #include <FreematicsPlus.h>
+#include <httpd.h>
 #include "datalogger.h"
 #include "config.h"
 
@@ -39,9 +40,29 @@ float accBias[3];
 uint32_t fileid = 0;
 // live data
 float acc[3];
+
 char vin[18] = {0};
-byte obdPID[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD, 0};
-int16_t obdValue[] = {0, 0, 0, 0};
+
+typedef struct {
+  byte pid;
+  byte tier;
+  int16_t value;
+  uint32_t ts;
+} PID_POLLING_INFO;
+
+PID_POLLING_INFO obdData[]= {
+  {PID_RPM, 1},
+  {PID_SPEED, 1},
+  {PID_THROTTLE, 1},
+  {PID_ENGINE_LOAD, 1},
+  {PID_FUEL_PRESSURE, 2},
+  {PID_TIMING_ADVANCE, 2},
+  {PID_COOLANT_TEMP, 3},
+  {PID_INTAKE_TEMP, 3},
+  {PID_BAROMETRIC, 3},
+  {0, 0},
+};
+
 GPS_DATA gd = {0};
 
 COBDSPI obd;
@@ -64,7 +85,7 @@ SDLogger store(new DataOutputter);
 #elif STORAGE == STORAGE_SPIFFS
 SPIFFSLogger store(new DataOutputter);
 #else
-NullLogger store(new DataOutputter);
+DataOutputter store;
 #endif
 
 #if MEMS_MODE
@@ -102,6 +123,27 @@ void calibrateMEMS()
     Serial.println(accBias[2]);
 }
 #endif
+
+int handlerLiveData(UrlHandlerParam* param)
+{
+    char *buf = param->pucBuffer;
+    int bufsize = param->bufSize;
+    int n = snprintf(buf + n, bufsize - n, "{\"obd\":{\"vin\":\"%s\",\"pid\":[", vin);
+    uint32_t t = millis();
+    for (int i = 0; i < obdData[i].pid; i++) {
+        n += snprintf(buf + n, bufsize - n, "{\"pid\":%u,\"value\":%d,\"age\":%u},",
+            0x100 | obdData[i].pid, obdData[i].value, t - obdData[i].ts);
+    }
+    n--;
+    n += snprintf(buf + n, bufsize - n, "]}");
+    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}}",
+        acc[0] - accBias[0], acc[1] - accBias[1], acc[2] - accBias[2]);
+    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}}",
+        gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
+    param->contentLength = n;
+    param->fileType=HTTPFILETYPE_JSON;
+    return FLAG_DATA_RAW;
+}
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels)
 {
@@ -222,18 +264,14 @@ public:
         }
     }
 #endif
-    void flushData(uint32_t fileSize)
+    void checkFileSize(uint32_t fileSize)
     {
-      // flush storage every 1KB
         static uint8_t lastSizeKB = 0;
         static uint8_t flushCount = 0;
         uint8_t sizeKB = fileSize >> 10;
         if (sizeKB != lastSizeKB) {
-            digitalWrite(PIN_LED, HIGH);
-            store.flush();
             lastSizeKB = sizeKB;
             flushCount = 0;
-            digitalWrite(PIN_LED, LOW);
         } else if (++flushCount == 100) {
           // if file size does not increase after many flushes, close file
           store.close();
@@ -315,7 +353,7 @@ void showStats()
     Serial.print(sps, 1);
     Serial.print(" sps");
     if (fileSize > 0) {
-      logger.flushData(fileSize);
+      logger.checkFileSize(fileSize);
       Serial.print(" | ");
       Serial.print(fileSize);
       Serial.print(" bytes");
@@ -421,24 +459,42 @@ void loop()
     // poll and log OBD data
     store.setTimestamp(millis());
 #if USE_OBD
-    byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
-    for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
-      int value;
-      byte pid = pids[i];
-      if (obd.readPID(pid, value)) {
-        store.log((uint16_t)pids[i] | 0x100, value);
-      } else {
-        pidErrors++;
-        Serial.print("PID errors: ");
-        Serial.println(pidErrors);
-        ble.print("PID errors: ");
-        ble.println(pidErrors);
-        if (obd.errors >= 3 && !obd.init()) {
-            logger.standby();
+    static int idx[2] = {0, 0};
+    int tier = 1;
+    for (byte i = 0; obdData[i].pid; i++) {
+        if (obdData[i].tier > tier) {
+            // reset previous tier index
+            idx[tier - 2] = 0;
+            // keep new tier number
+            tier = obdData[i].tier;
+            // move up current tier index
+            i += idx[tier - 2]++;
+            // check if into next tier
+            if (obdData[i].tier != tier) {
+                idx[tier - 2]= 0;
+                i--;
+                continue;
+            }
         }
-      }
+        byte pid = obdData[i].pid;
+        if (!obd.isValidPID(pid)) continue;
+        int value;
+        if (obd.readPID(pid, value)) {
+            obdData[i].ts = millis();
+            store.log((uint16_t)pid | 0x100, value);
+        } else {
+            pidErrors++;
+            Serial.print("PID errors: ");
+            Serial.println(pidErrors);
+            ble.print("PID errors: ");
+            ble.println(pidErrors);
+            if (obd.errors >= 3 && !obd.init()) {
+                logger.standby();
+            }
+        }
+        if (tier > 1) break;
 #if ENABLE_HTTPD
-      serverProcess(5);
+        serverProcess(0);
 #endif
     }
 #endif
