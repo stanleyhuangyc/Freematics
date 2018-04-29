@@ -146,9 +146,9 @@ int handlerLiveData(UrlHandlerParam* param)
 #if MEMS_MODE
     n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
         acc[0] - accBias[0], acc[1] - accBias[1], acc[2] - accBias[2]);
+#if MEMS_MODE == MEMS_9DOF || MEMS_MODE == MEMS_DMP
     n += snprintf(buf + n, bufsize - n, ",\"gyro\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
         gyr[0], gyr[1], gyr[2]);
-#if MEMS_MODE == MEMS_9DOF
     n += snprintf(buf + n, bufsize - n, ",\"mag\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
         mag[0], mag[1], mag[2]);
 #endif
