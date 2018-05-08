@@ -67,6 +67,8 @@ protected:
     NullLogger* m_next = 0;
 };
 
+SDClass SD;
+
 class SDLogger : public NullLogger {
 public:
     SDLogger(NullLogger* next = 0) { m_next = next; }
@@ -99,16 +101,15 @@ public:
             SDLib::File file;
             m_id = 0;
             while(file = root.openNextFile()) {
-                if (!strncmp(file.name(), "/DATA/", 6)) {
-                    unsigned int n = atoi(file.name() + 6);
-                    if (n > m_id) m_id = n;
-                }
+                Serial.println(file.name());
+                unsigned int n = atoi(file.name());
+                if (n > m_id) m_id = n;
             }
             m_id++;
         }
 
-        sprintf(path, "/DATA/%u.CSV", m_id);
-        Serial.print("New file: ");
+        sprintf(path + strlen(path), "/%u.CSV", m_id);
+        Serial.print("File:");
         Serial.println(path);
         m_file = SD.open(path, SD_FILE_WRITE);
         if (!m_file) {
@@ -131,7 +132,6 @@ public:
         m_file.flush();
     }
 private:
-    SDClass SD;
     SDLib::File m_file;
 };
 
@@ -178,7 +178,7 @@ public:
         }
         char path[24];
         sprintf(path, "/DATA/%u.CSV", m_id);
-        Serial.print("New file: ");
+        Serial.print("File: ");
         Serial.println(path);
         m_file = SPIFFS.open(path, FILE_WRITE);
         if (!m_file) {
