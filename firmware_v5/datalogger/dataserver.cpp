@@ -16,12 +16,13 @@
 * Implemented HTTP APIs:
 * /api/info - device info
 * /api/live - live data (OBD/GPS/MEMS)
+* /api/control - issue a control command
 * /api/list - list of log files
 * /api/log/<file #> - raw CSV format log file
 * /api/data/<file #>?pid=<PID in decimal> - JSON array of PID data
 *************************************************************************/
 
-#include <Arduino.h>
+#include <FreematicsPlus.h>
 #if defined(ESP32)
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -45,29 +46,14 @@ uint8_t temprature_sens_read();
 uint32_t hall_sens_read();
 }
 
+extern SDClass SD;
+
 HttpParam httpParam;
 
 int handlerLiveData(UrlHandlerParam* param);
+int handlerControl(UrlHandlerParam* param);
 
-static uint16_t hex2uint16(const char *p)
-{
-	char c = *p;
-	uint16_t i = 0;
-	for (uint8_t n = 0; c && n < 4; c = *(++p)) {
-		if (c >= 'A' && c <= 'F') {
-			c -= 7;
-		} else if (c>='a' && c<='f') {
-			c -= 39;
-        } else if (c == ' ' && n == 2) {
-            continue;
-        } else if (c < '0' || c > '9') {
-			break;
-        }
-		i = (i << 4) | (c & 0xF);
-		n++;
-	}
-	return i;
-}
+uint16_t hex2uint16(const char *p);
 
 int handlerInfo(UrlHandlerParam* param)
 {
@@ -90,8 +76,12 @@ int handlerInfo(UrlHandlerParam* param)
     bytes += snprintf(buf + bytes, bufsize - bytes, "\"cpu\":{\"temperature\":%d,\"magnetic\":%d},\n",
         deviceTemp, hall_sens_read());
 
+#if STORAGE == STORAGE_SPIFFS
     bytes += snprintf(buf + bytes, bufsize - bytes, "\"spiffs\":{\"total\":%u,\"used\":%u}",
         SPIFFS.totalBytes(), SPIFFS.usedBytes());
+#else
+    bytes += snprintf(buf + bytes, bufsize - bytes, "\"sd\":{\"total\":%u}", SD.cardSize());
+#endif
 
     if (bytes < bufsize - 1) buf[bytes++] = '}';
 
@@ -205,20 +195,32 @@ int handlerLogList(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
+#if STORAGE == STORAGE_SPIFFS
     fs::File root = SPIFFS.open("/");
+    fs::File file;
+#elif STORAGE == STORAGE_SD
+    SDLib::File root = SD.open("/DATA");
+    SDLib::File file;
+#endif
     int n = snprintf(buf + n, bufsize - n, "[");
     if (root) {
-        fs::File file;
         while(file = root.openNextFile()) {
-            if (!strncmp(file.name(), "/DATA/", 6)) {
-                Serial.print(file.name());
+            const char *fn = file.name();
+#if STORAGE == STORAGE_SPIFFS
+            if (!strncmp(fn, "/DATA/", 6)) {
+                fn += 6;
+#else
+            if (1) {
+#endif
+                unsigned int size = file.size();
+                Serial.print(fn);
                 Serial.print(' ');
-                Serial.print(file.size());
+                Serial.print(size);
                 Serial.println(" bytes");
-                unsigned int id = atoi(file.name() + 6);
+                unsigned int id = atoi(fn);
                 if (id) {
                     n += snprintf(buf + n, bufsize - n, "{\"id\":%u,\"size\":%u",
-                        id, file.size());
+                        id, size);
                     if (id == fileid) {
                         n += snprintf(buf + n, bufsize - n, ",\"active\":true");
                     }
@@ -237,8 +239,9 @@ int handlerLogList(UrlHandlerParam* param)
 UrlHandler urlHandlerList[]={
     {"api/live", handlerLiveData},
     {"api/info", handlerInfo},
-#if STORAGE == STORAGE_SPIFFS
+    {"api/control", handlerControl},
     {"api/list", handlerLogList},
+#if STORAGE == STORAGE_SPIFFS
     {"api/data", handlerLogData},
     {"api/log", handlerLogFile},
 #endif
