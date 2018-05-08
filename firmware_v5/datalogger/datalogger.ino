@@ -27,10 +27,12 @@
 #define STATE_GPS_READY 0x8
 #define STATE_MEMS_READY 0x10
 #define STATE_FILE_READY 0x20
+#define STATE_STANDBY 0x40
 
 void serverProcess(int timeout);
 bool serverSetup();
 void serverCheckup();
+void executeCommand();
 
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
@@ -71,6 +73,8 @@ ORIENTATION ori = {0};
 #if USE_GPS
 GPS_DATA gd = {0};
 #endif
+
+char command[16] = {0};
 
 COBDSPI obd;
 GATTServer ble;
@@ -164,6 +168,22 @@ int handlerLiveData(UrlHandlerParam* param)
 #endif
     buf[n++] = '}';
     param->contentLength = n;
+    param->fileType=HTTPFILETYPE_JSON;
+    return FLAG_DATA_RAW;
+}
+
+int handlerControl(UrlHandlerParam* param)
+{
+    char *cmd = mwGetVarValue(param->pxVars, "cmd", 0);
+    if (!cmd) return 0;
+    char *buf = param->pucBuffer;
+    int bufsize = param->bufSize;
+    if (command[0]) {
+        param->contentLength = snprintf(buf, bufsize, "{\"result\":\"pending\"}");
+    } else {
+        strncpy(command, cmd, sizeof(command) - 1);
+        param->contentLength = snprintf(buf, bufsize, "{\"result\":\"OK\"}");
+    }
     param->fileType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
@@ -318,10 +338,11 @@ public:
 #endif
       Serial.println("Standby");
       ble.println("Standby");
+      setState(STATE_STANDBY);
 #if MEMS_MODE
       if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
-        for (;;) {
+        while (checkState(STATE_STANDBY)) {
           // calculate relative movement
           float motion = 0;
           for (byte n = 0; n < 10; n++) {
@@ -336,11 +357,13 @@ public:
             delay(100);
 #endif
           }
-          //Serial.println(motion);
           // check movement
           if (motion > WAKEUP_MOTION_THRESHOLD) {
+            Serial.print("Motion:");
+            Serial.println(motion);
             break;
           }
+          executeCommand();
         }
       }
 #else
@@ -469,6 +492,24 @@ void setup()
     logger.init();
 }
 
+void executeCommand()
+{
+    if (!command[0]) return;
+    if (!strcmp(command, "reset")) {
+        store.close();
+        ESP.restart();
+        // never reach here
+    } else if (!strcmp(command, "standby")) {
+        command[0] = 0;
+        if (!logger.checkState(STATE_STANDBY)) {
+            logger.standby();
+        }
+    } else if (!strcmp(command, "wakeup")) {
+        logger.clearState(STATE_STANDBY);
+    }
+    command[0] = 0;
+}
+
 void loop()
 {
     // if file not opened, create a new file
@@ -572,4 +613,6 @@ void loop()
 #if !ENABLE_SERIAL_OUT
     showStats();
 #endif
+
+    executeCommand();
 }
