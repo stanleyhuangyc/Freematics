@@ -54,8 +54,6 @@ public:
 	virtual float getVoltage();
 	// get VIN as a string, buffer length should be >= OBD_RECV_BUF_SIZE
 	virtual bool getVIN(char* buffer, byte bufsize);
-	// retrive and parse the response of specifie PID
-	virtual bool getResult(byte& pid, int& result);
 	// determine if the PID is supported
 	virtual bool isValidPID(byte pid);
 	// get adapter firmware version
@@ -66,6 +64,7 @@ public:
 	byte errors = 0;
 	// bit map of supported PIDs
 	byte pidmap[4 * 4] = {0};
+	uint16_t pidWaitTime = OBD_TIMEOUT_SHORT;
 protected:
 	virtual char* getResponse(byte& pid, char* buffer, byte bufsize);
 	virtual int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
