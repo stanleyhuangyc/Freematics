@@ -13,7 +13,7 @@
 HardwareSerial OBDUART(1);
 #endif
 
-#define SAFE_MODE 1
+//#define SAFE_MODE 1
 //#define DEBUG Serial
 
 #ifdef DEBUG
@@ -97,11 +97,17 @@ byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 
 bool COBD::readPID(byte pid, int& result)
 {
-	char cmd[8];
-	sprintf(cmd, "%02X%02X\r", dataMode, pid);
-	write(cmd);
-	// receive and parse the response
-	return getResult(pid, result);
+	char buffer[64];
+	sprintf(buffer, "%02X%02X\r", dataMode, pid);
+	write(buffer);
+	char* data = getResponse(pid, buffer, sizeof(buffer));
+	if (!data) {
+		recover();
+		errors++;
+		return false;
+	}
+	result = normalizeData(pid, data);
+	return true;
 }
 
 byte COBD::readPID(const byte pid[], byte count, int result[])
@@ -269,19 +275,6 @@ char* COBD::getResponse(byte& pid, char* buffer, byte bufsize)
 	return 0;
 }
 
-bool COBD::getResult(byte& pid, int& result)
-{
-	char buffer[64];
-	char* data = getResponse(pid, buffer, sizeof(buffer));
-	if (!data) {
-		recover();
-		errors++;
-		return false;
-	}
-	result = normalizeData(pid, data);
-	return true;
-}
-
 void COBD::enterLowPowerMode()
 {
   	char buf[32];
@@ -312,7 +305,7 @@ char* COBD::getResultValue(char* buf)
 float COBD::getVoltage()
 {
     char buf[32];
-	if (sendCommand("ATRV\r", buf, sizeof(buf)) > 0) {
+	if (sendCommand("ATRV\r", buf, sizeof(buf), 100) > 0) {
 		char* p = getResultValue(buf);
 		if (p) return (float)atof(p);
     }
@@ -673,12 +666,16 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-	int len = strlen(s);
 	digitalWrite(SPI_PIN_CS, LOW);
-	delay(1);
-	SPI.writeBytes((uint8_t*)header, sizeof(header));
-	SPI.writeBytes((uint8_t*)s, len);
-	SPI.write(0x1B);
+	int len = strlen(s);
+	uint8_t *buf = (uint8_t*)malloc(sizeof(header) + len + 1);
+	memcpy(buf, (uint8_t*)header, sizeof(header));
+	memcpy(buf + sizeof(header), s, len);
+	buf[sizeof(header) + len] = 0x1B;
+
+	SPI.writeBytes((uint8_t*)buf, sizeof(header) + len + 1);
+
+	free(buf);
 	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
@@ -704,7 +701,10 @@ bool COBDSPI::readPID(byte pid, int& result)
 #else
 	delay(1);
 #endif
-	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
+	uint32_t t = millis();
+	int ret = receive(buffer, sizeof(buffer), pidWaitTime);
+	pidWaitTime = millis() - t + (pidWaitTime >> 1);
+	if (ret > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
 		while ((p = strstr(p, "41 "))) {
 			p += 3;
@@ -720,6 +720,7 @@ bool COBDSPI::readPID(byte pid, int& result)
 			}
 		}
 	}
+
 	if (!data) {
 		errors++;
 		return false;
