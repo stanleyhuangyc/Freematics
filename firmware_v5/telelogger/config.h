@@ -8,6 +8,7 @@
 #define NET_WIFI 1
 #define NET_SIM800 2
 #define NET_SIM5360 3
+#define NET_SIM7600 4
 
 #define MEMS_DISABLED 0
 #define MEMS_ACC 1
@@ -15,7 +16,7 @@
 #define MEMS_DMP 3
 
 #define STORAGE_NONE 0
-#define STORAGE_FLASH 1
+#define STORAGE_SPIFFS 1
 #define STORAGE_SD 2
 
 /**************************************
@@ -26,8 +27,6 @@
 #endif
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 3
-// maximum allowed time for re-establishing OBD connection
-#define MAX_OBD_RETRY_TIME 15000 /* ms */
 
 // VIN used when real one unavailable
 #ifdef DEVICE_ID
@@ -36,6 +35,9 @@
 #define DEFAULT_VIN "FreematicsDevice"
 #endif
 
+// minimum processing loop time
+#define MIN_LOOP_TIME 1000 /* ms */
+
 /**************************************
 * Networking configurations
 **************************************/
@@ -43,7 +45,7 @@
 // change the following line to change network device
 #define NET_DEVICE NET_WIFI
 // WIFI settings
-#define WIFI_SSID "FREEMATICS"
+#define WIFI_SSID "HOTSPOT"
 #define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network
 #define CELL_APN "connect"
@@ -60,8 +62,6 @@
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
-// minimum loop time (avoiding too fast data rate)
-#define MIN_LOOP_TIME 100 /* ms */
 
 /**************************************
 * BLE configurations
@@ -77,7 +77,7 @@
 **************************************/
 #ifndef STORAGE_TYPE
 // change the following line to change storage type
-#define STORAGE_TYPE STORAGE_NONE
+#define STORAGE_TYPE STORAGE_SD
 #endif
 #ifndef STORAGE_SIZE
 #endif
@@ -110,6 +110,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
+#define RESET_AFTER_WAKEUP 1
 // motion threshold for waking up
 #define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
 // engine jumpstart voltage

@@ -16,6 +16,7 @@
 ******************************************************************************/
 
 #include <FreematicsPlus.h>
+#include "telelogger.h"
 #include "config.h"
 
 // logger states
@@ -79,8 +80,10 @@ UDPClientWIFI net;
 UDPClientSIM800 net;
 #elif NET_DEVICE == NET_SIM5360
 UDPClientSIM5360 net;
+#elif NET_DEVICE == NET_SIM7600
+UDPClientSIM7600 net;
 #else
-UDPClient net; // null client
+NullClient net; // null client
 #endif
 
 #if MEMS_MODE == MEMS_ACC
@@ -91,7 +94,9 @@ MPU9250_9DOF mems;
 MPU9250_DMP mems;
 #endif
 CStorageRAM cache;
-#if STORAGE_TYPE == STORAGE_SD
+#if STORAGE_TYPE == STORAGE_SPIFFS
+CStorageSPIFFS store;
+#elif STORAGE_TYPE == STORAGE_SD
 CStorageSD store;
 #endif
 CStorageRAM netbuf;
@@ -448,7 +453,7 @@ bool initialize()
   if (!state.check(STATE_NET_READY)) {
     return false;
   }
-#elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
+#elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
     Serial.print(net.deviceName());
@@ -525,7 +530,7 @@ bool initialize()
   }
 #endif
 
-#if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
+#if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
   Serial.print("IP...");
   String ip = net.getIP();
   if (ip.length()) {
@@ -553,7 +558,7 @@ bool initialize()
 
   cache.header(feedid);
   lastSyncTime = millis();
-#if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
+#if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
   // log signal level
   if (csq) cache.log(PID_CSQ, csq);
 #endif
@@ -574,31 +579,8 @@ bool initialize()
   }
 
 #if STORAGE_TYPE != STORAGE_NONE
-  // need valid current date for data storage
-  unsigned long date = 0;
-  if (utcValid) {
-    date = (unsigned long)(1900 + btm->tm_year) * 10000 + (btm->tm_mon + 1) * 100 + btm->tm_mday;
-  } else if (state.check(STATE_GPS_READY)) {
-  #if WAIT_FOR_GPS
-    // wait for GPS signal to get UTC
-    Serial.print("Waiting GPS time..");
-    for (int i = 0; i < 60; i++) {
-      Serial.print('.');
-      delay(1000);
-      GPS_DATA gdata;
-      if (gpsGetData(&gdata) && gdata.date != 0) break;
-    }
-    Serial.println();
-    if (gdata.date) {
-      unsigned int year = (gdata.date % 100) + 2000;
-      unsigned int month = (gdata.date / 100) % 100;
-      unsigned int day = (gdata.date / 10000);
-      date = (unsigned long)year * 10000 + month * 100 + day;
-    }
-  #endif
-  }
   if (state.check(STATE_STORAGE_READY)) {
-    if (store.begin(date)) {
+    if (store.begin()) {
       cache.setForward(&store);
     }
   }
@@ -955,6 +937,15 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
+    Serial.print("SPIFFS...");
+    if (SPIFFS.begin(true)) {
+      Serial.print("OK (");
+      Serial.print((SPIFFS.totalBytes() - SPIFFS.usedBytes()) >> 10);
+      Serial.println("KB free)");
+    } else {
+      Serial.println("NO");
+    }
+    
     // one-time initializations
     sys.begin();
     BLE.begin(BLE_DEVICE_NAME);
