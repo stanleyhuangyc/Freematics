@@ -16,6 +16,7 @@
 ******************************************************************************/
 
 #include <FreematicsPlus.h>
+#include <httpd.h>
 #include "telelogger.h"
 #include "config.h"
 
@@ -29,25 +30,53 @@
 #define STATE_ALL_GOOD 0x40
 #define STATE_STANDBY 0x80
 
+typedef struct {
+  byte pid;
+  byte tier;
+  int16_t value;
+  uint32_t ts;
+} PID_POLLING_INFO;
+
+PID_POLLING_INFO obdData[]= {
+  {PID_SPEED, 1},
+  {PID_RPM, 1},
+  {PID_THROTTLE, 1},
+  {PID_ENGINE_LOAD, 1},
+  {PID_FUEL_PRESSURE, 2},
+  {PID_TIMING_ADVANCE, 2},
+  {PID_COOLANT_TEMP, 3},
+  {PID_INTAKE_TEMP, 3},
+  {PID_BAROMETRIC, 3},
+  {0, 0},
+};
+
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
 #endif
+
+// live data
 char vin[18] = DEFAULT_VIN;
+int16_t batteryVoltage = 0;
+GPS_DATA gd = {0};
+uint8_t deviceTemp = 0; // device temperature
+
+// stats data
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
 uint32_t lastSentTime = 0;
 uint32_t lastSyncTime = 0;
-uint8_t deviceTemp = 0; // device temperature
-uint32_t sendingInterval = DATA_SENDING_INTERVAL;
-uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 
+uint32_t sendingInterval = DATA_SENDING_INTERVAL;
+uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 uint16_t feedid = 0;
 String serverName;
 uint32_t txCount = 0;
 uint8_t connErrors = 0;
+
+int fileid = 0;
 
 uint32_t lastCmdToken = 0;
 String serialCommand;
@@ -55,6 +84,9 @@ String serialCommand;
 byte ledMode = 0;
 
 void idleTasks();
+bool serverSetup();
+void serverProcess(int timeout);
+String executeCommand(const char* cmd);
 
 class State {
 public:
@@ -94,9 +126,9 @@ MPU9250_9DOF mems;
 MPU9250_DMP mems;
 #endif
 CStorageRAM cache;
-#if STORAGE_TYPE == STORAGE_SPIFFS
+#if STORAGE == STORAGE_SPIFFS
 CStorageSPIFFS store;
-#elif STORAGE_TYPE == STORAGE_SD
+#elif STORAGE == STORAGE_SD
 CStorageSD store;
 #endif
 CStorageRAM netbuf;
@@ -111,6 +143,42 @@ void printTimeoutStats()
   Serial.print(timeoutsOBD);
   Serial.print(" Network:");
   Serial.println(timeoutsNet);
+}
+
+/*******************************************************************************
+  HTTP API
+*******************************************************************************/
+int handlerLiveData(UrlHandlerParam* param)
+{
+    char *buf = param->pucBuffer;
+    int bufsize = param->bufSize;
+    int n = snprintf(buf + n, bufsize - n, "{\"obd\":{\"vin\":\"%s\",\"battery\":%d,\"pid\":[", vin, (int)batteryVoltage);
+    uint32_t t = millis();
+    for (int i = 0; i < obdData[i].pid; i++) {
+        n += snprintf(buf + n, bufsize - n, "{\"pid\":%u,\"value\":%d,\"age\":%u},",
+            0x100 | obdData[i].pid, obdData[i].value, t - obdData[i].ts);
+    }
+    n--;
+    n += snprintf(buf + n, bufsize - n, "]}");
+#if ENABLE_GPS
+    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}",
+        gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
+#endif
+    buf[n++] = '}';
+    param->contentLength = n;
+    param->fileType=HTTPFILETYPE_JSON;
+    return FLAG_DATA_RAW;
+}
+
+int handlerControl(UrlHandlerParam* param)
+{
+    char *cmd = mwGetVarValue(param->pxVars, "cmd", 0);
+    if (!cmd) return 0;
+    String result = executeCommand(cmd);
+    param->contentLength = snprintf(param->pucBuffer, param->bufSize,
+        "{\"result\":\"%s\"}", result.c_str());
+    param->fileType=HTTPFILETYPE_JSON;
+    return FLAG_DATA_RAW;
 }
 
 /*******************************************************************************
@@ -257,7 +325,7 @@ void transmit()
     txCount++;
     // output some stats
     char buf[64];
-#if STORAGE_TYPE == STORAGE_NONE
+#if STORAGE == STORAGE_NONE
     sprintf(buf, "%u bytes sent", cache.length());
 #else
     sprintf(buf, "%uB sent %u KB saved", cache.length(), store.size() >> 10);
@@ -288,44 +356,46 @@ void transmit()
   Reading and processing OBD data
 *******************************************************************************/
 #if ENABLE_OBD
-int logOBDPID(byte pid)
-{
-  int value;
-  idleTasks();
-  if (obd.readPID(pid, value)) {
-    cache.log((uint16_t)0x100 | pid, (int16_t)value);
-  } else {
-    timeoutsOBD++;
-    printTimeoutStats();
-    value = -1;
-  }
-  return value;
-}
-
 void processOBD()
 {
-  int speed = logOBDPID(PID_SPEED);
-  if (speed == -1) {
-    return;
-  }
-  // calculate distance for speed
+  static int idx[2] = {0, 0};
+  int tier = 1;
   uint32_t t = millis();
+  for (byte i = 0; obdData[i].pid; i++) {
+    if (obdData[i].tier > tier) {
+        // reset previous tier index
+        idx[tier - 2] = 0;
+        // keep new tier number
+        tier = obdData[i].tier;
+        // move up current tier index
+        i += idx[tier - 2]++;
+        // check if into next tier
+        if (obdData[i].tier != tier) {
+            idx[tier - 2]= 0;
+            i--;
+            continue;
+        }
+    }
+    byte pid = obdData[i].pid;
+    if (!obd.isValidPID(pid)) continue;
+    int value;
+    if (obd.readPID(pid, value)) {
+        obdData[i].ts = millis();
+        store.log((uint16_t)pid | 0x100, value);
+    } else {
+        timeoutsOBD++;
+        printTimeoutStats();
+    }
+    if (tier > 1) break;
+    idleTasks();
+  }
+
+  // calculate distance for speed
+  int speed = obdData[0].value;
   distance += (speed + lastSpeed) * (t - lastSpeedTime) / 3600 / 2;
   lastSpeedTime = t;
   lastSpeed = speed;
   cache.log(PID_TRIP_DISTANCE, distance);
-  // poll more PIDs
-  const byte pids[]= {PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
-  for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
-    logOBDPID(pids[i]);
-  }
-  const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP};
-  static byte idx = 0;
-  byte pid = pidTier2[idx];
-  if (obd.isValidPID(pid)) {
-    logOBDPID(pid);
-  }
-  if (++idx >= sizeof(pidTier2)) idx = 0;
 }
 #endif
 
@@ -334,7 +404,6 @@ void processGPS()
 {
   static uint16_t lastUTC = 0;
   static uint8_t lastGPSDay = 0;
-  GPS_DATA gd = {0};
   // read parsed GPS data
   if (sys.gpsGetData(&gd)) {
       if (gd.date && lastUTC != (uint16_t)gd.time) {
@@ -426,7 +495,7 @@ bool initialize()
   }
 #endif
 
-#if STORAGE_TYPE != STORAGE_NONE
+#if STORAGE != STORAGE_NONE
   if (!state.check(STATE_STORAGE_READY)) {
     // init storage
     if (store.init()) {
@@ -578,9 +647,10 @@ bool initialize()
     utcValid = true;
   }
 
-#if STORAGE_TYPE != STORAGE_NONE
+#if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
-    if (store.begin()) {
+    fileid = store.begin();
+    if (fileid) {
       cache.setForward(&store);
     }
   }
@@ -616,7 +686,7 @@ String executeCommand(const char* cmd)
     digitalWrite(PIN_LED, (ledMode == 2) ? HIGH : LOW);
     result = "OK";
   } else if (!strcmp(cmd, "REBOOT")) {
-  #if STORAGE_TYPE != STORAGE_NONE
+  #if STORAGE != STORAGE_NONE
     if (state.check(STATE_STORAGE_READY)) {
       store.end();
       state.clear(STATE_STORAGE_READY);
@@ -743,8 +813,8 @@ void process()
 
 #if ENABLE_OBD
   // read and log car battery voltage, data in 0.01v
-  int v = obd.getVoltage() * 100;
-  cache.log(PID_BATTERY_VOLTAGE, v);
+  batteryVoltage = obd.getVoltage() * 100;
+  cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
 #endif
 
 #if ENABLE_GPS
@@ -802,9 +872,8 @@ void process()
 void standby()
 {
   shutDownNet();
-#if STORAGE_TYPE != STORAGE_NONE
+#if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
-    cache.uninit();
     store.end();
     state.clear(STATE_STORAGE_READY);
   }
@@ -831,7 +900,6 @@ void standby()
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
     while (state.check(STATE_STANDBY)) {
-      delay(100);
       // calculate relative movement
       float motion = 0;
       float acc[3];
@@ -840,9 +908,15 @@ void standby()
         float m = (acc[i] - accBias[i]);
         motion += m * m;
       }
-      //Serial.println(motion);
+#if ENABLE_HTTPD
+      serverProcess(100);
+#else
+      delay(100);
+#endif
       // check movement
       if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+        Serial.print("Motion:");
+        Serial.println(motion);
         break;
       }
     }
@@ -853,7 +927,7 @@ void standby()
   do {
     delay(5000);
     v = obd.getVoltage();
-    Serial.println(v);
+    batteryVoltage = v * 100;    
   } while (v < JUMPSTART_VOLTAGE);
 #else
   delay(5000);
@@ -897,6 +971,12 @@ void idleTasks()
       break;
     }
   } while(0);
+
+  // process http server requests
+#if ENABLE_HTTPD
+  serverProcess(0);
+#endif
+
   // check serial input for command
   while (Serial.available()) {
     char c = Serial.read();
@@ -946,6 +1026,15 @@ void setup()
       Serial.println("NO");
     }
     
+  #if ENABLE_HTTPD
+    Serial.print("HTTPD...");
+    if (serverSetup()) {
+      Serial.println("OK");
+    } else {
+      Serial.println("NO");
+    }
+  #endif
+
     // one-time initializations
     sys.begin();
     BLE.begin(BLE_DEVICE_NAME);

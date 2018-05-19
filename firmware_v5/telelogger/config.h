@@ -36,7 +36,7 @@
 #endif
 
 // minimum processing loop time
-#define MIN_LOOP_TIME 1000 /* ms */
+#define MIN_LOOP_TIME 500 /* ms */
 
 /**************************************
 * Networking configurations
@@ -55,6 +55,12 @@
 #endif
 
 #define SERVER_KEY "TEST_SERVER_KEY"
+
+#ifndef ENABLE_HTTPD
+#define ENABLE_HTTPD 1
+#endif
+#define WIFI_AP_SSID "TELELOGGER"
+#define WIFI_AP_PASSWORD "PASSWORD"
 
 // maximum consecutive communication errors before entering standby
 #define MAX_CONN_ERRORS 20
@@ -75,11 +81,9 @@
 /**************************************
 * Data storage configurations
 **************************************/
-#ifndef STORAGE_TYPE
+#ifndef STORAGE
 // change the following line to change storage type
-#define STORAGE_TYPE STORAGE_SD
-#endif
-#ifndef STORAGE_SIZE
+#define STORAGE STORAGE_SD
 #endif
 
 #define RAM_CACHE_SIZE 1024 /* bytes */
@@ -110,9 +114,9 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 1
+#define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
-#define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
+#define WAKEUP_MOTION_THRESHOLD 0.3f /* in unit of G */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
