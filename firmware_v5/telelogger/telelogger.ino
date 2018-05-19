@@ -381,7 +381,7 @@ void processOBD()
     int value;
     if (obd.readPID(pid, value)) {
         obdData[i].ts = millis();
-        store.log((uint16_t)pid | 0x100, value);
+        cache.log((uint16_t)pid | 0x100, value);
     } else {
         timeoutsOBD++;
         printTimeoutStats();
