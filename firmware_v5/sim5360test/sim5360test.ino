@@ -40,32 +40,35 @@ FreematicsESP32 sys;
 class SIM5360 {
 public:
     SIM5360() { buffer[0] = 0; }
-    bool netInit()
+    bool init()
     {
+      if (sendCommand("ATI\r", 50, "SIM5360")) {
+        return true;
+      }
       for (byte n = 0; n < 10; n++) {
         // try turning on module
         sys.xbTogglePower();
-        delay(3000);
+        delay(2000);
         // discard any stale data
         sys.xbPurge();
         for (byte m = 0; m < 3; m++) {
-          if (netSendCommand("AT\r"))
+          if (sendCommand("ATI\r", 500, "SIM5360"))
             return true;
         }
       }
       return false;
     }
-    bool netSetup(const char* apn, bool only3G = false)
+    bool setup(const char* apn, bool only3G = false, bool roaming = false)
     {
       uint32_t t = millis();
       bool success = false;
-      netSendCommand("ATE0\r");
-      if (only3G) netSendCommand("AT+CNMP=14\r"); // use WCDMA only
+      sendCommand("ATE0\r");
+      if (only3G) sendCommand("AT+CNMP=14\r"); // use WCDMA only
       do {
         do {
           Serial.print('.');
           delay(500);
-          success = netSendCommand("AT+CPSI?\r", 1000, "Online");
+          success = sendCommand("AT+CPSI?\r", 1000, "Online");
           if (success) {
             if (!strstr_P(buffer, PSTR("NO SERVICE")))
               break;
@@ -78,38 +81,59 @@ public:
 
         t = millis();
         do {
-          success = netSendCommand("AT+CREG?\r", 5000, "+CREG: 0,1");
+          success = sendCommand("AT+CREG?\r", 5000, roaming ? "+CREG: 0,5" : "+CREG: 0,1");
         } while (!success && millis() - t < 30000);
         if (!success) break;
 
         do {
-          success = netSendCommand("AT+CGREG?\r",1000, "+CGREG: 0,1");
+          success = sendCommand("AT+CGREG?\r",1000, roaming ? "+CGREG: 0,5" : "+CGREG: 0,1");
         } while (!success && millis() - t < 30000);
         if (!success) break;
 
         do {
           sprintf_P(buffer, PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), apn);
-          success = netSendCommand(buffer);
+          success = sendCommand(buffer);
         } while (!success && millis() - t < 30000);
         if (!success) break;
 
-        success = netSendCommand("AT+CSOCKSETPN=1\r");
+        //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
+
+        success = sendCommand("AT+CSOCKSETPN=1\r");
         if (!success) break;
 
-        success = netSendCommand("AT+CIPMODE=0\r");
+        success = sendCommand("AT+CIPMODE=0\r");
         if (!success) break;
 
-        netSendCommand("AT+NETOPEN\r");
+        sendCommand("AT+NETOPEN\r");
       } while(0);
       if (!success) Serial.println(buffer);
       return success;
+    }
+    bool initGPS()
+    {
+      for (;;) {
+        Serial.println("INIT GPS");
+        if (sendCommand("AT+CGPS=1\r")) break;
+        Serial.println(buffer);
+        sendCommand("AT+CGPS=0\r");
+        delay(3000);
+      }
+
+      Serial.println(buffer);
+
+      for (;;) {
+        sendCommand("AT+CGPSINFO\r");
+        Serial.println(buffer);
+        delay(3000);
+      }
+      return true;
     }
     const char* getIP()
     {
       uint32_t t = millis();
       char *ip = 0;
       do {
-        if (netSendCommand("AT+IPADDR\r", 5000, "\r\nOK\r\n", true)) {
+        if (sendCommand("AT+IPADDR\r", 5000, "\r\nOK\r\n", true)) {
           char *p = strstr(buffer, "+IPADDR:");
           if (p) {
             ip = p + 9;
@@ -125,7 +149,7 @@ public:
     }
     int getSignal()
     {
-        if (netSendCommand("AT+CSQ\r", 500)) {
+        if (sendCommand("AT+CSQ\r", 500)) {
             char *p = strchr(buffer, ':');
             if (p) {
               p += 2;
@@ -140,7 +164,7 @@ public:
     bool getOperatorName()
     {
         // display operator name
-        if (netSendCommand("AT+COPS?\r") == 1) {
+        if (sendCommand("AT+COPS?\r") == 1) {
             char *p = strstr(buffer, ",\"");
             if (p) {
                 p += 2;
@@ -154,14 +178,14 @@ public:
     }
     bool udpInit()
     {
-      return netSendCommand("AT+CIPOPEN=0,\"UDP\",,,8000\r", 3000);
+      return sendCommand("AT+CIPOPEN=0,\"UDP\",,,8000\r", 3000);
     }
     bool udpSend(const char* ip, uint16_t port, const char* data, unsigned int len)
     {
       sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, ip, port);
-      if (netSendCommand(buffer, 100, ">")) {
+      if (sendCommand(buffer, 100, ">")) {
         sys.xbWrite(data, len);
-        return netSendCommand(0, 1000);
+        return sendCommand(0, 1000);
       } else {
         Serial.println(buffer);
       }
@@ -169,7 +193,7 @@ public:
     }
     char* udpReceive(int* pbytes = 0)
     {
-      if (netSendCommand(0, 3000, "+IPD")) {
+      if (sendCommand(0, 3000, "+IPD")) {
         char *p = strstr(buffer, "+IPD");
         if (!p) return 0;
         int len = atoi(p + 4);
@@ -184,17 +208,17 @@ public:
     }
     bool httpOpen()
     {
-        return netSendCommand("AT+CHTTPSSTART\r", 3000);
+        return sendCommand("AT+CHTTPSSTART\r", 3000);
     }
     void httpClose()
     {
-      netSendCommand("AT+CHTTPSCLSE\r");
+      sendCommand("AT+CHTTPSCLSE\r");
     }
     bool httpConnect()
     {
         sprintf_P(buffer, PSTR("AT+CHTTPSOPSE=\"%s\",%u,1\r"), HTTP_SERVER_URL, HTTP_SERVER_PORT);
         //Serial.println(buffer);
-	      return netSendCommand(buffer, MAX_CONN_TIME);
+	      return sendCommand(buffer, MAX_CONN_TIME);
     }
     unsigned int genHttpHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
     {
@@ -213,7 +237,7 @@ public:
       unsigned int headerSize = genHttpHeader(method, path, keepAlive, payload, payloadSize);
       // issue HTTP send command
       sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), headerSize + payloadSize);
-      if (!netSendCommand(buffer, 100, ">")) {
+      if (!sendCommand(buffer, 100, ">")) {
         Serial.println(buffer);
         Serial.println("Connection closed");
       }
@@ -223,7 +247,7 @@ public:
       // send POST payload if any
       if (payload) sys.xbWrite(payload);
       buffer[0] = 0;
-      if (netSendCommand("AT+CHTTPSSEND\r")) {
+      if (sendCommand("AT+CHTTPSSEND\r")) {
         checkTimer = millis();
         return true;
       } else {
@@ -241,7 +265,7 @@ public:
           [XX bytes from server]\r\n
           \r\n+CHTTPSRECV: 0\r\n
         */
-        if (netSendCommand("AT+CHTTPSRECV=384\r", MAX_CONN_TIME, "\r\n+CHTTPSRECV: 0", true)) {
+        if (sendCommand("AT+CHTTPSRECV=384\r", MAX_CONN_TIME, "\r\n+CHTTPSRECV: 0", true)) {
           char *p = strstr(buffer, "+CHTTPSRECV:");
           if (p) {
             p = strchr(p, ',');
@@ -271,7 +295,7 @@ public:
         return ret;
       }
     }
-    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK\r\n", bool terminated = false)
+    bool sendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK\r\n", bool terminated = false)
     {
       if (cmd) {
         sys.xbWrite(cmd);
@@ -306,15 +330,16 @@ void setup()
     // initialize SIM5360 xBee module (if present)
     Serial.print("Init SIM5360...");
     sys.xbBegin(XBEE_BAUDRATE);
-    if (net.netInit()) {
+    if (net.init()) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
       for (;;);
     }
+    Serial.println(net.buffer);
 
     Serial.print("Connecting network");
-    if (net.netSetup(APN, true)) {
+    if (net.setup(APN, true)) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
