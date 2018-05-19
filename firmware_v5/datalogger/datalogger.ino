@@ -14,7 +14,6 @@
 * THE SOFTWARE.
 *************************************************************************/
 
-#include <SPIFFS.h>
 #include <FreematicsPlus.h>
 #include <httpd.h>
 #include "datalogger.h"
@@ -42,6 +41,7 @@ float accBias[3];
 uint32_t fileid = 0;
 // live data
 char vin[18] = {0};
+int16_t batteryVoltage = 0;
 
 typedef struct {
   byte pid;
@@ -51,8 +51,8 @@ typedef struct {
 } PID_POLLING_INFO;
 
 PID_POLLING_INFO obdData[]= {
-  {PID_RPM, 1},
   {PID_SPEED, 1},
+  {PID_RPM, 1},
   {PID_THROTTLE, 1},
   {PID_ENGINE_LOAD, 1},
   {PID_FUEL_PRESSURE, 2},
@@ -76,7 +76,12 @@ GPS_DATA gd = {0};
 
 char command[16] = {0};
 
+#if USE_OBD == OBD_UART
+COBD obd;
+#else
 COBDSPI obd;
+#endif
+
 GATTServer ble;
 FreematicsESP32 sys;
 
@@ -139,7 +144,7 @@ int handlerLiveData(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
-    int n = snprintf(buf + n, bufsize - n, "{\"obd\":{\"vin\":\"%s\",\"pid\":[", vin);
+    int n = snprintf(buf + n, bufsize - n, "{\"obd\":{\"vin\":\"%s\",\"battery\":%d,\"pid\":[", vin, (int)batteryVoltage);
     uint32_t t = millis();
     for (int i = 0; i < obdData[i].pid; i++) {
         n += snprintf(buf + n, bufsize - n, "{\"pid\":%u,\"value\":%d,\"age\":%u},",
@@ -324,6 +329,7 @@ public:
     }
     void standby()
     {
+      store.close();
 #if USE_GPS
       if (checkState(STATE_GPS_READY)) {
         Serial.print("GPS:");
@@ -331,14 +337,13 @@ public:
         Serial.println("OFF");
       }
 #endif
-      store.close();
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
 #if ENABLE_HTTPD
       serverCheckup();
 #endif
+      setState(STATE_STANDBY);
       Serial.println("Standby");
       ble.println("Standby");
-      setState(STATE_STANDBY);
 #if MEMS_MODE
       if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
@@ -358,7 +363,7 @@ public:
 #endif
           }
           // check movement
-          if (motion > WAKEUP_MOTION_THRESHOLD) {
+          if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
             Serial.print("Motion:");
             Serial.println(motion);
             break;
@@ -597,8 +602,8 @@ void loop()
 
 #if USE_OBD
     // log battery voltage (from voltmeter), data in 0.01v
-    int v = obd.getVoltage() * 100;
-    store.log(PID_BATTERY_VOLTAGE, v);
+    batteryVoltage = obd.getVoltage() * 100;
+    store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
 #endif
 
 #if USE_GPS
