@@ -1,4 +1,4 @@
-#include <FreematicsONE.h>
+#include <FreematicsPlus.h>
 
 MPU9250_DMP imu;
 
@@ -7,7 +7,7 @@ void setup()
   delay(1000);
   Serial.begin(115200);
   Serial.println("MPU-9250 DMP Quaternion Test");
-  if (!imu.memsInit(true, 10))
+  if (!imu.begin(true, 10))
   {
     Serial.println("Unable to communicate with MPU-9250");
     Serial.println("Check connections, and try again.");
@@ -20,7 +20,7 @@ void loop()
 {
   float acc[3];
   ORIENTATION ori;
-  if (imu.memsRead(acc, 0, 0, 0, &ori)) {
+  if (imu.read(acc, 0, 0, 0, &ori)) {
     Serial.print("Accelerometer: X=");
     Serial.print(acc[0]);
     Serial.print("g Y=");
