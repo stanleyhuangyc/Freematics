@@ -19,7 +19,7 @@
 * /api/control - issue a control command
 * /api/list - list of log files
 * /api/log/<file #> - raw CSV format log file
-* /api/data/<file #>?pid=<PID in decimal> - JSON array of PID data
+* /api/data/<file #>?pid=<PID in hex> - JSON array of PID data
 *************************************************************************/
 
 #include <FreematicsPlus.h>
@@ -90,33 +90,28 @@ int handlerInfo(UrlHandlerParam* param)
     return FLAG_DATA_RAW;
 }
 
-int handlerLogFile(UrlHandlerParam* param)
-{
-    int id = 0;
-    if (param->pucRequest[0] == '/') {
-        id = atoi(param->pucRequest + 1);
-    }
-    sprintf(param->pucBuffer, "DATA/%u.CSV", id == 0 ? fileid : id);
-    param->fileType=HTTPFILETYPE_TEXT;
-    return FLAG_DATA_FILE;
-}
-
-typedef struct {
-    FILE* fp;
+class LogDataContext {
+public:
+#if STORAGE == STORAGE_SPIFFS
+    fs::File file;
+#else
+    SDLib::File file;
+#endif
     uint32_t tsStart;
     uint32_t tsEnd;
     uint16_t pid;
-} DATA_CONTEXT;
+};
 
-int handlerLogData(UrlHandlerParam* param)
+int handlerLogFile(UrlHandlerParam* param)
 {
     uint32_t duration = 0;
-    DATA_CONTEXT* ctx = (DATA_CONTEXT*)param->hs->ptr;
+    LogDataContext* ctx = (LogDataContext*)param->hs->ptr;
+    param->fileType = HTTPFILETYPE_TEXT;
     if (ctx) {
 		if (!param->pucBuffer) {
-			// connection being closed, last calling, cleanup
-			fclose(ctx->fp);
-            free(ctx);
+			// connection to be closed, final calling, cleanup
+			ctx->file.close();
+            delete ctx;
 			param->hs->ptr = 0;
 			return 0;
 		}
@@ -125,14 +120,61 @@ int handlerLogData(UrlHandlerParam* param)
         if (param->pucRequest[0] == '/') {
             id = atoi(param->pucRequest + 1);
         }
-        sprintf(param->pucBuffer, "%s/DATA/%u.CSV", httpParam.pchWebPath, id == 0 ? fileid : id);
-        FILE *fp = fopen(param->pucBuffer, "r");
-        if (!fp) {
-            return 0;
+        sprintf(param->pucBuffer, "/DATA/%u.CSV", id == 0 ? fileid : id);
+        ctx = new LogDataContext;
+#if STORAGE == STORAGE_SPIFFS
+        ctx->file = SPIFFS.open(param->pucBuffer, FILE_READ);
+#else
+        ctx->file = SD.open(param->pucBuffer, SD_FILE_READ);
+#endif
+        if (!ctx->file) {
+            strcat(param->pucBuffer, " not found");
+            param->contentLength = strlen(param->pucBuffer);
+            delete ctx;
+            return FLAG_DATA_RAW;
         }
-        param->hs->ptr = calloc(1, sizeof(DATA_CONTEXT));
-        ctx = (DATA_CONTEXT*)param->hs->ptr;
-        ctx->fp = fp;
+        param->hs->ptr = (void*)ctx;
+    }
+
+    if (!ctx->file.available()) {
+        // EOF
+        return 0;
+    }
+    param->contentLength = ctx->file.readBytes(param->pucBuffer, param->bufSize);
+    param->fileType = HTTPFILETYPE_TEXT;
+    return FLAG_DATA_STREAM;
+}
+
+int handlerLogData(UrlHandlerParam* param)
+{
+    uint32_t duration = 0;
+    LogDataContext* ctx = (LogDataContext*)param->hs->ptr;
+    param->fileType = HTTPFILETYPE_JSON;
+    if (ctx) {
+		if (!param->pucBuffer) {
+			// connection to be closed, final calling, cleanup
+			ctx->file.close();
+            delete ctx;
+			param->hs->ptr = 0;
+			return 0;
+		}
+    } else {
+        int id = 0;
+        if (param->pucRequest[0] == '/') {
+            id = atoi(param->pucRequest + 1);
+        }
+        sprintf(param->pucBuffer, "/DATA/%u.CSV", id == 0 ? fileid : id);
+        ctx = new LogDataContext;
+#if STORAGE == STORAGE_SPIFFS
+        ctx->file = SPIFFS.open(param->pucBuffer, FILE_READ);
+#else
+        ctx->file = SD.open(param->pucBuffer, SD_FILE_READ);
+#endif
+        if (!ctx->file) {
+            param->contentLength = sprintf(param->pucBuffer, "{\"error\":\"Data file not found\"}");
+            delete ctx;
+            return FLAG_DATA_RAW;
+        }
         ctx->pid = mwGetVarValueHex(param->pxVars, "pid", 0);
         ctx->tsStart = mwGetVarValueInt(param->pxVars, "start", 0);
         ctx->tsEnd = 0xffffffff;
@@ -141,6 +183,7 @@ int handlerLogData(UrlHandlerParam* param)
             ctx->tsEnd = ctx->tsStart + duration;
             duration = 0;
         }
+        param->hs->ptr = (void*)ctx;
         // JSON head
         param->contentLength = sprintf(param->pucBuffer, "[");
     }
@@ -150,11 +193,10 @@ int handlerLogData(UrlHandlerParam* param)
     uint32_t ts = 0;
 
     for (;;) {
-        int c = fgetc(ctx->fp);
-        if (c < 0) {
+        int c = ctx->file.read();
+        if (c == -1) {
             if (param->contentLength == 0) {
-                // no more data
-                Serial.println("EOF");
+                // EOF
                 return 0;
             }
             // JSON tail
@@ -187,7 +229,6 @@ int handlerLogData(UrlHandlerParam* param)
             buf[len++] = c;
         }
     }
-    param->fileType = HTTPFILETYPE_JSON;
     return FLAG_DATA_STREAM;
 }
 
@@ -240,12 +281,12 @@ UrlHandler urlHandlerList[]={
     {"api/live", handlerLiveData},
     {"api/info", handlerInfo},
     {"api/control", handlerControl},
+#if STORAGE != STORAGE_NONE
     {"api/list", handlerLogList},
-#if STORAGE == STORAGE_SPIFFS
     {"api/data", handlerLogData},
     {"api/log", handlerLogFile},
 #endif
-{0}
+    {0}
 };
 
 void obtainTime()

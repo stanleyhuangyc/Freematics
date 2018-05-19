@@ -101,7 +101,6 @@ public:
             SDLib::File file;
             m_id = 0;
             while(file = root.openNextFile()) {
-                Serial.println(file.name());
                 unsigned int n = atoi(file.name());
                 if (n > m_id) m_id = n;
             }
@@ -111,7 +110,7 @@ public:
         sprintf(path + strlen(path), "/%u.CSV", m_id);
         Serial.print("File:");
         Serial.println(path);
-        m_file = SD.open(path, SD_FILE_WRITE);
+        m_file = SD.open(path, SD_FILE_READ | SD_FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
             m_id = 0;
