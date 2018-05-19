@@ -4,8 +4,6 @@ class CStorageNull {
 public:
     virtual bool init() { return true; }
     virtual void uninit() {}
-    virtual bool begin() { return true; }
-    virtual void end() {}
     virtual void log(uint16_t pid, int16_t value)
     {
         char buf[16];
@@ -124,6 +122,8 @@ protected:
     char* m_cache = 0;
 };
 
+SDClass SD;
+
 class CStorageSD : public CStorageNull {
 public:
     bool init()
@@ -139,13 +139,13 @@ public:
         Serial.println("MB");
         return true;
     }
-    bool begin()
+    int begin()
     {
         char path[24] = "/DATA";
         SD.mkdir(path);
         SDLib::File root = SD.open(path);
         if (!root) {
-            return false;
+            return 0;
         } else {
             SDLib::File file;
             m_id = 0;
@@ -164,7 +164,7 @@ public:
             Serial.println("File error");
             return 0;
         }
-        return true;
+        return m_id;
     }
     void end()
     {
@@ -188,7 +188,6 @@ public:
         return m_file.size();
     }
 private:
-    SDClass SD;
     SDLib::File m_file;
     int m_id = 0;
     uint16_t m_sizeKB = 0;
@@ -211,11 +210,11 @@ public:
         m_file.write('\n');
         if (m_next) m_next->dispatch(buf, len);
     }
-    bool begin()
+    int begin()
     {
         fs::File root = SPIFFS.open("/");
         if (!root) {
-            return false;
+            return 0;
         } else {
             fs::File file;
             m_id = 0;
@@ -235,9 +234,9 @@ public:
         if (!m_file) {
             Serial.println("File error");
             m_id = 0;
-            return false;
+            return 0;
         }
-        return true;
+        return m_id;
     }
     uint32_t size()
     {

@@ -16,16 +16,17 @@
     <option name="4G LTE (SIM7600)" const="NET_DEVICE=NET_SIM7600"/>
   </define>
   <define name="Storage">
-    <option name="None" const="STORAGE_TYPE=STORAGE_NONE"/>
-    <option name="SPIFFS" const="STORAGE_TYPE=STORAGE_SPIFFS"/>
-    <option name="MicroSD" const="STORAGE_TYPE=STORAGE_SD" default="true"/>
+    <option name="None" const="STORAGE=STORAGE_NONE"/>
+    <option name="SPIFFS" const="STORAGE=STORAGE_SPIFFS"/>
+    <option name="MicroSD" const="STORAGE=STORAGE_SD" default="true"/>
   </define>
-  <define name="WIFI SSID" const="WIFI_SSID" type="string" default="FREEMATICS" dep="NET_WIFI"/>
-  <define name="WIFI Password" const="WIFI_PASSWORD" type="string" default="PASSWORD" dep="NET_WIFI"/>
+  <define name="WiFi SSID" const="WIFI_SSID" type="string" default="FREEMATICS" dep="NET_WIFI"/>
+  <define name="WiFi Password" const="WIFI_PASSWORD" type="string" default="PASSWORD" dep="NET_WIFI"/>
   <define name="Cellular Network APN" const="CELL_APN" type="string" default="connect" dep="NET_SIM7600 NET_SIM5360 NET_SIM800"/>
   <define name="Transmission Interval (ms)" const="DATA_SENDING_INTERVAL" type="number" default="500"/>
   <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
   <define name="Server Port" const="SERVER_PORT" type="number" default="8081"/>
   <define name="Device ID" const="DEVICE_ID" type="string" default="FreematicsDevice"/>
+  <define name="WiFi AP HTTP Server" const="ENABLE_HTTPD" type="bool" default="true"/>
 </target>
 </config>
