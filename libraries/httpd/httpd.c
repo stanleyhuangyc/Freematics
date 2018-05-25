@@ -470,7 +470,7 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 
 		{
 			int iError=0;
-			int iOptSize=sizeof(int);
+			socklen_t iOptSize = sizeof(int);
 			if (getsockopt(socket,SOL_SOCKET,SO_ERROR,(char*)&iError,&iOptSize)) {
 				// if a socket contains a error, close it
 				SYSLOG(LOG_INFO,"[%d] Socket no longer vaild.\n",socket);
@@ -647,11 +647,10 @@ SOCKET _mwAcceptSocket(HttpParam* hp,struct sockaddr_in *sinaddr)
 #ifndef WIN32
     // set to non-blocking to stop sends from locking up thread
 	{
-        int iRc;
         int iSockFlags;
         iSockFlags = fcntl(socket, F_GETFL, 0);
         iSockFlags |= O_NONBLOCK;
-        iRc = fcntl(socket, F_SETFL, iSockFlags);
+        fcntl(socket, F_SETFL, iSockFlags);
 	}
 #endif
 
@@ -738,7 +737,7 @@ int mwParseQueryString(UrlHandlerParam* up)
 {
 	if (up->iVarCount==-1) {
 		//parsing variables from query string
-		unsigned char *p,*s;
+		char *p,*s;
 		// get start of query string
 		s = strchr(up->pucRequest, '?');
 		if (s) {
@@ -1242,7 +1241,7 @@ int _mwStrHeadMatch(char** pbuf1, const char* buf2) {
 	char* buf1 = *pbuf1;
 	int x;
 	for(i=0;buf2[i];i++) {
-		if ((x=tolower(buf1[i])-tolower(buf2[i]))) return 0;
+		if ((x=toupper((int)buf1[i])-toupper((int)buf2[i]))) return 0;
 	}
 	*pbuf1 = buf1 + i;
 	return i;
@@ -1511,7 +1510,7 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 			if (phsSocket->flags & FLAG_CHUNK) {
 				send(phsSocket->socket, "0\r\n\r\n", 5, 0);
 			}
-			if (phsSocket->fp > 0) {
+			if (phsSocket->fp) {
 				DBG("Closing file\n");
 				fclose(phsSocket->fp);
 				phsSocket->fp = 0;
@@ -1557,7 +1556,7 @@ int _mwStartSendRawData(HttpParam *hp, HttpSocket* phsSocket)
 ////////////////////////////////////////////////////////////////////////////
 int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 {
-	int  iBytesWritten;
+	int  iBytesWritten = 0;
 
 	if (phsSocket->flags & FLAG_CHUNK) {
 		char buf[16];
@@ -1649,12 +1648,12 @@ char* _mwStrStrNoCase(char* pchHaystack, char* pchNeedle)
   char* pchReturn=NULL;
 
   while(*pchHaystack!='\0' && pchReturn==NULL) {
-    if (toupper(*pchHaystack)==toupper(pchNeedle[0])) {
+    if (toupper((int)*pchHaystack)==toupper((int)pchNeedle[0])) {
       char* pchTempHay=pchHaystack;
       char* pchTempNeedle=pchNeedle;
       // start of match
       while(*pchTempHay!='\0') {
-        if(toupper(*pchTempHay)!=toupper(*pchTempNeedle)) {
+        if(toupper((int)*pchTempHay)!=toupper((int)*pchTempNeedle)) {
           // failed to match
           break;
         }
