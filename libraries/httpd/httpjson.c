@@ -51,7 +51,6 @@ int mwParseJSONString(UrlHandlerParam* up)
 	NameValuePair pair;
 	char keybase[256] = { 0 };
 	int curLevel = 0;
-	int lastLevel = 0;
 	_mwFreeJSONPairs(up);
 
 	while (*p) {
@@ -112,17 +111,17 @@ int mwParseJSONString(UrlHandlerParam* up)
 					pair.value = p;
 					if (!strncmp(p, "true", 4)) {
 						p += 4;
-						if (isalpha(*p) || isdigit(*p)) continue;
+						if (isalpha((int)*p) || isdigit((int)*p)) continue;
 						pair.type = JSON_TYPE_BOOLEAN;
 					}
 					else if (!strncmp(p, "false", 5)) {
 						p += 5;
-						if (isalpha(*p) || isdigit(*p)) continue;
+						if (isalpha((int)*p) || isdigit((int)*p)) continue;
 						pair.type = JSON_TYPE_BOOLEAN;
 					}
 					else {
 						pair.type = JSON_TYPE_DECIMAL;
-						while (*(++p) == '.' || *p == '-' || isdigit(*p));
+						while (*(++p) == '.' || *p == '-' || isdigit((int)*p));
 					}
 					char c = *p;
 					*q = 0;
