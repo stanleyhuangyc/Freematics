@@ -59,8 +59,8 @@ int handlerInfo(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
-    int bytes = snprintf(buf, bufsize, "{\"httpd\":{\"uptime\":%u,\"clients\":%u,\"requests\":%u,\"traffic\":%u},\n",
-        millis(), httpParam.stats.clientCount, httpParam.stats.reqCount, (unsigned int)(httpParam.stats.totalSentBytes >> 10));
+    int bytes = snprintf(buf, bufsize, "{\"httpd\":{\"uptime\":%lu,\"clients\":%d,\"requests\":%u,\"traffic\":%u},\n",
+        millis(), httpParam.stats.clientCount, (unsigned int)httpParam.stats.reqCount, (unsigned int)(httpParam.stats.totalSentBytes >> 10));
 
     time_t now;
     time(&now);
@@ -243,7 +243,7 @@ int handlerLogList(UrlHandlerParam* param)
     SDLib::File root = SD.open("/DATA");
     SDLib::File file;
 #endif
-    int n = snprintf(buf + n, bufsize - n, "[");
+    int n = snprintf(buf, bufsize, "[");
     if (root) {
         while(file = root.openNextFile()) {
             const char *fn = file.name();
