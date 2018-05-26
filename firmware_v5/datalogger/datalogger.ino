@@ -437,13 +437,13 @@ void setup()
     Serial.println("MB Flash");
 
     sys.begin();
-    ble.begin("Freematics ONE+");
+    ble.begin(WIFI_AP_SSID);
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
     byte ver = obd.begin();
-    Serial.print("Firmware Ver. ");
+    Serial.print("OBD Firmware Ver. ");
     Serial.println(ver);
 
 #if MEMS_MODE

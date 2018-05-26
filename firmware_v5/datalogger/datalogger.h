@@ -19,6 +19,7 @@ class NullLogger {
 public:
     virtual int begin()
     {
+        m_dataCount = 0;
         return 1;
     }
     virtual void log(uint16_t pid, int16_t value)
@@ -26,24 +27,28 @@ public:
         char buf[24];
         byte len = sprintf(buf, "%X,%d", pid, value) ;
         write(buf, len);
+        m_dataCount++;
     }
     virtual void log(uint16_t pid, int32_t value)
     {
         char buf[24];
         byte len = sprintf(buf, "%X,%d", pid, value);
         write(buf, len);
+        m_dataCount++;
     }
     virtual void log(uint16_t pid, uint32_t value)
     {
         char buf[24];
         byte len = sprintf(buf, "%X,%u", pid, value);
         write(buf, len);
+        m_dataCount++;
     }
     virtual void log(uint16_t pid, int value1, int value2, int value3)
     {
         char buf[24];
         byte len = sprintf(buf, "%X,%d,%d,%d", pid, value1, value2, value3);
         write(buf, len);
+        m_dataCount++;
     }
     virtual void setTimestamp(uint32_t ts)
     {
@@ -74,7 +79,6 @@ public:
     SDLogger(NullLogger* next = 0) { m_next = next; }
     int begin()
     {
-        m_dataCount = 0;
         pinMode(PIN_SD_CS, OUTPUT);
         if (SD.begin(PIN_SD_CS)) {
           return SD.cardSize();
@@ -87,7 +91,6 @@ public:
         if (m_next) m_next->write(buf, len);
         m_file.write((uint8_t*)buf, len);
         m_file.write('\n');
-        m_dataCount++;
     }
     uint32_t open()
     {
@@ -156,7 +159,6 @@ public:
             }
         }
         m_file.write('\n');
-        m_dataCount++;
     }
     uint32_t open()
     {
