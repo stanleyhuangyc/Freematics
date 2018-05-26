@@ -1,9 +1,7 @@
 /*************************************************************************
-* OBD/MEMS/GPS Data Logger for Freematics ONE+
-* Data logging and file storage on microSD or SPIFFS
+* Helper classes for data logging and storage on microSD or SPIFFS
 *
 * Distributed under BSD license
-* Visit http://freematics.com/products/freematics-one-plus for more information
 * Developed by Stanley Huang <stanley@freematics.com.au>
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR

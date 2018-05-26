@@ -1,9 +1,9 @@
 /*************************************************************************
-* Vehicle Telemetry Data Logger for Freematics ONE+
+* GPS data logger for Freematics Esprit / ESP32
 *
 * Developed by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
-* Visit https://freematics.com/products/freematics-one-plus for more info
+* Visit https://freematics.com/products/esprit for more info
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
