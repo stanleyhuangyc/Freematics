@@ -20,24 +20,24 @@ public:
         m_dataCount = 0;
         return 1;
     }
-    virtual void log(uint16_t pid, int16_t value)
-    {
-        char buf[24];
-        byte len = sprintf(buf, "%X,%d", pid, value) ;
-        write(buf, len);
-        m_dataCount++;
-    }
-    virtual void log(uint16_t pid, int32_t value)
+    virtual void log(uint16_t pid, int value)
     {
         char buf[24];
         byte len = sprintf(buf, "%X,%d", pid, value);
         write(buf, len);
         m_dataCount++;
     }
-    virtual void log(uint16_t pid, uint32_t value)
+    virtual void log(uint16_t pid, unsigned int value)
     {
         char buf[24];
         byte len = sprintf(buf, "%X,%u", pid, value);
+        write(buf, len);
+        m_dataCount++;
+    }
+    virtual void log(uint16_t pid, float value)
+    {
+        char buf[24];
+        byte len = sprintf(buf, "%X,%f", pid, value);
         write(buf, len);
         m_dataCount++;
     }
