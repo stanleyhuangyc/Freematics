@@ -175,9 +175,9 @@ public:
     void logSensorData()
     {
         int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
-        int hall = hall_sens_read();
         store.log(PID_DEVICE_TEMP, deviceTemp);
-        store.log(PID_DEVICE_HALL, hall);
+        store.log(PID_DEVICE_HALL, hall_sens_read());
+        store.log(PID_ANALOG_INPUT1, (int16_t)analogRead(A0));
     }
     void waitGPS()
     {
