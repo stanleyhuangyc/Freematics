@@ -19,6 +19,9 @@
 #include <httpd.h>
 #include "telelogger.h"
 #include "config.h"
+#if ENABLE_OLED
+#include "FreematicsOLED.h"
+#endif
 
 // logger states
 #define STATE_STORAGE_READY 0x1
@@ -46,12 +49,12 @@ PID_POLLING_INFO obdData[]= {
   {PID_TIMING_ADVANCE, 2},
   {PID_COOLANT_TEMP, 3},
   {PID_INTAKE_TEMP, 3},
-  {PID_BAROMETRIC, 3},
-  {0, 0},
 };
 
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
+float acc[3] = {0};
+uint32_t lastMotionTime = 0;
 #endif
 
 // live data
@@ -72,8 +75,8 @@ uint32_t timeoutsNet = 0;
 uint32_t sendingInterval = DATA_SENDING_INTERVAL;
 uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 uint16_t feedid = 0;
-String serverName;
 uint32_t txCount = 0;
+uint32_t txBytes = 0;
 uint8_t connErrors = 0;
 
 int fileid = 0;
@@ -84,7 +87,7 @@ String serialCommand;
 byte ledMode = 0;
 
 void idleTasks();
-bool serverSetup();
+bool serverSetup(IPAddress& ip);
 void serverProcess(int timeout);
 String executeCommand(const char* cmd);
 
@@ -137,6 +140,10 @@ CStorageRAM netbuf;
 COBDSPI obd;
 #endif
 
+#if ENABLE_OLED
+OLED_SH1106 oled;
+#endif
+
 void printTimeoutStats()
 {
   Serial.print("Timeouts: OBD:");
@@ -148,18 +155,24 @@ void printTimeoutStats()
 /*******************************************************************************
   HTTP API
 *******************************************************************************/
+#if ENABLE_HTTPD
 int handlerLiveData(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
-    int n = snprintf(buf + n, bufsize - n, "{\"obd\":{\"vin\":\"%s\",\"battery\":%d,\"pid\":[", vin, (int)batteryVoltage);
+    int n = snprintf(buf, bufsize, "{\"obd\":{\"vin\":\"%s\",\"battery\":%d,\"pid\":[", vin, (int)batteryVoltage);
     uint32_t t = millis();
-    for (int i = 0; i < obdData[i].pid; i++) {
+    for (int i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
         n += snprintf(buf + n, bufsize - n, "{\"pid\":%u,\"value\":%d,\"age\":%u},",
             0x100 | obdData[i].pid, obdData[i].value, t - obdData[i].ts);
     }
     n--;
     n += snprintf(buf + n, bufsize - n, "]}");
+#if MEMS_MODE
+    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":[%d,%d,%d],\"stationary\":%u}",
+        (int)((acc[0] - accBias[0]) * 100), (int)((acc[1] - accBias[1]) * 100), (int)((acc[2] - accBias[2]) * 100),
+        millis() - lastMotionTime);
+#endif
 #if ENABLE_GPS
     n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}",
         gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
@@ -180,6 +193,7 @@ int handlerControl(UrlHandlerParam* param)
     param->fileType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
+#endif
 
 /*******************************************************************************
   Freematics Hub client implementation
@@ -255,7 +269,6 @@ bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
       if (p) {
         char *q = strchr(p, ',');
         if (q) *q = 0;
-        serverName = p + 3;
       }
       feedid = hex2uint16(data);
     }
@@ -291,22 +304,21 @@ bool login()
       }
     }
 #endif
-    serverName = SERVER_HOST;
     // login Freematics Hub
     if (!notifyServer(EVENT_LOGIN, SERVER_KEY, payload)) {
       net.close();
       Serial.println("NO");
       continue;
-    } else {
-      Serial.println("OK");
     }
-
-    Serial.print("SERVER:");
-    Serial.println(serverName);
+    Serial.println("OK");
 
     Serial.print("FEED ID:");
     Serial.println(feedid);
 
+#if ENABLE_OLED
+    oled.print("FEED ID:");
+    oled.println(feedid);
+#endif
     return true;
   }
   return false;
@@ -319,18 +331,23 @@ void transmit()
   Serial.print(txCount);
   Serial.print("] ");
   cache.tailer();
+  const char* packetBuffer = cache.buffer();
+  unsigned int packetSize = cache.length();
   // transmit data
-  if (net.send(cache.buffer(), cache.length())) {
+  if (net.send(packetBuffer, packetSize)) {
     connErrors = 0;
+    txBytes += packetSize;
     txCount++;
     // output some stats
     char buf[64];
 #if STORAGE == STORAGE_NONE
-    sprintf(buf, "%u bytes sent", cache.length());
+    sprintf(buf, "packet:%uB net:%uKB", packetSize, txBytes >> 10);
 #else
-    sprintf(buf, "%uB sent %u KB saved", cache.length(), store.size() >> 10);
+    sprintf(buf, "packet:%uB net:%uKB file:%uKB",
+      packetSize, txBytes >> 10, store.size() >> 10);
 #endif
     Serial.println(buf);
+    sprintf(buf, "%uB %uKB", packetSize, txBytes);
     BLE.println(buf);
     // purge cache and place a header
     cache.header(feedid);
@@ -350,6 +367,13 @@ void transmit()
       delay(1000);
     }
   }
+
+#if ENABLE_OLED
+  oled.setCursor(0, 5);
+  oled.printInt(txCount, 2);
+  oled.setCursor(80, 5);
+  oled.printInt(txBytes >> 10, 3);
+#endif
 }
 
 /*******************************************************************************
@@ -361,7 +385,7 @@ void processOBD()
   static int idx[2] = {0, 0};
   int tier = 1;
   uint32_t t = millis();
-  for (byte i = 0; obdData[i].pid; i++) {
+  for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
     if (obdData[i].tier > tier) {
         // reset previous tier index
         idx[tier - 2] = 0;
@@ -432,7 +456,6 @@ void processGPS()
 void processMEMS()
 {
     // load and store accelerometer
-    float acc[3];
     int16_t temp;
 #if ENABLE_ORIENTATION
     ORIENTATION ori;
@@ -445,6 +468,15 @@ void processMEMS()
 #endif
     deviceTemp = temp / 10;
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+    // calculate instant motion
+    float motion = 0;
+    for (byte i = 0; i < 3; i++) {
+      float m = (acc[i] - accBias[i]);
+      motion += m * m;
+    }
+    if (motion > MOTION_THRESHOLD * MOTION_THRESHOLD) {
+      lastMotionTime = millis();
+    }
 }
 
 void calibrateMEMS()
@@ -489,6 +521,10 @@ bool initialize()
       state.set(STATE_MEMS_READY);
       if (ret == 2) Serial.print("9-DOF ");
       Serial.println("OK");
+#if ENABLE_OLED
+      oled.print("MEMS:");
+      oled.println(ret == 2 ? "9-DOF" : "6-DOF");
+#endif
     } else {
       Serial.println("NO");
     }
@@ -505,15 +541,21 @@ bool initialize()
 #endif
 
 #if NET_DEVICE == NET_WIFI
+#if ENABLE_OLED
+  oled.print("Connecting WiFi...");
+#endif
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.begin()) continue;
-    Serial.print("WIFI(SSID:");
+    Serial.print("WiFi(SSID:");
     Serial.print(WIFI_SSID);
     Serial.print(")...");
     if (net.setup(WIFI_SSID, WIFI_PASSWORD)) {
       BLE.println("WIFI OK");
       Serial.println("OK");
       state.set(STATE_NET_READY);
+#if ENABLE_OLED
+      oled.print("OK");
+#endif
       break;
     } else {
       Serial.println("NO");
@@ -531,8 +573,14 @@ bool initialize()
       Serial.println("OK");
       BLE.println("NET OK");
       state.set(STATE_NET_READY);
+#if ENABLE_OLED
+      oled.print(net.deviceName());
+      oled.print(" connecting...\r");
+#endif
     } else {
       Serial.println("NO");
+      oled.print(net.deviceName());
+      oled.println(" disconnected");
       return false;
     }
   }
@@ -541,10 +589,18 @@ bool initialize()
   Serial.print(")");
   if (net.setup(CELL_APN)) {
     BLE.println("CELL OK");
+#if ENABLE_OLED
+    oled.print("Cell connected");
+#endif
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
       BLE.println(op);
+#if ENABLE_OLED
+      oled.print(' ');
+      oled.print(op);
+      delay(1000);
+#endif
     } else {
       Serial.println("OK");
     }
@@ -555,26 +611,32 @@ bool initialize()
 #endif
   timeoutsNet = 0;
 
+#if ENABLE_OLED
+  oled.clear();
+#endif
 #if ENABLE_OBD
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
+    timeoutsOBD = 0;
     obd.begin();
     Serial.print("OBD...");
-    if (!obd.init()) {
+    if (obd.init()) {
+      Serial.println("OK");
+      BLE.println("OBD OK");
+      state.set(STATE_OBD_READY);
+      char buf[192];
+      if (obd.getVIN(buf, sizeof(buf))) {
+        strncpy(vin, buf, sizeof(vin) - 1);
+        Serial.print("VIN:");
+        Serial.println(vin);
+        BLE.println(vin);
+#if ENABLE_OLED
+        oled.print("VIN:");
+        oled.println(vin);
+#endif
+      }
+    } else {
       Serial.println("NO");
-      return false;
-    }
-    timeoutsOBD = 0;
-    Serial.println("OK");
-    BLE.println("OBD OK");
-    state.set(STATE_OBD_READY);
-
-    char buf[192];
-    if (obd.getVIN(buf, sizeof(buf))) {
-      strncpy(vin, buf, sizeof(vin) - 1);
-      Serial.print("VIN:");
-      Serial.println(vin);
-      BLE.println(vin);
     }
   }
 #endif
@@ -587,6 +649,9 @@ bool initialize()
       state.set(STATE_GPS_READY);
       Serial.println("OK");
       BLE.println("GPS OK");
+#if ENABLE_OLED
+      oled.println("GPS OK");
+#endif
     } else {
       Serial.println("NO");
     }
@@ -605,6 +670,10 @@ bool initialize()
   if (ip.length()) {
     Serial.println(ip);
     BLE.println(ip);
+#if ENABLE_OLED
+    oled.print("IP:");
+    oled.println(ip);
+#endif
   } else {
     Serial.println("NO");
   }
@@ -613,10 +682,16 @@ bool initialize()
     Serial.print("CSQ...");
     Serial.print((float)csq / 10, 1);
     Serial.println("dB");
+#if ENABLE_OLED
+    oled.print("CSQ:");
+    oled.print((float)csq / 10, 1);
+    oled.println("dB");
+#endif
   }
 #endif
 
   txCount = 0;
+  txBytes = 0;
   cache.init(RAM_CACHE_SIZE);
   netbuf.init(256);
   
@@ -634,7 +709,6 @@ bool initialize()
 
   // check system time
   time_t utc;
-  bool utcValid = false;
   time(&utc);
   struct tm *btm = gmtime(&utc);
   if (btm->tm_year > 100) {
@@ -644,7 +718,13 @@ bool initialize()
       1900 + btm->tm_year, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec);
     Serial.print("UTC:");
     Serial.println(buf);
-    utcValid = true;
+#if ENABLE_OLED
+    oled.setCursor(0, 7);
+    oled.print("Packets");
+    oled.setCursor(80, 7);
+    oled.print("KB Sent");
+    oled.setFontSize(FONT_SIZE_MEDIUM);
+#endif
   }
 
 #if STORAGE != STORAGE_NONE
@@ -896,29 +976,32 @@ void standby()
   state.set(STATE_STANDBY);
   Serial.println("Standby");
   BLE.println("Standby");
+#if ENABLE_OLED
+  oled.clear();
+#endif
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
     while (state.check(STATE_STANDBY)) {
       // calculate relative movement
-      float motion = 0;
-      float acc[3];
       mems.read(acc);
+      float motion = 0;
       for (byte i = 0; i < 3; i++) {
         float m = (acc[i] - accBias[i]);
         motion += m * m;
+      }
+      // check movement
+      if (motion > MOTION_THRESHOLD * MOTION_THRESHOLD) {
+        lastMotionTime = millis();
+        Serial.print("Motion:");
+        Serial.println(motion);
+        break;
       }
 #if ENABLE_HTTPD
       serverProcess(100);
 #else
       delay(100);
 #endif
-      // check movement
-      if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
-        Serial.print("Motion:");
-        Serial.println(motion);
-        break;
-      }
     }
   }
 #elif ENABLE_OBD
@@ -1003,6 +1086,13 @@ void MyGATTServer::onReceiveBLE(uint8_t* buffer, size_t len)
 
 void setup()
 {
+#if ENABLE_OLED
+    oled.begin();
+    oled.setFontSize(FONT_SIZE_MEDIUM);
+    oled.println("   FREEMATICS");
+    oled.setFontSize(FONT_SIZE_SMALL);
+    oled.println();
+#endif
     delay(1000);
 
     // init LED pin
@@ -1011,29 +1101,56 @@ void setup()
 
     // initialize USB serial
     Serial.begin(115200);
-    Serial.print("ESP32 ");
-    Serial.print(ESP.getCpuFreqMHz());
-    Serial.print("MHz ");
-    Serial.print(getFlashSize() >> 10);
-    Serial.println("MB Flash");
 
+    // display system info
+    int freq = ESP.getCpuFreqMHz();
+    int flashSize = getFlashSize() >> 10;
+    Serial.print("ESP32 ");
+    Serial.print(freq);
+    Serial.print("MHz ");
+    Serial.print(flashSize);
+    Serial.println("MB Flash");
+#if ENABLE_OLED
+    oled.clear();
+    oled.print("CPU:");
+    oled.print(freq);
+    oled.print(" Mhz ");
+    oled.print(flashSize);
+    oled.println("MB Flash");
+#endif
     Serial.print("SPIFFS...");
+    int fsfree = 0;
     if (SPIFFS.begin(true)) {
+      fsfree = (SPIFFS.totalBytes() - SPIFFS.usedBytes()) >> 10;
       Serial.print("OK (");
-      Serial.print((SPIFFS.totalBytes() - SPIFFS.usedBytes()) >> 10);
+      Serial.print(fsfree);
       Serial.println("KB free)");
     } else {
-      Serial.println("NO");
+      Serial.println("N/A");
     }
+#if ENABLE_OLED
+    oled.print("SPIFFS ");
+    if (fsfree) {
+      oled.print(fsfree);
+      oled.println("KB free");
+    } else {
+      oled.println("N/A");
+    }
+#endif
     
-  #if ENABLE_HTTPD
+#if ENABLE_HTTPD
+    IPAddress ip;
     Serial.print("HTTPD...");
-    if (serverSetup()) {
-      Serial.println("OK");
+    if (serverSetup(ip)) {
+      Serial.println(ip);
+#if ENABLE_OLED
+      oled.print("AP:");
+      oled.println(ip);
+#endif
     } else {
       Serial.println("NO");
     }
-  #endif
+#endif
 
     // one-time initializations
     sys.begin();

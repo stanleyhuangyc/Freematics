@@ -22,6 +22,8 @@
 * /api/data/<file #>?pid=<PID in hex> - JSON array of PID data
 *************************************************************************/
 
+#if ENABLE_HTTPD
+
 #include <FreematicsPlus.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -297,13 +299,11 @@ void serverProcess(int timeout)
     mwHttpLoop(&httpParam, timeout);
 }
 
-bool serverSetup()
+bool serverSetup(IPAddress& ip)
 {
     WiFi.mode (WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
-    Serial.print("AP:");
-    Serial.print(WiFi.softAPIP());
-    Serial.print(' ');
+    ip = WiFi.softAPIP();
 
     mwInitParam(&httpParam, 80, "/spiffs");
     httpParam.pxUrlHandler = urlHandlerList;
@@ -315,3 +315,5 @@ bool serverSetup()
     obtainTime();
     return true;
 }
+
+#endif
