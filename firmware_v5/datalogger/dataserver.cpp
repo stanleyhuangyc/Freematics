@@ -104,7 +104,6 @@ public:
 
 int handlerLogFile(UrlHandlerParam* param)
 {
-    uint32_t duration = 0;
     LogDataContext* ctx = (LogDataContext*)param->hs->ptr;
     param->fileType = HTTPFILETYPE_TEXT;
     if (ctx) {
@@ -308,6 +307,13 @@ void serverCheckup()
     if (WiFi.status() != WL_CONNECTED) {
         if (wifiStartTime == 0 || millis() - wifiStartTime > WIFI_JOIN_TIMEOUT) {
             WiFi.disconnect(false);
+#if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
+            WiFi.mode (WIFI_AP_STA);
+#elif ENABLE_WIFI_AP
+            WiFi.mode (WIFI_AP);
+#elif ENABLE_WIFI_STATION
+            WiFi.mode (WIFI_STA);
+#endif
             Serial.print("Connecting to hotspot (SSID:");
             Serial.print(WIFI_SSID);
             Serial.println(')');
