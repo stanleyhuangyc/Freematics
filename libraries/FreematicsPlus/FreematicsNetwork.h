@@ -87,11 +87,7 @@ public:
 protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
     char* checkIncoming(int* pbytes);
-#ifdef ESP32
     char m_buffer[256] = {0};
-#else
-    char m_buffer[80] = {0};
-#endif
     uint8_t m_stage = 0;
     CFreematics* m_device = 0;
 };
@@ -110,18 +106,20 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
-    const char* deviceName() { return "SIM5360"; }
+    virtual const char* deviceName() { return "SIM5360"; }
 protected:
     // send command and check for expected response
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
     char* checkIncoming(int* pbytes);
-#ifdef ESP32
     char m_buffer[256] = {0};
-#else
-    char m_buffer[96] = {0};
-#endif
     char udpIP[16] = {0};
     uint16_t udpPort = 0;
     uint8_t m_stage = 0;
     CFreematics* m_device = 0;
+};
+
+class UDPClientSIM7600 : public UDPClientSIM5360
+{
+public:
+    const char* deviceName() { return "SIM7600"; }
 };
