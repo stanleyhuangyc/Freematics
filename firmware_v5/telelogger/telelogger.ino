@@ -105,7 +105,6 @@ class MyGATTServer : public GATTServer
   void onReceiveBLE(uint8_t* buffer, size_t len);
 };
 
-MyGATTServer BLE;
 FreematicsESP32 sys;
 State state;
 
@@ -348,7 +347,6 @@ void transmit()
 #endif
     Serial.println(buf);
     sprintf(buf, "%uB %uKB", packetSize, txBytes);
-    BLE.println(buf);
     // purge cache and place a header
     cache.header(feedid);
     lastSentTime = millis();
@@ -446,7 +444,6 @@ void processGPS()
         char buf[32];
         sprintf(buf, "UTC:%08u SAT:%u", gd.time, (unsigned int)gd.sat);
         Serial.println(buf);
-        BLE.println(buf);
       }
   }
 }
@@ -550,7 +547,6 @@ bool initialize()
     Serial.print(WIFI_SSID);
     Serial.print(")...");
     if (net.setup(WIFI_SSID, WIFI_PASSWORD)) {
-      BLE.println("WIFI OK");
       Serial.println("OK");
       state.set(STATE_NET_READY);
 #if ENABLE_OLED
@@ -571,7 +567,6 @@ bool initialize()
     Serial.print("...");
     if (net.begin(&sys)) {
       Serial.println("OK");
-      BLE.println("NET OK");
       state.set(STATE_NET_READY);
 #if ENABLE_OLED
       oled.print(net.deviceName());
@@ -588,14 +583,12 @@ bool initialize()
   Serial.print(CELL_APN);
   Serial.print(")");
   if (net.setup(CELL_APN)) {
-    BLE.println("CELL OK");
 #if ENABLE_OLED
     oled.print("Cell connected");
 #endif
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
-      BLE.println(op);
 #if ENABLE_OLED
       oled.print(' ');
       oled.print(op);
@@ -622,14 +615,12 @@ bool initialize()
     Serial.print("OBD...");
     if (obd.init()) {
       Serial.println("OK");
-      BLE.println("OBD OK");
       state.set(STATE_OBD_READY);
       char buf[192];
       if (obd.getVIN(buf, sizeof(buf))) {
         strncpy(vin, buf, sizeof(vin) - 1);
         Serial.print("VIN:");
         Serial.println(vin);
-        BLE.println(vin);
 #if ENABLE_OLED
         oled.print("VIN:");
         oled.println(vin);
@@ -648,7 +639,6 @@ bool initialize()
     if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
       state.set(STATE_GPS_READY);
       Serial.println("OK");
-      BLE.println("GPS OK");
 #if ENABLE_OLED
       oled.println("GPS OK");
 #endif
@@ -669,7 +659,6 @@ bool initialize()
   String ip = net.getIP();
   if (ip.length()) {
     Serial.println(ip);
-    BLE.println(ip);
 #if ENABLE_OLED
     oled.print("IP:");
     oled.println(ip);
@@ -821,7 +810,6 @@ String executeCommand(const char* cmd)
   } else {
     return "INVALID";
   }
-  BLE.println(result.c_str());
   return result;
 }
 
@@ -906,7 +894,6 @@ void process()
 
   if (syncInterval > 10000 && millis() - lastSyncTime > syncInterval) {
     Serial.println("NO SYNC");
-    BLE.println("NO SYNC");
     connErrors++;
     timeoutsNet++;
     printTimeoutStats();
@@ -920,7 +907,6 @@ void process()
   if (deviceTemp >= COOLING_DOWN_TEMP) {
     // device too hot, cool down
     Serial.println("Cooling down");
-    BLE.println("Cooling down");
     delay(10000);
     // ignore syncing
     lastSyncTime = millis();
@@ -931,7 +917,6 @@ void process()
 #if ENABLE_OBD
   if (obd.errors > MAX_OBD_ERRORS) {
     Serial.println("Reset OBD");
-    BLE.println("Reset OBD");
     obd.reset();
     state.clear(STATE_OBD_READY | STATE_ALL_GOOD);
   }
@@ -975,7 +960,6 @@ void standby()
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
   state.set(STATE_STANDBY);
   Serial.println("Standby");
-  BLE.println("Standby");
 #if ENABLE_OLED
   oled.clear();
 #endif
@@ -1017,7 +1001,6 @@ void standby()
 #endif
   state.clear(STATE_STANDBY);
   Serial.println("Wakeup");
-  BLE.println("Wakeup");
 #if RESET_AFTER_WAKEUP
 #if MEMS_MODE
   mems.end();  
@@ -1154,7 +1137,6 @@ void setup()
 
     // one-time initializations
     sys.begin();
-    BLE.begin(BLE_DEVICE_NAME);
 
     // initializing components
     initialize();
