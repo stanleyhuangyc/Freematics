@@ -202,7 +202,6 @@ void mwInitParam(HttpParam* hp, int port, const char* pchWebPath)
 int mwServerStart(HttpParam* hp)
 {
 	if (hp->bWebserverRunning) {
-		DBG("Error: Webserver thread already running\n");
 		return -1;
 	}
 
@@ -211,7 +210,6 @@ int mwServerStart(HttpParam* hp)
 		return -1;
 	}
 	if (!(hp->listenSocket=_mwStartListening(hp))) {
-		DBG("Error listening on port %d\n", hp->httpPort);
 		return -1;
 	}
 
@@ -231,7 +229,6 @@ int mwServerShutdown(HttpParam* hp)
 	int i;
 	if (hp->bKillWebserver || !hp->bWebserverRunning) return -1;
 
-	DBG("Shutting down...\n");
 	_mwCloseAllConnections(hp);
 
 	// signal webserver thread to quit
@@ -239,9 +236,6 @@ int mwServerShutdown(HttpParam* hp)
 
 	// and wait for thread to exit
 	for (i=0;hp->bWebserverRunning && i<30;i++) msleep(100);
-
-	if (!hp->bWebserverRunning)
-		DBG("Webserver shutdown complete\n");
 
 	return 0;
 }
@@ -310,7 +304,6 @@ SOCKET _mwStartListening(HttpParam* hp)
     // create a new socket
     listenSocket=socket(AF_INET,SOCK_STREAM,0);
 	if (listenSocket <= 0) {
-		DBG("Error creating socket\n");
 		return 0;
 	}
 
@@ -333,7 +326,6 @@ SOCKET _mwStartListening(HttpParam* hp)
 	sinAddress.sin_port = htons(hp->httpPort); // http port
 	iRc=bind(listenSocket,(struct sockaddr*)&sinAddress, sizeof(struct sockaddr_in));
 	if (iRc<0) {
-		DBG("Error binding on port %d\n",hp->httpPort);
 		return 0;
 	}
 
@@ -355,10 +347,8 @@ SOCKET _mwStartListening(HttpParam* hp)
 
     // listen on the socket for incoming calls
 	if (listen(listenSocket, hp->maxClients)) {
-		DBG("Unable to listen on socket %d\n",listenSocket);
 		return 0;
 	}
-	DBG("Listening on port %d with socket %d\n", hp->httpPort, listenSocket);
 
 	// create UDP socket
 	if (hp->udpPort) {
@@ -367,11 +357,7 @@ SOCKET _mwStartListening(HttpParam* hp)
 		sinAddress.sin_family = AF_INET;
 		sinAddress.sin_addr.s_addr = hp->hlBindIP;
 		sinAddress.sin_port = htons(hp->udpPort); // UDP port
-		iRc = bind(hp->udpSocket, (struct sockaddr*)&sinAddress, sizeof(struct sockaddr_in));
-		if (iRc<0) {
-			DBG("Error binding UDP socket on port %d\n", hp->udpPort);
-		}
-		DBG("Listening on port %d with UDP socket %d\n", hp->udpPort, hp->udpSocket);
+		bind(hp->udpSocket, (struct sockaddr*)&sinAddress, sizeof(struct sockaddr_in));
 	}
 
 	return listenSocket;
@@ -486,13 +472,6 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 			phsSocketCur->flags=FLAG_CONN_CLOSE;
 			_mwCloseSocket(hp, phsSocketCur);
 		} else {
-			if (phsSocketCur->dwResumeTick) {
-				// suspended
-				if (phsSocketCur->dwResumeTick > GetTickCount())
-					continue;
-				else
-					phsSocketCur->dwResumeTick = 0;
-			}
 			if (ISFLAGSET(phsSocketCur,FLAG_RECEIVING)) {
 				// add to read descriptor set
 				FD_SET(socket,&fdsSelectRead);
@@ -538,17 +517,13 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		bWrite = FD_ISSET(socket, &fdsSelectWrite);
 
 		if ((bRead|bWrite)!=0) {
-			//DBG("socket %d bWrite=%d, bRead=%d\n",phsSocketCur->socket,bWrite,bRead);
 			// if readable or writeable then process
 			if (bWrite && ISFLAGSET(phsSocketCur,FLAG_SENDING)) {
-				DBG("SENDING\n");
 				iRc=_mwProcessWriteSocket(hp, phsSocketCur);
 			} else if (bRead && ISFLAGSET(phsSocketCur,FLAG_RECEIVING)) {
-				DBG("RECEIVING\n");
 				iRc=_mwProcessReadSocket(hp,phsSocketCur);
 			} else {
 				iRc=-1;
-				DBG("Invalid socket state (flag: %08x)\n",phsSocketCur->flags);
 			}
 			if (!iRc) {
 				// and reset expiration timer
@@ -574,12 +549,10 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		}
 
 		if (!phsSocketCur) {
-			DBG("WARNING: clientCount:%d > maxClients:%d\n", hp->stats.clientCount, hp->maxClients);
 			_mwDenySocket(hp,&sinaddr);
 			return 0;
 		}
 
-		DBG("ACCEPTING\n");
 		phsSocketCur->socket = _mwAcceptSocket(hp,&sinaddr);
 		if (phsSocketCur->socket == 0)
 			return 0;
@@ -599,7 +572,6 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		phsSocketCur->tmAcceptTime=time(NULL);
 		phsSocketCur->tmExpirationTime=phsSocketCur->tmAcceptTime+hp->tmSocketExpireTime;
 		phsSocketCur->iRequestCount=0;
-		DBG("Connected clients: %d\n",hp->stats.clientCount);
 
 		//update max client count
 		if (hp->stats.clientCount>hp->stats.clientCountMax) hp->stats.clientCountMax=hp->stats.clientCount;
@@ -638,11 +610,8 @@ SOCKET _mwAcceptSocket(HttpParam* hp,struct sockaddr_in *sinaddr)
 	socket=accept(hp->listenSocket, (struct sockaddr*)sinaddr,&namelen);
 
 	if ((int)socket<=0) {
-		DBG("Error accepting socket\n");
 		return 0;
   }
-
-  DBG("[%d] connection accepted\n",socket);
 
 #ifndef WIN32
     // set to non-blocking to stop sends from locking up thread
@@ -968,23 +937,19 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 				if (ret & FLAG_TO_FREE) {
 					phsSocket->ptr=up.pucBuffer;	//keep the pointer which will be used to free memory later
 				}
-				DBG("URL handler: raw data\n");
 			} else if (ret & FLAG_DATA_STREAM) {
 				SETFLAG(phsSocket, FLAG_DATA_STREAM);
 				phsSocket->pucData = up.pucBuffer;
 				phsSocket->dataLength = up.contentLength;
 				phsSocket->response.contentLength = 0;
-				DBG("URL handler: stream\n");
 			} else if (ret & FLAG_DATA_FILE) {
 				SETFLAG(phsSocket, FLAG_DATA_FILE);
 				if (up.pucBuffer[0]) {
 					free(phsSocket->request.pucPath);
 					phsSocket->request.pucPath=strdup(up.pucBuffer);
 				}
-				DBG("URL handler: file\n");
 			} else if (ret & FLAG_DATA_REDIRECT) {
 				phsSocket->pucData = up.pucBuffer;
-				DBG("URL handler: redirect\n");
 			}
 			_mwFreeJSONPairs(&up);
 			break;
@@ -1004,7 +969,6 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 					phsSocket->pucData+phsSocket->dataLength,
 					(int)(phsSocket->bufferSize - phsSocket->dataLength - 1), 0);
 	if (iLength <= 0) {
-		DBG("[%d] socket closed by client\n",phsSocket->socket);
 		return -1;
 	}
 	// add in new data received
@@ -1035,7 +999,6 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 		}
 
 		phsSocket->request.headerSize = (int)(headerEnd - phsSocket->buffer + 4);
-		DBG("[%d] HTTP Header (%d bytes):\n%s", phsSocket->socket, phsSocket->request.headerSize, phsSocket->buffer);
 		if (_mwParseHttpHeader(phsSocket)) {
 			SYSLOG(LOG_INFO,"Error parsing request\n");
 			SETFLAG(phsSocket, FLAG_CONN_CLOSE);
@@ -1048,10 +1011,7 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 				return -1;
 			}
 
-			DBG("Header parsed\n");
-
 			// count connections from this IP and duplicated connection
-			DBG("Checking connections from IP\n");
 			if (hp->maxClientsPerIP && _mwGetConnFromIP(hp, phsSocket->ipAddr) > hp->maxClientsPerIP) {
 				// too many connection from the same IP
 				SYSLOG(LOG_INFO,"[%d] Too many connections from this IP\n", phsSocket->socket);
@@ -1096,7 +1056,6 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 		}
 	}
 
-	DBG("[%d] Payload: %d Data Length: %d\n", phsSocket->socket, phsSocket->request.payloadSize, phsSocket->dataLength);
 	if (phsSocket->request.payloadSize > 0 && phsSocket->dataLength < (int)phsSocket->request.payloadSize) {
 		// there is more data
 		return 0;
@@ -1104,7 +1063,6 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 
 	// add header zero terminator
 	phsSocket->buffer[phsSocket->request.headerSize]=0;
-	DBG("%s",phsSocket->buffer);
 
 	if (phsSocket->request.headerSize) {
 		phsSocket->pucData = phsSocket->buffer + phsSocket->request.headerSize + 4;
@@ -1113,8 +1071,6 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 		phsSocket->pucData = phsSocket->buffer;
 		phsSocket->bufferSize = HTTP_BUFFER_SIZE;
 	}
-
-	DBG("[%d] request path: %s\n",phsSocket->socket,phsSocket->request.pucPath);
 
 	hp->stats.reqCount++;
 
@@ -1163,7 +1119,6 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 int _mwProcessWriteSocket(HttpParam *hp, HttpSocket* phsSocket)
 {
 	if (phsSocket->dataLength<=0 && !ISFLAGSET(phsSocket,FLAG_DATA_STREAM)) {
-		DBG("[%d] Data sending completed (%d/%d)\n",phsSocket->socket,phsSocket->response.sentBytes,phsSocket->response.contentLength);
 		return 1;
 	}
 	//SYSLOG(LOG_INFO,"[%d] sending data\n",phsSocket->socket);
@@ -1218,12 +1173,10 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 		phsSocket->tmExpirationTime=time(NULL)+HTTP_KEEPALIVE_TIME;
 		return;
 	}
-	DBG("[%d] socket closed after %d requests\n",phsSocket->socket,phsSocket->iRequestCount);
 	closesocket(phsSocket->socket);
 	phsSocket->socket = 0;
 	hp->stats.clientCount--;
 	phsSocket->iRequestCount=0;
-	DBG("Connected clients: %d\n",hp->stats.clientCount);
 } // end of _mwCloseSocket
 
 int _mwStrCopy(char *dest, const char *src)
@@ -1245,73 +1198,6 @@ int _mwStrHeadMatch(char** pbuf1, const char* buf2) {
 	}
 	*pbuf1 = buf1 + i;
 	return i;
-}
-
-int _mwListDirectory(HttpSocket* phsSocket, char* dir)
-{
-	char cFileName[128];
-	char cFilePath[MAX_PATH];
-	char *p=phsSocket->pucData;
-	int ret;
-	char *pagebuf=phsSocket->pucData;
-	size_t bufsize=phsSocket->bufferSize;
-
-	p+=snprintf(p, 256, "<html><head><title>/%s</title></head><body><table border=0 cellpadding=0 cellspacing=0 width=100%%><h2>Directory of /%s</h2><hr>",
-		phsSocket->request.pucPath,phsSocket->request.pucPath);
-	if (!*dir) strcpy(dir, ".");
-	DBG("Listing directory: %s\n",dir);
-	for (ret=ReadDir(dir,cFileName); !ret; ret=ReadDir(NULL,cFileName)) {
-		struct stat st;
-		char *s;
-		size_t bytes;
-		if (!strcmp(cFileName, ".")) continue;
-		DBG("Checking %s ...\n",cFileName);
-		bytes=(int)(p-pagebuf);
-		if (bytes+384>bufsize) {
-			//need to expand buffer
-			bufsize+=2048;
-			if (!ISFLAGSET(phsSocket,FLAG_TO_FREE)) {
-				//first time expanding
-				SETFLAG(phsSocket,FLAG_TO_FREE);
-				pagebuf=malloc(bufsize);
-				memcpy(pagebuf,phsSocket->pucData,bytes);
-			} else {
-				pagebuf=realloc(pagebuf,bufsize);
-			}
-			p=pagebuf+bytes;
-			DBG("Buffer expanded to %d bytes\n",bufsize);
-		}
-		snprintf(cFilePath, sizeof(cFilePath), "%s/%s",dir,cFileName);
-		if (stat(cFilePath,&st)) continue;
-		if (st.st_mode & S_IFDIR) {
-		//if (S_ISDIR(st.st_mode)) {
-			p+=snprintf(p, 256, "<tr><td width=35%%><a href='%s/'>%s</a></td><td width=15%%>&lt;dir&gt;</td><td width=15%%>",
-				cFileName,cFileName);
-		} else {
-			p+=snprintf(p, 256, "<tr><td width=35%%><a href='%s'>%s</a></td><td width=15%%>%u KB</td><td width=15%%>",
-				cFileName,cFileName,(unsigned int)(st.st_size >> 10));
-			s=strrchr(cFileName,'.');
-			if (s) {
-				int filetype=mwGetContentType(++s);
-				if (filetype!=HTTPFILETYPE_OCTET)
-					p+=_mwStrCopy(p,contentTypeTable[filetype]);
-				else
-					p+=snprintf(p, 256, "%s file",s);
-			}
-		}
-		p+=_mwStrCopy(p,"</td><td>");
-		p+=mwGetHttpDateTime(st.st_mtime, p, 512);
-		p+=_mwStrCopy(p,"</td></tr>");
-	}
-	p+=snprintf(p, 256, "</table><hr><i>Directory content generated by %s</i></body></html>", HTTP_SERVER_NAME);
-	ReadDir(NULL,NULL);
-	phsSocket->response.contentLength=(phsSocket->dataLength=(int)(p-pagebuf));
-	phsSocket->response.fileType=HTTPFILETYPE_HTML;
-	if (ISFLAGSET(phsSocket,FLAG_TO_FREE)) {
-		phsSocket->pucData=pagebuf;
-		phsSocket->ptr=pagebuf;
-	}
-	return 0;
 }
 
 void _mwSendErrorPage(SOCKET socket, const char* header, const char* body)
@@ -1364,7 +1250,6 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 			return -1;
 		}
 
-		DBG("Process Directory...\n");
 		//requesting for directory, first try opening default pages
 		for (p = hfp.cFilePath; *p; p++);
 		*(p++)=SLASH;
@@ -1391,11 +1276,8 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 					}
 				}
 				_mwRedirect(phsSocket,p);
-			} else {
-				*(p-1)=0;
-				_mwListDirectory(phsSocket,hfp.cFilePath);
+				return _mwStartSendRawData(hp, phsSocket);
 			}
-			return _mwStartSendRawData(hp, phsSocket);
 		}
 	}
 
@@ -1455,15 +1337,6 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 	int iBytesWritten;
 	int iBytesRead;
 
-	if (hp->maxDownloadSpeed) {
-		int speed = (unsigned int)(phsSocket->response.sentBytes / (((time(NULL) - phsSocket->tmAcceptTime) << 10) + 1));
-		if (speed && speed > hp->maxDownloadSpeed) {
-			DBG("[%d] speed limit applied\n", phsSocket->socket);
-			// set resume time, before that, this socket will not be processed
-			phsSocket->dwResumeTick = GetTickCount() + 1000;
-			return 0;
-		}
-	}
 	if (phsSocket->dataLength > 0) {
 		if ((phsSocket->flags & FLAG_CHUNK) && ISFLAGSET(phsSocket, FLAG_HEADER_SENT)) {
 			char buf[16];
@@ -1474,7 +1347,6 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 		iBytesWritten=send(phsSocket->socket, phsSocket->pucData,(int)phsSocket->dataLength, 0);
 		if (iBytesWritten<=0) {
 			// close connection
-			DBG("[%d] error sending data\n", phsSocket->socket);
 			SETFLAG(phsSocket,FLAG_CONN_CLOSE);
 			fclose(phsSocket->fp);
 			phsSocket->fp = 0;
@@ -1485,8 +1357,6 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 		phsSocket->response.sentBytes+=iBytesWritten;
 		phsSocket->pucData+=iBytesWritten;
 		phsSocket->dataLength-=iBytesWritten;
-		DBG("[%d] %d bytes sent (%u KB/s)\n", phsSocket->socket, phsSocket->response.sentBytes,
-			(unsigned int)(phsSocket->response.sentBytes / (((time(NULL) - phsSocket->tmAcceptTime) << 10) + 1)));
 		// if only partial data sent just return wait the remaining data to be sent next time
 		if (phsSocket->dataLength>0) return 0;
 	}
@@ -1499,10 +1369,8 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 	if (iBytesRead<=0) {
 		// finished with a file
 		int remainBytes = (int)(phsSocket->response.contentLength + phsSocket->response.headerBytes - phsSocket->response.sentBytes);
-		DBG("[%d] EOF reached\n",phsSocket->socket);
 		if (remainBytes > 0) {
 			if (remainBytes>HTTP_BUFFER_SIZE) remainBytes=HTTP_BUFFER_SIZE;
-			DBG("Sending %d padding bytes\n",remainBytes);
 			memset(phsSocket->buffer,0,remainBytes);
 			phsSocket->dataLength=remainBytes;
 			return 0;
@@ -1511,7 +1379,6 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 				send(phsSocket->socket, "0\r\n\r\n", 5, 0);
 			}
 			if (phsSocket->fp) {
-				DBG("Closing file\n");
 				fclose(phsSocket->fp);
 				phsSocket->fp = 0;
 			}
@@ -1572,7 +1439,6 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 			// failure - close connection
 			return -1;
 		} else {
-			DBG("[%d] sent %d bytes of raw data\n",phsSocket->socket,iBytesWritten);
 			hp->stats.totalSentBytes+=iBytesWritten;
 			phsSocket->response.sentBytes+=iBytesWritten;
 			phsSocket->pucData+=iBytesWritten;
@@ -1595,7 +1461,6 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 				}
 				hp->stats.totalSentBytes+=iBytesWritten;
 				SETFLAG(phsSocket, FLAG_CONN_CLOSE);
-				DBG("[%d] End of stream", phsSocket->socket);
 				return 1;	// EOF
 			}
 			phsSocket->dataLength = up.contentLength;
@@ -1857,7 +1722,6 @@ int _mwParseHttpHeader(HttpSocket* phsSocket)
 				phsSocket->ipAddr.caddr[i] = atoi(p);
 				while (*p && *p != '\r' && *(p++) != '.');
 			}
-			DBG("[%d] Forwarded-For: %d.%d.%d.%d\n", phsSocket->socket, phsSocket->ipAddr.caddr[3], phsSocket->ipAddr.caddr[2], phsSocket->ipAddr.caddr[1], phsSocket->ipAddr.caddr[0]);
 		}
 	}
 	return 0;					//end of header

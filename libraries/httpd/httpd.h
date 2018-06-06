@@ -149,8 +149,8 @@ typedef struct {
 } HttpStats;
 
 #ifndef ARDUINO
-#define HTTP_BUFFER_SIZE (128*1024 /*bytes*/)
-#define MAX_POST_PAYLOAD_SIZE (256*1024 /*bytes*/)
+#define HTTP_BUFFER_SIZE (64*1024 /*bytes*/)
+#define MAX_POST_PAYLOAD_SIZE (128*1024 /*bytes*/)
 #define HTTP_MAX_CLIENTS_DEFAULT 32
 #else
 #define HTTP_BUFFER_SIZE (16*1024 /*bytes*/)
@@ -173,7 +173,6 @@ typedef struct _HttpSocket{
 	void* ptr;
 	time_t tmAcceptTime;
 	time_t tmExpirationTime;
-	DWORD dwResumeTick;
 	int iRequestCount;
 	char* mimeType;
 	char* buffer;
@@ -254,7 +253,6 @@ typedef struct _httpParam {
 	DWORD dwAuthenticatedNode;
 	time_t tmAuthExpireTime;
 	time_t tmSocketExpireTime;
-	int maxDownloadSpeed; /* maximum download speed in KB/s */
 	HttpStats stats;
 	DWORD hlBindIP;
 } HttpParam;
