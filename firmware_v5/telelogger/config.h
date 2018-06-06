@@ -56,9 +56,6 @@
 
 #define SERVER_KEY "TEST_SERVER_KEY"
 
-#ifndef ENABLE_HTTPD
-#define ENABLE_HTTPD 1
-#endif
 #define WIFI_AP_SSID "TELELOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
 
@@ -83,7 +80,7 @@
 **************************************/
 #ifndef STORAGE
 // change the following line to change storage type
-#define STORAGE STORAGE_SD
+#define STORAGE STORAGE_SPIFFS
 #endif
 
 #define RAM_CACHE_SIZE 1024 /* bytes */
@@ -99,7 +96,7 @@
 **************************************/
 #define ENABLE_ORIENTATION 0
 #ifndef MEMS_MODE
-#define MEMS_MODE MEMS_9DOF
+#define MEMS_MODE MEMS_ACC
 #endif
 
 /**************************************
@@ -116,9 +113,15 @@
 **************************************/
 #define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
-#define WAKEUP_MOTION_THRESHOLD 0.3f /* in unit of G */
+#define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
+
+/**************************************
+* Additional features
+**************************************/
+#define ENABLE_HTTPD 0
+#define ENABLE_OLED 0
 
 /**************************************
 * Other options
