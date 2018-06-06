@@ -1,8 +1,8 @@
 /*************************************************************************
-* Arduino library for Freematics ONE+ (ESP32)
+* Arduino library for ESP32 based Freematics ONE+ and Freematics Esprit
 * Distributed under BSD license
-* Visit http://freematics.com for more information
-* (C)2017 Developed by Stanley Huang <support@freematics.com.au>
+* Visit https://freematics.com for more information
+* (C)2017-2018 Developed by Stanley Huang <support@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
