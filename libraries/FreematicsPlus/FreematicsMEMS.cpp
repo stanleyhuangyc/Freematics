@@ -1,8 +1,8 @@
 /*************************************************************************
-* Freematics MPU6050 helper class
+* Freematics MPU-9250 helper class
 * Distributed under BSD license
-* Visit http://freematics.com for more information
-* (C)2016 Stanley Huang <support@freematics.com.au>
+* Visit https://freematics.com for more information
+* (C)2016-2018 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <driver/i2c.h>

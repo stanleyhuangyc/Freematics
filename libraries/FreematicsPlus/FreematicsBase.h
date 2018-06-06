@@ -1,8 +1,8 @@
 /*************************************************************************
 * Base class for Freematics telematics products
 * Distributed under BSD license
-* Visit http://freematics.com/products/freematics-one for more information
-* (C)2017 Stanley Huang <support@freematics.com.au
+* Visit https://freematics.com for more information
+* (C)2017-2018 Stanley Huang <stanley@freematics.com.au
 *************************************************************************/
 
 #ifndef FREEMATICS_BASE
