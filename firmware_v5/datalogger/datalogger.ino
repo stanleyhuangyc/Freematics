@@ -59,8 +59,6 @@ PID_POLLING_INFO obdData[]= {
   {PID_TIMING_ADVANCE, 2},
   {PID_COOLANT_TEMP, 3},
   {PID_INTAKE_TEMP, 3},
-  {PID_BAROMETRIC, 3},
-  {0, 0},
 };
 
 #if MEMS_MODE
@@ -82,7 +80,6 @@ COBD obd;
 COBDSPI obd;
 #endif
 
-GATTServer ble;
 FreematicsESP32 sys;
 
 class DataOutputter : public NullLogger
@@ -91,7 +88,6 @@ class DataOutputter : public NullLogger
     {
 #if ENABLE_SERIAL_OUT
         Serial.println(buf);
-        ble.println(buf);
 #endif
     }
 };
@@ -146,20 +142,22 @@ int handlerLiveData(UrlHandlerParam* param)
     int bufsize = param->bufSize;
     int n = snprintf(buf, bufsize, "{\"obd\":{\"vin\":\"%s\",\"battery\":%d,\"pid\":[", vin, (int)batteryVoltage);
     uint32_t t = millis();
-    for (int i = 0; i < obdData[i].pid; i++) {
+    for (int i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
         n += snprintf(buf + n, bufsize - n, "{\"pid\":%u,\"value\":%d,\"age\":%u},",
             0x100 | obdData[i].pid, obdData[i].value, t - obdData[i].ts);
     }
     n--;
     n += snprintf(buf + n, bufsize - n, "]}");
 #if MEMS_MODE
-    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
-        acc[0] - accBias[0], acc[1] - accBias[1], acc[2] - accBias[2]);
+    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":[%d,%d,%d]",
+        (int)((acc[0] - accBias[0]) * 100), (int)((acc[1] - accBias[1]) * 100), (int)((acc[2] - accBias[2]) * 100));
 #if MEMS_MODE == MEMS_9DOF || MEMS_MODE == MEMS_DMP
-    n += snprintf(buf + n, bufsize - n, ",\"gyro\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
-        gyr[0], gyr[1], gyr[2]);
-    n += snprintf(buf + n, bufsize - n, ",\"mag\":{\"x\":\"%f\",\"y\":\"%f\",\"z\":\"%f\"}",
-        mag[0], mag[1], mag[2]);
+    n += snprintf(buf + n, bufsize - n, ",\"gyro\":[%d,%d,%d]",
+        (int)(gyr[0] * 100), (int)(gyr[1] * 100), (int)(gyr[2] * 100));
+#endif
+#if MEMS_MODE == MEMS_9DOF
+    n += snprintf(buf + n, bufsize - n, ",\"mag\":[%d,%d,%d]",
+        (int)(mag[0] * 10000), (int)(mag[1] * 10000), (int)(mag[2] * 10000));
 #endif
 #if ENABLE_ORIENTATION
     n += snprintf(buf + n, bufsize - n, ",\"orientation\":{\"pitch\":\"%f\",\"roll\":\"%f\",\"yaw\":\"%f\"}",
@@ -246,8 +244,6 @@ public:
         return;
       }
       setState(STATE_OBD_READY);
-#else
-      SPI.begin();
 #endif
 
 #if USE_GPS
@@ -343,7 +339,6 @@ public:
 #endif
       setState(STATE_STANDBY);
       Serial.println("Standby");
-      ble.println("Standby");
 #if MEMS_MODE
       if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
@@ -375,7 +370,6 @@ public:
       while (!obd.init()) Serial.print('.');
 #endif
       Serial.println("Wakeup");
-      ble.println("Wakeup");
       //ESP.restart();
     }
     bool checkState(byte flags) { return (m_state & flags) == flags; }
@@ -410,18 +404,6 @@ void showStats()
       Serial.print(" bytes");
     }
     Serial.println();
-    // output via BLE
-    ble.print(timestr);
-    ble.print(' ');
-    ble.print(dataCount);
-    ble.print(' ');
-    ble.print(sps, 1);
-    if (fileSize > 0) {
-      ble.print(' ');
-      ble.print(fileSize >> 10);
-      ble.print('K');
-    }
-    ble.println();
 }
 
 void setup()
@@ -437,7 +419,6 @@ void setup()
     Serial.println("MB Flash");
 
     sys.begin();
-    ble.begin(WIFI_AP_SSID);
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
@@ -530,7 +511,7 @@ void loop()
 #if USE_OBD
     static int idx[2] = {0, 0};
     int tier = 1;
-    for (byte i = 0; obdData[i].pid; i++) {
+    for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
         if (obdData[i].tier > tier) {
             // reset previous tier index
             idx[tier - 2] = 0;
@@ -555,8 +536,6 @@ void loop()
             pidErrors++;
             Serial.print("PID errors: ");
             Serial.println(pidErrors);
-            ble.print("PID errors: ");
-            ble.println(pidErrors);
             if (obd.errors >= 3 && !obd.init()) {
                 logger.standby();
             }
