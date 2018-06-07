@@ -574,8 +574,10 @@ bool initialize()
 #endif
     } else {
       Serial.println("NO");
+#if ENABLE_OLED
       oled.print(net.deviceName());
       oled.println(" disconnected");
+#endif
       return false;
     }
   }
