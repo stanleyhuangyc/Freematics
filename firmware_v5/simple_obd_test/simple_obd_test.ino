@@ -1,8 +1,8 @@
 /******************************************************************************
-* Simple OBD-II test sketch for Freematics ONE/ONE+
-* Written by Stanley Huang https://www.facebook.com/stanleyhuangyc
+* Simple OBD test sketch for Freematics ONE+
+* Written by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
-* Visit http://freematics.com/products for hardware information
+* Visit https://freematics.com/products for hardware information
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -21,6 +21,8 @@ COBDSPI obd;
 bool connected = false;
 unsigned long count = 0;
 
+#define CONNECT_OBD 1
+
 void setup() {
   // put your setup code here, to run once:
   pinMode(PIN_LED, OUTPUT);
@@ -34,7 +36,10 @@ void setup() {
 }
 
 void loop() {
+  uint32_t ts = millis();
+  digitalWrite(PIN_LED, HIGH);
   // put your main code here, to run repeatedly:
+#if CONNECT_OBD
   if (!connected) {
     digitalWrite(PIN_LED, HIGH);
     Serial.print("Connecting to OBD...");
@@ -47,26 +52,28 @@ void loop() {
     digitalWrite(PIN_LED, LOW);
     return;
   }
+#endif
   int value;
   Serial.print('[');
   Serial.print(millis());
   Serial.print("] #");
   Serial.print(count++);
+#if CONNECT_OBD
   if (obd.readPID(PID_RPM, value)) {
-    Serial.print(" RPM=");
+    Serial.print(" RPM:");
     Serial.print(value);
   }
   if (obd.readPID(PID_SPEED, value)) {
-    Serial.print(" SPEED=");
+    Serial.print(" SPEED:");
     Serial.print(value);
   }
-  float v = obd.getVoltage();
-  Serial.print(" VOLTAGE=");
-  Serial.print(v);
+#endif
+  Serial.print(" BATTERY:");
+  Serial.print(obd.getVoltage());
   Serial.print('V');
 #ifdef ESP32
   int temp = (int)readChipTemperature() * 165 / 255 - 40;
-  Serial.print(" ESP32.TEMP=");
+  Serial.print(" CPU TEMP:");
   Serial.print(temp);
 #endif
   Serial.println();
@@ -75,5 +82,7 @@ void loop() {
     connected = false;
     obd.reset();
   }
-  delay(500);
+  digitalWrite(PIN_LED, LOW);
+
+  delay(100);
 }
