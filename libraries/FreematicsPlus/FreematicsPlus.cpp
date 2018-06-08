@@ -105,9 +105,8 @@ void bee_start(int baudrate)
     //Configure UART parameters
     uart_param_config(BEE_UART_NUM, &uart_config);
     //Set UART pins
-    uart_set_pin(BEE_UART_NUM, BEE_UART_PIN_TXD, BEE_UART_PIN_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    //Install UART driver (we don't need an event queue here)
-    //In this example we don't even use a buffer for sending data.
+    uart_set_pin(BEE_UART_NUM, PIN_BEE_UART_TXD, PIN_BEE_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    //Install UART driver
     uart_driver_install(BEE_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
 }
 
@@ -240,9 +239,8 @@ void FreematicsESP32::begin(int cpuMHz)
     //Configure UART parameters
     uart_param_config(GPS_UART_NUM, &uart_config);
     //Set UART pins
-    uart_set_pin(GPS_UART_NUM, GPS_UART_PIN_TXD, GPS_UART_PIN_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    //Install UART driver (we don't need an event queue here)
-    //In this example we don't even use a buffer for sending data.
+    uart_set_pin(GPS_UART_NUM, PIN_GPS_UART_TXD, PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    //Install UART driver
     uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
 
     // Configure dynamic frequency scaling
@@ -293,9 +291,9 @@ void FreematicsESP32::gpsSendCommand(const char* cmd)
 
 bool FreematicsESP32::xbBegin(unsigned long baudrate)
 {
-#ifdef PIN_XBEE_PWR
-	pinMode(PIN_XBEE_PWR, OUTPUT);
-	digitalWrite(PIN_XBEE_PWR, HIGH);
+#ifdef PIN_BEE_PWR
+	pinMode(PIN_BEE_PWR, OUTPUT);
+	digitalWrite(PIN_BEE_PWR, HIGH);
 #endif
 	bee_start(baudrate);
   return true;
@@ -362,20 +360,20 @@ void FreematicsESP32::xbPurge()
 
 void FreematicsESP32::xbTogglePower()
 {
-#ifdef PIN_XBEE_PWR
-    digitalWrite(PIN_XBEE_PWR, HIGH);
+#ifdef PIN_BEE_PWR
+    digitalWrite(PIN_BEE_PWR, HIGH);
     delay(50);
 #ifdef XBEE_DEBUG
 	Serial.println("xBee power pin set to low");
 #endif
-	digitalWrite(PIN_XBEE_PWR, LOW);
+	digitalWrite(PIN_BEE_PWR, LOW);
 	delay(2000);
 #ifdef XBEE_DEBUG
 	Serial.println("xBee power pin set to high");
 #endif
-    digitalWrite(PIN_XBEE_PWR, HIGH);
+    digitalWrite(PIN_BEE_PWR, HIGH);
     delay(1000);
-    digitalWrite(PIN_XBEE_PWR, LOW);
+    digitalWrite(PIN_BEE_PWR, LOW);
 #endif
 }
 
