@@ -21,53 +21,106 @@
 #define PIN_GPS_UART_RXD 32
 #define PIN_GPS_UART_TXD 33
 
+#define USE_SOFT_SERIAL 0
+#define GPS_BAUDRATE 115200
+
 TinyGPS gps;
+#if !USE_SOFT_SERIAL
 HardwareSerial Serial1(1);
-bool locked = false;
+#endif
+
+TaskHandle_t xThread;
+
+unsigned int updates = 0;
+
+uint32_t inline IRAM_ATTR getCycleCount()
+{
+  uint32_t ccount;
+  __asm__ __volatile__("esync; rsr %0,ccount":"=a" (ccount));
+  return ccount;
+}
+
+void IRAM_ATTR taskGPS(void* arg)
+{
+#if USE_SOFT_SERIAL
+  portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+  for (;;) {
+    while (digitalRead(PIN_GPS_UART_RXD) == HIGH);
+    uint32_t start = getCycleCount();
+    byte b = 0;
+    taskYIELD();
+    taskENTER_CRITICAL(&mux);
+    for (int i = 1; i <= 7; i++) {
+      while (getCycleCount() - start < F_CPU / GPS_BAUDRATE / 2 + (uint32_t)F_CPU * i / GPS_BAUDRATE);
+      if (digitalRead(PIN_GPS_UART_RXD)) b |= 0x80;
+      b >>= 1;
+    }
+    taskEXIT_CRITICAL(&mux);
+    if (gps.encode(b)) updates++;
+    while (getCycleCount() - start < F_CPU / GPS_BAUDRATE / 2 +  (uint32_t)F_CPU * 9 / GPS_BAUDRATE) taskYIELD();
+  }
+#else
+  for (;;) {
+    if (Serial1.available()) {
+      if (gps.encode(Serial1.read())) updates++;
+    }
+  }
+#endif
+}
 
 void setup()
 {
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, HIGH);
   delay(100);
   // USB serial
   Serial.begin(115200);
   Serial.println("SIMPLE GPS TEST");
   // GPS serial
+#if USE_SOFT_SERIAL
+  pinMode(PIN_GPS_UART_RXD, INPUT);
+#else
   Serial1.begin(115200, SERIAL_8N1, PIN_GPS_UART_RXD, PIN_GPS_UART_TXD);
+#endif
   // turn on GPS power
   pinMode(PIN_GPS_POWER, OUTPUT);
   digitalWrite(PIN_GPS_POWER, HIGH);
-  delay(10);
+  // start GPS decoding task
+  xTaskCreatePinnedToCore(taskGPS, "taskGPS", 1024, 0, 1, &xThread, 1);
+  Serial.println("Wait for GPS signal...");
+  digitalWrite(PIN_LED, LOW);
 }
 
 void loop()
 {
-  if (Serial1.available()) {
-    char c = Serial1.read();
-    if (gps.encode(c)) {
-      locked = true;
-      unsigned long utcdate, utctime;
+  if (updates) {
+    digitalWrite(PIN_LED, HIGH);
+    updates = 0;
+    static unsigned long lastutc = 0;
+    unsigned long utcdate, utctime;
+    gps.get_datetime(&utcdate, &utctime, 0);
+    if (utctime != lastutc) {
+      lastutc = utctime;
       long lat, lng;
       gps.get_datetime(&utcdate, &utctime, 0);
       gps.get_position(&lat, &lng, 0);
       int speed = gps.speed() * 1852 / 100000; // km/h
-      int alt = gps.altitude() / 1000; // m
+      int alt = gps.altitude() / 100; // m
       int sats = gps.satellites();
       Serial.print("UTC:");
       Serial.print(utctime);
       Serial.print(" LAT:");
-      Serial.print(lat);
+      Serial.print((float)lat / 1000000, 6);
       Serial.print(" LNG:");
-      Serial.print(lng);
+      Serial.print((float)lng / 1000000, 6);
       Serial.print(" Speed:");
       Serial.print(speed);
-      Serial.print(" Alt:");
+      Serial.print("km/h Alt:");
       Serial.print(alt);
-      Serial.print(" Sats:");
+      Serial.print("m Sats:");
       Serial.println(sats);
     }
-    if (!locked) {
-      // output NMEA stream before satellites gets locked
-      Serial.write(c);
-    }
+    digitalWrite(PIN_LED, LOW);
   }
+  delay(100);
 }
