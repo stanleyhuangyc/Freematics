@@ -77,7 +77,12 @@ void IRAM_ATTR taskGPS(void* arg)
 #else
   for (;;) {
     if (Serial1.available()) {
-      if (gps.encode(Serial1.read())) updates++;
+      char c = Serial1.read();
+      if (c && gps.encode(c)) {
+        updates++;
+      }
+    } else {
+      taskYIELD();
     }
   }
 #endif
