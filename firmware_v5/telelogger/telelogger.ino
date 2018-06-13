@@ -1,10 +1,10 @@
 /******************************************************************************
 * Reference sketch for a vehicle telematics data feed for Freematics Hub
 * Works with Freematics ONE+
-* Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
+* Developed by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
-* Visit http://freematics.com/hub for information about Freematics Hub
-* Visit http://freematics.com/products for hardware information
+* Visit https://freematics.com/products for hardware information
+* Visit https://freematics.com/hub for information about Freematics Hub
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -58,7 +58,7 @@ uint32_t lastMotionTime = 0;
 #endif
 
 // live data
-char vin[18] = DEFAULT_VIN;
+char vin[18];
 int16_t batteryVoltage = 0;
 GPS_DATA gd = {0};
 uint8_t deviceTemp = 0; // device temperature
@@ -441,8 +441,9 @@ void processGPS()
         cache.log(PID_GPS_SPEED, gd.speed);
         cache.log(PID_GPS_SAT_COUNT, gd.sat);
         lastUTC = (uint16_t)gd.time;
-        char buf[32];
-        sprintf(buf, "UTC:%08u SAT:%u", gd.time, (unsigned int)gd.sat);
+        char buf[48];
+        sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u",
+            gd.time / 1000000, (gd.time % 1000000) / 10000, (gd.time % 10000) / 100, (gd.time % 100) / 10, (unsigned int)gd.sat);
         Serial.println(buf);
       }
   }
@@ -606,9 +607,6 @@ bool initialize()
 #endif
   timeoutsNet = 0;
 
-#if ENABLE_OLED
-  oled.clear();
-#endif
 #if ENABLE_OBD
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
@@ -623,21 +621,23 @@ bool initialize()
         strncpy(vin, buf, sizeof(vin) - 1);
         Serial.print("VIN:");
         Serial.println(vin);
-#if ENABLE_OLED
-        oled.print("VIN:");
-        oled.println(vin);
-#endif
       }
     } else {
       Serial.println("NO");
     }
   }
 #endif
+#if ENABLE_OLED
+  oled.clear();
+  oled.print("VIN:");
+  oled.println(vin);
+#endif
 
 #ifdef ENABLE_GPS
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     Serial.print("GPS...");
+    memset(&gd, 0, sizeof(gd));
     if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
       state.set(STATE_GPS_READY);
       Serial.println("OK");
@@ -1024,7 +1024,7 @@ void idleTasks()
     data[len] = 0;
     if (!verifyChecksum(data)) {
       Serial.print("Checksum mismatch:");
-      Serial.print(data);
+      Serial.println(data);
       break;
     }
     char *p = strstr(data, "EV=");
@@ -1103,6 +1103,10 @@ void setup()
     oled.print(flashSize);
     oled.println("MB Flash");
 #endif
+    // generate a unique ID in case VIN is inaccessible
+    uint64_t mac = ESP.getEfuseMac();
+    sprintf(vin, "DEVID%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
+
     Serial.print("SPIFFS...");
     int fsfree = 0;
     if (SPIFFS.begin(true)) {
