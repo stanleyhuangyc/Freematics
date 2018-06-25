@@ -13,7 +13,7 @@
 HardwareSerial OBDUART(1);
 #endif
 
-//#define SAFE_MODE 1
+#define SAFE_MODE 0
 //#define DEBUG Serial
 
 #ifdef DEBUG
@@ -587,6 +587,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	int n = 0;
 	bool eos = false;
 	bool matched = false;
+	portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
@@ -600,9 +601,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		}
 #if SAFE_MODE
 		delay(10);
-#else
-		delay(1);
 #endif
+		taskYIELD();
+		taskENTER_CRITICAL(&mux);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
@@ -641,6 +642,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			}
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
+        taskEXIT_CRITICAL(&mux);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
