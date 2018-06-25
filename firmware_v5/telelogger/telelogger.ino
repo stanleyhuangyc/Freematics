@@ -151,6 +151,17 @@ void printTimeoutStats()
   Serial.println(timeoutsNet);
 }
 
+#if LOG_INPUTS
+void processInputs()
+{
+  int pins[] = {PIN_DIGITAL_INPUT_1, PIN_DIGITAL_INPUT_2};
+  int pids[] = {PID_DIGITAL_INPUT_1, PID_DIGITAL_INPUT_2};
+  for (int i = 0; i < 2; i++) {
+    cache.log(pids[i], digitalRead(pins[i]));
+  }
+}
+#endif
+
 /*******************************************************************************
   HTTP API
 *******************************************************************************/
@@ -229,17 +240,22 @@ bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
   //Serial.println(netbuf.buffer());
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.send(netbuf.buffer(), netbuf.length())) {
-      Serial.print('.');
-      delay(1000);
-      continue;
+      // error sending data
+      break;
     }
     if (event == EVENT_ACK) return true; // no reply for ACK
-    // receive reply
     int len;
-    char *data = net.receive(&len);
-    if (!data) {
+    char *data = 0;
+    // receive reply
+    uint32_t t = millis();
+    do {
+      if (data = net.receive(&len)) break;
       // no reply yet
       Serial.print('.');
+      delay(100);
+    } while (millis() - t < DATA_RECEIVING_TIMEOUT);
+    if (!data) {
+      Serial.println("No reply");
       continue;
     }
     data[len] = 0;
@@ -282,7 +298,7 @@ bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
 bool login()
 {
   // connect to telematics server
-  for (byte attempts = 0; attempts < 3; attempts++) {
+  for (byte attempts = 0; attempts < 10; attempts++) {
     Serial.print("LOGIN...");
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
       Serial.println("NO");
@@ -307,6 +323,7 @@ bool login()
     if (!notifyServer(EVENT_LOGIN, SERVER_KEY, payload)) {
       net.close();
       Serial.println("NO");
+      delay(1000);
       continue;
     }
     Serial.println("OK");
@@ -871,7 +888,7 @@ void process()
 #else
   int temp = (int)readChipTemperature() * 165 / 255 - 40;
   cache.log(PID_DEVICE_TEMP, temp);
-  cache.log(PID_DEVICE_HALL, readChipHallSensor());
+  cache.log(PID_DEVICE_HALL, readChipHallSensor() / 200);
 #endif
 
 #if MEMS_MODE
@@ -892,6 +909,10 @@ void process()
   if (state.check(STATE_GPS_READY)) {
     processGPS();
   }
+#endif
+
+#if LOG_INPUTS
+  processInputs();
 #endif
 
   if (syncInterval > 10000 && millis() - lastSyncTime > syncInterval) {
@@ -1083,6 +1104,11 @@ void setup()
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
+
+#if LOG_INPUTS
+    pinMode(PIN_DIGITAL_INPUT_1, INPUT);
+    pinMode(PIN_DIGITAL_INPUT_2, INPUT);
+#endif
 
     // initialize USB serial
     Serial.begin(115200);

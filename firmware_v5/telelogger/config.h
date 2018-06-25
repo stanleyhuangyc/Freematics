@@ -28,22 +28,15 @@
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 3
 
-// VIN used when real one unavailable
-#ifdef DEVICE_ID
-#define DEFAULT_VIN DEVICE_ID
-#else
-#define DEFAULT_VIN "FreematicsDevice"
-#endif
-
 // minimum processing loop time
-#define MIN_LOOP_TIME 500 /* ms */
+#define MIN_LOOP_TIME 100 /* ms */
 
 /**************************************
 * Networking configurations
 **************************************/
 #ifndef NET_DEVICE
 // change the following line to change network device
-#define NET_DEVICE NET_WIFI
+#define NET_DEVICE NET_SIM7600
 // WIFI settings
 #define WIFI_SSID "HOTSPOT"
 #define WIFI_PASSWORD "PASSWORD"
@@ -69,11 +62,7 @@
 /**************************************
 * BLE configurations
 **************************************/
-#ifdef DEVICE_ID
-#define BLE_DEVICE_NAME DEVICE_ID
-#else
 #define BLE_DEVICE_NAME "Freematics ONE+"
-#endif
 
 /**************************************
 * Data storage configurations
@@ -89,7 +78,7 @@
 #define DATA_SENDING_INTERVAL 1000 /* ms */
 #endif
 #define SERVER_SYNC_INTERVAL 60 /* seconds, 0 to disable */
-
+#define DATA_RECEIVING_TIMEOUT 5000 /* ms */
 
 /**************************************
 * MEMS sensors
@@ -123,9 +112,10 @@
 #define ENABLE_HTTPD 0
 #define ENABLE_OLED 0
 
-/**************************************
-* Other options
-**************************************/
+#define LOG_INPUTS 0
+#define PIN_DIGITAL_INPUT_1 32
+#define PIN_DIGITAL_INPUT_2 33
+
 #define COOLING_DOWN_TEMP 80 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED
