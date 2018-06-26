@@ -15,7 +15,6 @@
 #include "esp_system.h"
 #include "esp_pm.h"
 #include "esp_bt.h"
-#include "bta_api.h"
 #include "esp_gatt_defs.h"
 #include "esp_gap_ble_api.h"
 #include "esp_gatts_api.h"
