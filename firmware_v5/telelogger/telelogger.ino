@@ -239,6 +239,7 @@ bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
   netbuf.tailer();
   //Serial.println(netbuf.buffer());
   for (byte attempts = 0; attempts < 3; attempts++) {
+    // send notification datagram
     if (!net.send(netbuf.buffer(), netbuf.length())) {
       // error sending data
       break;
@@ -249,13 +250,13 @@ bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
     // receive reply
     uint32_t t = millis();
     do {
-      if (data = net.receive(&len)) break;
+      if ((data = net.receive(&len))) break;
       // no reply yet
       Serial.print('.');
       delay(100);
     } while (millis() - t < DATA_RECEIVING_TIMEOUT);
     if (!data) {
-      Serial.println("No reply");
+      Serial.println("timeout");
       continue;
     }
     data[len] = 0;

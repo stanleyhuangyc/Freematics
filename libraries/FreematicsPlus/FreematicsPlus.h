@@ -26,11 +26,14 @@
 #define PIN_BEE_UART_RXD 16
 #define PIN_BEE_UART_TXD 17
 #define BEE_UART_NUM UART_NUM_1
+#define BEE_BAUDRATE 115200L
 
 #define PIN_GPS_POWER 15
 #define PIN_GPS_UART_RXD 32
 #define PIN_GPS_UART_TXD 33
 #define GPS_UART_NUM UART_NUM_2
+#define GPS_BAUDRATE 115200L
+#define GPS_SOFT_SERIAL 0
 
 #define UART_BUF_SIZE 256
 
@@ -64,13 +67,12 @@ uint16_t getFlashSize(); /* KB */
 class Task
 {
 public:
-    Task():xHandle(0) {}
-    bool create(void (*task)(void*), const char* name, int priority = 0);
-    void destroy();
-    void suspend();
-    void resume();
-    bool running();
-    void sleep(uint32_t ms);
+  bool create(void (*task)(void*), const char* name, int priority = 0);
+  void destroy();
+  void suspend();
+  void resume();
+  bool running();
+  void sleep(uint32_t ms);
 private:
 	void* xHandle = 0;
 };
@@ -90,13 +92,13 @@ class FreematicsESP32 : public CFreematics
 public:
     void begin(int cpuMHz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ);
     // initialize GPS (set baudrate to 0 to power off GPS)
-    bool gpsInit(unsigned long baudrate = 115200L);
+    bool gpsInit(unsigned long baudrate = GPS_BAUDRATE);
     // get parsed GPS data (returns the number of data parsed since last invoke)
     int gpsGetData(GPS_DATA* gdata);
     // send command string to GPS
     void gpsSendCommand(const char* cmd);
 	// start xBee UART communication
-	bool xbBegin(unsigned long baudrate = 115200L);
+	bool xbBegin(unsigned long baudrate = BEE_BAUDRATE);
 	// read data to xBee UART
 	int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
 	// send data to xBee UART
