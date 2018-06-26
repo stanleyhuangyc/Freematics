@@ -36,10 +36,10 @@
 **************************************/
 #ifndef NET_DEVICE
 // change the following line to change network device
-#define NET_DEVICE NET_SIM7600
+#define NET_DEVICE NET_WIFI
 // WIFI settings
-#define WIFI_SSID "HOTSPOT"
-#define WIFI_PASSWORD "PASSWORD"
+#define WIFI_SSID "FREEMATICS"
+#define WIFI_PASSWORD "862150909018"
 // APN settings for cellular network
 #define CELL_APN "connect"
 // Freematics Hub server settings

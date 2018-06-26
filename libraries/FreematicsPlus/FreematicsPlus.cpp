@@ -36,23 +36,64 @@ static int validGPSData = 0;
 static int sentencesGPSData = 0;
 static Task taskGPS;
 
+#if GPS_SOFT_SERIAL
+
+uint32_t inline IRAM_ATTR getCycleCount()
+{
+  uint32_t ccount;
+  __asm__ __volatile__("esync; rsr %0,ccount":"=a" (ccount));
+  return ccount;
+}
+
+uint8_t inline IRAM_ATTR readRxPin()
+{
+#if PIN_GPS_UART_RXD < 32
+  return (uint8_t)(GPIO.in >> PIN_GPS_UART_RXD) << 7;
+#else
+  return (uint8_t)(GPIO.in1.val >> (PIN_GPS_UART_RXD - 32)) << 7;
+#endif
+}
+
+#endif
+
 void gps_decode_task(void* inst)
 {
+#if GPS_SOFT_SERIAL
+    portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+#endif
     uint8_t pattern[] = {'$', '\n'};
     int idx = 0;
     for (;;) {
-        uint8_t c;
+        uint8_t c = 0;
+#if GPS_SOFT_SERIAL
+        while (readRxPin());
+        uint32_t start = getCycleCount();
+        taskYIELD();
+        taskENTER_CRITICAL(&mux);
+        for (uint32_t i = 1; i <= 7; i++) {
+            while (getCycleCount() - start < i * F_CPU / GPS_BAUDRATE + F_CPU / GPS_BAUDRATE / 3);
+            c = (c | readRxPin()) >> 1;
+        }
+        taskEXIT_CRITICAL(&mux);
+#else
         int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 60000 / portTICK_RATE_MS);
         if (len != 1) continue;
-        if (c == pattern[idx]) {
-            if (++idx >= sizeof(pattern)) {
-                idx = 0;
-                sentencesGPSData++;
+#endif
+        if (c) {
+            Serial.write(c);
+            if (c == pattern[idx]) {
+                if (++idx >= sizeof(pattern)) {
+                    idx = 0;
+                    sentencesGPSData++;
+                }
+            }
+            if (gps.encode(c)) {
+                validGPSData++;
             }
         }
-        if (gps.encode(c)) {
-            validGPSData++;
-        }
+#if GPS_SOFT_SERIAL
+        while (getCycleCount() - start < (uint32_t)9 * F_CPU / GPS_BAUDRATE + F_CPU / GPS_BAUDRATE / 2) taskYIELD();
+#endif
     }
 }
 
@@ -83,13 +124,22 @@ bool gps_decode_start()
     validGPSData = 0;
     sentencesGPSData = 0;
 
-    // start GPS decoding thread if not started
-    taskGPS.create(gps_decode_task, "GPS", 1);
+    if (taskGPS.running()) {
+        taskGPS.resume();
+    } else {
+        // start GPS decoding thread if not started
+        taskGPS.create(gps_decode_task, "GPS", 1);
+    }
 
     for (int i = 0; i < 20 && sentencesGPSData < 3; i++) {
         delay(100);
     }
     return sentencesGPSData >= 3;
+}
+
+void gps_decode_stop()
+{
+    taskGPS.suspend();
 }
 
 void bee_start(int baudrate)
@@ -228,6 +278,9 @@ void Mutex::unlock()
 
 void FreematicsESP32::begin(int cpuMHz)
 {
+#if GPS_SOFT_SERIAL
+    pinMode(PIN_GPS_UART_RXD, INPUT);
+#else
     uart_config_t uart_config = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -242,6 +295,7 @@ void FreematicsESP32::begin(int cpuMHz)
     uart_set_pin(GPS_UART_NUM, PIN_GPS_UART_TXD, PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     //Install UART driver
     uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
+#endif
 
     // Configure dynamic frequency scaling
     rtc_cpu_freq_t max_freq;
@@ -272,6 +326,7 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate)
 			return true;
 		}
 	} else {
+        gps_decode_stop();
 		success = true;
 	}
 	//turn off GPS power
