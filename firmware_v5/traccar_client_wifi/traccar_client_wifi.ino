@@ -14,8 +14,8 @@
 ******************************************************************************/
 
 #include <Arduino.h>
-#include <TinyGPS.h>
 #include <WiFi.h>
+#include <TinyGPS.h>
 
 #define PIN_LED 4
 #define PIN_GPS_POWER 15
@@ -64,8 +64,8 @@ bool checkWiFi()
 
 void setup()
 {
-  pinMode(PIN_LED, OUTPUT);
   // turn on indicator LED
+  pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, HIGH);
   // turn on GPS power
   pinMode(PIN_GPS_POWER, OUTPUT);
@@ -73,13 +73,13 @@ void setup()
 
   // USB serial
   Serial.begin(115200);
-
   delay(500);
   Serial.println("TRACCAR CLIENT");
 
+  // initialize WiFi
   checkWiFi();
 
-  // GPS serial
+  // start serial UART where GPS receiver is connected
   Serial1.begin(GPS_BAUDRATE, SERIAL_8N1, PIN_GPS_UART_RXD, PIN_GPS_UART_TXD);
   Serial.print("Waiting for GPS signal ");
 
@@ -91,10 +91,12 @@ void loop()
 {
   static unsigned long lastutc = 0;
 
+  // check incoming NMEA data from GPS
   if (!Serial1.available()) {
     return;
   }
 
+  // read a character of NMEA stream from GPS
   char c = Serial1.read();
   if (lastutc == 0) {
     // display progress before GPS has signal
@@ -106,6 +108,7 @@ void loop()
     return;
   }
 
+  // check WiFi connection and connect to Traccar server if disconnected
   if (checkWiFi()) {
     if (!client.connected()) {
       Serial.print("Connecting to ");
@@ -121,16 +124,17 @@ void loop()
     }
   }
 
+  // check UTC timestamp from GPS
   unsigned long utcdate, utctime;
   gps.get_datetime(&utcdate, &utctime, 0);
   if (utctime == lastutc) {
     return;
   }
 
-  // turn off indicator LED
+  // turn on  indicator LED
   digitalWrite(PIN_LED, HIGH);
 
-  // now that new GPS data available
+  // now that new GPS coordinates are available
   long lat, lng;
   gps.get_position(&lat, &lng, 0);
   long speed = gps.speed();
@@ -142,6 +146,7 @@ void loop()
     (unsigned int)(utcdate % 100) + 2000, (unsigned int)(utcdate / 100) % 100, (unsigned int)(utcdate / 10000),
     (unsigned int)(utctime / 1000000), (unsigned int)(utctime % 1000000) / 10000, (unsigned int)(utctime % 10000) / 100, ((unsigned int)utctime % 100) / 10);
 
+  // display GPS UTC time and coordinates
   Serial.print(isotime);
   Serial.print(" LAT:");
   Serial.print((float)lat / 1000000, 6);
@@ -173,6 +178,7 @@ void loop()
     Serial.print((char)client.read());
   }
 
+  // keep processed UTC timestamp
   lastutc = utctime;
 
   // turn off indicator LED
