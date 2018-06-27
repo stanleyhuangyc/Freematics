@@ -39,7 +39,7 @@
 #define NET_DEVICE NET_WIFI
 // WIFI settings
 #define WIFI_SSID "FREEMATICS"
-#define WIFI_PASSWORD "862150909018"
+#define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network
 #define CELL_APN "connect"
 // Freematics Hub server settings
