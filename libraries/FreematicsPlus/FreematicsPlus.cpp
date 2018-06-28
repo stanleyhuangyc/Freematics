@@ -79,7 +79,6 @@ void gps_decode_task(void* inst)
         if (len != 1) continue;
 #endif
         if (c) {
-            Serial.write(c);
             if (c == pattern[idx]) {
                 if (++idx >= sizeof(pattern)) {
                     idx = 0;
