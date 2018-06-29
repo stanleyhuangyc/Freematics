@@ -16,5 +16,6 @@
   <define name="Traccar Server Host" type="string" const="TRACCAR_HOST" default="YOUR_TRACCAR_HOST" dep="ENABLE_WIFI_STATION=1"/>
   <define name="Traccar Device ID" type="string" const="TRACCAR_DEV_ID" default="YOUR_DEVICE_ID" dep="ENABLE_WIFI_STATION=1"/>
   <define name="Enable built-in HTTP Server" type="bool" const="ENABLE_HTTPD" default="true"/>
+  <define name="Enable OLED Display" type="bool" const="ENABLE_DISPLAY" default="true"/>
 </target>
 </config>
