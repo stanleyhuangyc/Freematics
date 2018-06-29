@@ -6,13 +6,15 @@
     <option name="Flash (SPIFFS)" const="STORAGE=STORAGE_SPIFFS" default="true"/>
     <option name="MicroSD" const="STORAGE=STORAGE_SD"/>
   </define>
-  <define name="Data Output via Serial" type="bool" const="ENABLE_SERIAL_OUT"/>
-  <define name="Enable HTTP Server" type="bool" const="ENABLE_HTTPD" default="true"/>
-  <define name="Enable Soft AP" type="bool" const="ENABLE_WIFI_AP" default="true" dep="ENABLE_HTTPD=1"/>
-  <define name="Soft AP SSID" type="string" const="WIFI_AP_SSID" default="DATALOGGER" dep="ENABLE_WIFI_AP=1"/>
+  <define name="Enable Soft AP" type="bool" const="ENABLE_WIFI_AP" default="true"/>
+  <define name="Soft AP SSID" type="string" const="WIFI_AP_SSID" default="GPSLOGGER" dep="ENABLE_WIFI_AP=1"/>
   <define name="Soft AP Password" type="string" const="WIFI_AP_PASSWORD" default="PASSWORD" dep="ENABLE_WIFI_AP=1"/>
-  <define name="Connect to a WIFI Hotspot" type="bool" const="ENABLE_WIFI_STATION" dep="ENABLE_HTTPD=1"/>
+  <define name="Connect to a WiFi Hotspot" type="bool" const="ENABLE_WIFI_STATION" default="true"/>
   <define name="WIFI Hotspot SSID" type="string" const="WIFI_SSID" default="HOTSPOT" dep="ENABLE_WIFI_STATION=1"/>
   <define name="WIFI Hotspot Password" type="string" const="WIFI_PASSWORD" default="PASSWORD" dep="ENABLE_WIFI_STATION=1"/>
+  <define name="Enable Traccar Client" type="bool" const="ENABLE_TRACCAR_CLIENT" dep="ENABLE_WIFI_STATION=1"/>
+  <define name="Traccar Server Host" type="string" const="TRACCAR_HOST" default="YOUR_TRACCAR_HOST" dep="ENABLE_WIFI_STATION=1"/>
+  <define name="Traccar Device ID" type="string" const="TRACCAR_DEV_ID" default="YOUR_DEVICE_ID" dep="ENABLE_WIFI_STATION=1"/>
+  <define name="Enable built-in HTTP Server" type="bool" const="ENABLE_HTTPD" default="true"/>
 </target>
 </config>

@@ -15,6 +15,7 @@
 *************************************************************************/
 
 #include <FreematicsPlus.h>
+#include <FreematicsOLED.h>
 #include <httpd.h>
 #include "datalogger.h"
 #include "config.h"
@@ -22,12 +23,11 @@
 // states
 #define STATE_STORE_READY 0x1
 #define STATE_GPS_FOUND 0x4
-#define STATE_GPS_READY 0x8
 #define STATE_FILE_READY 0x20
 
 void serverProcess(int timeout);
-bool serverSetup();
-void serverCheckup();
+bool serverSetup(IPAddress& ip);
+bool serverCheckup();
 void executeCommand();
 
 #ifdef ESP32
@@ -48,26 +48,118 @@ GPS_DATA gd = {0};
 
 char command[16] = {0};
 
-GATTServer ble;
 FreematicsESP32 sys;
 
-class DataOutputter : public NullLogger
-{
-    void write(const char* buf, byte len)
-    {
-#if ENABLE_SERIAL_OUT
-        Serial.println(buf);
-        ble.println(buf);
+#if ENABLE_DISPLAY
+OLED_SH1106 lcd;
 #endif
+
+#if ENABLE_TRACCAR_CLIENT
+
+#define CLIENT_STATE_IDLE 0
+#define CLIENT_STATE_RECEIVING 1
+
+class TraccarClient
+{
+public:
+    bool connect()
+    {
+        Serial.print("Connecting to ");
+        Serial.print(TRACCAR_HOST);
+        Serial.print("...");
+        if (client.connect(TRACCAR_HOST, TRACCAR_PORT)) {
+            Serial.println("OK");
+            return true;
+        } else {
+            Serial.println("failed");
+            return false;
+        }
     }
+    void process(bool updated = true)
+    {
+        // keep connection with Traccar server when GPS data is available
+        if (!client.connected() && !connect()) {
+            return;
+        }
+        if (state == CLIENT_STATE_IDLE) {
+            if (updated) transmit();
+        } else if (state == CLIENT_STATE_RECEIVING) {
+            int ret = receive();
+            if (ret) {
+                state = CLIENT_STATE_IDLE;
+                Serial.print(ret);
+                Serial.print("ms Code:");
+                Serial.println(code);
+                if (code == 200) sent++;
+            } else if (millis() - sentTime > TRACCAR_SERVER_TIMEOUT) {
+                errors++;
+                client.stop();
+                Serial.println("Connection teared down");
+                state = CLIENT_STATE_IDLE;
+            }
+        }
+    }
+    int receive()
+    {
+        if (state != CLIENT_STATE_RECEIVING) return 0;
+        // waiting for server response while still decoding NMEA
+        while (client.available()) {
+            String resp = client.readStringUntil('\n');
+            if (resp == "\r") {
+                client.readStringUntil('\n');
+                state = CLIENT_STATE_IDLE;
+                // return time elapsed
+                return millis() - sentTime;
+            } else {
+                char *p = strstr(resp.c_str(), "HTTP/");
+                if (p && (p = strchr(p, ' '))) {
+                    code = atoi(p + 1);
+                }
+            }
+        }
+        return 0;
+    }
+    void transmit()
+    {
+        // arrange and send data in OsmAnd protocol
+        // refer to https://www.traccar.org/osmand
+        char data[128];
+        sprintf(data, "&lat=%f&lon=%f&altitude=%f&speed=%f", (float)gd.lat / 1000000, (float)gd.lng / 1000000, (float)gd.alt / 100, (float)gd.speed / 1000);
+        // generate ISO formatted UTC date/time
+        char isotime[24];
+        sprintf(isotime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
+            (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
+            (unsigned int)(gd.time / 1000000), (unsigned int)(gd.time % 1000000) / 10000, (unsigned int)(gd.time % 10000) / 100, ((unsigned int)gd.time % 100) / 10);
+        // send data
+        int n = client.print(String("GET /?id=") + TRACCAR_DEV_ID + "&timestamp=" + isotime + data + " HTTP/1.1\r\n" +
+            //"Host: " + TRACCAR_HOST + "\r\n" +
+            "Connection: keep-alive\r\n\r\n");
+        if (n > 0) {
+            state = CLIENT_STATE_RECEIVING;
+            code = 0;
+            sentTime = millis();
+            bytes += n;
+        }
+    }
+    unsigned int bytes = 0;
+    unsigned int sent = 0;
+    unsigned int errors = 0;
+    unsigned short code = 0;
+private:
+    WiFiClient client;
+    byte state = CLIENT_STATE_IDLE;
+    unsigned long sentTime = 0;
 };
 
+TraccarClient traccar;
+#endif
+
 #if STORAGE == STORAGE_SD
-SDLogger store(new DataOutputter);
+SDLogger store;
 #elif STORAGE == STORAGE_SPIFFS
-SPIFFSLogger store(new DataOutputter);
+SPIFFSLogger store;
 #else
-DataOutputter store;
+NullLogger store;
 #endif
 
 int handlerLiveData(UrlHandlerParam* param)
@@ -132,71 +224,59 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels)
 class DataLogger
 {
 public:
-    void init()
-    {
-      if (!checkState(STATE_GPS_FOUND)) {
-        Serial.print("GPS...");
-        if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
-          setState(STATE_GPS_FOUND);
-          Serial.println("OK");
-          //waitGPS();
-        } else {
-          Serial.println("NO");
-        }
-      }
-
-      startTime = millis();
-    }
-    void logGPSData()
+    bool logGPSData()
     {
         // issue the command to get parsed GPS data
-        if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd)) {
-            store.setTimestamp(millis());
-            if (gd.time && gd.time != UTC) {
-              byte day = gd.date / 10000;
-              if (MMDD % 100 != day) {
-                store.log(PID_GPS_DATE, gd.date);
-              }
-              store.log(PID_GPS_TIME, gd.time);
-              store.log(PID_GPS_LATITUDE, gd.lat);
-              store.log(PID_GPS_LONGITUDE, gd.lng);
-              store.log(PID_GPS_ALTITUDE, gd.alt);
-              store.log(PID_GPS_SPEED, gd.speed);
-              store.log(PID_GPS_SAT_COUNT, gd.sat);
-              // save current date in MMDD format
-              unsigned int DDMM = gd.date / 100;
-              UTC = gd.time;
-              MMDD = (DDMM % 100) * 100 + (DDMM / 100);
-              // set GPS ready flag
-              setState(STATE_GPS_READY);
-            }
+        if (!sys.gpsGetData(&gd) || gd.time == 0 || gd.time == UTC) {
+            return false;
         }
+        store.setTimestamp(millis());
+        byte day = gd.date / 10000;
+        if (MMDD % 100 != day) {
+            store.log(PID_GPS_DATE, gd.date);
+        }
+        store.log(PID_GPS_TIME, gd.time);
+        store.log(PID_GPS_LATITUDE, gd.lat);
+        store.log(PID_GPS_LONGITUDE, gd.lng);
+        store.log(PID_GPS_ALTITUDE, gd.alt);
+        store.log(PID_GPS_SPEED, gd.speed);
+        store.log(PID_GPS_SAT_COUNT, gd.sat);
+        // save current UTC date in MMDD format
+        unsigned int DDMM = gd.date / 100;
+        UTC = gd.time;
+        MMDD = (DDMM % 100) * 100 + (DDMM / 100);
+        return true;
     }
     void logSensorData()
     {
         int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
         store.log(PID_DEVICE_TEMP, deviceTemp);
         store.log(PID_DEVICE_HALL, hall_sens_read());
-        store.log(PID_ANALOG_INPUT1, (int16_t)analogRead(A0));
+        store.log(PID_ANALOG_INPUT_1, (int16_t)analogRead(A0));
     }
     void waitGPS()
     {
-        int elapsed = 0;
-        GPS_DATA gd = {0};
-        for (uint32_t t = millis(); millis() - t < 300000;) {
-          int t1 = (millis() - t) / 1000;
-          if (t1 != elapsed) {
-            Serial.print("Waiting for GPS (");
-            Serial.print(elapsed);
-            Serial.println(")");
-            elapsed = t1;
-          }
-          // read parsed GPS data
-          if (sys.gpsGetData(&gd) && gd.sat != 0 && gd.sat != 255) {
-            Serial.print("SAT:");
-            Serial.println(gd.sat);
-            break;
-          }
+        uint32_t t = millis();
+        Serial.println("Waiting for GPS...");
+        for (;;) {
+            // read parsed GPS data
+            if (sys.gpsGetData(&gd) && gd.time) {
+                break;
+            }
+            Serial.print((millis() - t) / 1000);
+            Serial.print("s #");
+            Serial.print(gd.sentences);
+            Serial.print(" X");
+            Serial.println(gd.errors);
+    #if ENABLE_DISPLAY
+            lcd.setCursor(0, 7);
+            lcd.printInt((millis() - t) / 1000);
+            lcd.print("s #");
+            lcd.printInt(gd.sentences);
+            lcd.print(" X");
+            lcd.printInt(gd.errors);
+    #endif            
+            delay(1000);
         }
     }
     void checkFileSize(uint32_t fileSize)
@@ -239,29 +319,41 @@ void showStats()
     Serial.print(" samples | ");
     Serial.print(sps, 1);
     Serial.print(" sps");
-    if (fileSize > 0) {
-      logger.checkFileSize(fileSize);
-      Serial.print(" | ");
-      Serial.print(fileSize);
-      Serial.print(" bytes");
-    }
+    logger.checkFileSize(fileSize);
+    Serial.print(" | ");
+    Serial.print(fileSize);
+    Serial.print(" bytes saved");
+#if ENABLE_TRACCAR_CLIENT
+    Serial.print(" | ");
+    Serial.print(traccar.bytes);
+    Serial.print(" bytes sent");
+#endif
     Serial.println();
-    // output via BLE
-    ble.print(timestr);
-    ble.print(' ');
-    ble.print(dataCount);
-    ble.print(' ');
-    ble.print(sps, 1);
-    if (fileSize > 0) {
-      ble.print(' ');
-      ble.print(fileSize >> 10);
-      ble.print('K');
-    }
-    ble.println();
 }
 
 void setup()
 {
+    // init LED pin
+    pinMode(PIN_LED, OUTPUT);
+    pinMode(PIN_LED, HIGH);
+
+#if ENABLE_DISPLAY
+    lcd.begin();
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.print("GPS LOGGER");
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(98, 0);
+    lcd.println("ESP32");
+    lcd.setCursor(104, 1);
+    lcd.println("WiFi");
+    lcd.setCursor(0, 3);
+    lcd.print("CPU:");
+    lcd.print(ESP.getCpuFreqMHz());
+    lcd.print("MHz ");
+    lcd.print(getFlashSize() >> 10);
+    lcd.println("MB FLASH");
+#endif
+
     delay(1000);
 
     // initialize USB serial
@@ -273,19 +365,19 @@ void setup()
     Serial.println("MB Flash");
 
     sys.begin();
-    ble.begin(WIFI_AP_SSID);
-
-    // init LED pin
-    pinMode(PIN_LED, OUTPUT);
-    pinMode(PIN_LED, HIGH);
 
 #if STORAGE == STORAGE_SD
     Serial.print("SD...");
     int volsize = store.begin();
     if (volsize > 0) {
-      Serial.print(volsize);
-      Serial.println("MB");
-      logger.setState(STATE_STORE_READY);
+        Serial.print(volsize);
+        Serial.println("MB");
+        logger.setState(STATE_STORE_READY);
+#if ENABLE_DISPLAY
+        lcd.print("SD ");
+        lcd.print(volsize);
+        lcd.println("MB");
+#endif
     } else {
       Serial.println("NO");
     }
@@ -293,29 +385,139 @@ void setup()
     Serial.print("SPIFFS...");
     int freebytes = store.begin();
     if (freebytes >= 0) {
-      Serial.print(freebytes >> 10);
-      Serial.println(" KB free");
-      logger.setState(STATE_STORE_READY);
-      listDir(SPIFFS, "/", 0);
+        Serial.print(freebytes >> 10);
+        Serial.println("KB Free");
+        logger.setState(STATE_STORE_READY);
+        listDir(SPIFFS, "/", 0);
+#if ENABLE_DISPLAY
+        lcd.print("SPIFFS ");
+        lcd.print(freebytes >> 10);
+        lcd.println("KB Free");
+#endif
     } else {
-      Serial.println("NO");
+        Serial.println("NO");
     }
 #endif
 
 #if ENABLE_HTTPD
     Serial.print("HTTP Server...");
-    if (serverSetup()) {
+    IPAddress ip;
+    if (serverSetup(ip)) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
     }
     serverCheckup();
+    if (ip) {
+        Serial.print("WiFi AP IP:");
+        Serial.println(ip);
+#if ENABLE_DISPLAY
+        lcd.print("IP:");
+        lcd.println(ip);
+#endif        
+    }
+#endif
+
+    Serial.print("GPS...");
+    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+        logger.setState(STATE_GPS_FOUND);
+        Serial.println("OK");
+        logger.waitGPS();
+    } else {
+        Serial.println("NO");
+#if ENABLE_DISPLAY
+        lcd.println("GPS not connected");
+#endif
+    }
+
+#if ENABLE_TRACCAR_CLIENT
+#if ENABLE_DISPLAY
+    lcd.setCursor(0, 6);
+    lcd.println("Connecting to ");
+    lcd.print(TRACCAR_HOST);
+#endif
+    while (!serverCheckup() || !traccar.connect()) delay(1000);
+#endif
+
+    Serial.print("File...");
+    fileid = store.open();
+    if (fileid) {
+        Serial.println(fileid);
+        logger.setState(STATE_FILE_READY);
+    } else {
+        Serial.print("NO");
+    }
+
+#if ENABLE_DISPLAY
+    delay(1000);
+    lcd.clear();
 #endif
 
     pinMode(PIN_LED, LOW);
-
-    logger.init();
+    startTime = millis();
 }
+
+#if ENABLE_DISPLAY
+void updateDisplay()
+{
+    static uint32_t updateTime = 0;
+    if (millis() - updateTime < 500) return;
+
+    updateTime = millis();
+    int seconds = (updateTime - startTime) / 1000;
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.setCursor(0, 0);
+    lcd.printInt(seconds / 60, 2);
+    lcd.print(':');
+    lcd.setFlags(FLAG_PAD_ZERO);
+    lcd.printInt(seconds % 60, 2);
+    lcd.setFlags(0);
+
+    lcd.setCursor(0, 2);
+    lcd.printInt(gd.speed, 2);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(4, 4);
+    lcd.print("km/h");
+
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.setCursor(48, 2);
+    lcd.printInt(gd.alt / 100, 3);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(48, 4);
+    lcd.print("m Alt");
+
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.setCursor(100, 2);
+    lcd.printInt(gd.sat, 2);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(103, 4);
+    lcd.print("Sats");
+
+    lcd.setCursor(62, 0);
+    lcd.print((float)gd.lng / 1000000, 6);
+    lcd.setCursor(62, 1);
+    lcd.print((float)gd.lat / 1000000, 6);
+
+#if ENABLE_TRACCAR_CLIENT
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(0, 6);
+    lcd.print("Client");
+    lcd.setCursor(0, 7);
+    lcd.print("Active");
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.setCursor(42, 6);
+    lcd.print(traccar.sent);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.print(" #");
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.print(' ');
+    int kb = traccar.bytes >> 10;
+    lcd.printInt(kb >= 1000 ? kb / 1000 : kb);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.print(kb >= 1000 ? " MB" : " KB");
+#endif
+}
+#endif
 
 void executeCommand()
 {
@@ -341,20 +543,29 @@ void loop()
     uint32_t ts = millis();
     
     store.setTimestamp(ts);
-    logger.logGPSData();
     logger.logSensorData();
+    bool updated = logger.logGPSData();
 
-#if ENABLE_HTTPD
-    serverProcess(10);
-    serverCheckup();
-#endif
-
-#if !ENABLE_SERIAL_OUT
     showStats();
-#endif
 
     executeCommand();
 
+#if ENABLE_DISPLAY
+    if (updated) updateDisplay();
+#endif
+
+#if ENABLE_TRACCAR_CLIENT
+    if (serverCheckup()) {
+        traccar.process(updated);
+    }
+#elif ENABLE_HTTPD
+    serverCheckup();
+#endif
+
     int waitTime = MIN_LOOP_TIME - (millis() - ts);
+#if ENABLE_HTTPD
+    serverProcess(waitTime > 0 ? waitTime : 0);
+#else
     if (waitTime > 0) delay(waitTime);
+#endif
 }

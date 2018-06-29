@@ -104,7 +104,6 @@ public:
 
 int handlerLogFile(UrlHandlerParam* param)
 {
-    uint32_t duration = 0;
     LogDataContext* ctx = (LogDataContext*)param->hs->ptr;
     param->fileType = HTTPFILETYPE_TEXT;
     if (ctx) {
@@ -301,7 +300,7 @@ void serverProcess(int timeout)
     mwHttpLoop(&httpParam, timeout);
 }
 
-void serverCheckup()
+bool serverCheckup()
 {
 #if ENABLE_WIFI_STATION
     static uint32_t wifiStartTime = 0;
@@ -321,17 +320,18 @@ void serverCheckup()
             Serial.println(WiFi.localIP());
 
             // start mDNS responder
-            MDNS.begin("datalogger");
+            MDNS.begin("gpslogger");
             MDNS.addService("http", "tcp", 80);
 
             wifiStartTime = 0;
         }
-
+        return true;
     }
 #endif
+    return false;
 }
 
-bool serverSetup()
+bool serverSetup(IPAddress& ip)
 {
 #if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
     WiFi.mode (WIFI_AP_STA);
@@ -343,9 +343,7 @@ bool serverSetup()
 
 #if ENABLE_WIFI_AP
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
-    Serial.print("AP:");
-    Serial.print(WiFi.softAPIP());
-    Serial.print(' ');
+    ip = WiFi.softAPIP();
 #endif
 
     mwInitParam(&httpParam, 80, "/spiffs");
