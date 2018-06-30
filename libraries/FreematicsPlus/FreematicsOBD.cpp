@@ -603,7 +603,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		delay(10);
 #endif
 		taskYIELD();
-		taskENTER_CRITICAL(&mux);
+		portENTER_CRITICAL(&mux);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
@@ -642,7 +642,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			}
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
-        taskEXIT_CRITICAL(&mux);
+    portEXIT_CRITICAL(&mux);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
