@@ -90,6 +90,8 @@ int handlerInfo(UrlHandlerParam* param)
     return FLAG_DATA_RAW;
 }
 
+#if STORAGE != STORAGE_NONE
+
 class LogDataContext {
 public:
 #if STORAGE == STORAGE_SPIFFS
@@ -275,6 +277,8 @@ int handlerLogList(UrlHandlerParam* param)
     param->contentLength = n;
     return FLAG_DATA_RAW;
 }
+
+#endif
 
 UrlHandler urlHandlerList[]={
     {"api/live", handlerLiveData},
