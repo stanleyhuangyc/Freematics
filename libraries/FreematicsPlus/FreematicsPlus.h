@@ -48,6 +48,7 @@ typedef struct {
     uint8_t speed;
     uint8_t sat;
     int16_t heading;
+    uint16_t sentences;
 } GPS_DATA;
 
 bool gps_decode_start();

@@ -31,7 +31,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define _GPS_KMPH_PER_KNOT 1.852
 #define _GPS_MILES_PER_METER 0.00062137112
 #define _GPS_KM_PER_METER 0.001
-#define _GPS_NO_STATS
 
 class TinyGPS
 {
@@ -88,12 +87,10 @@ public:
   static const char *cardinal(float course);
 
 #ifndef _GPS_NO_STATS
-  void stats(unsigned long *chars, unsigned short *good_sentences, unsigned short *failed_cs);
+  void stats(unsigned short *good_sentences, unsigned short *failed_cs);
   // statistics
-  unsigned long _encoded_characters;
   unsigned short _good_sentences;
   unsigned short _failed_checksum;
-  unsigned short _passed_checksum;
 #endif
 
 private:
