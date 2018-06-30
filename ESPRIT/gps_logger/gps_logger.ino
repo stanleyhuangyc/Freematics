@@ -78,18 +78,20 @@ public:
     }
     void process(bool updated = true)
     {
-        // keep connection with Traccar server when GPS data is available
-        if (!client.connected() && !connect()) {
-            return;
+        // check and keep the connection with Traccar server
+        if (!client.connected()) {
+            client.stop();
+            if (!connect()) return;
         }
-        if (state == CLIENT_STATE_IDLE) {
-            if (updated) transmit();
-        } else if (state == CLIENT_STATE_RECEIVING) {
+        if (state == CLIENT_STATE_RECEIVING) {
             int ret = receive();
             if (ret) {
                 state = CLIENT_STATE_IDLE;
+                Serial.print('#');
+                Serial.print(sent);
+                Serial.print(' ');
                 Serial.print(ret);
-                Serial.print("ms Code:");
+                Serial.print("ms HTTP Code:");
                 Serial.println(code);
 #if ENABLE_DISPLAY
                 lcd.setFontSize(FONT_SIZE_SMALL);
@@ -112,7 +114,15 @@ public:
                 state = CLIENT_STATE_IDLE;
             }
         }
+        if (state == CLIENT_STATE_IDLE) {
+            if (updated) transmit();
+        }
     }
+    unsigned int bytes = 0;
+    unsigned int sent = 0;
+    unsigned int errors = 0;
+    unsigned short code = 0;
+private:
     int receive()
     {
         if (state != CLIENT_STATE_RECEIVING) return 0;
@@ -155,11 +165,6 @@ public:
             bytes += n;
         }
     }
-    unsigned int bytes = 0;
-    unsigned int sent = 0;
-    unsigned int errors = 0;
-    unsigned short code = 0;
-private:
     WiFiClient client;
     byte state = CLIENT_STATE_IDLE;
     unsigned long sentTime = 0;
@@ -265,7 +270,7 @@ public:
     {
         int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
         store.log(PID_DEVICE_TEMP, deviceTemp);
-        store.log(PID_DEVICE_HALL, hall_sens_read());
+        store.log(PID_DEVICE_HALL, hall_sens_read() / 100);
         store.log(PID_ANALOG_INPUT_1, (int16_t)analogRead(A0));
     }
     void waitGPS()
@@ -355,7 +360,7 @@ void showStats()
 }
 
 #if ENABLE_DISPLAY
-void updateDisplay()
+void updateDisplay(bool updated)
 {
     int seconds = (millis() - startTime) / 1000;
     lcd.setFontSize(FONT_SIZE_MEDIUM);
@@ -365,6 +370,8 @@ void updateDisplay()
     lcd.print(':');
     lcd.printInt(seconds % 60, 2);
     lcd.setFlags(0);
+
+    if (!updated) return;
 
     lcd.setCursor(0, 3);
     lcd.printInt(gd.speed, 2);
@@ -566,7 +573,7 @@ void loop()
     executeCommand();
 
 #if ENABLE_DISPLAY
-    if (updated) updateDisplay();
+    updateDisplay(updated);
 #endif
 
 #if ENABLE_TRACCAR_CLIENT

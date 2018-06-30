@@ -12,8 +12,6 @@
 **************************************/
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
-// enable(1)/disable(0) data streaming
-#define ENABLE_SERIAL_OUT 0
 // specify storage type
 #define STORAGE STORAGE_SPIFFS
 // enable(1)/disable(0) screen display
