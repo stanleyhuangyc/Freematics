@@ -114,27 +114,3 @@ public:
 	// toggle xBee module power
 	void xbTogglePower();
 };
-
-#define MAX_BLE_MSG_LEN 160
-
-class GATTServer : public Print
-{
-public:
-  bool begin(const char* deviceName = 0);
-  bool send(uint8_t* data, size_t len);
-  size_t write(uint8_t c);
-  virtual size_t onRequest(uint8_t* buffer, size_t len)
-  {
-    // being requested for data
-    buffer[0] = 'O';
-    buffer[1] = 'K';
-    return 2;
-  }
-  virtual void onReceive(uint8_t* buffer, size_t len)
-  {
-    // data received is in buffer
-  }
-private:
-  static bool initBLE();
-  String sendbuf;
-};
