@@ -1,4 +1,4 @@
-This Arduino sketch is designed for running on [Freematics Esprit](https://freematics.com/products/freematics-esprit/) to log GPS data and provide access for logged data through WiFi and BLE.
+This Arduino sketch is designed for running on [Freematics Esprit](https://freematics.com/products/freematics-esprit/) to log GPS data and provide access for logged data through WiFi.
 
 Storage
 -------
@@ -18,10 +18,10 @@ Implemented HTTP APIs:
 * /api/log/[file #] - content of CSV format log file
 * /api/data/[file #]?pid=[PID # in HEX] - JSON array of PID data
 
-BLE
----
+Traccar Client
+--------------
 
-A BLE GATT server is brought up to allow BLE capable mobile device to connect and receive some status and stats wirelessly.
+A [Traccar](https://www.traccar.org/) client is implemented. Simply change the host server address and device ID settings in config.h to make the client push data to your Traccar server.
 
 Prerequisites
 -------------
