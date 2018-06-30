@@ -31,8 +31,7 @@
 #include "FreematicsGPS.h"
 
 static TinyGPS gps;
-static int validGPSData = 0;
-static int sentencesGPSData = 0;
+static unsigned int pendingGPSData = 0;
 static Task taskGPS;
 
 #if GPS_SOFT_SERIAL
@@ -60,8 +59,6 @@ void gps_decode_task(void* inst)
 #if GPS_SOFT_SERIAL
     portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 #endif
-    uint8_t pattern[] = {'$', '\n'};
-    int idx = 0;
     for (;;) {
         uint8_t c = 0;
 #if GPS_SOFT_SERIAL
@@ -79,14 +76,8 @@ void gps_decode_task(void* inst)
         if (len != 1) continue;
 #endif
         if (c) {
-            if (c == pattern[idx]) {
-                if (++idx >= sizeof(pattern)) {
-                    idx = 0;
-                    sentencesGPSData++;
-                }
-            }
             if (gps.encode(c)) {
-                validGPSData++;
+                pendingGPSData++;
             }
         }
 #if GPS_SOFT_SERIAL
@@ -97,16 +88,17 @@ void gps_decode_task(void* inst)
 
 int gps_get_data(GPS_DATA* gdata)
 {
-    if (!validGPSData) return 0;
+    gps.stats(&gdata->sentences, 0);
+    if (pendingGPSData == 0) return 0;
     gps.get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
     gps.get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
     gdata->speed = gps.speed() * 1852 / 100000; /* km/h */
     gdata->alt = gps.altitude();
     gdata->heading = gps.course() / 100;
     gdata->sat = gps.satellites();
-    if (gdata->sat > 200) gdata->sat = 0;
-    int ret = validGPSData;
-    validGPSData = 0;
+    if (gdata->sat > 100) gdata->sat = 0;
+    int ret = pendingGPSData;
+    pendingGPSData = 0;
     return ret;
 }
 
@@ -119,8 +111,7 @@ int gps_write_string(const char* string)
 bool gps_decode_start()
 {
     // quick check of input data format
-    validGPSData = 0;
-    sentencesGPSData = 0;
+    pendingGPSData = 0;
 
     if (taskGPS.running()) {
         taskGPS.resume();
@@ -129,10 +120,14 @@ bool gps_decode_start()
         taskGPS.create(gps_decode_task, "GPS", 1);
     }
 
-    for (int i = 0; i < 20 && sentencesGPSData < 3; i++) {
+    uint16_t s1 = 0, s2 = 0;
+    gps.stats(&s1, 0);
+    for (int i = 0; i < 20; i++) {
         delay(100);
+        gps.stats(&s2, 0);
+        if (s1 != s2) return true;
     }
-    return sentencesGPSData >= 3;
+    return false;
 }
 
 void gps_decode_stop()
