@@ -14,12 +14,6 @@
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_pm.h"
-#include "esp_bt.h"
-#include "esp_gatt_defs.h"
-#include "esp_gap_ble_api.h"
-#include "esp_gatts_api.h"
-#include "esp_bt_defs.h"
-#include "esp_bt_main.h"
 #include "esp_task_wdt.h"
 #include "nvs_flash.h"
 #include "driver/uart.h"
@@ -65,12 +59,12 @@ void gps_decode_task(void* inst)
         while (readRxPin());
         uint32_t start = getCycleCount();
         taskYIELD();
-        taskENTER_CRITICAL(&mux);
+        portENTER_CRITICAL(&mux);
         for (uint32_t i = 1; i <= 7; i++) {
             while (getCycleCount() - start < i * F_CPU / GPS_BAUDRATE + F_CPU / GPS_BAUDRATE / 3);
             c = (c | readRxPin()) >> 1;
         }
-        taskEXIT_CRITICAL(&mux);
+        portEXIT_CRITICAL(&mux);
 #else
         int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 60000 / portTICK_RATE_MS);
         if (len != 1) continue;
@@ -423,73 +417,4 @@ void FreematicsESP32::xbTogglePower()
     delay(1000);
     digitalWrite(PIN_BEE_PWR, LOW);
 #endif
-}
-
-extern "C" {
-void gatts_init(const char* device_name);
-int gatts_send(uint8_t* data, size_t len);
-}
-
-bool GATTServer::initBLE()
-{
-    btStart();
-    esp_err_t ret = esp_bluedroid_init();
-    if (ret) {
-        Serial.println("Bluetooth failed");
-        return false;
-    }
-    ret = esp_bluedroid_enable();
-    if (ret) {
-        Serial.println("Error enabling bluetooth");
-        return false;
-    }
-    return true;
-}
-
-static GATTServer* gatts_inst;
-
-bool GATTServer::begin(const char* deviceName)
-{
-    gatts_inst = this;
-    if (!initBLE()) return false;
-    gatts_init(deviceName);
-    return true;
-}
-
-bool GATTServer::send(uint8_t* data, size_t len)
-{
-    return gatts_send(data, len);
-}
-
-size_t GATTServer::write(uint8_t c)
-{
-    bool success = false;
-    if (sendbuf.length() >= MAX_BLE_MSG_LEN) {
-        success = send((uint8_t*)sendbuf.c_str(), sendbuf.length());
-        sendbuf = "";
-    }
-    sendbuf += (char)c;
-    if (c == '\n') {
-        success = send((uint8_t*)sendbuf.c_str(), sendbuf.length());
-        sendbuf = "";
-    }
-    return success ? sendbuf.length() : 0;
-}
-
-extern "C" {
-
-size_t gatts_read_callback(uint8_t* buffer, size_t len)
-{
-	if (gatts_inst) {
-		return gatts_inst->onRequest(buffer, len);
-	} else {
-		return 0;
-	}
-}
-
-void gatts_write_callback(uint8_t* data, size_t len)
-{
-    if (gatts_inst) gatts_inst->onReceive(data, len);
-}
-
 }
