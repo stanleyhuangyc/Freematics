@@ -88,7 +88,7 @@ void gps_decode_task(void* inst)
 
 int gps_get_data(GPS_DATA* gdata)
 {
-    gps.stats(&gdata->sentences, 0);
+    gps.stats(&gdata->sentences, &gdata->errors);
     if (pendingGPSData == 0) return 0;
     gps.get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
     gps.get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
