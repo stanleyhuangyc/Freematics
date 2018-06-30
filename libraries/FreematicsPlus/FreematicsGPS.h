@@ -88,9 +88,6 @@ public:
 
 #ifndef _GPS_NO_STATS
   void stats(unsigned short *good_sentences, unsigned short *failed_cs);
-  // statistics
-  unsigned short _good_sentences;
-  unsigned short _failed_checksum;
 #endif
 
 private:
@@ -118,6 +115,12 @@ private:
   byte _term_number;
   byte _term_offset;
   bool _gps_data_good;
+
+  // statistics
+#ifndef _GPS_NO_STATS
+  unsigned short _good_sentences;
+  unsigned short _failed_checksum;
+#endif
 
   // internal utilities
   byte from_hex(char a);
