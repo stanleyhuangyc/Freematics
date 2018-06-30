@@ -43,6 +43,7 @@
 * Misc
 **************************************/
 #define GPS_SERIAL_BAUDRATE 115200L
+#define GPS_SIGNAL_TIMEOUT 30000 /* ms */
 #define WIFI_JOIN_TIMEOUT 30000 /* ms */
 #define MIN_LOOP_TIME 200 /* ms */
 #define TRACCAR_PORT 5055

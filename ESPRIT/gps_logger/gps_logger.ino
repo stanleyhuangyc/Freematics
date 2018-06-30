@@ -40,6 +40,7 @@ uint32_t hall_sens_read();
 
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
+uint32_t gpsDataTick = 0;
 uint32_t startTime = 0;
 uint32_t pidErrors = 0;
 uint32_t fileid = 0;
@@ -90,6 +91,19 @@ public:
                 Serial.print(ret);
                 Serial.print("ms Code:");
                 Serial.println(code);
+#if ENABLE_DISPLAY
+                lcd.setFontSize(FONT_SIZE_SMALL);
+                lcd.setCursor(0, 7);
+                lcd.print('#');
+                lcd.print(sent);
+                lcd.setFontSize(FONT_SIZE_SMALL);
+                lcd.print(' ');
+                lcd.print(bytes >> 10);
+                lcd.setFontSize(FONT_SIZE_SMALL);
+                lcd.print("KB ");
+                lcd.print(ret);
+                lcd.print("ms  ");
+#endif
                 if (code == 200) sent++;
             } else if (millis() - sentTime > TRACCAR_SERVER_TIMEOUT) {
                 errors++;
@@ -230,7 +244,7 @@ public:
         if (!sys.gpsGetData(&gd) || gd.time == 0 || gd.time == UTC) {
             return false;
         }
-        store.setTimestamp(millis());
+        store.setTimestamp(gpsDataTick = millis());
         byte day = gd.date / 10000;
         if (MMDD % 100 != day) {
             store.log(PID_GPS_DATE, gd.date);
@@ -257,26 +271,35 @@ public:
     void waitGPS()
     {
         uint32_t t = millis();
-        Serial.println("Waiting for GPS...");
+        Serial.println("Waiting GPS signal...");
+#if ENABLE_DISPLAY
+        lcd.setCursor(0, 6);
+        lcd.print("Waiting GPS signal...");
+#endif
         for (;;) {
             // read parsed GPS data
             if (sys.gpsGetData(&gd) && gd.time) {
+                gpsDataTick = millis();
                 break;
             }
             Serial.print((millis() - t) / 1000);
-            Serial.print("s #");
+            Serial.print("s NMEA:");
             Serial.print(gd.sentences);
-            Serial.print(" X");
+            Serial.print(" ERR:");
             Serial.println(gd.errors);
-    #if ENABLE_DISPLAY
+#if ENABLE_DISPLAY
             lcd.setCursor(0, 7);
             lcd.printInt((millis() - t) / 1000);
-            lcd.print("s #");
+            lcd.print("s NMEA:");
             lcd.printInt(gd.sentences);
-            lcd.print(" X");
-            lcd.printInt(gd.errors);
-    #endif            
+#endif
+
+#if ENABLE_HTTPD
+            serverCheckup();
+            serverProcess(1000);
+#else
             delay(1000);
+#endif
         }
     }
     void checkFileSize(uint32_t fileSize)
@@ -331,14 +354,47 @@ void showStats()
     Serial.println();
 }
 
-void setup()
-{
-    // init LED pin
-    pinMode(PIN_LED, OUTPUT);
-    pinMode(PIN_LED, HIGH);
-
 #if ENABLE_DISPLAY
-    lcd.begin();
+void updateDisplay()
+{
+    int seconds = (millis() - startTime) / 1000;
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.setCursor(0, 0);
+    lcd.setFlags(FLAG_PAD_ZERO);
+    lcd.printInt(seconds / 60, 2);
+    lcd.print(':');
+    lcd.printInt(seconds % 60, 2);
+    lcd.setFlags(0);
+
+    lcd.setCursor(0, 3);
+    lcd.printInt(gd.speed, 2);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(4, 5);
+    lcd.print("km/h");
+
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.setCursor(50, 3);
+    lcd.printInt(gd.alt / 100, 3);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(50, 5);
+    lcd.print("m Alt");
+
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.setCursor(100, 3);
+    lcd.printInt(gd.sat, 2);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(103, 5);
+    lcd.print("Sats");
+
+    lcd.setCursor(62, 0);
+    lcd.print((float)gd.lng / 1000000, 6);
+    lcd.setCursor(62, 1);
+    lcd.print((float)gd.lat / 1000000, 6);
+}
+
+void initDisplay()
+{
+    lcd.clear();
     lcd.setFontSize(FONT_SIZE_MEDIUM);
     lcd.print("GPS LOGGER");
     lcd.setFontSize(FONT_SIZE_SMALL);
@@ -352,6 +408,18 @@ void setup()
     lcd.print("MHz ");
     lcd.print(getFlashSize() >> 10);
     lcd.println("MB FLASH");
+}
+#endif
+
+void setup()
+{
+    // init LED pin
+    pinMode(PIN_LED, OUTPUT);
+    pinMode(PIN_LED, HIGH);
+
+#if ENABLE_DISPLAY
+    lcd.begin();
+    initDisplay();
 #endif
 
     delay(1000);
@@ -457,68 +525,6 @@ void setup()
     startTime = millis();
 }
 
-#if ENABLE_DISPLAY
-void updateDisplay()
-{
-    static uint32_t updateTime = 0;
-    if (millis() - updateTime < 500) return;
-
-    updateTime = millis();
-    int seconds = (updateTime - startTime) / 1000;
-    lcd.setFontSize(FONT_SIZE_MEDIUM);
-    lcd.setCursor(0, 0);
-    lcd.printInt(seconds / 60, 2);
-    lcd.print(':');
-    lcd.setFlags(FLAG_PAD_ZERO);
-    lcd.printInt(seconds % 60, 2);
-    lcd.setFlags(0);
-
-    lcd.setCursor(0, 2);
-    lcd.printInt(gd.speed, 2);
-    lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.setCursor(4, 4);
-    lcd.print("km/h");
-
-    lcd.setFontSize(FONT_SIZE_MEDIUM);
-    lcd.setCursor(48, 2);
-    lcd.printInt(gd.alt / 100, 3);
-    lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.setCursor(48, 4);
-    lcd.print("m Alt");
-
-    lcd.setFontSize(FONT_SIZE_MEDIUM);
-    lcd.setCursor(100, 2);
-    lcd.printInt(gd.sat, 2);
-    lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.setCursor(103, 4);
-    lcd.print("Sats");
-
-    lcd.setCursor(62, 0);
-    lcd.print((float)gd.lng / 1000000, 6);
-    lcd.setCursor(62, 1);
-    lcd.print((float)gd.lat / 1000000, 6);
-
-#if ENABLE_TRACCAR_CLIENT
-    lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.setCursor(0, 6);
-    lcd.print("Client");
-    lcd.setCursor(0, 7);
-    lcd.print("Active");
-    lcd.setFontSize(FONT_SIZE_MEDIUM);
-    lcd.setCursor(42, 6);
-    lcd.print(traccar.sent);
-    lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.print(" #");
-    lcd.setFontSize(FONT_SIZE_MEDIUM);
-    lcd.print(' ');
-    int kb = traccar.bytes >> 10;
-    lcd.printInt(kb >= 1000 ? kb / 1000 : kb);
-    lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.print(kb >= 1000 ? " MB" : " KB");
-#endif
-}
-#endif
-
 void executeCommand()
 {
     if (!command[0]) return;
@@ -545,6 +551,15 @@ void loop()
     store.setTimestamp(ts);
     logger.logSensorData();
     bool updated = logger.logGPSData();
+    if (millis() - gpsDataTick > GPS_SIGNAL_TIMEOUT) {
+#if ENABLE_DISPLAY
+        initDisplay();
+#endif
+        logger.waitGPS();
+#if ENABLE_DISPLAY
+        lcd.clear();
+#endif        
+    }
 
     showStats();
 
