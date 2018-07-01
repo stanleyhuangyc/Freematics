@@ -13,10 +13,10 @@ The sketch runs a [HTTP server](https://github.com/stanleyhuangyc/Freematics/tre
 Implemented HTTP APIs:
 
 * /api/info - device info
-* /api/live - live data (OBD/GPS/MEMS)
+* /api/live - live data
 * /api/list - list of log files
 * /api/log/[file #] - content of CSV format log file
-* /api/data/[file #]?pid=[PID # in HEX] - JSON array of PID data
+* /api/data/[file #]?pid=[PID # in HEX] - filtered data in JSON array
 
 Traccar Client
 --------------
