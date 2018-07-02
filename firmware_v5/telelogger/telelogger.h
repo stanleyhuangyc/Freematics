@@ -4,27 +4,27 @@ class CStorageNull {
 public:
     virtual bool init() { return true; }
     virtual void uninit() {}
-    virtual void log(uint16_t pid, int16_t value)
+    virtual void log(uint16_t pid, int value)
     {
-        char buf[16];
-        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, (int)value);
-        dispatch(buf, len);
-    }
-    virtual void log(uint16_t pid, int32_t value)
-    {
-        char buf[20];
+        char buf[24];
         byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
         dispatch(buf, len);
     }
-    virtual void log(uint16_t pid, uint32_t value)
+    virtual void log(uint16_t pid, unsigned int value)
     {
-        char buf[20];
+        char buf[24];
         byte len = sprintf_P(buf, PSTR("%X=%u"), pid, value);
+        dispatch(buf, len);
+    }
+    virtual void log(uint16_t pid, float value)
+    {
+        char buf[24];
+        byte len = sprintf_P(buf, PSTR("%X=%.2f"), pid, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, int value1, int value2, int value3)
     {
-        char buf[24];
+        char buf[48];
         byte len = sprintf_P(buf, PSTR("%X=%d;%d;%d"), pid, value1, value2, value3);
         dispatch(buf, len);
     }

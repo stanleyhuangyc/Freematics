@@ -277,7 +277,8 @@ public:
                 store.log(PID_GPS_LATITUDE, gd.lat);
                 store.log(PID_GPS_LONGITUDE, gd.lng);
                 store.log(PID_GPS_ALTITUDE, gd.alt / 100); /* m */
-                store.log(PID_GPS_SPEED, gd.speed  * 1852 / 100000); /* km/h */
+                float kph = (float)gd.speed * 1852 / 100000;
+                store.log(PID_GPS_SPEED, kph);
                 store.log(PID_GPS_SAT_COUNT, gd.sat);
                 // save current date in MMDD format
                 unsigned int DDMM = gd.date / 100;
