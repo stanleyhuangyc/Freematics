@@ -452,7 +452,8 @@ void processGPS()
   cache.logCoordinate(PID_GPS_LATITUDE, gd.lat);
   cache.logCoordinate(PID_GPS_LONGITUDE, gd.lng);
   cache.log(PID_GPS_ALTITUDE, gd.alt / 100); /* m */
-  cache.log(PID_GPS_SPEED, gd.speed * 1852 / 100000); /* km/h */
+  float kph = (float)gd.speed * 1852 / 100000;
+  cache.log(PID_GPS_SPEED, kph);
   cache.log(PID_GPS_SAT_COUNT, gd.sat);
   lastUTC = (uint16_t)gd.time;
   char buf[48];
