@@ -44,17 +44,17 @@ typedef struct {
     uint32_t time;
     int32_t lat;
     int32_t lng;
-    int16_t alt;
-    uint8_t speed;
-    uint8_t sat;
-    int16_t heading;
+    int32_t alt; /* 1/100 meter */
+    uint32_t speed; /* 1/100 knot */
+    int16_t heading; /* degree */
+    uint16_t sat;
     uint16_t sentences;
     uint16_t errors;
 } GPS_DATA;
 
 bool gps_decode_start();
 void gps_decode_stop();
-int gps_get_data(GPS_DATA* gdata);
+bool gps_get_data(GPS_DATA* gdata);
 int gps_write_string(const char* string);
 void gps_decode_task(int timeout);
 void bee_start();

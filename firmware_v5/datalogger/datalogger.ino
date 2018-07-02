@@ -166,8 +166,8 @@ int handlerLiveData(UrlHandlerParam* param)
     buf[n++] = '}';
 #endif
 #if USE_GPS
-    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}",
-        gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
+    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"date\":%u,\"time\":%u,\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}",
+        gd.date, gd.time, gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
 #endif
     buf[n++] = '}';
     param->contentLength = n;
@@ -249,6 +249,7 @@ public:
 #if USE_GPS
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("GPS...");
+        memset(&gd, 0, sizeof(gd));
         if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
           setState(STATE_GPS_FOUND);
           Serial.println("OK");
@@ -267,23 +268,27 @@ public:
         // issue the command to get parsed GPS data
         if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd)) {
             store.setTimestamp(millis());
-            if (gd.time && gd.time != UTC) {
-              byte day = gd.date / 10000;
-              if (MMDD % 100 != day) {
-                store.log(PID_GPS_DATE, gd.date);
-              }
-              store.log(PID_GPS_TIME, gd.time);
-              store.log(PID_GPS_LATITUDE, gd.lat);
-              store.log(PID_GPS_LONGITUDE, gd.lng);
-              store.log(PID_GPS_ALTITUDE, gd.alt);
-              store.log(PID_GPS_SPEED, gd.speed);
-              store.log(PID_GPS_SAT_COUNT, gd.sat);
-              // save current date in MMDD format
-              unsigned int DDMM = gd.date / 100;
-              UTC = gd.time;
-              MMDD = (DDMM % 100) * 100 + (DDMM / 100);
-              // set GPS ready flag
-              setState(STATE_GPS_READY);
+            if (gd.time != UTC) {
+                byte day = gd.date / 10000;
+                if (MMDD % 100 != day) {
+                    store.log(PID_GPS_DATE, gd.date);
+                }
+                store.log(PID_GPS_TIME, gd.time);
+                store.log(PID_GPS_LATITUDE, gd.lat);
+                store.log(PID_GPS_LONGITUDE, gd.lng);
+                store.log(PID_GPS_ALTITUDE, gd.alt / 100); /* m */
+                store.log(PID_GPS_SPEED, gd.speed  * 1852 / 100000); /* km/h */
+                store.log(PID_GPS_SAT_COUNT, gd.sat);
+                // save current date in MMDD format
+                unsigned int DDMM = gd.date / 100;
+                UTC = gd.time;
+                MMDD = (DDMM % 100) * 100 + (DDMM / 100);
+                // set GPS ready flag
+                setState(STATE_GPS_READY);
+                char buf[48];
+                sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u",
+                    gd.time / 1000000, (gd.time % 1000000) / 10000, (gd.time % 10000) / 100, (gd.time % 100) / 10, (unsigned int)gd.sat);
+                Serial.println(buf);
             }
         }
     }
@@ -540,11 +545,18 @@ void loop()
                 logger.standby();
             }
         }
+#if USE_GPS
+        logger.logGPSData();
+#endif
         if (tier > 1) break;
 #if ENABLE_HTTPD
         serverProcess(0);
 #endif
     }
+#else
+#if USE_GPS
+    logger.logGPSData();
+#endif
 #endif
 
     // re-initialize when OBD is disconnected
@@ -583,10 +595,6 @@ void loop()
     // log battery voltage (from voltmeter), data in 0.01v
     batteryVoltage = obd.getVoltage() * 100;
     store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
-#endif
-
-#if USE_GPS
-    logger.logGPSData();
 #endif
 
 #if ENABLE_HTTPD
