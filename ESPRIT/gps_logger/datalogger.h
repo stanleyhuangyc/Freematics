@@ -37,13 +37,13 @@ public:
     virtual void log(uint16_t pid, float value)
     {
         char buf[24];
-        byte len = sprintf(buf, "%X,%f", pid, value);
+        byte len = sprintf(buf, "%X,%.2f", pid, value);
         write(buf, len);
         m_dataCount++;
     }
     virtual void log(uint16_t pid, int value1, int value2, int value3)
     {
-        char buf[24];
+        char buf[48];
         byte len = sprintf(buf, "%X,%d,%d,%d", pid, value1, value2, value3);
         write(buf, len);
         m_dataCount++;

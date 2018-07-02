@@ -40,10 +40,13 @@ uint32_t hall_sens_read();
 
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
-uint32_t gpsDataTick = 0;
+uint32_t gpsDataTime = 0;
 uint32_t startTime = 0;
 uint32_t pidErrors = 0;
 uint32_t fileid = 0;
+uint32_t stationeryTimer = 0;
+uint32_t lastSpeedData = 0;
+float distance = 0;
 
 GPS_DATA gd = {0};
 
@@ -148,7 +151,7 @@ private:
         // arrange and send data in OsmAnd protocol
         // refer to https://www.traccar.org/osmand
         char data[128];
-        sprintf(data, "&lat=%f&lon=%f&altitude=%f&speed=%f", (float)gd.lat / 1000000, (float)gd.lng / 1000000, (float)gd.alt / 100, (float)gd.speed / 1000);
+        sprintf(data, "&lat=%f&lon=%f&altitude=%d&speed=%f", (float)gd.lat / 1000000, (float)gd.lng / 1000000, (int)(gd.alt / 100), (float)gd.speed / 100);
         // generate ISO formatted UTC date/time
         char isotime[24];
         sprintf(isotime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
@@ -249,21 +252,32 @@ public:
         if (!sys.gpsGetData(&gd) || gd.time == 0 || gd.time == UTC) {
             return false;
         }
-        store.setTimestamp(gpsDataTick = millis());
+        uint32_t ts = millis();
+        store.setTimestamp(ts);
         byte day = gd.date / 10000;
         if (MMDD % 100 != day) {
             store.log(PID_GPS_DATE, gd.date);
         }
+        float kph = (float)gd.speed * 1852 / 100000;
         store.log(PID_GPS_TIME, gd.time);
         store.log(PID_GPS_LATITUDE, gd.lat);
         store.log(PID_GPS_LONGITUDE, gd.lng);
-        store.log(PID_GPS_ALTITUDE, gd.alt);
-        store.log(PID_GPS_SPEED, gd.speed);
+        store.log(PID_GPS_ALTITUDE, gd.alt / 100);
+        store.log(PID_GPS_SPEED, kph);
         store.log(PID_GPS_SAT_COUNT, gd.sat);
         // save current UTC date in MMDD format
         unsigned int DDMM = gd.date / 100;
         UTC = gd.time;
         MMDD = (DDMM % 100) * 100 + (DDMM / 100);
+        // some computations
+        if (kph >= 1 || lastSpeedData * 1852 >= 100000) {
+            // compute distance travelled from two speed samples (either is above 1kph)
+            distance += (float)(gd.speed + lastSpeedData) * 2 * 1852 / 100000 * (ts - gpsDataTime) / 3600000;
+        } else {
+            stationeryTimer = ts;
+        }
+        gpsDataTime = ts;
+        lastSpeedData = gd.speed;
         return true;
     }
     void logSensorData()
@@ -279,12 +293,13 @@ public:
         Serial.println("Waiting GPS signal...");
 #if ENABLE_DISPLAY
         lcd.setCursor(0, 6);
-        lcd.print("Waiting GPS signal...");
+        lcd.print("Waiting GPS...");
 #endif
         for (;;) {
             // read parsed GPS data
-            if (sys.gpsGetData(&gd) && gd.time) {
-                gpsDataTick = millis();
+            if (sys.gpsGetData(&gd) && gd.sat >= 3) {
+                gpsDataTime = millis();
+                lastSpeedData = gd.speed;
                 break;
             }
             Serial.print((millis() - t) / 1000);
@@ -362,6 +377,14 @@ void showStats()
 #if ENABLE_DISPLAY
 void updateDisplay(bool updated)
 {
+    lcd.setFontSize(FONT_SIZE_MEDIUM);
+    lcd.setCursor(68, 0);
+    lcd.printInt((int)distance, 4);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.print('.');
+    lcd.printInt((int)(distance * 10) % 10);
+    lcd.print("km");    
+
     int seconds = (millis() - startTime) / 1000;
     lcd.setFontSize(FONT_SIZE_MEDIUM);
     lcd.setCursor(0, 0);
@@ -373,30 +396,26 @@ void updateDisplay(bool updated)
 
     if (!updated) return;
 
-    lcd.setCursor(0, 3);
-    lcd.printInt(gd.speed, 2);
-    lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.setCursor(4, 5);
-    lcd.print("km/h");
-
     lcd.setFontSize(FONT_SIZE_MEDIUM);
-    lcd.setCursor(50, 3);
+    lcd.setCursor(0, 3);
     lcd.printInt(gd.alt / 100, 3);
     lcd.setFontSize(FONT_SIZE_SMALL);
-    lcd.setCursor(50, 5);
+    lcd.setCursor(0, 5);
     lcd.print("m Alt");
 
     lcd.setFontSize(FONT_SIZE_MEDIUM);
-    lcd.setCursor(100, 3);
+    lcd.setCursor(102, 3);
     lcd.printInt(gd.sat, 2);
     lcd.setFontSize(FONT_SIZE_SMALL);
     lcd.setCursor(103, 5);
     lcd.print("Sats");
 
-    lcd.setCursor(62, 0);
-    lcd.print((float)gd.lng / 1000000, 6);
-    lcd.setCursor(62, 1);
-    lcd.print((float)gd.lat / 1000000, 6);
+    lcd.setFontSize(FONT_SIZE_XLARGE);
+    lcd.setCursor(50, 2);
+    lcd.printInt(gd.speed * 1852 / 100000, 2);
+    lcd.setFontSize(FONT_SIZE_SMALL);
+    lcd.setCursor(58, 5);
+    lcd.print("km/h");
 }
 
 void initDisplay()
@@ -508,7 +527,7 @@ void setup()
 #if ENABLE_TRACCAR_CLIENT
 #if ENABLE_DISPLAY
     lcd.setCursor(0, 6);
-    lcd.println("Connecting to ");
+    lcd.println("Connecting server...");
     lcd.print(TRACCAR_HOST);
 #endif
     while (!serverCheckup() || !traccar.connect()) delay(1000);
@@ -558,7 +577,7 @@ void loop()
     store.setTimestamp(ts);
     logger.logSensorData();
     bool updated = logger.logGPSData();
-    if (millis() - gpsDataTick > GPS_SIGNAL_TIMEOUT) {
+    if (millis() - gpsDataTime > GPS_SIGNAL_TIMEOUT) {
 #if ENABLE_DISPLAY
         initDisplay();
 #endif
