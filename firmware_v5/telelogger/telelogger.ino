@@ -100,11 +100,6 @@ private:
   byte m_state = 0;
 };
 
-class MyGATTServer : public GATTServer
-{
-  void onReceiveBLE(uint8_t* buffer, size_t len);
-};
-
 FreematicsESP32 sys;
 State state;
 
@@ -184,7 +179,7 @@ int handlerLiveData(UrlHandlerParam* param)
         millis() - lastMotionTime);
 #endif
 #if ENABLE_GPS
-    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}",
+    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%u,\"sat\":%d}",
         gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
 #endif
     buf[n++] = '}';
@@ -445,26 +440,25 @@ void processGPS()
   static uint16_t lastUTC = 0;
   static uint8_t lastGPSDay = 0;
   // read parsed GPS data
-  if (sys.gpsGetData(&gd)) {
-      if (gd.date && lastUTC != (uint16_t)gd.time) {
-        byte day = gd.date / 10000;
-        cache.log(PID_GPS_TIME, gd.time);
-        if (lastGPSDay != day) {
-          cache.log(PID_GPS_DATE, gd.date);
-          lastGPSDay = day;
-        }
-        cache.logCoordinate(PID_GPS_LATITUDE, gd.lat);
-        cache.logCoordinate(PID_GPS_LONGITUDE, gd.lng);
-        cache.log(PID_GPS_ALTITUDE, gd.alt);
-        cache.log(PID_GPS_SPEED, gd.speed);
-        cache.log(PID_GPS_SAT_COUNT, gd.sat);
-        lastUTC = (uint16_t)gd.time;
-        char buf[48];
-        sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u",
-            gd.time / 1000000, (gd.time % 1000000) / 10000, (gd.time % 10000) / 100, (gd.time % 100) / 10, (unsigned int)gd.sat);
-        Serial.println(buf);
-      }
+  if (!sys.gpsGetData(&gd) || gd.time == 0 || gd.time == lastUTC) {
+    return;
   }
+  byte day = gd.date / 10000;
+  cache.log(PID_GPS_TIME, gd.time);
+  if (lastGPSDay != day) {
+    cache.log(PID_GPS_DATE, gd.date);
+    lastGPSDay = day;
+  }
+  cache.logCoordinate(PID_GPS_LATITUDE, gd.lat);
+  cache.logCoordinate(PID_GPS_LONGITUDE, gd.lng);
+  cache.log(PID_GPS_ALTITUDE, gd.alt / 100); /* m */
+  cache.log(PID_GPS_SPEED, gd.speed * 1852 / 100000); /* km/h */
+  cache.log(PID_GPS_SAT_COUNT, gd.sat);
+  lastUTC = (uint16_t)gd.time;
+  char buf[48];
+  sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u",
+      gd.time / 1000000, (gd.time % 1000000) / 10000, (gd.time % 10000) / 100, (gd.time % 100) / 10, (unsigned int)gd.sat);
+  Serial.println(buf);
 }
 #endif
 
@@ -1080,15 +1074,6 @@ void idleTasks()
       serialCommand += c;
     }
   }
-}
-
-void MyGATTServer::onReceiveBLE(uint8_t* buffer, size_t len)
-{
-  char* buf = new char[len + 1];
-  memcpy(buf, buffer, len);
-  buf[len] = 0;
-  executeCommand(buf);
-  delete buf;
 }
 
 void setup()

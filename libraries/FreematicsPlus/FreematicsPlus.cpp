@@ -25,7 +25,7 @@
 #include "FreematicsGPS.h"
 
 static TinyGPS gps;
-static unsigned int pendingGPSData = 0;
+static bool newGPSData = false;
 static Task taskGPS;
 
 #if GPS_SOFT_SERIAL
@@ -71,7 +71,7 @@ void gps_decode_task(void* inst)
 #endif
         if (c) {
             if (gps.encode(c)) {
-                pendingGPSData++;
+                newGPSData = true;
             }
         }
 #if GPS_SOFT_SERIAL
@@ -80,20 +80,19 @@ void gps_decode_task(void* inst)
     }
 }
 
-int gps_get_data(GPS_DATA* gdata)
+bool gps_get_data(GPS_DATA* gdata)
 {
     gps.stats(&gdata->sentences, &gdata->errors);
-    if (pendingGPSData == 0) return 0;
+    if (!newGPSData) return 0;
     gps.get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
     gps.get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
-    gdata->speed = gps.speed() * 1852 / 100000; /* km/h */
+    gdata->speed = gps.speed();
     gdata->alt = gps.altitude();
     gdata->heading = gps.course() / 100;
     gdata->sat = gps.satellites();
     if (gdata->sat > 100) gdata->sat = 0;
-    int ret = pendingGPSData;
-    pendingGPSData = 0;
-    return ret;
+    newGPSData = false;
+    return true;
 }
 
 int gps_write_string(const char* string)
@@ -105,8 +104,6 @@ int gps_write_string(const char* string)
 bool gps_decode_start()
 {
     // quick check of input data format
-    pendingGPSData = 0;
-
     if (taskGPS.running()) {
         taskGPS.resume();
     } else {

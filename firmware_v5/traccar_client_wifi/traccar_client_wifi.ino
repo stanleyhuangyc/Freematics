@@ -141,7 +141,7 @@ void loop()
   long alt = gps.altitude();
   int sats = gps.satellites();
   // generate ISO time string
-  char isotime[32];
+  char isotime[24];
   sprintf(isotime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
     (unsigned int)(utcdate % 100) + 2000, (unsigned int)(utcdate / 100) % 100, (unsigned int)(utcdate / 10000),
     (unsigned int)(utctime / 1000000), (unsigned int)(utctime % 1000000) / 10000, (unsigned int)(utctime % 10000) / 100, ((unsigned int)utctime % 100) / 10);
@@ -162,9 +162,10 @@ void loop()
   // arrange and send data in OsmAnd protocol
   // refer to https://www.traccar.org/osmand
   char data[128];
-  sprintf(data, "&lat=%f&lon=%f&altitude=%f&speed=%f", (float)lat / 1000000, (float)lng / 1000000, (float)alt / 100, (float)speed / 1000);
+  sprintf(data, "&lat=%f&lon=%f&altitude=%d&speed=%f", (float)lat / 1000000, (float)lng / 1000000, (int)(alt / 100), (float)speed / 100);
   // send data
   client.print(String("GET /?id=") + TRACCAR_DEV_ID + "&timestamp=" + isotime + data + " HTTP/1.1\r\n" +
+    "Host: " + TRACCAR_HOST + "\r\n" + 
     "Connection: keep-alive\r\n\r\n");
 
   // waiting for server response while still decoding NMEA
