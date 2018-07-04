@@ -272,7 +272,7 @@ public:
         // some computations
         if (kph >= 1 || lastSpeedData * 1852 >= 100000) {
             // compute distance travelled from two speed samples (either is above 1kph)
-            distance += (float)(gd.speed + lastSpeedData) * 2 * 1852 / 100000 * (ts - gpsDataTime) / 3600000;
+            distance += (float)(gd.speed + lastSpeedData) / 2 * 1852 / 100000 * (ts - gpsDataTime) / 3600000;
         } else {
             stationeryTimer = ts;
         }
