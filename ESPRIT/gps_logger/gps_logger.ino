@@ -151,7 +151,7 @@ private:
         // arrange and send data in OsmAnd protocol
         // refer to https://www.traccar.org/osmand
         char data[128];
-        sprintf(data, "&lat=%f&lon=%f&altitude=%d&speed=%f", (float)gd.lat / 1000000, (float)gd.lng / 1000000, (int)(gd.alt / 100), (float)gd.speed / 100);
+        sprintf(data, "&lat=%f&lon=%f&altitude=%d&speed=%f&heading=%d", (float)gd.lat / 1000000, (float)gd.lng / 1000000, (int)(gd.alt / 100), (float)gd.speed / 100, gd.heading);
         // generate ISO formatted UTC date/time
         char isotime[24];
         sprintf(isotime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
@@ -264,6 +264,7 @@ public:
         store.log(PID_GPS_LONGITUDE, gd.lng);
         store.log(PID_GPS_ALTITUDE, gd.alt / 100);
         store.log(PID_GPS_SPEED, kph);
+        store.log(PID_GPS_HEADING, gd.heading);
         store.log(PID_GPS_SAT_COUNT, gd.sat);
         // save current UTC date in MMDD format
         unsigned int DDMM = gd.date / 100;
@@ -271,7 +272,7 @@ public:
         MMDD = (DDMM % 100) * 100 + (DDMM / 100);
         // some computations
         if (kph >= 1 || lastSpeedData * 1852 >= 100000) {
-            // compute distance travelled from two speed samples (either is above 1kph)
+            // compute distance travelled from average of two speed samples (either is above 1kph)
             distance += (float)(gd.speed + lastSpeedData) / 2 * 1852 / 100000 * (ts - gpsDataTime) / 3600000;
         } else {
             stationeryTimer = ts;
@@ -313,13 +314,7 @@ public:
             lcd.print("s NMEA:");
             lcd.printInt(gd.sentences);
 #endif
-
-#if ENABLE_HTTPD
-            serverCheckup();
-            serverProcess(1000);
-#else
             delay(1000);
-#endif
         }
     }
     void checkFileSize(uint32_t fileSize)
@@ -404,7 +399,7 @@ void updateDisplay(bool updated)
     lcd.print("m Alt");
 
     lcd.setFontSize(FONT_SIZE_MEDIUM);
-    lcd.setCursor(102, 3);
+    lcd.setCursor(105, 3);
     lcd.printInt(gd.sat, 2);
     lcd.setFontSize(FONT_SIZE_SMALL);
     lcd.setCursor(103, 5);
@@ -493,9 +488,25 @@ void setup()
     }
 #endif
 
+    Serial.print("GPS...");
+    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+        logger.setState(STATE_GPS_FOUND);
+        Serial.println("OK");
+        logger.waitGPS();
+    } else {
+        Serial.println("NO");
+#if ENABLE_DISPLAY
+        lcd.println("GPS not connected");
+        delay(3000);
+#endif
+    }
+
+#if ENABLE_DISPLAY
+    lcd.clear();
+#endif
 #if ENABLE_HTTPD
-    Serial.print("HTTP Server...");
     IPAddress ip;
+    Serial.print("HTTP Server...");
     if (serverSetup(ip)) {
       Serial.println("OK");
     } else {
@@ -506,32 +517,34 @@ void setup()
         Serial.print("WiFi AP IP:");
         Serial.println(ip);
 #if ENABLE_DISPLAY
+        lcd.println("WiFi AP started");
+        lcd.print("SSID:");
+        lcd.println(WIFI_AP_SSID);
         lcd.print("IP:");
         lcd.println(ip);
+        lcd.println("HTTPd is running");
 #endif        
     }
 #endif
 
-    Serial.print("GPS...");
-    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
-        logger.setState(STATE_GPS_FOUND);
-        Serial.println("OK");
-        logger.waitGPS();
-    } else {
-        Serial.println("NO");
+#if ENABLE_WIFI_STATION
 #if ENABLE_DISPLAY
-        lcd.println("GPS not connected");
+    lcd.println("Connecting hotspot..");
 #endif
-    }
+    while (!serverCheckup()) delay(1000);
+#if ENABLE_DISPLAY
+    lcd.print("IP:");
+    lcd.println(WiFi.localIP());
+#endif
+#endif
 
 #if ENABLE_TRACCAR_CLIENT
 #if ENABLE_DISPLAY
-    lcd.setCursor(0, 6);
-    lcd.println("Connecting server...");
-    lcd.print(TRACCAR_HOST);
+    lcd.println("Connecting server..");
 #endif
     while (!serverCheckup() || !traccar.connect()) delay(1000);
 #endif
+    lcd.println(TRACCAR_HOST);
 
     Serial.print("File...");
     fileid = store.open();
@@ -543,7 +556,7 @@ void setup()
     }
 
 #if ENABLE_DISPLAY
-    delay(1000);
+    delay(3000);
     lcd.clear();
 #endif
 
@@ -578,6 +591,9 @@ void loop()
     logger.logSensorData();
     bool updated = logger.logGPSData();
     if (millis() - gpsDataTime > GPS_SIGNAL_TIMEOUT) {
+#ifdef ENABLE_WIFI_STATION
+        WiFi.disconnect(false);
+#endif
 #if ENABLE_DISPLAY
         initDisplay();
 #endif
