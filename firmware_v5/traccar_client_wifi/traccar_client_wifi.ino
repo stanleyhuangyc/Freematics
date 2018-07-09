@@ -140,6 +140,7 @@ void loop()
   long speed = gps.speed();
   long alt = gps.altitude();
   int sats = gps.satellites();
+  int heading = gps.course();
   // generate ISO time string
   char isotime[24];
   sprintf(isotime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
@@ -162,7 +163,7 @@ void loop()
   // arrange and send data in OsmAnd protocol
   // refer to https://www.traccar.org/osmand
   char data[128];
-  sprintf(data, "&lat=%f&lon=%f&altitude=%d&speed=%f", (float)lat / 1000000, (float)lng / 1000000, (int)(alt / 100), (float)speed / 100);
+  sprintf(data, "&lat=%f&lon=%f&altitude=%d&speed=%f&heading=%d", (float)lat / 1000000, (float)lng / 1000000, (int)(alt / 100), (float)speed / 100, heading / 100);
   // send data
   client.print(String("GET /?id=") + TRACCAR_DEV_ID + "&timestamp=" + isotime + data + " HTTP/1.1\r\n" +
     "Host: " + TRACCAR_HOST + "\r\n" + 
