@@ -24,9 +24,12 @@
 #include <WiFiClient.h>
 #include <TinyGPS.h>
 #include <Esprit.h>
-#include "SH1106.h"
+#include <SH1106.h>
 #include "images.h"
 #include "config.h"
+
+#define WIFI_SSID "Freematics Esprit"
+#define BLE_DEVICE_NAME "Freematics Esprit"
 
 // TCP server at port 80 will respond to HTTP requests
 WiFiServer server(80);
@@ -72,13 +75,20 @@ void setup(void)
     lcd.setFontSize(FONT_SIZE_MEDIUM);
     lcd.println("ESPRIT DEMO");
 
-    // NVS
+
+    Serial.print("CPU:");
+    Serial.print(ESP.getCpuFreqMHz());
+    Serial.println("MHz");
+    lcd.print("CPU:");
+    lcd.print(ESP.getCpuFreqMHz());
+    lcd.println("MHz");
+
     nvs.init();
     size_t size = nvs.getFlashSize();
     Serial.print("Flash Size:");
     Serial.print(size >> 20);
     Serial.println("MB");
-    lcd.print("Flash Size:");
+    lcd.print("Flash:");
     lcd.print(size >> 20);
     lcd.println("MB");
 
@@ -86,12 +96,12 @@ void setup(void)
     nvs.get("restart_counter", restart_counter);
     Serial.print("Reboots:");
     Serial.println(restart_counter);
-    lcd.print("Reboots: ");
+    lcd.print("Reboots:");
     lcd.print(restart_counter);
     restart_counter++;
     nvs.set("restart_counter", restart_counter);
     nvs.commit();
-    delay(1000);
+    delay(3000);
     lcd.clear();
 
     // BLE
@@ -105,51 +115,33 @@ void setup(void)
       showTickCross(false);
     }
 
- #if 0
-    char *name = 0;
-    lastTick = millis();
-    while (!(name = ble.getDeviceName()) && millis() - lastTick < 5000) delay(200);
-    lcd.println(name ? name : "No BLE device");
- #endif
-
     // Connect to WiFi network
     lcd.setCursor(64, 0);
     lcd.print("WIFI");
-    lcd.setCursor(0, 2);
-    lcd.print("SSID:");
-    lcd.print(WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.print("Connecting to ");
-    Serial.println(WIFI_SSID);
-
-    // Wait for connection
-    byte count = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-        lcd.setCursor(100, 0);
-        lcd.print(waitsign[(count = (count + 1) % 4)]);
-        delay(100);
-        Serial.print(".");
+    if (WiFi.softAP(WIFI_SSID)) {
+      Serial.println("WIFI AP Started");
+      showTickCross(true);
     }
-    lcd.setCursor(100, 0);
-    showTickCross(true);
+    else {
+      Serial.println("WIFI AP Error");
+      showTickCross(false);
+    }
     lcd.setCursor(0, 2);
-    lcd.print(WiFi.localIP());
+    lcd.print(WiFi.softAPIP());
     Serial.println("");
     Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+    Serial.println(WiFi.softAPIP());
 
     // Set up mDNS responder:
     // - first argument is the domain name, in this example
     //   the fully-qualified domain name is "esp8266.local"
     // - second argument is the IP address to advertise
     //   we send our IP address on the WiFi network
-    if (!MDNS.begin("esprit")) {
+    if (MDNS.begin("esprit")) {
         Serial.println("Error setting up MDNS responder!");
-        while(1) {
-            delay(1000);
-        }
+    } else {
+        Serial.println("mDNS responder started");
     }
-    Serial.println("mDNS responder started");
 
     // Start TCP (HTTP) server
     server.begin();
