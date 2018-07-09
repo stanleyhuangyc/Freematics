@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<config>
-<target name="Freematics Esprit" board="esp32">
-  <define name="WIFI SSID" const="WIFI_SSID" type="string" default="HOMEWIFI"/>
-  <define name="WIFI Password" const="WIFI_PASSWORD" type="string" default="862150909018"/>
-  <define name="BLE Device Name" const="BLE_DEVICE_NAME" type="string" default="FreematicsEsprit"/>
-</target>
-</config>
