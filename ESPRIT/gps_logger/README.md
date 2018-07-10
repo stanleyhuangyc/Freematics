@@ -1,4 +1,4 @@
-This Arduino sketch is designed for [Freematics ESP32 GNSS Kit](https://freematics.com/products/esp32-gnss-kit/) to work as a GPS GPS data logger and Traccar client while also providing access for real-time and logged data over WiFi.
+This Arduino sketch is designed for [Freematics ESP32 GNSS Kit](https://freematics.com/products/esp32-gnss-kit/) to work as a GPS data logger and Traccar client while also providing access for real-time and logged data over WiFi.
 
 Storage
 -------
