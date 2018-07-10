@@ -26,8 +26,7 @@ A [Traccar](https://www.traccar.org/) client is implemented. Simply change the h
 Prerequisites
 -------------
 
-* [Freematics Esprit](https://freematics.com/products/freematics-esprit/)
-* [GPS Receiver for Arduino](https://freematics.com/store/index.php?route=product/product&path=20&product_id=55)
+* [Freematics ESP32 GNSS Kit](https://freematics.com/products/esp32-gnss-kit/)
 * [PlatformIO](http://platformio.org/), [Arduino IDE](https://github.com/espressif/arduino-esp32#installation-instructions) or [Freematics Arduino Builder](https://freematics.com/software/arduino-builder) for compiling and uploading code
 
 Galleries
