@@ -610,15 +610,14 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			if (eos) continue;
 			if (!matched) {
 				// match header
-				if (c == header[0]) {
-					n = 1;
-					buffer[0] = c;
-					continue;
-				}
 				buffer[n++] = c;
 				if (n == sizeof(header)) {
 					matched = memcmp(buffer, header, sizeof(header)) == 0;
-					if (matched) n = 0;
+					if (matched) {
+						n = 0;
+					} else {
+						memmove(buffer, buffer + 1, --n);
+					}
 				}
 				continue;
 			}
@@ -642,7 +641,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			}
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
-    portEXIT_CRITICAL(&mux);
+	    portEXIT_CRITICAL(&mux);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -674,9 +673,7 @@ void COBDSPI::write(const char* s)
 	memcpy(buf, (uint8_t*)header, sizeof(header));
 	memcpy(buf + sizeof(header), s, len);
 	buf[sizeof(header) + len] = 0x1B;
-
 	SPI.writeBytes((uint8_t*)buf, sizeof(header) + len + 1);
-
 	free(buf);
 	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
