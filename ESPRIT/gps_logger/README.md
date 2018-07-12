@@ -1,4 +1,4 @@
-This Arduino sketch is designed for running on [Freematics Esprit](https://freematics.com/products/freematics-esprit/) to log GPS data and provide access for logged data through WiFi.
+This Arduino sketch is designed for [Freematics ESP32 GNSS Kit](https://freematics.com/products/esp32-gnss-kit/) to work as a GPS data logger and Traccar client while also providing access for real-time and logged data over WiFi.
 
 Storage
 -------
@@ -26,6 +26,12 @@ A [Traccar](https://www.traccar.org/) client is implemented. Simply change the h
 Prerequisites
 -------------
 
-* [Freematics Esprit](https://freematics.com/products/freematics-esprit/)
-* [GPS Receiver for Arduino](https://freematics.com/store/index.php?route=product/product&path=20&product_id=55)
+* [Freematics ESP32 GNSS Kit](https://freematics.com/products/esp32-gnss-kit/)
 * [PlatformIO](http://platformio.org/), [Arduino IDE](https://github.com/espressif/arduino-esp32#installation-instructions) or [Freematics Arduino Builder](https://freematics.com/software/arduino-builder) for compiling and uploading code
+
+Galleries
+---------
+
+![Freematics ESP32 GNSS Kit](https://freematics.com/pages/wp-content/uploads/2018/07/esprit_gps_kit_2.jpg)
+
+![Freematics ESP32 GNSS Kit](https://freematics.com/pages/wp-content/uploads/2018/07/esprit_gps_kit_3.jpg)
