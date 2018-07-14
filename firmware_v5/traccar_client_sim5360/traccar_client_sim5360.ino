@@ -53,18 +53,15 @@ public:
   bool init()
   {
     xbBegin(BEE_BAUDRATE);
-    if (sendCommand("ATI\r", 50, "SIM5360")) {
-      return true;
-    }
     for (byte n = 0; n < 10; n++) {
       // try turning on module
       xbTogglePower();
       delay(2000);
       xbPurge();
-      // discard any stale data
-      for (byte m = 0; m < 3; m++) {
-        if (sendCommand("ATI\r", 500, "SIM5360"))
+      for (byte m = 0; m < 5; m++) {
+        if (sendCommand("AT\r")) {
           return true;
+        }
       }
     }
     return false;
@@ -411,17 +408,8 @@ private:
 
 SIM5360 net;
 
-void setup()
+void initSIM5360()
 {
-  // turn on indicator LED
-  pinMode(PIN_LED, OUTPUT);
-  digitalWrite(PIN_LED, HIGH);
-
-  // USB serial
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("TRACCAR CLIENT");
-
   for (;;) {
     // initialize SIM5360 xBee module (if present)
     Serial.print("Init SIM5360...");
@@ -431,7 +419,6 @@ void setup()
       Serial.println("NO");
       for (;;);
     }
-    Serial.println(net.buffer);
 
     Serial.print("Connecting network (APN:");
     Serial.print(OPERATOR_APN);
@@ -470,6 +457,20 @@ void setup()
   } else {
     Serial.println("NO");
   }
+}
+
+void setup()
+{
+  // turn on indicator LED
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, HIGH);
+
+  // USB serial
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("TRACCAR CLIENT");
+
+  initSIM5360();
 
   // turn on GPS power
   pinMode(PIN_GPS_POWER, OUTPUT);
@@ -486,6 +487,7 @@ void setup()
 void loop()
 {
   static unsigned long lastutc = 0;
+  static int retries = 0;
 
   // check incoming NMEA data from GPS
   if (!gpsSerial.available()) {
@@ -509,8 +511,11 @@ void loop()
   if (net.state() != CLIENT_CONNECTED) {
     Serial.println("Connecting...");
     if (!net.httpConnect(TRACCAR_HOST, TRACCAR_PORT)) {
-      Serial.println("Error connecting");
       Serial.println(net.buffer);
+      if (++retries >= 3) {
+        initSIM5360();
+        retries = 0;
+      }
       return;
     }
   }
@@ -563,14 +568,15 @@ void loop()
     net.httpClose();
   }
 
-  // waiting for server response while still decoding NMEA
-  for (uint32_t t = millis(); !net.checkRecvEvent() && millis() - t < 3000; ) {
-    if (gpsSerial.available()) {
-      gps.encode(gpsSerial.read());
-    }
-  }
   // output server response
   if (net.state() == CLIENT_CONNECTED) {
+    // waiting for server response while still decoding NMEA
+    for (uint32_t t = millis(); !net.checkRecvEvent() && millis() - t < 3000; ) {
+      if (gpsSerial.available()) {
+        gps.encode(gpsSerial.read());
+      }
+    }
+
     char *response;
     int bytes = net.httpReceive(&response);
     if (bytes > 0) {
