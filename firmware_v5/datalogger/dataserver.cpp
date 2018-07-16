@@ -290,13 +290,6 @@ UrlHandler urlHandlerList[]={
     {0}
 };
 
-void obtainTime()
-{
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, (char*)"pool.ntp.org");
-    sntp_init();
-}
-
 #endif
 
 void serverProcess(int timeout)
@@ -344,6 +337,13 @@ void serverCheckup()
 #endif
 }
 
+void obtainTime()
+{
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, (char*)"pool.ntp.org");
+    sntp_init();
+}
+
 bool serverSetup()
 {
 #if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
@@ -370,6 +370,8 @@ bool serverSetup()
     }
 #endif
 
+#if ENABLE_WIFI_STATION
     obtainTime();
+#endif
     return true;
 }
