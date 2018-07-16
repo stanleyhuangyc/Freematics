@@ -314,7 +314,7 @@ float COBD::getVoltage()
 
 bool COBD::getVIN(char* buffer, byte bufsize)
 {
-	for (byte n = 0; n < 5; n++) {
+	for (byte n = 0; n < 3; n++) {
 		if (sendCommand("0902\r", buffer, bufsize)) {
 			int len = hex2uint16(buffer);
 			char *p = strstr(buffer + 4, "0: 49 02 01");
@@ -352,21 +352,10 @@ bool COBD::isValidPID(byte pid)
 	return (pidmap[i] & b) != 0;
 }
 
-byte COBD::begin()
+byte COBD::begin(byte pinRx, byte pinTx)
 {
-	long baudrates[] = {115200, 38400};
-	byte version = 0;
-	for (byte n = 0; n < sizeof(baudrates) / sizeof(baudrates[0]); n++) {
-#ifndef ESP32
-		OBDUART.begin(baudrates[n]);
-#else
-		OBDUART.begin(baudrates[n], SERIAL_8N1, 16, 17);
-#endif
-		version = getVersion();
-		if (version != 0) break;
-		OBDUART.end();
-	}
-	return version;
+	OBDUART.begin(OBD_UART_BAUDRATE, SERIAL_8N1, pinRx, pinTx);
+	return getVersion();
 }
 
 byte COBD::getVersion()
