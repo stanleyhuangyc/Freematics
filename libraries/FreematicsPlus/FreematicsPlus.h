@@ -2,7 +2,7 @@
 * Arduino library for ESP32 based Freematics ONE+ and Freematics Esprit
 * Distributed under BSD license
 * Visit https://freematics.com for more information
-* (C)2017-2018 Developed by Stanley Huang <support@freematics.com.au>
+* (C)2017-2018 Developed by Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
@@ -36,32 +36,23 @@
 #define GPS_SOFT_SERIAL 0
 
 #define UART_BUF_SIZE 256
+#define NMEA_BUF_SIZE 512
 
 #define GPS_TIMEOUT 1000 /* ms */
 
 typedef struct {
-    uint32_t date;
-    uint32_t time;
-    int32_t lat;
-    int32_t lng;
-    int32_t alt; /* 1/100 meter */
-    uint32_t speed; /* 1/100 knot */
-    int16_t heading; /* degree */
-    uint16_t sat;
-    uint16_t sentences;
-    uint16_t errors;
+	uint32_t date;
+	uint32_t time;
+	int32_t lat;
+	int32_t lng;
+	int32_t alt; /* 1/100 meter */
+	uint32_t speed; /* 1/100 knot */
+	int16_t heading; /* degree */
+	uint16_t sat;
+	uint16_t sentences;
+	uint16_t errors;
 } GPS_DATA;
 
-bool gps_decode_start();
-void gps_decode_stop();
-bool gps_get_data(GPS_DATA* gdata);
-int gps_write_string(const char* string);
-void gps_decode_task(int timeout);
-void bee_start();
-int bee_write_string(const char* string);
-int bee_write_data(uint8_t* data, int len);
-int bee_read(uint8_t* buffer, size_t bufsize, unsigned int timeout);
-void bee_flush();
 uint8_t readChipTemperature();
 int32_t readChipHallSensor();
 uint16_t getFlashSize(); /* KB */
@@ -69,7 +60,7 @@ uint16_t getFlashSize(); /* KB */
 class Task
 {
 public:
-  bool create(void (*task)(void*), const char* name, int priority = 0);
+	bool create(void (*task)(void*), const char* name, int priority = 0, int stacksize = 1024);
   void destroy();
   void suspend();
   void resume();
@@ -92,25 +83,27 @@ private:
 class FreematicsESP32 : public CFreematics
 {
 public:
-    void begin(int cpuMHz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ);
-    // initialize GPS (set baudrate to 0 to power off GPS)
-    bool gpsInit(unsigned long baudrate = GPS_BAUDRATE);
-    // get parsed GPS data (returns the number of data parsed since last invoke)
-    int gpsGetData(GPS_DATA* gdata);
-    // send command string to GPS
-    void gpsSendCommand(const char* cmd);
-	// start xBee UART communication
-	bool xbBegin(unsigned long baudrate = BEE_BAUDRATE);
-	// read data to xBee UART
-	int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
-	// send data to xBee UART
-	void xbWrite(const char* cmd);
+  void begin(int cpuMHz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ);
+  // initialize GPS (set baudrate to 0 to power off GPS)
+  bool gpsInit(unsigned long baudrate = GPS_BAUDRATE, bool buffered = false);
+  // get parsed GPS data (returns the number of data parsed since last invoke)
+  bool gpsGetData(GPS_DATA* gdata);
+  // get buffered NMEA data
+  int gpsGetNMEA(char* buffer, int bufsize);
+  // send command string to GPS
+  void gpsSendCommand(const char* string, int len);
+  // start xBee UART communication
+  bool xbBegin(unsigned long baudrate = BEE_BAUDRATE);
+  // read data to xBee UART
+  int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
+  // send data to xBee UART
+  void xbWrite(const char* cmd);
     // send data to xBee UART
-	void xbWrite(const char* data, int len);
-	// receive data from xBee UART (returns 0/1/2)
-	int xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
-	// purge xBee UART buffer
-	void xbPurge();
-	// toggle xBee module power
-	void xbTogglePower();
+  void xbWrite(const char* data, int len);
+  // receive data from xBee UART (returns 0/1/2)
+  int xbReceive(char* buffer, int bufsize, unsigned int timeout = 1000, const char** expected = 0, byte expectedCount = 0);
+  // purge xBee UART buffer
+  void xbPurge();
+  // toggle xBee module power
+  void xbTogglePower();
 };
