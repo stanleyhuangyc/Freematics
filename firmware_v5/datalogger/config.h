@@ -25,16 +25,17 @@
 * WIFI and HTTP server
 **************************************/
 #ifndef HAVE_CONFIG
-#define ENABLE_HTTPD 1
-#define ENABLE_WIFI_AP 1
-#define ENABLE_WIFI_STATION 1
+#define ENABLE_HTTPD 0
+#define ENABLE_WIFI_AP 0
+#define ENABLE_WIFI_STATION 0
 #define WIFI_AP_SSID "DATALOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
-#define WIFI_SSID "HOTSPOT"
+#define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "..."
 #endif
 
 #define WIFI_JOIN_TIMEOUT 30000
+#define NMEA_TCP_PORT 4000
 
 /**************************************
 * Hardware setup
@@ -54,3 +55,5 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 // motion detection
 #define WAKEUP_MOTION_THRESHOLD 0.5 /* G */
+// minimum loop time
+#define MIN_LOOP_TIME 100 /* ms */

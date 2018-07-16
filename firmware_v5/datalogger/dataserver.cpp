@@ -48,6 +48,8 @@ uint32_t hall_sens_read();
 
 extern SDClass SD;
 
+#if ENABLE_HTTPD
+
 HttpParam httpParam;
 
 int handlerLiveData(UrlHandlerParam* param);
@@ -295,9 +297,13 @@ void obtainTime()
     sntp_init();
 }
 
+#endif
+
 void serverProcess(int timeout)
 {
+#if ENABLE_HTTPD
     mwHttpLoop(&httpParam, timeout);
+#endif
 }
 
 void serverCheckup()
@@ -329,6 +335,7 @@ void serverCheckup()
             // start mDNS responder
             MDNS.begin("datalogger");
             MDNS.addService("http", "tcp", 80);
+            MDNS.addService("nmea", "tcp", NMEA_TCP_PORT);
 
             wifiStartTime = 0;
         }
@@ -354,12 +361,14 @@ bool serverSetup()
     Serial.print(' ');
 #endif
 
+#if ENABLE_HTTPD
     mwInitParam(&httpParam, 80, "/spiffs");
     httpParam.pxUrlHandler = urlHandlerList;
 
     if (mwServerStart(&httpParam)) {
         return false;
     }
+#endif
 
     obtainTime();
     return true;

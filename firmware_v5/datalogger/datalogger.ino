@@ -82,6 +82,9 @@ COBDSPI obd;
 
 FreematicsESP32 sys;
 
+WiFiServer nmeaServer(NMEA_TCP_PORT);
+WiFiClient nmeaClient;
+
 class DataOutputter : public NullLogger
 {
     void write(const char* buf, byte len)
@@ -250,7 +253,7 @@ public:
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("GPS...");
         memset(&gd, 0, sizeof(gd));
-        if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+        if (sys.gpsInit(GPS_SERIAL_BAUDRATE, true)) {
           setState(STATE_GPS_FOUND);
           Serial.println("OK");
           //waitGPS();
@@ -340,9 +343,7 @@ public:
       }
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
-#if ENABLE_HTTPD
       serverCheckup();
-#endif
       setState(STATE_STANDBY);
       Serial.println("Standby");
 #if MEMS_MODE
@@ -357,7 +358,7 @@ public:
               float m = (acc[i] - accBias[i]);
               motion += m * m;
             }
-#if ENABLE_HTTPD
+#if (ENABLE_WIFI_STATION || ENABLE_WIFI_AP)
             serverProcess(100);
 #else
             delay(100);
@@ -429,9 +430,16 @@ void setup()
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
-    byte ver = obd.begin();
-    Serial.print("OBD Firmware Ver. ");
-    Serial.println(ver);
+    byte ver = 0;
+#if USE_OBD == OBD_UART
+    ver = obd.begin(13, 14);
+#elif USE_OBD == OBD_SPI
+    ver = obd.begin();
+#endif
+    if (ver) {
+        Serial.print("OBD Firmware Ver. ");
+        Serial.println(ver);
+    }
 
 #if MEMS_MODE
     Serial.print("MEMS...");
@@ -469,6 +477,7 @@ void setup()
     }
 #endif
 
+#if ENABLE_WIFI_STATION || ENABLE_WIFI_AP
 #if ENABLE_HTTPD
     Serial.print("HTTP Server...");
     if (serverSetup()) {
@@ -476,7 +485,9 @@ void setup()
     } else {
       Serial.println("NO");
     }
+#endif
     serverCheckup();
+    nmeaServer.begin();
 #endif
 
     pinMode(PIN_LED, LOW);
@@ -512,8 +523,9 @@ void loop()
       }
     }
 
+    uint32_t ts = millis();
     // poll and log OBD data
-    store.setTimestamp(millis());
+    store.setTimestamp(ts);
 #if USE_OBD
     static int idx[2] = {0, 0};
     int tier = 1;
@@ -550,7 +562,7 @@ void loop()
         logger.logGPSData();
 #endif
         if (tier > 1) break;
-#if ENABLE_HTTPD
+#if ENABLE_WIFI_STATION || ENABLE_WIFI_AP
         serverProcess(0);
 #endif
     }
@@ -558,6 +570,7 @@ void loop()
 #if USE_GPS
     logger.logGPSData();
 #endif
+    delay(50);
 #endif
 
     // re-initialize when OBD is disconnected
@@ -598,14 +611,35 @@ void loop()
     store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
 #endif
 
-#if ENABLE_HTTPD
-    serverProcess(10);
-    serverCheckup();
-#endif
-
 #if !ENABLE_SERIAL_OUT
     showStats();
 #endif
 
     executeCommand();
+
+#if ENABLE_WIFI_STATION || ENABLE_WIFI_AP
+    // NMEA-to-TCP bridge
+    serverCheckup();
+    if (!nmeaClient || !nmeaClient.connected()) {
+        nmeaClient.stop();
+        nmeaClient = nmeaServer.available();
+    }
+    do {
+        if (nmeaClient.connected()) {
+            char buf[NMEA_BUF_SIZE];
+            int bytes = sys.gpsGetNMEA(buf, sizeof(buf));
+            if (bytes > 0) nmeaClient.write(buf, bytes);
+            bytes = 0;
+            while (nmeaClient.available() && bytes < NMEA_BUF_SIZE) {
+                buf[bytes++] = nmeaClient.read();
+            }
+            if (bytes > 0) sys.gpsSendCommand(buf, bytes);
+        }
+        serverProcess(0);
+    } while (millis() - ts < MIN_LOOP_TIME);
+#else
+    ts = millis() - ts;
+    if (ts < MIN_LOOP_TIME) delay(MIN_LOOP_TIME - ts);
+#endif
+
 }

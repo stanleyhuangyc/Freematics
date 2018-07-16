@@ -21,7 +21,7 @@
   </define>
   <define name="Data Output via Serial" type="bool" const="ENABLE_SERIAL_OUT"/>
   <define name="Enable HTTP Server" type="bool" const="ENABLE_HTTPD" default="true"/>
-  <define name="Enable Soft AP" type="bool" const="ENABLE_WIFI_AP" default="true" dep="ENABLE_HTTPD=1"/>
+  <define name="Enable Soft AP" type="bool" const="ENABLE_WIFI_AP" dep="ENABLE_HTTPD=1"/>
   <define name="Soft AP SSID" type="string" const="WIFI_AP_SSID" default="DATALOGGER" dep="ENABLE_WIFI_AP=1"/>
   <define name="Soft AP Password" type="string" const="WIFI_AP_PASSWORD" default="PASSWORD" dep="ENABLE_WIFI_AP=1"/>
   <define name="Connect to a WIFI Hotspot" type="bool" const="ENABLE_WIFI_STATION" dep="ENABLE_HTTPD=1"/>
