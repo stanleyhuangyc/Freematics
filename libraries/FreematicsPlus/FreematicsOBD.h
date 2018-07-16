@@ -11,6 +11,8 @@
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
 #define OBD_TIMEOUT_LONG 10000 /* ms */
 
+#define OBD_UART_BAUDRATE 115200
+
 #define SPI_PIN_CS 2
 #define SPI_PIN_READY 13
 #define SPI_FREQ 1000000
@@ -23,7 +25,7 @@ class COBD
 {
 public:
 	// begin serial UART
-	virtual byte begin();
+	virtual byte begin(byte pinRx = 16, byte pinTx = 17);
 	// terminate communication channel
 	virtual void end();
 	// initialize OBD-II connection
