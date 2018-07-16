@@ -52,6 +52,7 @@ HttpParam httpParam;
 
 int handlerLiveData(UrlHandlerParam* param);
 int handlerControl(UrlHandlerParam* param);
+int handlerNMEA(UrlHandlerParam* param);
 
 uint16_t hex2uint16(const char *p);
 
@@ -283,6 +284,7 @@ int handlerLogList(UrlHandlerParam* param)
 UrlHandler urlHandlerList[]={
     {"api/live", handlerLiveData},
     {"api/info", handlerInfo},
+    {"api/nmea", handlerNMEA},
     {"api/control", handlerControl},
 #if STORAGE != STORAGE_NONE
     {"api/list", handlerLogList},
