@@ -577,31 +577,30 @@ bool initialize()
 #elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
-    Serial.print(net.deviceName());
-    Serial.print("...");
+    Serial.print("CELL...");
     if (net.begin(&sys)) {
-      Serial.println("OK");
+      Serial.println(net.deviceName());
+#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+      Serial.print("IMEI:");
+      Serial.println(net.IMEI);
+#endif
       state.set(STATE_NET_READY);
 #if ENABLE_OLED
       oled.print(net.deviceName());
-      oled.print(" connecting...\r");
+      oled.print(" OK\r");
 #endif
     } else {
       Serial.println("NO");
 #if ENABLE_OLED
-      oled.print(net.deviceName());
-      oled.println(" disconnected");
+      oled.print("No cell module");
 #endif
       return false;
     }
   }
-  Serial.print("CELL(APN:");
+  Serial.print("Network(APN:");
   Serial.print(CELL_APN);
   Serial.print(")");
   if (net.setup(CELL_APN)) {
-#if ENABLE_OLED
-    oled.print("Cell connected");
-#endif
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
@@ -611,6 +610,9 @@ bool initialize()
       delay(1000);
 #endif
     } else {
+#if ENABLE_OLED
+      oled.print("Cell Connected");
+#endif
       Serial.println("OK");
     }
   } else {

@@ -248,7 +248,7 @@ char* UDPClientSIM800::receive(int* pbytes, unsigned int timeout)
 {
 	char *data = checkIncoming(pbytes);
 	if (data) return data;
-  if (sendCommand(0, timeout, "RECV FROM:")) {
+  if (sendCommand("AT+CIPUDPMODE?\r", timeout, "+IPD")) {
 		return checkIncoming(pbytes);
   }
   return 0;
@@ -256,23 +256,20 @@ char* UDPClientSIM800::receive(int* pbytes, unsigned int timeout)
 
 char* UDPClientSIM800::checkIncoming(int* pbytes)
 {
-	char *p = strstr(m_buffer, "RECV FROM:");
-	if (p) p = strchr(p, '\r');
-	if (!p) return 0;
-	while (*(++p) == '\r' || *p =='\n');
-	int len = strlen(p);
-	if (len > 2) {
-		if (pbytes) *pbytes = len;
-		return p;
-	} else {
-		if (sendCommand("AT\r", 1000, "\r\nOK", true)) {
-			p = m_buffer;
-			while (*p && (*p == '\r' || *p == '\n')) p++;
-			if (pbytes) *pbytes = strlen(p);
-			return p;
-		}
-	}
-	return 0;
+	char *p = strstr(m_buffer, "+IPD");
+	if (p) {
+    Serial.println(m_buffer);
+    *p = '-'; // mark this datagram as checked
+    int len = atoi(p + 4);
+    if (pbytes) *pbytes = len;
+    p = strchr(p, ':');
+    if (p) {
+      *(++p + len) = 0;
+      return p;
+    }
+  }
+  return 0;
+
 }
 
 String UDPClientSIM800::queryIP(const char* host)
@@ -357,6 +354,22 @@ bool UDPClientSIM5360::begin(CFreematics* device)
     for (byte m = 0; m < 5; m++) {
       if (sendCommand("AT\r")) {
         m_stage = 2;
+        sendCommand("ATE0\r");
+        if (sendCommand("ATI\r")) {
+          // retrieve module info
+          char *p = strstr(m_buffer, "Model:");
+          if (p) p = strchr(p, '_');
+          if (p++) {
+            int i = 0;
+            while (i < sizeof(m_model) - 1 && p[i] && p[i] != '\r' && p[i] != '\n') {
+              m_model[i] = p[i];
+              i++;
+            }
+            m_model[i] = 0;
+          }
+          p = strstr(m_buffer, "IMEI:");
+          if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
+        }
         return true;
       }
     }
@@ -376,7 +389,6 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigne
 {
   uint32_t t = millis();
   bool success = false;
-  sendCommand("ATE0\r");
   if (only3G) sendCommand("AT+CNMP=14\r"); // use WCDMA only
   do {
     do {
@@ -387,8 +399,10 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigne
         if (!strstr(m_buffer, "NO SERVICE"))
           break;
         success = false;
-      } else {
-        if (strstr(m_buffer, "Off")) break;
+      }
+      if (strstr(m_buffer, "Off")) {
+        success = false;
+        break;
       }
     } while (millis() - t < timeout);
     if (!success) break;
@@ -437,6 +451,20 @@ String UDPClientSIM5360::getIP()
     delay(500);
   } while (millis() - t < 15000);
   return "";
+}
+
+bool UDPClientSIM5360::initGPS()
+{
+  return sendCommand("AT+CGPS=1\r");
+}
+
+bool UDPClientSIM5360::readGPS()
+{
+    if (sendCommand("AT+CGPSINFO\r") && !strstr(m_buffer, ",,,")) {
+      return true;
+    } else {
+      return false;
+    }
 }
 
 int UDPClientSIM5360::getSignal()
@@ -511,15 +539,16 @@ char* UDPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 char* UDPClientSIM5360::checkIncoming(int* pbytes)
 {
 	char *p = strstr(m_buffer, "+IPD");
-	if (!p) return 0;
-	*p = '-'; // mark this datagram as checked
-	int len = atoi(p + 4);
-	if (pbytes) *pbytes = len;
-	p = strchr(p, '\n');
 	if (p) {
-		*(++p + len) = 0;
-		return p;
-	}
+    *p = '-'; // mark this datagram as checked
+    int len = atoi(p + 4);
+    if (pbytes) *pbytes = len;
+    p = strchr(p, '\n');
+    if (p) {
+      *(++p + len) = 0;
+      return p;
+    }
+  }
 	return 0;
 }
 

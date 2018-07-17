@@ -59,7 +59,7 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
-    const char* deviceName() { return "WIFI"; }
+    const char* deviceName() { return "WiFi"; }
   private:
     void listAPs();
     char m_buffer[256] = {0};
@@ -97,7 +97,7 @@ class UDPClientSIM5360 : virtual NullClient
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, bool only3G = false, bool roaming = false, unsigned int timeout = 60000);
+    bool setup(const char* apn, bool only3G = false, bool roaming = false, unsigned int timeout = 30000);
     String getIP();
     int getSignal();
     String getOperatorName();
@@ -106,7 +106,10 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
-    virtual const char* deviceName() { return "SIM5360"; }
+    bool initGPS();
+    bool readGPS();
+    const char* deviceName() { return m_model; }
+    char IMEI[16] = {0};
 protected:
     // send command and check for expected response
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
@@ -115,11 +118,10 @@ protected:
     char udpIP[16] = {0};
     uint16_t udpPort = 0;
     uint8_t m_stage = 0;
+    char m_model[10] = {0};
     CFreematics* m_device = 0;
 };
 
 class UDPClientSIM7600 : public UDPClientSIM5360
 {
-public:
-    const char* deviceName() { return "SIM7600"; }
 };
