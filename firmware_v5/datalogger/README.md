@@ -7,14 +7,14 @@ The sketch collects follow data.
 
 * Vehicle OBD-II PIDs data (from OBD port)
 * Battery voltage (from OBD port)
-* Geolocation data (from connected GPS receiver)
+* Geolocation data (from connected GNSS receiver)
 * Acceleration data (from built-in motion sensor)
 * Orientation data (computed from motion sensor data fusion)
 
-GPS
----
+Geolocation
+-----------
 
-When GPS is detected, the sketch waits for GPS singal for a while on startup before starting data logging. Once GPS time is obtained, the data file will be created with the date and time as file name.
+When GNSS receiver is connected and detected, geolocation data will be obtained and logged. GPS UTC time is used to sync the device's real-time clock.
 
 Orientation
 -----------
@@ -24,7 +24,7 @@ The device orientation (yaw, pitch roll) can be calculated from collected motion
 Storage
 -------
 
-By default, ESP32's internal flash is used as SPIFFS for data storage. Due to limited flash size, rotation logging is implemented. MicroSD data logging is also supported.
+By default, ESP32's internal flash is used for data storage (file-based, using SPIFFS). Simple rotation logging is implemented due to limited storage size. MicroSD data logging is also supported.
 
 HTTP Server
 -----------
