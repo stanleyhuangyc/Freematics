@@ -39,10 +39,10 @@ Implemented HTTP APIs:
 * /api/log/[file #] - content of CSV format log file
 * /api/data/[file #]?pid=[PID # in HEX] - JSON array of PID data
 
-BLE
----
+NMEA TCP Server
+---------------
 
-A BLE GATT server is brought up to allow BLE capable mobile device to connect and receive some status and stats wirelessly.
+A TCP server (default port 4000) is brought up and the NMEA data stream from GNSS receiver is redirected to a incoming TCP connection. This can be used to visualize GNSS signal with software like [u-blox u-center](https://www.u-blox.com/en/product/u-center-windows) over WiFi.
 
 Prerequisites
 -------------
