@@ -29,7 +29,7 @@ By default, ESP32's internal flash is used as SPIFFS for data storage. Due to li
 HTTP Server
 -----------
 
-The sketch runs a [HTTP server](https://github.com/stanleyhuangyc/Freematics/tree/master/libraries/httpd) through ESP32's WiFi (AP and/or station). Implemented HTTP APIs provide remote access for device running status, statistics and logged/logging data.
+A multiple-connection HTTP server [HTTP server](https://github.com/stanleyhuangyc/Freematics/tree/master/libraries/httpd) runs over ESP32's WiFi (AP and/or station). A set of REST API provides remote access to device status, statistics and real-time data and logged data.
 
 Implemented HTTP APIs:
 
