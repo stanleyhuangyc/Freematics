@@ -90,6 +90,7 @@ void idleTasks();
 bool serverSetup(IPAddress& ip);
 void serverProcess(int timeout);
 String executeCommand(const char* cmd);
+bool processCommand(char* data);
 
 class State {
 public:
@@ -130,9 +131,7 @@ CStorageSD store;
 #endif
 CStorageRAM netbuf;
 
-#if ENABLE_OBD
-COBDSPI obd;
-#endif
+COBD* obd = 0;
 
 #if ENABLE_OLED
 OLED_SH1106 oled;
@@ -203,6 +202,10 @@ int handlerControl(UrlHandlerParam* param)
 /*******************************************************************************
   Freematics Hub client implementation
 *******************************************************************************/
+class TeleClientUDP
+{
+private:
+
 bool verifyChecksum(char* data)
 {
   uint8_t sum = 0;
@@ -216,7 +219,9 @@ bool verifyChecksum(char* data)
   return false;
 }
 
-bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
+public:
+
+bool notify(byte event, const char* serverKey, const char* payload = 0)
 {
   char buf[48];
   byte len = sprintf_P(buf, PSTR("EV=%X"), (unsigned int)event);
@@ -251,7 +256,6 @@ bool notifyServer(byte event, const char* serverKey, const char* payload = 0)
       delay(100);
     } while (millis() - t < DATA_RECEIVING_TIMEOUT);
     if (!data) {
-      Serial.println("timeout");
       continue;
     }
     data[len] = 0;
@@ -295,7 +299,11 @@ bool login()
 {
   // connect to telematics server
   for (byte attempts = 0; attempts < 10; attempts++) {
-    Serial.print("LOGIN...");
+    Serial.print("LOGIN(");
+    Serial.print(SERVER_HOST);
+    Serial.print(':');
+    Serial.print(SERVER_PORT);
+    Serial.print(")...");
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
       Serial.println("NO");
       continue;
@@ -305,7 +313,7 @@ bool login()
 #if ENABLE_OBD
     // load DTC
     uint16_t dtc[6];
-    byte dtcCount = obd.readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+    byte dtcCount = obd->readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
     if (dtcCount > 0) {
       Serial.print("DTC:");
       Serial.println(dtcCount);
@@ -316,7 +324,7 @@ bool login()
     }
 #endif
     // login Freematics Hub
-    if (!notifyServer(EVENT_LOGIN, SERVER_KEY, payload)) {
+    if (!notify(EVENT_LOGIN, SERVER_KEY, payload)) {
       net.close();
       Serial.println("NO");
       delay(1000);
@@ -351,15 +359,22 @@ void transmit()
     txBytes += packetSize;
     txCount++;
     // output some stats
-    char buf[64];
-#if STORAGE == STORAGE_NONE
-    sprintf(buf, "packet:%uB net:%uKB", packetSize, txBytes >> 10);
-#else
-    sprintf(buf, "packet:%uB net:%uKB file:%uKB",
-      packetSize, txBytes >> 10, store.size() >> 10);
+    Serial.print("Packet:");
+    Serial.print(packetSize);
+    Serial.print("B Net:");
+    Serial.print(txBytes >> 10);
+    Serial.print("KB");
+#if STORAGE != STORAGE_NONE
+    Serial.print(" File:");
+    Serial.print(store.size() >> 10);
+    Serial.println("KB");
 #endif
-    Serial.println(buf);
-    sprintf(buf, "%uB %uKB", packetSize, txBytes);
+#if ENABLE_OLED
+    oled.setCursor(0, 5);
+    oled.printInt(txCount, 2);
+    oled.setCursor(80, 5);
+    oled.printInt(txBytes >> 10, 3);
+#endif
     // purge cache and place a header
     cache.header(feedid);
     lastSentTime = millis();
@@ -378,14 +393,38 @@ void transmit()
       delay(1000);
     }
   }
-
-#if ENABLE_OLED
-  oled.setCursor(0, 5);
-  oled.printInt(txCount, 2);
-  oled.setCursor(80, 5);
-  oled.printInt(txBytes >> 10, 3);
-#endif
 }
+
+void inbound()
+{
+  // check incoming datagram
+  do {
+    int len = 0;
+    char *data = net.receive(&len, 0);
+    if (!data) break;
+    data[len] = 0;
+    if (!verifyChecksum(data)) {
+      Serial.print("Checksum mismatch:");
+      Serial.println(data);
+      break;
+    }
+    char *p = strstr(data, "EV=");
+    if (!p) break;
+    int eventID = atoi(p + 3);
+    switch (eventID) {
+    case EVENT_COMMAND:
+      processCommand(data);
+      break;
+    case EVENT_SYNC:
+      lastSyncTime = millis();
+      break;
+    }
+  } while(0);
+}
+
+};
+
+TeleClientUDP teleClient;
 
 /*******************************************************************************
   Reading and processing OBD data
@@ -412,9 +451,9 @@ void processOBD()
         }
     }
     byte pid = obdData[i].pid;
-    if (!obd.isValidPID(pid)) continue;
+    if (!obd->isValidPID(pid)) continue;
     int value;
-    if (obd.readPID(pid, value)) {
+    if (obd->readPID(pid, value)) {
         obdData[i].ts = millis();
         cache.log((uint16_t)pid | 0x100, value);
     } else {
@@ -457,7 +496,7 @@ void processGPS()
   cache.log(PID_GPS_SAT_COUNT, gd.sat);
   lastUTC = (uint16_t)gd.time;
   char buf[48];
-  sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u",
+  sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u SATS:%u",
       gd.time / 1000000, (gd.time % 1000000) / 10000, (gd.time % 10000) / 100, (gd.time % 100) / 10, (unsigned int)gd.sat);
   Serial.println(buf);
 }
@@ -551,6 +590,43 @@ bool initialize()
   }
 #endif
 
+#if ENABLE_OBD
+  // initialize OBD communication
+  if (!state.check(STATE_OBD_READY)) {
+    timeoutsOBD = 0;
+    Serial.print("OBD...");
+    if (obd->init()) {
+      Serial.println("OK");
+      state.set(STATE_OBD_READY);
+      char buf[192];
+      if (obd->getVIN(buf, sizeof(buf))) {
+        strncpy(vin, buf, sizeof(vin) - 1);
+        Serial.print("VIN:");
+        Serial.println(vin);
+      }
+    } else {
+      Serial.println("NO");
+    }
+  }
+#endif
+
+#ifdef ENABLE_GPS
+  // start serial communication with GPS receiver
+  if (!state.check(STATE_GPS_READY)) {
+    Serial.print("GPS...");
+    memset(&gd, 0, sizeof(gd));
+    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+      state.set(STATE_GPS_READY);
+      Serial.println("OK");
+#if ENABLE_OLED
+      oled.println("GPS OK");
+#endif
+    } else {
+      Serial.println("NO");
+    }
+  }
+#endif
+
 #if NET_DEVICE == NET_WIFI
 #if ENABLE_OLED
   oled.print("Connecting WiFi...");
@@ -592,7 +668,7 @@ bool initialize()
     } else {
       Serial.println("NO");
 #if ENABLE_OLED
-      oled.print("No cell module");
+      oled.println("No cell module");
 #endif
       return false;
     }
@@ -622,47 +698,10 @@ bool initialize()
 #endif
   timeoutsNet = 0;
 
-#if ENABLE_OBD
-  // initialize OBD communication
-  if (!state.check(STATE_OBD_READY)) {
-    timeoutsOBD = 0;
-    obd.begin();
-    Serial.print("OBD...");
-    if (obd.init()) {
-      Serial.println("OK");
-      state.set(STATE_OBD_READY);
-      char buf[192];
-      if (obd.getVIN(buf, sizeof(buf))) {
-        strncpy(vin, buf, sizeof(vin) - 1);
-        Serial.print("VIN:");
-        Serial.println(vin);
-      }
-    } else {
-      Serial.println("NO");
-    }
-  }
-#endif
 #if ENABLE_OLED
   oled.clear();
   oled.print("VIN:");
   oled.println(vin);
-#endif
-
-#ifdef ENABLE_GPS
-  // start serial communication with GPS receiver
-  if (!state.check(STATE_GPS_READY)) {
-    Serial.print("GPS...");
-    memset(&gd, 0, sizeof(gd));
-    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
-      state.set(STATE_GPS_READY);
-      Serial.println("OK");
-#if ENABLE_OLED
-      oled.println("GPS OK");
-#endif
-    } else {
-      Serial.println("NO");
-    }
-  }
 #endif
 
 #if MEMS_MODE
@@ -701,7 +740,7 @@ bool initialize()
   cache.init(RAM_CACHE_SIZE);
   netbuf.init(256);
   
-  if (!login()) {
+  if (!teleClient.login()) {
     return false;
   }
   state.set(STATE_CONNECTED);
@@ -750,7 +789,7 @@ void shutDownNet()
 {
   if (state.check(STATE_NET_READY)) {
     if (state.check(STATE_CONNECTED)) {
-      notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
+      teleClient.notify(EVENT_LOGOUT, SERVER_KEY, 0);
     }
   }
   Serial.print(net.deviceName());
@@ -761,14 +800,14 @@ void shutDownNet()
 }
 
 /*******************************************************************************
-  Executing a command
+  Executing a remote command
 *******************************************************************************/
 String executeCommand(const char* cmd)
 {
   String result;
   Serial.println(cmd);
   if (!strncmp(cmd, "LED", 3) && cmd[4]) {
-    ledMode = atoi(cmd + 4);
+    ledMode = (byte)atoi(cmd + 4);
     digitalWrite(PIN_LED, (ledMode == 2) ? HIGH : LOW);
     result = "OK";
   } else if (!strcmp(cmd, "REBOOT")) {
@@ -808,7 +847,7 @@ String executeCommand(const char* cmd)
     String obdcmd = cmd + 4;
     obdcmd += '\r';
     char buf[256];
-    if (obd.sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
+    if (obd->sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
       Serial.println(buf);
       for (int n = 0; buf[n]; n++) {
         switch (buf[n]) {
@@ -846,7 +885,7 @@ bool processCommand(char* data)
     snprintf(buf, sizeof(buf), "TK=%u,MSG=%s", token, result.c_str());
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.println("ACK...");
-      if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
+      if (teleClient.notify(EVENT_ACK, SERVER_KEY, buf)) {
         Serial.println("sent");
         break;
       }
@@ -857,7 +896,7 @@ bool processCommand(char* data)
     snprintf(buf, sizeof(buf), "TK=%u,DUP=1", token);
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.println("ACK...");
-      if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
+      if (teleClient.notify(EVENT_ACK, SERVER_KEY, buf)) {
         Serial.println("sent");
         break;
       }
@@ -898,7 +937,7 @@ void process()
 
 #if ENABLE_OBD
   // read and log car battery voltage, data in 0.01v
-  batteryVoltage = obd.getVoltage() * 100;
+  batteryVoltage = obd->getVoltage() * 100;
   cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
 #endif
 
@@ -921,7 +960,7 @@ void process()
   } else if (millis() - lastSentTime >= sendingInterval && cache.samples() > 0) {
     // start data chunk
     if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
-    transmit();
+    teleClient.transmit();
     if (ledMode == 0) digitalWrite(PIN_LED, LOW);
   }
 
@@ -936,9 +975,9 @@ void process()
   idleTasks();
 
 #if ENABLE_OBD
-  if (obd.errors > MAX_OBD_ERRORS) {
+  if (obd->errors > MAX_OBD_ERRORS) {
     Serial.println("Reset OBD");
-    obd.reset();
+    obd->reset();
     state.clear(STATE_OBD_READY | STATE_ALL_GOOD);
   }
 #endif
@@ -972,7 +1011,7 @@ void standby()
 #endif
 #if ENABLE_OBD
   if (state.check(STATE_OBD_READY)) {
-    if (obd.errors > MAX_OBD_ERRORS) {
+    if (obd->errors > MAX_OBD_ERRORS) {
       // inaccessible OBD treated as end of trip
       feedid = 0;
     }
@@ -1011,10 +1050,10 @@ void standby()
   }
 #elif ENABLE_OBD
   float v;
-  obd.reset();
+  obd->reset();
   do {
     delay(5000);
-    v = obd.getVoltage();
+    v = obd->getVoltage();
     batteryVoltage = v * 100;    
   } while (v < JUMPSTART_VOLTAGE);
 #else
@@ -1035,29 +1074,7 @@ void standby()
 *******************************************************************************/
 void idleTasks()
 {
-  // check incoming datagram
-  do {
-    int len = 0;
-    char *data = net.receive(&len, 0);
-    if (!data) break;
-    data[len] = 0;
-    if (!verifyChecksum(data)) {
-      Serial.print("Checksum mismatch:");
-      Serial.println(data);
-      break;
-    }
-    char *p = strstr(data, "EV=");
-    if (!p) break;
-    int eventID = atoi(p + 3);
-    switch (eventID) {
-    case EVENT_COMMAND:
-      processCommand(data);
-      break;
-    case EVENT_SYNC:
-      lastSyncTime = millis();
-      break;
-    }
-  } while(0);
+  teleClient.inbound();
 
   // process http server requests
 #if ENABLE_HTTPD
@@ -1156,8 +1173,11 @@ void setup()
     }
 #endif
 
-    // one-time initializations
+    // startup initializations
     sys.begin();
+#if ENABLE_OBD
+    while (!(obd = createOBD()));
+#endif
 
     // initializing components
     initialize();
