@@ -1,7 +1,3 @@
-#define OBD_NONE 0
-#define OBD_UART 1
-#define OBD_SPI 2
-
 #define MEMS_DISABLED 0
 #define MEMS_ACC 1
 #define MEMS_9DOF 2
@@ -42,7 +38,7 @@
 **************************************/
 #ifndef HAVE_CONFIG
 // enable(1)/disable(0) OBD-II reading
-#define USE_OBD OBD_SPI
+#define USE_OBD 1
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
 // specify MEMS mode

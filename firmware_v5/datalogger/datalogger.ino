@@ -74,11 +74,7 @@ GPS_DATA gd = {0};
 
 char command[16] = {0};
 
-#if USE_OBD == OBD_UART
-COBD obd;
-#else
-COBDSPI obd;
-#endif
+COBD* obd = 0;
 
 FreematicsESP32 sys;
 
@@ -231,12 +227,12 @@ public:
     {
 #if USE_OBD
       Serial.print("OBD...");
-      if (obd.init()) {
+      if (obd->init()) {
         Serial.println("OK");
         pidErrors = 0;
         // retrieve VIN
         char buffer[128];
-        if (obd.getVIN(buffer, sizeof(buffer))) {
+        if (obd->getVIN(buffer, sizeof(buffer))) {
           Serial.print("VIN:");
           Serial.println(buffer);
           strncpy(vin, buffer, sizeof(vin) - 1);
@@ -374,7 +370,7 @@ public:
         }
       }
 #else
-      while (!obd.init()) Serial.print('.');
+      while (!obd->init()) Serial.print('.');
 #endif
       Serial.println("Wakeup");
       //ESP.restart();
@@ -425,21 +421,14 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
-    sys.begin();
-
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
-    byte ver = 0;
-#if USE_OBD == OBD_UART
-    ver = obd.begin(13, 14);
-#elif USE_OBD == OBD_SPI
-    ver = obd.begin();
+
+    sys.begin();
+#if USE_OBD
+    while (!(obd = createOBD()));
 #endif
-    if (ver) {
-        Serial.print("OBD Firmware Ver. ");
-        Serial.println(ver);
-    }
 
 #if MEMS_MODE
     Serial.print("MEMS...");
@@ -545,16 +534,16 @@ void loop()
             }
         }
         byte pid = obdData[i].pid;
-        if (!obd.isValidPID(pid)) continue;
+        if (!obd->isValidPID(pid)) continue;
         int value;
-        if (obd.readPID(pid, value)) {
+        if (obd->readPID(pid, value)) {
             obdData[i].ts = millis();
             store.log((uint16_t)pid | 0x100, value);
         } else {
             pidErrors++;
             Serial.print("PID errors: ");
             Serial.println(pidErrors);
-            if (obd.errors >= 3 && !obd.init()) {
+            if (obd->errors >= 3 && !obd->init()) {
                 logger.standby();
             }
         }
@@ -607,7 +596,7 @@ void loop()
 
 #if USE_OBD
     // log battery voltage (from voltmeter), data in 0.01v
-    batteryVoltage = obd.getVoltage() * 100;
+    batteryVoltage = obd->getVoltage() * 100;
     store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
 #endif
 

@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
 <target board="esp32 esp32_16m" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
-  <define name="Enable OBD-II">
-    <option name="No" const="USE_OBD=OBD_NONE"/>
-    <option name="OBD-to-UART" const="USE_OBD=OBD_UART"/>
-    <option name="OBD-to-SPI" const="USE_OBD=OBD_SPI" default="true"/>
-  </define>
+  <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
   <define name="Enable GPS" type="bool" const="USE_GPS" default="true"/>
   <define name="Motion Sensor">
     <option name="Disabled" const="MEMS_MODE=MEMS_DISABLED"/>

@@ -25,11 +25,12 @@
 #ifndef ENABLE_OBD
 #define ENABLE_OBD 1
 #endif
+
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 3
 
 // minimum processing loop time
-#define MIN_LOOP_TIME 100 /* ms */
+#define MIN_LOOP_TIME 200 /* ms */
 
 /**************************************
 * Networking configurations
@@ -58,11 +59,6 @@
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
-
-/**************************************
-* BLE configurations
-**************************************/
-#define BLE_DEVICE_NAME "Freematics ONE+"
 
 /**************************************
 * Data storage configurations
