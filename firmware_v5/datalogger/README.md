@@ -7,14 +7,14 @@ The sketch collects follow data.
 
 * Vehicle OBD-II PIDs data (from OBD port)
 * Battery voltage (from OBD port)
-* Geolocation data (from connected GPS receiver)
+* Geolocation data (from connected GNSS receiver)
 * Acceleration data (from built-in motion sensor)
 * Orientation data (computed from motion sensor data fusion)
 
-GPS
----
+Geolocation
+-----------
 
-When GPS is detected, the sketch waits for GPS singal for a while on startup before starting data logging. Once GPS time is obtained, the data file will be created with the date and time as file name.
+When GNSS receiver is connected and detected, geolocation data will be obtained and logged. GPS UTC time is used to sync the device's real-time clock.
 
 Orientation
 -----------
@@ -24,12 +24,12 @@ The device orientation (yaw, pitch roll) can be calculated from collected motion
 Storage
 -------
 
-By default, ESP32's internal flash is used as SPIFFS for data storage. Due to limited flash size, rotation logging is implemented. MicroSD data logging is also supported.
+By default, ESP32's internal flash is used for data storage (file-based, using SPIFFS). Simple rotation logging is implemented due to limited storage size. MicroSD data logging is also supported.
 
 HTTP Server
 -----------
 
-The sketch runs a [HTTP server](https://github.com/stanleyhuangyc/Freematics/tree/master/libraries/httpd) through ESP32's WiFi (AP and/or station). Implemented HTTP APIs provide remote access for device running status, statistics and logged/logging data.
+A multiple-connection HTTP server [HTTP server](https://github.com/stanleyhuangyc/Freematics/tree/master/libraries/httpd) runs over ESP32's WiFi (AP and/or station). A set of REST API provides remote access to device status, statistics and real-time data and logged data.
 
 Implemented HTTP APIs:
 
@@ -39,10 +39,10 @@ Implemented HTTP APIs:
 * /api/log/[file #] - content of CSV format log file
 * /api/data/[file #]?pid=[PID # in HEX] - JSON array of PID data
 
-BLE
----
+NMEA TCP Server
+---------------
 
-A BLE GATT server is brought up to allow BLE capable mobile device to connect and receive some status and stats wirelessly.
+A TCP server (default port 4000) is brought up and the NMEA data stream from GNSS receiver is redirected to a incoming TCP connection. This can be used to visualize GNSS signal with software like [u-blox u-center](https://www.u-blox.com/en/product/u-center-windows) over WiFi.
 
 Prerequisites
 -------------
