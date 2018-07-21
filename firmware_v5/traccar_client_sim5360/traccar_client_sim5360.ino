@@ -38,9 +38,9 @@ HardwareSerial gpsSerial(2);
 TinyGPS gps;
 
 typedef enum {
-    CLIENT_DISCONNECTED = 0,
-    CLIENT_CONNECTED,
-    CLIENT_ERROR,
+    HTTP_DISCONNECTED = 0,
+    HTTP_CONNECTED,
+    HTTP_ERROR,
 } NET_STATES;
 
 typedef enum {
@@ -58,7 +58,7 @@ public:
       xbTogglePower();
       delay(2000);
       xbPurge();
-      for (byte m = 0; m < 5; m++) {
+      for (byte m = 0; m < 3; m++) {
         if (sendCommand("AT\r")) {
           return true;
         }
@@ -183,36 +183,6 @@ public:
       }
       return false;
   }
-  bool udpInit()
-  {
-    return sendCommand("AT+CIPOPEN=0,\"UDP\",,,8000\r", 3000);
-  }
-  bool udpSend(const char* ip, uint16_t port, const char* data, unsigned int len)
-  {
-    sprintf(buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, ip, port);
-    if (sendCommand(buffer, 100, ">")) {
-      xbWrite((uint8_t*)data, len);
-      return sendCommand(0, 1000);
-    } else {
-      Serial.println(buffer);
-    }
-    return false;
-  }
-  char* udpReceive(int* pbytes = 0)
-  {
-    if (sendCommand(0, 3000, "+IPD")) {
-      char *p = strstr(buffer, "+IPD");
-      if (!p) return 0;
-      int len = atoi(p + 4);
-      if (pbytes) *pbytes = len;
-      p = strchr(p, '\n');
-      if (p) {
-        *(++p + len) = 0;
-        return p;
-      }
-    }
-    return 0;
-  }
   bool httpOpen()
   {
       return sendCommand("AT+CHTTPSSTART\r", 3000);
@@ -220,31 +190,19 @@ public:
   void httpClose()
   {
     sendCommand("AT+CHTTPSCLSE\r");
-    m_state = CLIENT_DISCONNECTED;
+    m_state = HTTP_DISCONNECTED;
   }
   bool httpConnect(const char* host, unsigned int port)
   {
       sprintf(buffer, "AT+CHTTPSOPSE=\"%s\",%u,1\r", host, port);
       //Serial.println(buffer);
       if (sendCommand(buffer, CONN_TIMEOUT)) {
-        m_state = CLIENT_CONNECTED;
+        m_state = HTTP_CONNECTED;
         return true;
       } else {
-        m_state = CLIENT_ERROR;
+        m_state = HTTP_ERROR;
         return false;
       }
-  }
-  unsigned int genHttpHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
-  {
-      // generate HTTP header
-      char *p = buffer;
-      p += sprintf(p, "%s %s HTTP/1.1\r\nConnection: %s\r\n",
-        method == HTTP_GET ? "GET" : "POST", path, keepAlive ? "keep-alive" : "close");
-      if (method == HTTP_POST) {
-        p += sprintf(p, "Content-length: %u\r\n", payloadSize);
-      }
-      p += sprintf(p, "\r\n\r");
-      return (unsigned int)(p - buffer);
   }
   bool httpSend(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0)
   {
@@ -252,7 +210,6 @@ public:
     // issue HTTP send command
     sprintf(buffer, "AT+CHTTPSSEND=%u\r", headerSize + payloadSize);
     if (!sendCommand(buffer, 100, ">")) {
-      Serial.println(buffer);
       Serial.println("Connection closed");
     }
     // send HTTP header
@@ -265,13 +222,13 @@ public:
       return true;
     } else {
       Serial.println(buffer);
-      m_state = CLIENT_ERROR;
+      m_state = HTTP_ERROR;
       return false;
     }
   }
   bool checkRecvEvent()
   {
-    const char* expected = "RECV EVENT";
+    const char* expected = "+CHTTPS: RECV EVENT";
     if (strstr(buffer, expected)) {
       return true;
     }
@@ -299,7 +256,7 @@ public:
         }
       }
       if (received == 0) {
-        m_state = CLIENT_ERROR;
+        m_state = HTTP_ERROR;
       }
       return received;
   }
@@ -323,6 +280,18 @@ public:
   byte state() { return m_state; }
   char buffer[384] = {0};
 private:
+  unsigned int genHttpHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+  {
+      // generate HTTP header
+      char *p = buffer;
+      p += sprintf(p, "%s %s HTTP/1.1\r\nConnection: %s\r\n",
+        method == HTTP_GET ? "GET" : "POST", path, keepAlive ? "keep-alive" : "close");
+      if (method == HTTP_POST) {
+        p += sprintf(p, "Content-length: %u\r\n", payloadSize);
+      }
+      p += sprintf(p, "\r\n\r");
+      return (unsigned int)(p - buffer);
+  }
   int dumpLine(char* buffer, int len)
   {
     int bytesToDump = len >> 1;
@@ -363,10 +332,6 @@ private:
   {
     xbSerial.print(cmd);
   }
-  void xbWrite(uint8_t* data, int bytes)
-  {
-    xbSerial.write(data, bytes);
-  }
   int xbRead(char* buffer, int bufsize, unsigned int timeout)
   {
     int n = 0;
@@ -403,7 +368,7 @@ private:
     buffer[bytesRecv] = 0;
     return 0;
   }  
-  byte m_state = CLIENT_DISCONNECTED;
+  byte m_state = HTTP_DISCONNECTED;
 };
 
 SIM5360 net;
@@ -508,7 +473,7 @@ void loop()
   }
 
   // connect to HTTP server
-  if (net.state() != CLIENT_CONNECTED) {
+  if (net.state() != HTTP_CONNECTED) {
     Serial.println("Connecting...");
     if (!net.httpConnect(TRACCAR_HOST, TRACCAR_PORT)) {
       Serial.println(net.buffer);
@@ -569,7 +534,7 @@ void loop()
   }
 
   // output server response
-  if (net.state() == CLIENT_CONNECTED) {
+  if (net.state() == HTTP_CONNECTED) {
     // waiting for server response while still decoding NMEA
     for (uint32_t t = millis(); !net.checkRecvEvent() && millis() - t < 3000; ) {
       if (gpsSerial.available()) {
