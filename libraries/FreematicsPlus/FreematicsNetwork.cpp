@@ -395,14 +395,14 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigne
       Serial.print('.');
       delay(500);
       success = sendCommand("AT+CPSI?\r", 1000, "Online");
+      if (strstr(m_buffer, "Off")) {
+        success = false;
+        break;
+      }
       if (success) {
         if (!strstr(m_buffer, "NO SERVICE"))
           break;
         success = false;
-      }
-      if (strstr(m_buffer, "Off")) {
-        success = false;
-        break;
       }
     } while (millis() - t < timeout);
     if (!success) break;

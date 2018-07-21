@@ -17,7 +17,6 @@
 #include "esp_task_wdt.h"
 #include "nvs_flash.h"
 #include "driver/uart.h"
-#include "freertos/queue.h"
 #include "esp_log.h"
 #include "soc/uart_struct.h"
 #include "FreematicsSD.h"
@@ -80,6 +79,7 @@ void gps_decode_task(void* inst)
             }
             if (gps.encode(c)) {
                 newGPSData = true;
+                esp_task_wdt_reset();
             }
         }
 #if GPS_SOFT_SERIAL
@@ -106,15 +106,6 @@ int32_t readChipHallSensor()
 
 uint16_t getFlashSize()
 {
-#if 0
-    char out;
-    uint16_t size = 16384;
-    do {
-        if (spi_flash_read((size_t)size * 1024 - 1, &out, 1) == ESP_OK)
-            return size;
-    } while ((size >>= 1));
-    return 0;
-#endif
     return (spi_flash_get_chip_size() >> 10);
 }
 
@@ -204,18 +195,23 @@ void FreematicsESP32::begin(int cpuMHz)
         //Serial.println("Power-saving disabled");
     }
 
-    // set watchdog timeout to 30 seconds
-    esp_task_wdt_init(30, 0);
+    // set watchdog timeout to 600 seconds
+    esp_task_wdt_init(600, 0);
 }
 
 bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered)
 {
-	bool success = false;
+	bool success = true;
 	if (baudrate) {
 		pinMode(PIN_GPS_POWER, OUTPUT);
 		// turn on GPS power
 		digitalWrite(PIN_GPS_POWER, HIGH);
         delay(10);
+
+        if (buffered && !nmeaBuffer) {
+            nmeaBuffer = new char[NMEA_BUF_SIZE];
+            nmeaBytes = 0;
+        }
 
         // quick check of input data format
         if (taskGPS.running()) {
@@ -224,11 +220,8 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered)
             // start GPS decoding thread if not started
             taskGPS.create(gps_decode_task, "GPS", 1);
         }
-        if (buffered && !nmeaBuffer) {
-            nmeaBuffer = new char[NMEA_BUF_SIZE];
-            nmeaBytes = 0;
-        }
 
+        // test run for a while to see if there is data decoded
         uint16_t s1 = 0, s2 = 0;
         gps.stats(&s1, 0);
         for (int i = 0; i < 20; i++) {
@@ -236,16 +229,16 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered)
             gps.stats(&s2, 0);
             if (s1 != s2) return true;
         }
-        return false;
-	} else {
-        taskGPS.suspend();
-		success = true;
-        if (nmeaBuffer) {
-            delete nmeaBuffer;
-            nmeaBuffer = 0;
-        }
-
+        success = false;
 	}
+    // uninitialize
+    if (nmeaBuffer) {
+        nmeaBufferMutex.lock();
+        delete nmeaBuffer;
+        nmeaBuffer = 0;
+        nmeaBufferMutex.unlock();
+    }
+    taskGPS.suspend();
 	//turn off GPS power
   	digitalWrite(PIN_GPS_POWER, LOW);
 	return success;
@@ -285,8 +278,10 @@ int FreematicsESP32::gpsGetNMEA(char* buffer, int bufsize)
 
 void FreematicsESP32::gpsSendCommand(const char* string, int len)
 {
+#if !GPS_SOFT_SERIAL
     if (taskGPS.running())
         uart_write_bytes(GPS_UART_NUM, string, len);
+#endif
 }
 
 bool FreematicsESP32::xbBegin(unsigned long baudrate)
