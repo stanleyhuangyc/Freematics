@@ -7,13 +7,11 @@
 
 #include <Arduino.h>
 #include <SPI.h>
+#include "driver/uart.h"
 #include "FreematicsOBD.h"
 
-#ifndef OBDUART
-HardwareSerial OBDUART(1);
-#endif
-
-#define SAFE_MODE 0
+#define USE_SOFT_SERIAL 0
+#define SPI_SAFE_MODE 0
 //#define DEBUG Serial
 
 #ifdef DEBUG
@@ -24,6 +22,82 @@ void debugOutput(const char *s)
 	DEBUG.print(']');
 	DEBUG.println(s);
 }
+#endif
+
+#if USE_SOFT_SERIAL
+
+static uint32_t inline IRAM_ATTR getCycleCount()
+{
+	uint32_t ccount;
+	__asm__ __volatile__("esync; rsr %0,ccount":"=a" (ccount));
+	return ccount;
+}
+
+static uint8_t inline IRAM_ATTR readRxPin()
+{
+#if PIN_OBD_UART_RX < 32
+	return (uint8_t)(GPIO.in >> PIN_OBD_UART_RX) << 7;
+#else
+	return (uint8_t)(GPIO.in1.val >> (PIN_OBD_UART_RX - 32)) << 7;
+#endif
+}
+
+static void inline setTxPinHigh()
+{
+#if PIN_OBD_UART_TX < 32
+	GPIO.out_w1ts = ((uint32_t)1 << PIN_OBD_UART_TX);
+#else
+	GPIO.out1_w1ts.val = ((uint32_t)1 << (PIN_OBD_UART_TX - 32));
+#endif
+}
+
+static void inline setTxPinLow()
+{
+#if PIN_OBD_UART_TX < 32
+	GPIO.out_w1tc = ((uint32_t)1 << PIN_OBD_UART_TX);
+#else
+	GPIO.out1_w1tc.val = ((uint32_t)1 << (PIN_OBD_UART_TX - 32));
+#endif
+}
+
+static void serialTx(uint8_t c)
+{
+	uint32_t start = getCycleCount();
+	// start bit
+	setTxPinLow();
+	for (uint32_t i = 1; i <= 8; i++, c >>= 1) {
+	while (getCycleCount() - start < i * F_CPU / OBD_UART_BAUDRATE);
+	if (c & 0x1)
+		setTxPinHigh();
+	else
+		setTxPinLow();
+	}
+	while (getCycleCount() - start < (uint32_t)9 * F_CPU / OBD_UART_BAUDRATE) taskYIELD();
+	setTxPinHigh();
+	while (getCycleCount() - start < (uint32_t)10 * F_CPU / OBD_UART_BAUDRATE) taskYIELD();
+}
+
+static int serialRx(int timeout)
+{
+	portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+	for (uint32_t t = millis(); readRxPin() && millis() - t <= timeout;);
+	if (readRxPin()) return -1;
+    uint32_t start = getCycleCount();
+    uint8_t c = 0;
+    taskYIELD();
+    taskENTER_CRITICAL(&mux);
+    for (uint32_t i = 1; i <= 8; i++) {
+		while (getCycleCount() - start < i * F_CPU / OBD_UART_BAUDRATE + F_CPU / OBD_UART_BAUDRATE / 3);
+		c = (c | readRxPin()) >> 1;
+    }
+    taskEXIT_CRITICAL(&mux);
+    if (c) {
+    	Serial.write(c);
+    }
+    while (getCycleCount() - start < (uint32_t)9 * F_CPU / OBD_UART_BAUDRATE + F_CPU / OBD_UART_BAUDRATE / 2) taskYIELD();
+	return c;
+}
+
 #endif
 
 int dumpLine(char* buffer, int len)
@@ -98,6 +172,42 @@ byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
 bool COBD::readPID(byte pid, int& result)
 {
 	char buffer[64];
+	char* data = 0;
+	sprintf(buffer, "%02X%02X\r", dataMode, pid);
+	write(buffer);
+#if SPI_SAFE_MODE
+	delay(20);
+#else
+	delay(1);
+#endif
+	uint32_t t = millis();
+	int ret = receive(buffer, sizeof(buffer), pidWaitTime);
+	pidWaitTime = millis() - t + (pidWaitTime >> 1);
+	if (ret > 0 && !checkErrorMessage(buffer)) {
+		char *p = buffer;
+		while ((p = strstr(p, "41 "))) {
+			p += 3;
+			byte curpid = hex2uint8(p);
+			if (curpid == pid) {
+				errors = 0;
+				while (*p && *p != ' ') p++;
+				while (*p == ' ') p++;
+				if (*p) {
+					data = p;
+					break;
+				}
+			}
+		}
+	}
+
+	if (!data) {
+		errors++;
+		return false;
+	}
+	result = normalizeData(pid, data);
+	return true;
+/*
+	char buffer[64];
 	sprintf(buffer, "%02X%02X\r", dataMode, pid);
 	write(buffer);
 	char* data = getResponse(pid, buffer, sizeof(buffer));
@@ -108,6 +218,7 @@ bool COBD::readPID(byte pid, int& result)
 	}
 	result = normalizeData(pid, data);
 	return true;
+*/
 }
 
 byte COBD::readPID(const byte pid[], byte count, int result[])
@@ -169,7 +280,11 @@ void COBD::write(const char* s)
 	DEBUG.print("<<<");
 	DEBUG.println(s);
 #endif
-	OBDUART.write(s);
+#if USE_SOFT_SERIAL
+	while (*s) serialTx(*(s++));
+#else
+	uart_write_bytes(OBD_UART_NUM, s, strlen(s));
+#endif
 }
 
 int COBD::normalizeData(byte pid, char* data)
@@ -352,10 +467,40 @@ bool COBD::isValidPID(byte pid)
 	return (pidmap[i] & b) != 0;
 }
 
-byte COBD::begin(byte pinRx, byte pinTx)
+byte COBD::begin()
 {
-	OBDUART.begin(OBD_UART_BAUDRATE, SERIAL_8N1, pinRx, pinTx);
-	return getVersion();
+	byte ver = 0;
+#if USE_SOFT_SERIAL
+	pinMode(PIN_OBD_UART_RX, INPUT);
+	pinMode(PIN_OBD_UART_TX, OUTPUT);
+	digitalWrite(PIN_OBD_UART_TX, HIGH);
+	ver = getVersion();
+#else
+	// check if UART occupied
+	uint32_t ret;
+	if (uart_get_baudrate(OBD_UART_NUM, &ret) == ESP_OK && ret < 1000000) {
+		// UART already initialized
+		return 0;
+	}
+    uart_config_t uart_config = {
+        .baud_rate = OBD_UART_BAUDRATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 122,
+    };
+    //Configure UART parameters
+    uart_param_config(OBD_UART_NUM, &uart_config);
+    //Set UART pins
+    uart_set_pin(OBD_UART_NUM, PIN_OBD_UART_TX, PIN_OBD_UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    //Install UART driver
+    if (uart_driver_install(OBD_UART_NUM, OBD_UART_BUF_SIZE, 0, 0, NULL, 0) != ESP_OK)
+		return 0;
+	ver = getVersion();
+	if (ver == 0) end();
+#endif
+	return ver;
 }
 
 byte COBD::getVersion()
@@ -379,37 +524,32 @@ int COBD::receive(char* buffer, int bufsize, unsigned int timeout)
 {
 	unsigned char n = 0;
 	unsigned long startTime = millis();
-	char c = 0;
+	unsigned long elapsed;
 	for (;;) {
-		if (OBDUART.available()) {
-			c = OBDUART.read();
-			if (!buffer) {
-			       n++;
-			} else if (n < bufsize - 1) {
+		char c = 0;
+		elapsed = millis() - startTime;
+		if (elapsed > timeout) break;
+#if !USE_SOFT_SERIAL
+		int len = uart_read_bytes(OBD_UART_NUM, (uint8_t*)&c, 1, (timeout - elapsed) / portTICK_RATE_MS);
+		if (len < 0) break;
+		if (len == 0) continue;
+#else
+		int ret = serialRx(timeout);
+		if (ret <= 0) continue;
+		c = (char)ret;
+#endif
+		if (c) {
+			if (c == '>') break;
+			if (n < bufsize - 1) {
 				if (c == '.' && n > 2 && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
 					// waiting siginal
 					n = 0;
 					timeout = OBD_TIMEOUT_LONG;
 				} else {
-					if (c == '\r' || c == '\n' || c == ' ') {
-						if (n == 0 || buffer[n - 1] == '\r' || buffer[n - 1] == '\n') continue;
-					}
 					buffer[n++] = c;
 				}
 			}
-		} else {
-			if (c == '>') {
-				// prompt char received
-				break;
-			}
-			if ((int)(millis() - startTime) > timeout) {
-			    // timeout
-			    break;
-			}
 		}
-	}
-	if (buffer) {
-		buffer[n] = 0;
 	}
 #ifdef DEBUG
 	DEBUG.print(">>>");
@@ -491,19 +631,14 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 void COBD::end()
 {
 	m_state = OBD_DISCONNECTED;
-	OBDUART.end();
+#if !USE_SOFT_SERIAL
+	uart_driver_delete(OBD_UART_NUM);
+#endif
 }
 
 bool COBD::setBaudRate(unsigned long baudrate)
 {
-    OBDUART.print("ATBR1 ");
-    OBDUART.print(baudrate);
-    OBDUART.print('\r');
-    delay(50);
-    OBDUART.end();
-    OBDUART.begin(baudrate);
-    recover();
-    return true;
+    return false;
 }
 
 void COBD::reset()
@@ -553,8 +688,6 @@ int16_t COBD::getTemperatureValue(char* data)
 * OBD-II SPI bridge
 *************************************************************************/
 
-static const uint8_t header[] = {0x24, 0x4f, 0x42, 0x44};
-
 byte COBDSPI::begin()
 {
 	pinMode(SPI_PIN_READY, INPUT);
@@ -563,7 +696,9 @@ byte COBDSPI::begin()
 	SPI.begin();
 	SPI.setFrequency(SPI_FREQ);
 	delay(50);
-	return getVersion();
+	byte ver = getVersion();
+	if (ver == 0) end();
+	return ver;
 }
 
 void COBDSPI::end()
@@ -588,7 +723,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				break;
 			}
 		}
-#if SAFE_MODE
+#if SPI_SAFE_MODE
 		delay(10);
 #endif
 		taskYIELD();
@@ -668,55 +803,6 @@ void COBDSPI::write(const char* s)
 	digitalWrite(SPI_PIN_CS, HIGH);
 }
 
-void COBDSPI::write(uint8_t* data, int bytes)
-{
-	digitalWrite(SPI_PIN_CS, LOW);
-	delay(1);
-	SPI.writeBytes(data, bytes);
-	SPI.write(0x1B);
-	delay(1);
-	digitalWrite(SPI_PIN_CS, HIGH);
-}
-
-bool COBDSPI::readPID(byte pid, int& result)
-{
-	char buffer[64];
-	char* data = 0;
-	sprintf(buffer, "%02X%02X\r", dataMode, pid);
-	write(buffer);
-#if SAFE_MODE
-	delay(20);
-#else
-	delay(1);
-#endif
-	uint32_t t = millis();
-	int ret = receive(buffer, sizeof(buffer), pidWaitTime);
-	pidWaitTime = millis() - t + (pidWaitTime >> 1);
-	if (ret > 0 && !checkErrorMessage(buffer)) {
-		char *p = buffer;
-		while ((p = strstr(p, "41 "))) {
-			p += 3;
-			byte curpid = hex2uint8(p);
-			if (curpid == pid) {
-				errors = 0;
-				while (*p && *p != ' ') p++;
-				while (*p == ' ') p++;
-				if (*p) {
-					data = p;
-					break;
-				}
-			}
-		}
-	}
-
-	if (!data) {
-		errors++;
-		return false;
-	}
-	result = normalizeData(pid, data);
-	return true;
-}
-
 int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
 {
 	uint32_t t = millis();
@@ -733,4 +819,18 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 		}
 	} while (millis() - t < timeout);
 	return n;
+}
+
+COBD* createOBD()
+{
+    COBD* obd = new COBD;
+    if (!obd->begin()) {
+        delete obd;    
+        obd = new COBDSPI;
+        if (!obd->begin()) {
+			delete obd;
+			obd = 0;
+		}
+    }
+	return obd;
 }
