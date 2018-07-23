@@ -44,7 +44,6 @@ TinyGPS::TinyGPS()
   ,  _term_offset(0)
   ,  _gps_data_good(false)
 #ifndef _GPS_NO_STATS
-  ,  _encoded_characters(0)
   ,  _good_sentences(0)
   ,  _failed_checksum(0)
 #endif
@@ -60,9 +59,6 @@ bool TinyGPS::encode(char c)
 {
   bool valid_sentence = false;
 
-#ifndef _GPS_NO_STATS
-  ++_encoded_characters;
-#endif
   switch(c)
   {
   case ',': // term terminators
@@ -99,9 +95,8 @@ bool TinyGPS::encode(char c)
 }
 
 #ifndef _GPS_NO_STATS
-void TinyGPS::stats(unsigned long *chars, unsigned short *sentences, unsigned short *failed_cs)
+void TinyGPS::stats(unsigned short *sentences, unsigned short *failed_cs)
 {
-  if (chars) *chars = _encoded_characters;
   if (sentences) *sentences = _good_sentences;
   if (failed_cs) *failed_cs = _failed_checksum;
 }
@@ -191,11 +186,11 @@ bool TinyGPS::term_complete()
     byte checksum = hex2uint8(_term);
     if (checksum == _parity)
     {
+#ifndef _GPS_NO_STATS
+      ++_good_sentences;
+#endif
       if (_gps_data_good)
       {
-#ifndef _GPS_NO_STATS
-        ++_good_sentences;
-#endif
         _last_time_fix = _new_time_fix;
         _last_position_fix = _new_position_fix;
 
