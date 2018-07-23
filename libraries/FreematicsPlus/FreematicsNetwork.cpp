@@ -12,11 +12,24 @@
 
 #define XBEE_BAUDRATE 115200
 
+unsigned int HTTPClient::genHeader(char* header, HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+{
+    // generate HTTP header
+    char *p = header;
+    p += sprintf(p, "%s %s HTTP/1.1\r\nConnection: %s\r\n",
+      method == HTTP_GET ? "GET" : "POST", path, keepAlive ? "keep-alive" : "close");
+    if (method == HTTP_POST) {
+      p += sprintf(p, "Content-length: %u\r\n", payloadSize);
+    }
+    p += sprintf(p, "\r\n\r");
+    return (unsigned int)(p - header);
+}
+
 /*******************************************************************************
-  Implementation for ESP32 built-in WIFI (Arduino WIFI library)
+  Implementation for WiFi (on top of Arduino WiFi library)
 *******************************************************************************/
 
-bool UDPClientWIFI::setup(const char* ssid, const char* password, unsigned int timeout)
+bool ClientWIFI::setup(const char* ssid, const char* password, unsigned int timeout)
 {
   WiFi.begin(ssid, password);
   for (uint32_t t = millis(); millis() - t < timeout;) {
@@ -28,9 +41,41 @@ bool UDPClientWIFI::setup(const char* ssid, const char* password, unsigned int t
   return false;
 }
 
-String UDPClientWIFI::getIP()
+String ClientWIFI::getIP()
 {
   return WiFi.localIP().toString();
+}
+
+bool ClientWIFI::begin()
+{
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  listAPs();
+  return true;
+}
+
+void ClientWIFI::end()
+{
+  WiFi.disconnect(true);
+}
+
+void ClientWIFI::listAPs()
+{
+  int n = WiFi.scanNetworks();
+  if (n <= 0) {
+      Serial.println("No WIFI AP found");
+  } else {
+      Serial.println("WIFI APs found:");
+      for (int i = 0; i < n; ++i) {
+          // Print SSID and RSSI for each network found
+          Serial.print(i + 1);
+          Serial.print(": ");
+          Serial.print(WiFi.SSID(i));
+          Serial.print(" (");
+          Serial.print(WiFi.RSSI(i));
+          Serial.println("dB)");
+      }
+  }
 }
 
 bool UDPClientWIFI::open(const char* host, uint16_t port)
@@ -76,38 +121,66 @@ String UDPClientWIFI::queryIP(const char* host)
 
 void UDPClientWIFI::close()
 {
-  WiFi.disconnect(true);
+  udp.stop();
 }
 
-bool UDPClientWIFI::begin()
+bool HTTPClientWIFI::open(const char* host, uint16_t port)
 {
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  listAPs();
-  return true;
-}
-
-void UDPClientWIFI::end()
-{
-}
-
-void UDPClientWIFI::listAPs()
-{
-  int n = WiFi.scanNetworks();
-  if (n <= 0) {
-      Serial.println("No WIFI AP found");
+  if (client.connect(host, port)) {
+    m_state = HTTP_CONNECTED;
+    return true;
   } else {
-      Serial.println("WIFI APs found:");
-      for (int i = 0; i < n; ++i) {
-          // Print SSID and RSSI for each network found
-          Serial.print(i + 1);
-          Serial.print(": ");
-          Serial.print(WiFi.SSID(i));
-          Serial.print(" (");
-          Serial.print(WiFi.RSSI(i));
-          Serial.println("dB)");
-      }
+    m_state = HTTP_ERROR;
+    return false;
   }
+}
+
+void HTTPClientWIFI::close()
+{
+  client.stop();
+  m_state = HTTP_DISCONNECTED;
+}
+
+int HTTPClientWIFI::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+{
+  unsigned int headerSize = genHeader(m_buffer, method, path, keepAlive, payload, payloadSize);
+  if (client.write(m_buffer, headerSize) != headerSize) {
+    m_state = HTTP_DISCONNECTED;
+    return 0;
+  }
+  if (payloadSize) {
+    if (client.write(payload, payloadSize) != payloadSize) {
+      m_state = HTTP_ERROR;
+      return -1;
+    }
+  }
+  m_state = HTTP_SENT;
+  return headerSize + payloadSize;
+}
+
+char* HTTPClientWIFI::receive(int* pbytes, unsigned int timeout)
+{
+  int bytes = 0;
+  bool eos = false;
+  for (uint32_t t = millis(); millis() - t < timeout; ) {
+    if (!client.available()) {
+      delay(50);
+      continue;
+    }
+    m_buffer[bytes++] = client.read();
+    m_buffer[bytes] = 0;
+    if (strstr(m_buffer, "\r\n\r\n")) {
+      eos = true;
+      break;
+    }
+  }
+  if (!eos) {
+    m_state = HTTP_ERROR;
+    return 0;
+  }
+  if (pbytes) *pbytes = bytes;
+  m_state = HTTP_CONNECTED;
+  return m_buffer;
 }
 
 /*******************************************************************************
@@ -338,7 +411,7 @@ bool UDPClientSIM800::getLocation(NET_LOCATION* loc)
   Implementation for SIM5360
 *******************************************************************************/
 
-bool UDPClientSIM5360::begin(CFreematics* device)
+bool ClientSIM5360::begin(CFreematics* device)
 {
   m_device = device;
   if (m_stage == 0) {
@@ -377,7 +450,7 @@ bool UDPClientSIM5360::begin(CFreematics* device)
   return false;
 }
 
-void UDPClientSIM5360::end()
+void ClientSIM5360::end()
 {
   if (m_stage == 2 || sendCommand("AT\r")) {
     m_device->xbTogglePower();
@@ -385,7 +458,7 @@ void UDPClientSIM5360::end()
   }
 }
 
-bool UDPClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigned int timeout)
+bool ClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -433,7 +506,7 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigne
   return success;
 }
 
-String UDPClientSIM5360::getIP()
+String ClientSIM5360::getIP()
 {
   uint32_t t = millis();
   do {
@@ -453,12 +526,12 @@ String UDPClientSIM5360::getIP()
   return "";
 }
 
-bool UDPClientSIM5360::initGPS()
+bool ClientSIM5360::initGPS()
 {
   return sendCommand("AT+CGPS=1\r");
 }
 
-bool UDPClientSIM5360::readGPS()
+bool ClientSIM5360::readGPS()
 {
     if (sendCommand("AT+CGPSINFO\r") && !strstr(m_buffer, ",,,")) {
       return true;
@@ -467,7 +540,7 @@ bool UDPClientSIM5360::readGPS()
     }
 }
 
-int UDPClientSIM5360::getSignal()
+int ClientSIM5360::getSignal()
 {
     if (sendCommand("AT+CSQ\r", 500)) {
         char *p = strchr(m_buffer, ':');
@@ -481,7 +554,7 @@ int UDPClientSIM5360::getSignal()
     }
     return -1;
 }
-String UDPClientSIM5360::getOperatorName()
+String ClientSIM5360::getOperatorName()
 {
     // display operator name
     if (sendCommand("AT+COPS?\r") == 1) {
@@ -494,6 +567,42 @@ String UDPClientSIM5360::getOperatorName()
         }
     }
     return "";
+}
+
+String ClientSIM5360::queryIP(const char* host)
+{
+  sprintf(m_buffer, "AT+CDNSGIP=\"%s\"\r", host);
+  if (sendCommand(m_buffer, 10000)) {
+    char *p = strstr(m_buffer, host);
+    if (p) {
+      p = strstr(p, ",\"");
+      if (p) {
+        char *ip = p + 2;
+        p = strchr(ip, '\"');
+        if (p) *p = 0;
+        return ip;
+      }
+    }
+  }
+  return "";
+}
+
+bool ClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
+{
+  if (cmd) {
+    m_device->xbWrite(cmd);
+  }
+  m_buffer[0] = 0;
+  byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
+  if (ret) {
+    if (terminated) {
+      char *p = strstr(m_buffer, expected);
+      if (p) *p = 0;
+    }
+    return true;
+  } else {
+    return false;
+  }
 }
 
 bool UDPClientSIM5360::open(const char* host, uint16_t port)
@@ -552,38 +661,83 @@ char* UDPClientSIM5360::checkIncoming(int* pbytes)
 	return 0;
 }
 
-String UDPClientSIM5360::queryIP(const char* host)
+bool HTTPClientSIM5360::open(const char* host, uint16_t port)
 {
-  sprintf(m_buffer, "AT+CDNSGIP=\"%s\"\r", host);
-  if (sendCommand(m_buffer, 10000)) {
-    char *p = strstr(m_buffer, host);
+  sendCommand("AT+CHTTPSSTART\r", 1000);
+  sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,1\r", host, port);
+  if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT)) {
+    m_state = HTTP_CONNECTED;
+    return true;
+  } else {
+    m_state = HTTP_ERROR;
+    return false;
+  }
+}
+
+void HTTPClientSIM5360::close()
+{
+  sendCommand("AT+CHTTPSCLSE\r");
+  m_state = HTTP_DISCONNECTED;
+}
+
+int HTTPClientSIM5360::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+{
+  unsigned int headerSize = genHeader(m_buffer, method, path, keepAlive, payload, payloadSize);
+  // issue HTTP send command
+  sprintf(m_buffer, "AT+CHTTPSSEND=%u\r", headerSize + payloadSize);
+  if (!sendCommand(m_buffer, 100, ">")) {
+    m_state = HTTP_DISCONNECTED;
+    return 0;
+  }
+  // send HTTP header
+  genHeader(m_buffer, method, path, keepAlive, payload, payloadSize);
+  m_device->xbWrite(m_buffer);
+  // send POST payload if any
+  if (payload) m_device->xbWrite(payload);
+  m_buffer[0] = 0;
+  if (sendCommand("AT+CHTTPSSEND\r")) {
+    m_state = HTTP_SENT;
+    return headerSize + payloadSize;
+  } else {
+    Serial.println(m_buffer);
+    m_state = HTTP_ERROR;
+    return -1;
+  }
+}
+
+char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
+{
+  const char* expected = "+CHTTPS: RECV EVENT";
+  if (!strstr(m_buffer, expected)) {
+    bool hasEvent = m_device->xbRead(m_buffer, sizeof(m_buffer), timeout) > 0 && strstr(m_buffer, expected) != 0;
+    if (!hasEvent) return 0;
+  }
+
+  // start receiving
+  int received = 0;
+  char* payload = 0;
+  /*
+    +CHTTPSRECV:XX\r\n
+    [XX bytes from server]\r\n
+    \r\n+CHTTPSRECV: 0\r\n
+  */
+  if (sendCommand("AT+CHTTPSRECV=384\r", HTTP_CONN_TIMEOUT, "\r\n+CHTTPSRECV: 0", true)) {
+    char *p = strstr(m_buffer, "+CHTTPSRECV:");
     if (p) {
-      p = strstr(p, ",\"");
+      p = strchr(p, ',');
       if (p) {
-        char *ip = p + 2;
-        p = strchr(ip, '\"');
-        if (p) *p = 0;
-        return ip;
+        received = atoi(p + 1);
+        char *q = strchr(p, '\n');
+        payload = q ? (q + 1) : p;
       }
     }
   }
-  return "";
-}
-
-bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
-{
-  if (cmd) {
-    m_device->xbWrite(cmd);
-  }
-  m_buffer[0] = 0;
-  byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
-  if (ret) {
-    if (terminated) {
-      char *p = strstr(m_buffer, expected);
-      if (p) *p = 0;
-    }
-    return true;
+  if (received == 0) {
+    m_state = HTTP_ERROR;
+    return 0;
   } else {
-    return false;
+    m_state = HTTP_CONNECTED;
+    if (pbytes) *pbytes = received;
+    return payload;
   }
 }
