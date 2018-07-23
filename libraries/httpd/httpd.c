@@ -689,10 +689,9 @@ int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateT
 		p += snprintf(p, end - p, "CSeq: %d\r\n", phsSocket->request.iCSeq);
 	}
 	p+=snprintf(p, end - p, "Content-Type: %s\r\n", phsSocket->mimeType ? phsSocket->mimeType : contentTypeTable[phsSocket->response.fileType]);
-	if (phsSocket->response.contentLength > 0 && !(phsSocket->flags & FLAG_CHUNK)) {
-		p+=snprintf(p, end - p,"Content-Length: %lld\r\n", (long long)phsSocket->response.contentLength);
-	}
-	if (phsSocket->flags & FLAG_CHUNK) {
+	if (!(phsSocket->flags & FLAG_CHUNK)) {
+		p+=snprintf(p, end - p,"Content-Length: %u\r\n", phsSocket->response.contentLength);
+	} else {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");
 	}
 	if (phsSocket->response.statusCode == 301 || phsSocket->response.statusCode == 307) {
@@ -1238,6 +1237,7 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 	if (!*filePath) isDirPath = TRUE;
 
 	// open file
+	DWORD fileSize = st.st_size;
 	if (!isDirPath) {
 		phsSocket->fp = fopen(hfp.cFilePath, "rb");
 	}
@@ -1282,7 +1282,10 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 	}
 
 	if (phsSocket->fp) {
-		DWORD fileSize = st.st_size;
+		if (fileSize == 0) {
+			fseek(phsSocket->fp, 0, SEEK_END);
+			fileSize = ftell(phsSocket->fp);
+		}
 		phsSocket->response.contentLength = fileSize - phsSocket->request.startByte;
 		if (phsSocket->response.contentLength <= 0) {
 			phsSocket->request.startByte = 0;
@@ -1291,6 +1294,8 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 		if (phsSocket->request.startByte) {
 			fseek(phsSocket->fp, (long)phsSocket->request.startByte, SEEK_SET);
 			phsSocket->response.statusCode = 206;
+		} else {
+			fseek(phsSocket->fp, 0, SEEK_SET);
 		}
 		if (!phsSocket->response.fileType && hfp.pchExt) {
 			phsSocket->response.fileType=mwGetContentType(hfp.pchExt);
