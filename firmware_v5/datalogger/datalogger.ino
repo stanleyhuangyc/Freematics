@@ -165,8 +165,9 @@ int handlerLiveData(UrlHandlerParam* param)
     buf[n++] = '}';
 #endif
 #if USE_GPS
-    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"date\":%u,\"time\":%u,\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}",
-        gd.date, gd.time, gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
+    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"date\":%u,\"time\":%u,\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%u,\"sentences\":%u,\"errors\":%u}",
+        gd.date, gd.time, gd.lat, gd.lng, gd.alt, gd.speed, gd.sat,
+        gd.sentences, gd.errors);
 #endif
     buf[n++] = '}';
     param->contentLength = n;
