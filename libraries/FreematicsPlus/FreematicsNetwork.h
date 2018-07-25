@@ -96,7 +96,7 @@ private:
     WiFiClient client;
 };
 
-class UDPClientSIM800
+class ClientSIM800
 {
 public:
     bool begin(CFreematics* device);
@@ -105,19 +105,37 @@ public:
     String getIP();
     int getSignal();
     String getOperatorName();
-    bool open(const char* host, uint16_t port);
-    bool send(const char* data, unsigned int len);
-    void close();
-    char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
     const char* deviceName() { return "SIM800"; }
 protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
-    char* checkIncoming(int* pbytes);
     char m_buffer[256] = {0};
     uint8_t m_stage = 0;
     CFreematics* m_device = 0;
+};
+
+class UDPClientSIM800 : public ClientSIM800
+{
+public:
+    bool open(const char* host, uint16_t port);
+    bool send(const char* data, unsigned int len);
+    void close();
+    char* receive(int* pbytes = 0, unsigned int timeout = 5000);
+private:
+    char* checkIncoming(int* pbytes);
+};
+
+class HTTPClientSIM800 : public HTTPClient, public ClientSIM800
+{
+public:
+    bool open(const char* host, uint16_t port);
+    int send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
+    void close();
+protected:
+    String m_host;
+    uint16_t m_port;
 };
 
 class ClientSIM5360
