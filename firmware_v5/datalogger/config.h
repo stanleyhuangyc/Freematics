@@ -14,7 +14,7 @@
 // enable(1)/disable(0) data streaming
 #define ENABLE_SERIAL_OUT 0
 // specify storage type
-#define STORAGE STORAGE_SPIFFS
+#define STORAGE STORAGE_SD
 #endif
 
 /**************************************
