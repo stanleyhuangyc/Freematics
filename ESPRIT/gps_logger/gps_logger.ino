@@ -58,6 +58,9 @@ FreematicsESP32 sys;
 OLED_SH1106 lcd;
 #endif
 
+WiFiServer nmeaServer(NMEA_TCP_PORT);
+WiFiClient nmeaClient;
+
 #if ENABLE_TRACCAR_CLIENT
 
 #define CLIENT_STATE_IDLE 0
@@ -109,7 +112,10 @@ public:
                 lcd.print(ret);
                 lcd.print("ms  ");
 #endif
-                if (code == 200) sent++;
+                if (code == 200)
+                    sent++;
+                else
+                    errors++;
             } else if (millis() - sentTime > TRACCAR_SERVER_TIMEOUT) {
                 errors++;
                 client.stop();
@@ -132,8 +138,7 @@ private:
         // waiting for server response while still decoding NMEA
         while (client.available()) {
             String resp = client.readStringUntil('\n');
-            if (resp == "\r") {
-                client.readStringUntil('\n');
+            if (resp[0] == '\r') {
                 state = CLIENT_STATE_IDLE;
                 // return time elapsed
                 return millis() - sentTime;
@@ -193,7 +198,14 @@ int handlerLiveData(UrlHandlerParam* param)
         gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
     buf[n++] = '}';
     param->contentLength = n;
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
+    return FLAG_DATA_RAW;
+}
+
+int handlerNMEA(UrlHandlerParam* param)
+{
+    param->contentLength = sys.gpsGetNMEA(param->pucBuffer, param->bufSize);
+    param->contentType=HTTPFILETYPE_TEXT;
     return FLAG_DATA_RAW;
 }
 
@@ -209,7 +221,7 @@ int handlerControl(UrlHandlerParam* param)
         strncpy(command, cmd, sizeof(command) - 1);
         param->contentLength = snprintf(buf, bufsize, "{\"result\":\"OK\"}");
     }
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
 
@@ -298,7 +310,7 @@ public:
 #endif
         for (;;) {
             // read parsed GPS data
-            if (sys.gpsGetData(&gd) && gd.sat >= 3) {
+            if (sys.gpsGetData(&gd)) {
                 gpsDataTime = millis();
                 lastSpeedData = gd.speed;
                 break;
@@ -310,12 +322,31 @@ public:
             Serial.println(gd.errors);
 #if ENABLE_DISPLAY
             lcd.setCursor(0, 7);
-            lcd.printInt((millis() - t) / 1000);
+            lcd.print((millis() - t) / 1000);
             lcd.print("s NMEA:");
-            lcd.printInt(gd.sentences);
+            lcd.print(gd.sentences);
 #endif
             delay(1000);
         }
+
+#if 0
+        lcd.clear();
+        int lastSats = 0;
+        do {
+            // read parsed GPS data
+            if (sys.gpsGetData(&gd)) {
+                gpsDataTime = millis();
+                lastSpeedData = gd.speed;
+                if (gd.sat > lastSats) {
+                    lcd.print((millis() - t) / 1000);
+                    lcd.print("s Sats:");
+                    lcd.println(gd.sat);
+                    lastSats = gd.sat;
+                }
+            }
+        } while (gd.sat < 10);
+        for (;;) delay(1000);
+#endif
     }
     void checkFileSize(uint32_t fileSize)
     {
@@ -477,7 +508,7 @@ void setup()
         Serial.print(freebytes >> 10);
         Serial.println("KB Free");
         logger.setState(STATE_STORE_READY);
-        listDir(SPIFFS, "/", 0);
+        //listDir(SPIFFS, "/", 0);
 #if ENABLE_DISPLAY
         lcd.print("SPIFFS ");
         lcd.print(freebytes >> 10);
@@ -488,17 +519,30 @@ void setup()
     }
 #endif
 
+#if ENABLE_WIFI_STATION
+#if ENABLE_DISPLAY
+    lcd.println("Connecting hotspot..");
+#endif
+    while (!serverCheckup()) delay(1000);
+#if ENABLE_DISPLAY
+    lcd.print("IP:");
+    lcd.println(WiFi.localIP());
+#endif
+#endif
+    nmeaServer.begin();
+
     Serial.print("GPS...");
-    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+    if (sys.gpsInit(GPS_SERIAL_BAUDRATE, true)) {
         logger.setState(STATE_GPS_FOUND);
         Serial.println("OK");
+        //taskWifi.create(wifi_thread, "wifi_thread", 16 * 1024);
         logger.waitGPS();
     } else {
         Serial.println("NO");
 #if ENABLE_DISPLAY
         lcd.println("GPS not connected");
-        delay(3000);
 #endif
+        for (;;) delay(1000);
     }
 
 #if ENABLE_DISPLAY
@@ -527,24 +571,13 @@ void setup()
     }
 #endif
 
-#if ENABLE_WIFI_STATION
-#if ENABLE_DISPLAY
-    lcd.println("Connecting hotspot..");
-#endif
-    while (!serverCheckup()) delay(1000);
-#if ENABLE_DISPLAY
-    lcd.print("IP:");
-    lcd.println(WiFi.localIP());
-#endif
-#endif
-
 #if ENABLE_TRACCAR_CLIENT
 #if ENABLE_DISPLAY
     lcd.println("Connecting server..");
 #endif
     while (!serverCheckup() || !traccar.connect()) delay(1000);
-#endif
     lcd.println(TRACCAR_HOST);
+#endif
 
     Serial.print("File...");
     fileid = store.open();
@@ -612,17 +645,27 @@ void loop()
 #endif
 
 #if ENABLE_TRACCAR_CLIENT
-    if (serverCheckup()) {
-        traccar.process(updated);
-    }
-#elif ENABLE_HTTPD
-    serverCheckup();
+    traccar.process(updated);
 #endif
 
-    int waitTime = MIN_LOOP_TIME - (millis() - ts);
+    // NMEA-to-TCP bridge
+    if (!nmeaClient || !nmeaClient.connected()) {
+        nmeaClient.stop();
+        nmeaClient = nmeaServer.available();
+    }
+    do {
+        if (nmeaClient.connected()) {
+            char buf[NMEA_BUF_SIZE];
+            int bytes = sys.gpsGetNMEA(buf, sizeof(buf));
+            if (bytes > 0) nmeaClient.write(buf, bytes);
+            bytes = 0;
+            while (nmeaClient.available() && bytes < NMEA_BUF_SIZE) {
+                buf[bytes++] = nmeaClient.read();
+            }
+            if (bytes > 0) sys.gpsSendCommand(buf, bytes);
+        }
 #if ENABLE_HTTPD
-    serverProcess(waitTime > 0 ? waitTime : 0);
-#else
-    if (waitTime > 0) delay(waitTime);
+        serverProcess(0);
 #endif
+    } while (millis() - ts < MIN_LOOP_TIME);
 }
