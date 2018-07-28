@@ -572,7 +572,7 @@ void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 	}
 
 	// check if any socket to accept and accept the socket
-	if (FD_ISSET(hp->listenSocket, &fdsSelectRead)) {
+	if (FD_ISSET(hp->listenSocket, &fdsSelectRead)) do {
 		// find empty slot
 		phsSocketCur = 0;
 		for (i = 0; i < hp->maxClients; i++) {
@@ -595,7 +595,7 @@ void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 			}
 			if (!phsSocketCur) {
 			    SYSLOG(LOG_INFO,"Connection denied\n");
-				return 0;
+				break;
 			} else {
 				SETFLAG(phsSocketCur, FLAG_CONN_CLOSE);
 				_mwCloseSocket(hp, phsSocketCur);
@@ -604,7 +604,7 @@ void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 
 		phsSocketCur->socket = _mwAcceptSocket(hp,&sinaddr);
 		if (phsSocketCur->socket == 0)
-			return 0;
+			break;
 		phsSocketCur->ipAddr.laddr=ntohl(sinaddr.sin_addr.s_addr);
 		SYSLOG(LOG_INFO,"[%d] Client IP: %d.%d.%d.%d\n",
 			phsSocketCur->socket,
@@ -621,7 +621,7 @@ void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 
 		//update max client count
 		if (hp->stats.clientCount>hp->stats.clientCountMax) hp->stats.clientCountMax=hp->stats.clientCount;
-	}
+	} while(0);
 } // end of _mwHttpThread
 
 void mwServerExit(HttpParam* hp)
