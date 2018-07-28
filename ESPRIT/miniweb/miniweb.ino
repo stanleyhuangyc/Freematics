@@ -30,9 +30,11 @@
 #endif
 #include <httpd.h>
 
-#define ENABLE_SOFT_AP 0
+#define ENABLE_WIFI_AP 1
+#define ENABLE_WIFI_STATION 0
 #define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "..."
+#define WIFI_AP_SSID "MINIWEB"
 #define WIFI_TIMEOUT 5000
 #define PIN_LED 4
 
@@ -42,6 +44,8 @@ extern "C"
 uint8_t temprature_sens_read();
 uint32_t hall_sens_read();
 }
+
+HardwareSerial Serial1(1);
 #endif
 
 HttpParam httpParam;
@@ -49,16 +53,16 @@ HttpParam httpParam;
 int handlerRoot(UrlHandlerParam* param)
 {
   digitalWrite(PIN_LED, HIGH);
-#if ENABLE_SOFT_AP
-  IPAddress ip = WiFi.softAPIP();
-#else
+#if ENABLE_WIFI_STATION
   IPAddress ip = WiFi.localIP();
+#else
+  IPAddress ip = WiFi.softAPIP();
 #endif
   param->contentLength = snprintf(param->pucBuffer, param->bufSize,
     "<html><head><title>MiniWeb for Arduino</title></head><body><h3>Hello from MiniWeb (%u.%u.%u.%u)</h3><ul><li>Up time: %u seconds</li><li>Connected clients: %u</li><li>Total requests: %u</li></body>",
     ip[0], ip[1], ip[2], ip[3],
     millis() / 1000, httpParam.stats.clientCount, httpParam.stats.reqCount);
-  param->fileType = HTTPFILETYPE_HTML;
+  param->contentType = HTTPFILETYPE_HTML;
   digitalWrite(PIN_LED, LOW);
   return FLAG_DATA_RAW;
 }
@@ -94,7 +98,7 @@ int handlerDigitalPins(UrlHandlerParam* param)
   if (buf[bytes - 1] == ',') bytes--;
   buf[bytes++] = '}';
   param->contentLength = bytes;
-  param->fileType = HTTPFILETYPE_JSON;
+  param->contentType = HTTPFILETYPE_JSON;
   return FLAG_DATA_RAW;
 }
 
@@ -119,8 +123,98 @@ int handlerAnalogPins(UrlHandlerParam* param)
   if (buf[bytes - 1] == ',') bytes--;
   buf[bytes++] = '}';
   param->contentLength = bytes;
-  param->fileType = HTTPFILETYPE_JSON;
+  param->contentType = HTTPFILETYPE_JSON;
   return FLAG_DATA_RAW;
+}
+
+extern "C" int handlerSerial(UrlHandlerParam* param)
+{
+	int timeout = mwGetVarValueInt(param->pxVars, "timeout", 1000);
+  param->contentType=HTTPFILETYPE_TEXT;
+
+	if (!strcmp(param->pucRequest, "/read")) {
+		if (Serial1) {
+      int matched = 0;
+			char* eos = mwGetVarValue(param->pxVars, "eos", 0);
+      size_t maxlen = mwGetVarValueInt(param->pxVars, "bytes", param->bufSize) - 1;
+      size_t bytes = 0;
+      uint32_t t = GetTickCount();
+      do {
+        while (Serial1.available() && bytes < maxlen) {
+          param->pucBuffer[bytes++] = Serial1.read();;
+        }
+        param->pucBuffer[bytes] = 0;
+        if (eos) {
+          if (strstr(param->pucBuffer, eos)) {
+            // matched
+            matched = 1;
+          }
+        }
+      } while (bytes < maxlen && !matched && GetTickCount() - t <= timeout);
+      if (eos && !matched) {
+        param->hs->response.statusCode = 504;
+      }
+      param->contentLength = bytes;
+		}
+		else {
+			param->contentLength = sprintf(param->pucBuffer, "No port opened");
+			param->hs->response.statusCode = 503;
+		}
+	} else if (!strcmp(param->pucRequest, "/write")) {
+		if (Serial1) {
+      int written = 0;
+      if (param->hs->request.payloadSize > 0) {
+        int payloadSize = param->hs->request.payloadSize;
+        written = Serial1.write((uint8_t*)param->pucPayload, payloadSize);
+      }
+      param->contentLength = sprintf(param->pucBuffer, "%d", written);
+			if (written <= 0) {
+				param->hs->response.statusCode = 504;
+      }
+		} else {
+			param->contentLength = sprintf(param->pucBuffer, "No port opened");
+			param->hs->response.statusCode = 503;
+		}
+  } else if (!strcmp(param->pucRequest, "/command")) {
+    char* cmd = mwGetVarValue(param->pxVars, "cmd", "");
+    char* eos = mwGetVarValue(param->pxVars, "eos", 0);
+    Serial1.write(cmd);
+    Serial1.write('\r');
+    if (eos) {
+      int matched = 0;
+      size_t maxlen = param->bufSize - 1;
+      size_t bytes = 0;
+      uint32_t t = GetTickCount();
+      do {
+        if (!Serial1.available()) continue;
+        param->pucBuffer[bytes++] = Serial1.read();;
+        param->pucBuffer[bytes] = 0;
+        if (strstr(param->pucBuffer, eos)) {
+          // matched
+          matched = 1;
+        }
+      } while (bytes < maxlen && !matched && GetTickCount() - t <= timeout);
+      if (!matched) {
+        param->hs->response.statusCode = 504;
+      }
+      param->contentLength = bytes;
+    } else {
+      param->contentLength = 0;
+    }
+  } else if (!strcmp(param->pucRequest, "/open")) {
+    int pinRx = mwGetVarValueInt(param->pxVars, "rx", 16);
+    int pinTx = mwGetVarValueInt(param->pxVars, "tx", 17);
+    int baudrate = mwGetVarValueInt(param->pxVars, "baudrate", 115200);
+    //char* proto = mwGetVarValue(param->pxVars, "protocol", "8N1");
+    Serial1.begin(baudrate, SERIAL_8N1, pinRx, pinTx);
+    param->contentLength = sprintf(param->pucBuffer, "OK");
+  } else if (!strcmp(param->pucRequest, "/close")) {
+    Serial1.end();
+    param->contentLength = sprintf(param->pucBuffer, "OK");
+  } else {
+      return 0;
+  }
+	return FLAG_DATA_RAW;
 }
 
 int handlerInfo(UrlHandlerParam* param)
@@ -148,7 +242,7 @@ int handlerInfo(UrlHandlerParam* param)
   if (bytes < bufsize - 1) buf[bytes++] = '}';
 
   param->contentLength = bytes;
-  param->fileType=HTTPFILETYPE_JSON;
+  param->contentType=HTTPFILETYPE_JSON;
   return FLAG_DATA_RAW;
 }
 
@@ -156,7 +250,7 @@ UrlHandler urlHandlerList[]={
 	{"info", handlerInfo},
   {"digital", handlerDigitalPins},
   {"analog", handlerAnalogPins},
-  //{"", handlerRoot},
+  {"serial", handlerSerial},
   {0}
 };
 
@@ -227,14 +321,17 @@ void setup()
   Serial.print(getFlashSize() >> 10);
   Serial.println("MB Flash");
 
-#if ENABLE_SOFT_AP
-  WiFi.mode ( WIFI_AP );
-  WiFi.softAP(WIFI_SSID);
-  Serial.print("AP IP address: ");
+#if ENABLE_WIFI_AP
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(WIFI_AP_SSID);
+  Serial.print("WiFi AP IP address: ");
   Serial.println(WiFi.softAPIP());
-#else
+#endif
+#if ENABLE_WIFI_STATION
   do {
-    Serial.print("Connecting...");
+    Serial.print("Connecting to WiFi (");
+    Serial.print(WIFI_SSID);
+    Serial.print(')');
 
     // Connect to WiFi network
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -264,11 +361,13 @@ void setup()
 
   mwInitParam(&httpParam, 80, "/htdoc");
   httpParam.pxUrlHandler = urlHandlerList;
+  httpParam.maxClientsPerIP = 4;
+  httpParam.maxClients = 8;
 
   if (SPIFFS.begin(true, httpParam.pchWebPath)) {
-    Serial.println();
-    listDir(SPIFFS, "/", 0);
-    Serial.println();
+    //Serial.println();
+    //listDir(SPIFFS, "/", 0);
+    //Serial.println();
   }
 
   if (mwServerStart(&httpParam)) {
@@ -282,5 +381,5 @@ void setup()
 
 void loop()
 {
-  mwHttpLoop(&httpParam, 500);
+  mwHttpLoop(&httpParam, 1000);
 }
