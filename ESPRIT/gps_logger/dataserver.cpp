@@ -87,7 +87,7 @@ int handlerInfo(UrlHandlerParam* param)
     if (bytes < bufsize - 1) buf[bytes++] = '}';
 
     param->contentLength = bytes;
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
 
@@ -108,7 +108,7 @@ public:
 int handlerLogFile(UrlHandlerParam* param)
 {
     LogDataContext* ctx = (LogDataContext*)param->hs->ptr;
-    param->fileType = HTTPFILETYPE_TEXT;
+    param->contentType = HTTPFILETYPE_TEXT;
     if (ctx) {
 		if (!param->pucBuffer) {
 			// connection to be closed, final calling, cleanup
@@ -143,7 +143,7 @@ int handlerLogFile(UrlHandlerParam* param)
         return 0;
     }
     param->contentLength = ctx->file.readBytes(param->pucBuffer, param->bufSize);
-    param->fileType = HTTPFILETYPE_TEXT;
+    param->contentType = HTTPFILETYPE_TEXT;
     return FLAG_DATA_STREAM;
 }
 
@@ -151,7 +151,7 @@ int handlerLogData(UrlHandlerParam* param)
 {
     uint32_t duration = 0;
     LogDataContext* ctx = (LogDataContext*)param->hs->ptr;
-    param->fileType = HTTPFILETYPE_JSON;
+    param->contentType = HTTPFILETYPE_JSON;
     if (ctx) {
 		if (!param->pucBuffer) {
 			// connection to be closed, final calling, cleanup
@@ -274,7 +274,7 @@ int handlerLogList(UrlHandlerParam* param)
         if (buf[n - 1] == ',') n--;
     }
     n += snprintf(buf + n, bufsize - n, "]");
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     param->contentLength = n;
     return FLAG_DATA_RAW;
 }
