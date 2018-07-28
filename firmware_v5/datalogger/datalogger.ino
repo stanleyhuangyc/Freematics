@@ -171,7 +171,7 @@ int handlerLiveData(UrlHandlerParam* param)
 #endif
     buf[n++] = '}';
     param->contentLength = n;
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
 
@@ -187,7 +187,7 @@ int handlerControl(UrlHandlerParam* param)
         strncpy(command, cmd, sizeof(command) - 1);
         param->contentLength = snprintf(buf, bufsize, "{\"result\":\"OK\"}");
     }
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
 
