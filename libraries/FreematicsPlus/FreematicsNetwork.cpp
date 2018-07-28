@@ -21,7 +21,7 @@ unsigned int HTTPClient::genHeader(char* header, HTTP_METHOD method, const char*
     if (method == HTTP_POST) {
       p += sprintf(p, "Content-length: %u\r\n", payloadSize);
     }
-    p += sprintf(p, "\r\n\r");
+    p += sprintf(p, "\r\n");
     return (unsigned int)(p - header);
 }
 
