@@ -117,7 +117,7 @@ SDClass SD;
 CStorageSD store;
 #endif
 
-#if SERVER_PROTOCOL == PROTOCOL_HUB
+#if SERVER_PROTOCOL == PROTOCOL_UDP
 TeleClientUDP teleClient;
 #else
 TeleClientHTTP teleClient;
