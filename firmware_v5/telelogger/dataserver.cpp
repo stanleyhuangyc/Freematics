@@ -22,8 +22,6 @@
 * /api/data/<file #>?pid=<PID in hex> - JSON array of PID data
 *************************************************************************/
 
-#if ENABLE_HTTPD
-
 #include <FreematicsPlus.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -33,6 +31,8 @@
 #include <esp_err.h>
 #include <httpd.h>
 #include "config.h"
+
+#if ENABLE_HTTPD
 
 #define WIFI_TIMEOUT 5000
 
@@ -58,7 +58,7 @@ int handlerInfo(UrlHandlerParam* param)
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
     int bytes = snprintf(buf, bufsize, "{\"httpd\":{\"uptime\":%u,\"clients\":%u,\"requests\":%u,\"traffic\":%u},\n",
-        millis(), httpParam.stats.clientCount, httpParam.stats.reqCount, (unsigned int)(httpParam.stats.totalSentBytes >> 10));
+        (unsigned int)millis(), httpParam.stats.clientCount, (unsigned int)httpParam.stats.reqCount, (unsigned int)(httpParam.stats.totalSentBytes >> 10));
 
     time_t now;
     time(&now);
@@ -84,7 +84,7 @@ int handlerInfo(UrlHandlerParam* param)
     if (bytes < bufsize - 1) buf[bytes++] = '}';
 
     param->contentLength = bytes;
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
 
@@ -102,9 +102,8 @@ public:
 
 int handlerLogFile(UrlHandlerParam* param)
 {
-    uint32_t duration = 0;
     LogDataContext* ctx = (LogDataContext*)param->hs->ptr;
-    param->fileType = HTTPFILETYPE_TEXT;
+    param->contentType = HTTPFILETYPE_TEXT;
     if (ctx) {
 		if (!param->pucBuffer) {
 			// connection to be closed, final calling, cleanup
@@ -139,7 +138,7 @@ int handlerLogFile(UrlHandlerParam* param)
         return 0;
     }
     param->contentLength = ctx->file.readBytes(param->pucBuffer, param->bufSize);
-    param->fileType = HTTPFILETYPE_TEXT;
+    param->contentType = HTTPFILETYPE_TEXT;
     return FLAG_DATA_STREAM;
 }
 
@@ -147,7 +146,7 @@ int handlerLogData(UrlHandlerParam* param)
 {
     uint32_t duration = 0;
     LogDataContext* ctx = (LogDataContext*)param->hs->ptr;
-    param->fileType = HTTPFILETYPE_JSON;
+    param->contentType = HTTPFILETYPE_JSON;
     if (ctx) {
 		if (!param->pucBuffer) {
 			// connection to be closed, final calling, cleanup
@@ -241,7 +240,7 @@ int handlerLogList(UrlHandlerParam* param)
     SDLib::File root = SD.open("/DATA");
     SDLib::File file;
 #endif
-    int n = snprintf(buf + n, bufsize - n, "[");
+    int n = snprintf(buf, bufsize, "[");
     if (root) {
         while(file = root.openNextFile()) {
             const char *fn = file.name();
@@ -270,7 +269,7 @@ int handlerLogList(UrlHandlerParam* param)
         if (buf[n - 1] == ',') n--;
     }
     n += snprintf(buf + n, bufsize - n, "]");
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     param->contentLength = n;
     return FLAG_DATA_RAW;
 }

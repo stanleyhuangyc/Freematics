@@ -122,7 +122,7 @@ protected:
     char* m_cache = 0;
 };
 
-SDClass SD;
+extern SDClass SD;
 
 class CStorageSD : public CStorageNull {
 public:
