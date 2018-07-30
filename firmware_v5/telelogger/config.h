@@ -19,6 +19,9 @@
 #define STORAGE_SPIFFS 1
 #define STORAGE_SD 2
 
+#define PROTOCOL_UDP 1
+#define PROTOCOL_HTTP 2
+
 /**************************************
 * OBD-II configurations
 **************************************/
@@ -30,7 +33,7 @@
 #define MAX_OBD_ERRORS 3
 
 // minimum processing loop time
-#define MIN_LOOP_TIME 200 /* ms */
+#define MIN_LOOP_TIME 500 /* ms */
 
 /**************************************
 * Networking configurations
@@ -42,12 +45,22 @@
 #define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network
-#define CELL_APN "connect"
+#define CELL_APN "mdata.net.au"
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
-#define SERVER_PORT 8081
+#define SERVER_PORT 0
+#define SERVER_PROTOCOL PROTOCOL_UDP
 #endif
 
+#if SERVER_PORT == 0
+#if SERVER_PROTOCOL == PROTOCOL_UDP
+#define SERVER_PORT 8081
+#else
+#define SERVER_PORT 8080
+#endif
+#endif
+
+#define SERVER_PATH "/api/post"
 #define SERVER_KEY "TEST_SERVER_KEY"
 
 #define WIFI_AP_SSID "TELELOGGER"
@@ -65,7 +78,7 @@
 **************************************/
 #ifndef STORAGE
 // change the following line to change storage type
-#define STORAGE STORAGE_SPIFFS
+#define STORAGE STORAGE_SD
 #endif
 
 #define RAM_CACHE_SIZE 1024 /* bytes */
@@ -99,18 +112,19 @@
 #define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
+// time before entering motion-less standby
+#define MOTIONLESS_STANDBY 300 /* seconds */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
 /**************************************
 * Additional features
 **************************************/
-#define ENABLE_HTTPD 0
+#define ENABLE_HTTPD 1
 #define ENABLE_OLED 0
 
-#define LOG_INPUTS 0
-#define PIN_DIGITAL_INPUT_1 32
-#define PIN_DIGITAL_INPUT_2 33
+#define PIN_SENSOR1 34
+#define PIN_SENSOR2 35
 
 #define COOLING_DOWN_TEMP 80 /* celsius degrees */
 

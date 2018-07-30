@@ -17,8 +17,9 @@
 
 #include <FreematicsPlus.h>
 #include <httpd.h>
-#include "telelogger.h"
 #include "config.h"
+#include "telelogger.h"
+#include "teleclient.h"
 #if ENABLE_OLED
 #include "FreematicsOLED.h"
 #endif
@@ -30,7 +31,7 @@
 #define STATE_MEMS_READY 0x8
 #define STATE_NET_READY 0x10
 #define STATE_CONNECTED 0x20
-#define STATE_ALL_GOOD 0x40
+#define STATE_WORKING 0x40
 #define STATE_STANDBY 0x80
 
 typedef struct {
@@ -58,7 +59,8 @@ uint32_t lastMotionTime = 0;
 #endif
 
 // live data
-char vin[18];
+char vin[18] = {0};
+uint16_t dtc[6] = {0};
 int16_t batteryVoltage = 0;
 GPS_DATA gd = {0};
 uint8_t deviceTemp = 0; // device temperature
@@ -67,16 +69,11 @@ uint8_t deviceTemp = 0; // device temperature
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
-uint32_t lastSentTime = 0;
-uint32_t lastSyncTime = 0;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 
 uint32_t sendingInterval = DATA_SENDING_INTERVAL;
 uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
-uint16_t feedid = 0;
-uint32_t txCount = 0;
-uint32_t txBytes = 0;
 uint8_t connErrors = 0;
 
 int fileid = 0;
@@ -104,18 +101,6 @@ private:
 FreematicsESP32 sys;
 State state;
 
-#if NET_DEVICE == NET_WIFI
-UDPClientWIFI net;
-#elif NET_DEVICE == NET_SIM800
-UDPClientSIM800 net;
-#elif NET_DEVICE == NET_SIM5360
-UDPClientSIM5360 net;
-#elif NET_DEVICE == NET_SIM7600
-UDPClientSIM7600 net;
-#else
-NullClient net; // null client
-#endif
-
 #if MEMS_MODE == MEMS_ACC
 MPU9250_ACC mems;
 #elif MEMS_MODE == MEMS_9DOF
@@ -123,13 +108,20 @@ MPU9250_9DOF mems;
 #elif MEMS_MODE == MEMS_DMP
 MPU9250_DMP mems;
 #endif
+
 CStorageRAM cache;
 #if STORAGE == STORAGE_SPIFFS
 CStorageSPIFFS store;
 #elif STORAGE == STORAGE_SD
+SDClass SD;
 CStorageSD store;
 #endif
-CStorageRAM netbuf;
+
+#if SERVER_PROTOCOL == PROTOCOL_HUB
+TeleClientUDP teleClient;
+#else
+TeleClientHTTP teleClient;
+#endif
 
 COBD* obd = 0;
 
@@ -145,16 +137,20 @@ void printTimeoutStats()
   Serial.println(timeoutsNet);
 }
 
-#if LOG_INPUTS
-void processInputs()
+void processExtInputs()
 {
-  int pins[] = {PIN_DIGITAL_INPUT_1, PIN_DIGITAL_INPUT_2};
-  int pids[] = {PID_DIGITAL_INPUT_1, PID_DIGITAL_INPUT_2};
+  int pins[] = {PIN_SENSOR1, PIN_SENSOR2};
+  int pids[] = {PID_EXT_SENSOR1, PID_EXT_SENSOR2};
+#if LOG_EXT_SENSORS == 1
   for (int i = 0; i < 2; i++) {
     cache.log(pids[i], digitalRead(pins[i]));
   }
-}
+#elif LOG_EXT_SENSORS == 2
+  for (int i = 0; i < 2; i++) {
+    cache.log(pids[i], analogRead(pins[i]));
+  }
 #endif
+}
 
 /*******************************************************************************
   HTTP API
@@ -183,7 +179,7 @@ int handlerLiveData(UrlHandlerParam* param)
 #endif
     buf[n++] = '}';
     param->contentLength = n;
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
 
@@ -194,237 +190,10 @@ int handlerControl(UrlHandlerParam* param)
     String result = executeCommand(cmd);
     param->contentLength = snprintf(param->pucBuffer, param->bufSize,
         "{\"result\":\"%s\"}", result.c_str());
-    param->fileType=HTTPFILETYPE_JSON;
+    param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
 #endif
-
-/*******************************************************************************
-  Freematics Hub client implementation
-*******************************************************************************/
-class TeleClientUDP
-{
-private:
-
-bool verifyChecksum(char* data)
-{
-  uint8_t sum = 0;
-  char *s = strrchr(data, '*');
-  if (!s) return false;
-  for (char *p = data; p < s; p++) sum += *p;
-  if (hex2uint8(s + 1) == sum) {
-    *s = 0;
-    return true;
-  }
-  return false;
-}
-
-public:
-
-bool notify(byte event, const char* serverKey, const char* payload = 0)
-{
-  char buf[48];
-  byte len = sprintf_P(buf, PSTR("EV=%X"), (unsigned int)event);
-  netbuf.header(feedid);
-  netbuf.dispatch(buf, len);
-  len = sprintf_P(buf, PSTR("TS=%lu"), millis());
-  netbuf.dispatch(buf, len);
-  if (serverKey) {
-    len = sprintf_P(buf, PSTR("SK=%s"), serverKey);
-    netbuf.dispatch(buf, len);
-  }
-  if (payload) {
-    netbuf.dispatch(payload, strlen(payload));
-  }
-  netbuf.tailer();
-  //Serial.println(netbuf.buffer());
-  for (byte attempts = 0; attempts < 3; attempts++) {
-    // send notification datagram
-    if (!net.send(netbuf.buffer(), netbuf.length())) {
-      // error sending data
-      break;
-    }
-    if (event == EVENT_ACK) return true; // no reply for ACK
-    int len;
-    char *data = 0;
-    // receive reply
-    uint32_t t = millis();
-    do {
-      if ((data = net.receive(&len))) break;
-      // no reply yet
-      Serial.print('.');
-      delay(100);
-    } while (millis() - t < DATA_RECEIVING_TIMEOUT);
-    if (!data) {
-      continue;
-    }
-    data[len] = 0;
-    // verify checksum
-    if (!verifyChecksum(data)) {
-      Serial.print("Checksum mismatch:");
-      Serial.print(data);
-      continue;
-    }
-    char pattern[16];
-    sprintf(pattern, "EV=%u", event);
-    if (!strstr(data, pattern)) {
-      Serial.print("Invalid reply");
-      continue;
-    }
-    if (event == EVENT_LOGIN) {
-      // extract info from server response
-      char *p = strstr(data, "TM=");
-      if (p) {
-        // set local time from server
-        unsigned long tm = atol(p + 3);
-        struct timeval tv = { .tv_sec = (time_t)tm, .tv_usec = 0 };
-        settimeofday(&tv, NULL);
-      }
-      p = strstr(data, "SN=");
-      if (p) {
-        char *q = strchr(p, ',');
-        if (q) *q = 0;
-      }
-      feedid = hex2uint16(data);
-    }
-    Serial.print(' ');
-    connErrors = 0;
-    // success
-    return true;
-  }
-  return false;
-}
-
-bool login()
-{
-  // connect to telematics server
-  for (byte attempts = 0; attempts < 10; attempts++) {
-    Serial.print("LOGIN(");
-    Serial.print(SERVER_HOST);
-    Serial.print(':');
-    Serial.print(SERVER_PORT);
-    Serial.print(")...");
-    if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      Serial.println("NO");
-      continue;
-    }
-    char payload[128];
-    char *p = payload + sprintf(payload, "VIN=%s", vin);
-#if ENABLE_OBD
-    // load DTC
-    uint16_t dtc[6];
-    byte dtcCount = obd->readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-    if (dtcCount > 0) {
-      Serial.print("DTC:");
-      Serial.println(dtcCount);
-      p += sprintf(p, ",DTC=");
-      for (byte i = 0; i < dtcCount; i++) {
-        p += sprintf(p, "%X;", dtc[i]);
-      }
-    }
-#endif
-    // login Freematics Hub
-    if (!notify(EVENT_LOGIN, SERVER_KEY, payload)) {
-      net.close();
-      Serial.println("NO");
-      delay(1000);
-      continue;
-    }
-    Serial.println("OK");
-
-    Serial.print("FEED ID:");
-    Serial.println(feedid);
-
-#if ENABLE_OLED
-    oled.print("FEED ID:");
-    oled.println(feedid);
-#endif
-    return true;
-  }
-  return false;
-}
-
-void transmit()
-{
-  //Serial.println(cache.buffer()); // print the content to be sent
-  Serial.print('[');
-  Serial.print(txCount);
-  Serial.print("] ");
-  cache.tailer();
-  const char* packetBuffer = cache.buffer();
-  unsigned int packetSize = cache.length();
-  // transmit data
-  if (net.send(packetBuffer, packetSize)) {
-    connErrors = 0;
-    txBytes += packetSize;
-    txCount++;
-    // output some stats
-    Serial.print("Packet:");
-    Serial.print(packetSize);
-    Serial.print("B Net:");
-    Serial.print(txBytes >> 10);
-    Serial.print("KB");
-#if STORAGE != STORAGE_NONE
-    Serial.print(" File:");
-    Serial.print(store.size() >> 10);
-    Serial.println("KB");
-#endif
-#if ENABLE_OLED
-    oled.setCursor(0, 5);
-    oled.printInt(txCount, 2);
-    oled.setCursor(80, 5);
-    oled.printInt(txBytes >> 10, 3);
-#endif
-    // purge cache and place a header
-    cache.header(feedid);
-    lastSentTime = millis();
-  } else {
-    if (connErrors == 0)
-      cache.untailer(); // keep data in cache for resending
-    else
-      cache.header(feedid); // purge cache on repeated connection error
-    connErrors++;
-    timeoutsNet++;
-    printTimeoutStats();
-  }
-  if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-    net.close();
-    if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      delay(1000);
-    }
-  }
-}
-
-void inbound()
-{
-  // check incoming datagram
-  do {
-    int len = 0;
-    char *data = net.receive(&len, 0);
-    if (!data) break;
-    data[len] = 0;
-    if (!verifyChecksum(data)) {
-      Serial.print("Checksum mismatch:");
-      Serial.println(data);
-      break;
-    }
-    char *p = strstr(data, "EV=");
-    if (!p) break;
-    int eventID = atoi(p + 3);
-    switch (eventID) {
-    case EVENT_COMMAND:
-      processCommand(data);
-      break;
-    case EVENT_SYNC:
-      lastSyncTime = millis();
-      break;
-    }
-  } while(0);
-}
-
-};
-
-TeleClientUDP teleClient;
 
 /*******************************************************************************
   Reading and processing OBD data
@@ -560,7 +329,7 @@ void calibrateMEMS()
 *******************************************************************************/
 bool initialize()
 {
-  state.clear(STATE_ALL_GOOD);
+  state.clear(STATE_WORKING);
   distance = 0;
 
 #if MEMS_MODE
@@ -575,6 +344,7 @@ bool initialize()
       oled.print("MEMS:");
       oled.println(ret == 2 ? "9-DOF" : "6-DOF");
 #endif
+      calibrateMEMS();
     } else {
       Serial.println("NO");
     }
@@ -604,6 +374,11 @@ bool initialize()
         Serial.print("VIN:");
         Serial.println(vin);
       }
+      int dtcCount = obd->readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+      if (dtcCount > 0) {
+        Serial.print("DTC:");
+        Serial.println(dtcCount);
+      }
     } else {
       Serial.println("NO");
     }
@@ -632,11 +407,11 @@ bool initialize()
   oled.print("Connecting WiFi...");
 #endif
   for (byte attempts = 0; attempts < 3; attempts++) {
-    if (!net.begin()) continue;
+    if (!teleClient.net.begin()) continue;
     Serial.print("WiFi(SSID:");
     Serial.print(WIFI_SSID);
     Serial.print(")...");
-    if (net.setup(WIFI_SSID, WIFI_PASSWORD)) {
+    if (teleClient.net.setup(WIFI_SSID, WIFI_PASSWORD)) {
       Serial.println("OK");
       state.set(STATE_NET_READY);
 #if ENABLE_OLED
@@ -654,15 +429,15 @@ bool initialize()
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
     Serial.print("CELL...");
-    if (net.begin(&sys)) {
-      Serial.println(net.deviceName());
+    if (teleClient.net.begin(&sys)) {
+      Serial.println(teleClient.net.deviceName());
 #if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
       Serial.print("IMEI:");
-      Serial.println(net.IMEI);
+      Serial.println(teleClient.net.IMEI);
 #endif
       state.set(STATE_NET_READY);
 #if ENABLE_OLED
-      oled.print(net.deviceName());
+      oled.print(teleClient.net.deviceName());
       oled.print(" OK\r");
 #endif
     } else {
@@ -673,11 +448,11 @@ bool initialize()
       return false;
     }
   }
-  Serial.print("Network(APN:");
+  Serial.print("NET(APN:");
   Serial.print(CELL_APN);
   Serial.print(")");
-  if (net.setup(CELL_APN)) {
-    String op = net.getOperatorName();
+  if (teleClient.net.setup(CELL_APN)) {
+    String op = teleClient.net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
 #if ENABLE_OLED
@@ -704,15 +479,9 @@ bool initialize()
   oled.println(vin);
 #endif
 
-#if MEMS_MODE
-  if (state.check(STATE_MEMS_READY)) {
-    calibrateMEMS();
-  }
-#endif
-
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
   Serial.print("IP...");
-  String ip = net.getIP();
+  String ip = teleClient.net.getIP();
   if (ip.length()) {
     Serial.println(ip);
 #if ENABLE_OLED
@@ -722,9 +491,9 @@ bool initialize()
   } else {
     Serial.println("NO");
   }
-  int csq = net.getSignal();
+  int csq = teleClient.net.getSignal();
   if (csq > 0) {
-    Serial.print("CSQ...");
+    Serial.print("CSQ:");
     Serial.print((float)csq / 10, 1);
     Serial.println("dB");
 #if ENABLE_OLED
@@ -735,22 +504,16 @@ bool initialize()
   }
 #endif
 
-  txCount = 0;
-  txBytes = 0;
   cache.init(RAM_CACHE_SIZE);
-  netbuf.init(256);
-  
-  if (!teleClient.login()) {
+
+  teleClient.reset();  
+  if (!teleClient.connect()) {
     return false;
   }
+  connErrors = 0;
   state.set(STATE_CONNECTED);
 
-  cache.header(feedid);
-  lastSyncTime = millis();
-#if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-  // log signal level
-  if (csq) cache.log(PID_CSQ, csq);
-#endif
+  cache.header(teleClient.feedid);
 
   // check system time
   time_t utc;
@@ -781,7 +544,7 @@ bool initialize()
   }
 #endif
 
-  state.set(STATE_ALL_GOOD);
+  state.set(STATE_WORKING);
   return true;
 }
 
@@ -792,9 +555,9 @@ void shutDownNet()
       teleClient.notify(EVENT_LOGOUT, SERVER_KEY, 0);
     }
   }
-  Serial.print(net.deviceName());
-  net.close();
-  net.end();
+  Serial.print(teleClient.net.deviceName());
+  teleClient.net.close();
+  teleClient.net.end();
   state.clear(STATE_NET_READY);
   Serial.println(" OFF");
 }
@@ -821,7 +584,7 @@ String executeCommand(const char* cmd)
     ESP.restart();
     // never reach here
   } else if (!strcmp(cmd, "STANDBY")) {
-    state.clear(STATE_ALL_GOOD);
+    state.clear(STATE_WORKING);
     result = "OK";
   } else if (!strcmp(cmd, "WAKEUP")) {
     state.clear(STATE_STANDBY);
@@ -839,7 +602,7 @@ String executeCommand(const char* cmd)
     }
   } else if (!strcmp(cmd, "STATS")) {
     char buf[64];
-    sprintf(buf, "TX:%u OBD:%u NET:%u", txCount, timeoutsOBD, timeoutsNet);
+    sprintf(buf, "TX:%u OBD:%u NET:%u", teleClient.txCount, timeoutsOBD, timeoutsNet);
     result = buf;
   #if ENABLE_OBD
   } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
@@ -914,7 +677,7 @@ void process()
   cache.timestamp(startTime);
 
 #if ENABLE_OBD
-  if ((txCount % 100) == 1) {
+  if ((teleClient.txCount % 100) == 1) {
     int temp = (int)readChipTemperature() * 165 / 255 - 40;
     cache.log(PID_DEVICE_TEMP, temp);
   }
@@ -948,28 +711,43 @@ void process()
   }
 #endif
 
-#if LOG_INPUTS
-  processInputs();
+#if LOG_EXT_SENSORS
+  processExtInputs();
 #endif
 
-  if (syncInterval > 10000 && millis() - lastSyncTime > syncInterval) {
+  if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
     Serial.println("NO SYNC");
     connErrors++;
     timeoutsNet++;
     printTimeoutStats();
-  } else if (millis() - lastSentTime >= sendingInterval && cache.samples() > 0) {
+  } else if (millis() - teleClient.lastSentTime >= sendingInterval && cache.samples() > 0) {
     // start data chunk
     if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
-    teleClient.transmit();
+#if SERVER_PROTOCOL == PROTOCOL_UDP
+    cache.tailer();
+#endif
+    if (teleClient.transmit(cache.buffer(), cache.length())) {
+      // successfully sent
+      connErrors = 0;
+    } else {
+      connErrors++;
+      timeoutsNet++;
+      printTimeoutStats();
+      if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
+        teleClient.connect();
+      }
+    }
     if (ledMode == 0) digitalWrite(PIN_LED, LOW);
+    // purge cache and place a header
+#if SERVER_PROTOCOL == PROTOCOL_UDP
+    cache.header(teleClient.feedid);
+#endif
   }
 
   if (deviceTemp >= COOLING_DOWN_TEMP) {
     // device too hot, cool down
     Serial.println("Cooling down");
     delay(10000);
-    // ignore syncing
-    lastSyncTime = millis();
   }
 
   idleTasks();
@@ -978,10 +756,18 @@ void process()
   if (obd->errors > MAX_OBD_ERRORS) {
     Serial.println("Reset OBD");
     obd->reset();
-    state.clear(STATE_OBD_READY | STATE_ALL_GOOD);
+    state.clear(STATE_OBD_READY | STATE_WORKING);
   }
 #endif
 
+#if MEMS_MODE
+  if (!state.check(STATE_OBD_READY)) {
+    if (lastMotionTime - millis() > MOTIONLESS_STANDBY) {
+      // enter standby mode
+      state.clear(STATE_WORKING);
+    }
+  }
+#endif
   // maintain minimum loop time
 #if MIN_LOOP_TIME
   while (millis() - startTime < MIN_LOOP_TIME) {
@@ -1013,7 +799,6 @@ void standby()
   if (state.check(STATE_OBD_READY)) {
     if (obd->errors > MAX_OBD_ERRORS) {
       // inaccessible OBD treated as end of trip
-      feedid = 0;
     }
   }
 #endif
@@ -1101,7 +886,7 @@ void setup()
 #if ENABLE_OLED
     oled.begin();
     oled.setFontSize(FONT_SIZE_MEDIUM);
-    oled.println("   FREEMATICS");
+    oled.println("  FREEMATICS");
     oled.setFontSize(FONT_SIZE_SMALL);
     oled.println();
 #endif
@@ -1111,9 +896,9 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
 
-#if LOG_INPUTS
-    pinMode(PIN_DIGITAL_INPUT_1, INPUT);
-    pinMode(PIN_DIGITAL_INPUT_2, INPUT);
+#if LOG_EXT_SENSORS
+    pinMode(PIN_SENSOR1, INPUT);
+    pinMode(PIN_SENSOR2, INPUT);
 #endif
 
     // initialize USB serial
@@ -1188,13 +973,13 @@ void setup()
 void loop()
 {
     // error handling
-    if (!state.check(STATE_ALL_GOOD)) {
+    if (!state.check(STATE_WORKING)) {
       standby();
       for (byte n = 0; n < 3; n++) {
         digitalWrite(PIN_LED, HIGH);
         initialize();
         digitalWrite(PIN_LED, LOW);
-        if (state.check(STATE_ALL_GOOD)) break;
+        if (state.check(STATE_WORKING)) break;
         delay(3000);
       }
       return;

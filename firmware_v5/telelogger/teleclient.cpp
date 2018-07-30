@@ -1,0 +1,303 @@
+/******************************************************************************
+* Freematics Hub client and Traccar client implementations
+* Works with Freematics ONE+
+* Developed by Stanley Huang <stanley@freematics.com.au>
+* Distributed under BSD license
+* Visit https://freematics.com/products for hardware information
+* Visit https://freematics.com/hub for information about Freematics Hub
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+* THE SOFTWARE.
+******************************************************************************/
+
+#include <FreematicsPlus.h>
+#include "config.h"
+#include "telelogger.h"
+#include "teleclient.h"
+
+bool processCommand(char* data);
+
+extern char vin[];
+extern GPS_DATA gd;
+
+bool TeleClientUDP::verifyChecksum(char* data)
+{
+  uint8_t sum = 0;
+  char *s = strrchr(data, '*');
+  if (!s) return false;
+  for (char *p = data; p < s; p++) sum += *p;
+  if (hex2uint8(s + 1) == sum) {
+    *s = 0;
+    return true;
+  }
+  return false;
+}
+
+bool TeleClientUDP::notify(byte event, const char* serverKey, const char* payload)
+{
+  char buf[48];
+  CStorageRAM netbuf;
+  netbuf.init(128);
+  netbuf.header(feedid);
+  byte len = sprintf(buf, "EV=%X", (unsigned int)event);
+  netbuf.dispatch(buf, len);
+  len = sprintf(buf, "TS=%lu", millis());
+  netbuf.dispatch(buf, len);
+  len = sprintf(buf, "VIN=%s", vin);
+  netbuf.dispatch(buf, len);
+  if (serverKey) {
+    len = sprintf(buf, PSTR("SK=%s"), serverKey);
+    netbuf.dispatch(buf, len);
+  }
+  if (payload) {
+    netbuf.dispatch(payload, strlen(payload));
+  }
+  netbuf.tailer();
+  //Serial.println(netbuf.buffer());
+  for (byte attempts = 0; attempts < 3; attempts++) {
+    // send notification datagram
+    //Serial.println(netbuf.buffer());
+    if (!net.send(netbuf.buffer(), netbuf.length())) {
+      // error sending data
+      break;
+    }
+    if (event == EVENT_ACK) return true; // no reply for ACK
+    char *data = 0;
+    // receive reply
+    uint32_t t = millis();
+    do {
+      if ((data = net.receive())) break;
+      // no reply yet
+      delay(100);
+    } while (millis() - t < DATA_RECEIVING_TIMEOUT);
+    if (!data) {
+      Serial.println("Timeout");
+      continue;
+    }
+    // verify checksum
+    if (!verifyChecksum(data)) {
+      Serial.print("Checksum mismatch:");
+      Serial.print(data);
+      continue;
+    }
+    char pattern[16];
+    sprintf(pattern, "EV=%u", event);
+    if (!strstr(data, pattern)) {
+      Serial.print("Invalid reply");
+      continue;
+    }
+    if (event == EVENT_LOGIN) {
+      // extract info from server response
+      char *p = strstr(data, "TM=");
+      if (p) {
+        // set local time from server
+        unsigned long tm = atol(p + 3);
+        struct timeval tv = { .tv_sec = (time_t)tm, .tv_usec = 0 };
+        settimeofday(&tv, NULL);
+      }
+      p = strstr(data, "SN=");
+      if (p) {
+        char *q = strchr(p, ',');
+        if (q) *q = 0;
+      }
+      feedid = hex2uint16(data);
+    }
+    Serial.print(' ');
+    // success
+    return true;
+  }
+  return false;
+}
+
+bool TeleClientUDP::connect()
+{
+  // connect to telematics server
+  for (byte attempts = 0; attempts < 10; attempts++) {
+    Serial.print("LOGIN(");
+    Serial.print(SERVER_HOST);
+    Serial.print(':');
+    Serial.print(SERVER_PORT);
+    Serial.print(")...");
+    if (!net.open(SERVER_HOST, SERVER_PORT)) {
+      Serial.println("NO");
+      continue;
+    }
+    // login Freematics Hub
+    if (!notify(EVENT_LOGIN, SERVER_KEY)) {
+      net.close();
+      Serial.println("NO");
+      delay(1000);
+      continue;
+    }
+    Serial.println("OK");
+
+    Serial.print("FEED ID:");
+    Serial.println(feedid);
+
+    lastSyncTime = millis();
+
+#if ENABLE_OLED
+    oled.print("FEED ID:");
+    oled.println(feedid);
+#endif
+    return true;
+  }
+  return false;
+}
+
+bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
+{
+  bool success = false;
+  //Serial.println(cache.buffer()); // print the content to be sent
+  Serial.print('#');
+  Serial.print(txCount);
+  // transmit data
+  if (net.send(packetBuffer, packetSize)) {
+    txBytes += packetSize;
+    txCount++;
+    lastSentTime = millis();
+    // output some stats
+    Serial.print(" Packet: ");
+    Serial.print(packetSize);
+    Serial.print("B Out: ");
+    Serial.print(txBytes >> 10);
+    Serial.print("KB In: ");
+    Serial.print(rxBytes >> 10);
+    Serial.print("KB");
+#if STORAGE != STORAGE_NONE
+    //Serial.print(" File:");
+    //Serial.print(store.size() >> 10);
+    //Serial.print("KB");
+#endif
+    Serial.println();
+#if ENABLE_OLED
+    oled.setCursor(0, 5);
+    oled.printInt(txCount, 2);
+    oled.setCursor(80, 5);
+    oled.printInt(txBytes >> 10, 3);
+#endif
+    success = true;
+  }
+  return success;
+}
+
+void TeleClientUDP::inbound()
+{
+  // check incoming datagram
+  do {
+    int len = 0;
+    char *data = net.receive(&len, 0);
+    if (!data) break;
+    data[len] = 0;
+    rxBytes += len;
+    if (!verifyChecksum(data)) {
+      Serial.print("Checksum mismatch:");
+      Serial.println(data);
+      break;
+    }
+    char *p = strstr(data, "EV=");
+    if (!p) break;
+    int eventID = atoi(p + 3);
+    switch (eventID) {
+    case EVENT_COMMAND:
+      processCommand(data);
+      break;
+    case EVENT_SYNC:
+      lastSyncTime = millis();
+      break;
+    }
+  } while(0);
+}
+
+bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
+{
+  Serial.print('#');
+  Serial.print(txCount);
+  Serial.print(' ');
+  if (net.state() == HTTP_SENT) {
+    // check response
+    int bytes = 0;
+    char* resp = net.receive(&bytes, 3000);
+    if (resp) {
+      if (strstr(resp, "200 OK")) {
+        // successful
+        lastSyncTime = millis();
+        txCount++;
+        rxBytes += bytes;
+        Serial.print("Time: ");
+        Serial.print(millis() - lastSentTime);
+        Serial.print("ms Out: ");
+        Serial.print(txBytes >> 10);
+        Serial.print("KB In: ");
+        Serial.print(rxBytes >> 10);
+        Serial.print("KB");
+#if STORAGE != STORAGE_NONE
+        //Serial.print(" File: ");
+        //Serial.print(store.size() >> 10);
+        //Serial.print("KB");
+#endif
+      } else {
+        Serial.print(resp);
+      }
+    } else {
+      // close connection on receiving timeout
+      Serial.println("No HTTP response");
+      net.close();
+      return false;
+    }
+  }
+
+  if (net.state() != HTTP_CONNECTED) {
+    // reconnect if disconnected
+    if (!connect()) {
+      Serial.println("Error connecting to HTTP server");
+      return false;
+    }
+  }
+
+  // generate ISO time string
+  char url[256];
+  sprintf(url, "%s/%s", SERVER_PATH, vin);
+
+  lastSentTime = millis();
+  int ret;
+  if (!packetBuffer) {
+    ret = net.send(HTTP_GET, url, true);
+  } else {
+    ret = net.send(HTTP_POST, url, true, packetBuffer, packetSize);
+  }
+  if (ret == 0) {
+    Serial.println("Connection closed by server");
+    net.close();
+  } else if (ret < 0) {
+    Serial.println("Error sending HTTP request");
+    net.close();
+  } else {
+    txBytes += ret;
+  }  
+  Serial.println();
+  return ret > 0;
+}
+
+bool TeleClientHTTP::connect()
+{
+  Serial.print("Connecting ");
+  Serial.print(SERVER_HOST);
+  Serial.print(':');
+  Serial.print(SERVER_PORT);
+  Serial.print("...");
+  // connect to HTTP server
+  if (!net.open(SERVER_HOST, SERVER_PORT)) {
+    Serial.println("NO");
+    return false;
+  }
+  Serial.println("OK");
+  lastSyncTime = millis();
+  return true;
+}
+
