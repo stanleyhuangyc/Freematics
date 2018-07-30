@@ -10,7 +10,6 @@
 #include "driver/uart.h"
 #include "FreematicsOBD.h"
 
-#define USE_SOFT_SERIAL 0
 #define SPI_SAFE_MODE 0
 //#define DEBUG Serial
 
