@@ -544,6 +544,7 @@ bool initialize()
   }
 #endif
 
+  lastMotionTime = millis();
   state.set(STATE_WORKING);
   return true;
 }
@@ -761,8 +762,8 @@ void process()
 #endif
 
 #if MEMS_MODE
-  if (!state.check(STATE_OBD_READY)) {
-    if (lastMotionTime - millis() > MOTIONLESS_STANDBY) {
+  if (!state.check(STATE_OBD_READY) && state.check(STATE_MEMS_READY)) {
+    if (millis() - lastMotionTime > MOTIONLESS_STANDBY * 1000) {
       // enter standby mode
       state.clear(STATE_WORKING);
     }
