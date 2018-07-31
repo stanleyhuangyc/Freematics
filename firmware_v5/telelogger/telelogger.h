@@ -130,11 +130,11 @@ public:
     {
         pinMode(PIN_SD_CS, OUTPUT);
         if(!SD.begin(PIN_SD_CS)){
-            Serial.println("No SD card");
+            Serial.println("NO SD CARD");
             return false;
         }
         int cardSize = SD.cardSize();
-        Serial.print("SD card size:");
+        Serial.print("SD CARD:");
         Serial.print(cardSize);
         Serial.println("MB");
         return true;
