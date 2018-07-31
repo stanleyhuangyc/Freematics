@@ -52,7 +52,8 @@
 #define SERVER_PROTOCOL PROTOCOL_UDP
 #endif
 
-#if SERVER_PORT == 0
+#if !SERVER_PORT
+#undef SERVER_PORT
 #if SERVER_PROTOCOL == PROTOCOL_UDP
 #define SERVER_PORT 8081
 #else
@@ -112,15 +113,15 @@
 #define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
-// time before entering motion-less standby
-#define MOTIONLESS_STANDBY 300 /* seconds */
+// time before entering motion-less standby, 0 for disabled
+#define MOTIONLESS_STANDBY 0 /* seconds */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
 /**************************************
 * Additional features
 **************************************/
-#define ENABLE_HTTPD 1
+#define ENABLE_HTTPD 0
 #define ENABLE_OLED 0
 
 #define PIN_SENSOR1 34
