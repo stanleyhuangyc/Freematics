@@ -143,7 +143,7 @@ class ClientSIM5360
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, bool only3G = false, bool roaming = false, unsigned int timeout = 30000);
+    bool setup(const char* apn, bool roaming = false, unsigned int timeout = 30000);
     String getIP();
     int getSignal();
     String getOperatorName();
@@ -157,7 +157,7 @@ protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
     char m_buffer[256] = {0};
     uint8_t m_stage = 0;
-    char m_model[10] = {0};
+    char m_model[12] = {0};
     CFreematics* m_device = 0;
 };
 

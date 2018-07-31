@@ -50,7 +50,7 @@ bool ClientWIFI::begin()
 {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
-  listAPs();
+  //listAPs();
   return true;
 }
 
@@ -506,11 +506,12 @@ void ClientSIM5360::end()
   }
 }
 
-bool ClientSIM5360::setup(const char* apn, bool only3G, bool roaming, unsigned int timeout)
+bool ClientSIM5360::setup(const char* apn, bool roaming, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
-  if (only3G) sendCommand("AT+CNMP=14\r"); // use WCDMA only
+  //sendCommand("AT+CNMP=13\r"); // GSM only
+  //sendCommand("AT+CNMP=14\r"); // WCDMA only
   do {
     do {
       Serial.print('.');
