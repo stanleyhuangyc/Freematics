@@ -63,6 +63,7 @@ char vin[18] = {0};
 uint16_t dtc[6] = {0};
 int16_t batteryVoltage = 0;
 GPS_DATA gd = {0};
+char isoTime[24];
 uint8_t deviceTemp = 0; // device temperature
 
 // stats data
@@ -137,6 +138,7 @@ void printTimeoutStats()
   Serial.println(timeoutsNet);
 }
 
+#if LOG_EXT_SENSORS
 void processExtInputs()
 {
   int pins[] = {PIN_SENSOR1, PIN_SENSOR2};
@@ -151,6 +153,7 @@ void processExtInputs()
   }
 #endif
 }
+#endif
 
 /*******************************************************************************
   HTTP API
@@ -245,10 +248,9 @@ void processOBD()
 #if ENABLE_GPS
 void processGPS()
 {
-  static uint16_t lastUTC = 0;
   static uint8_t lastGPSDay = 0;
   // read parsed GPS data
-  if (!sys.gpsGetData(&gd) || gd.time == 0 || gd.time == lastUTC) {
+  if (!sys.gpsGetData(&gd) || gd.date == 0) {
     return;
   }
   byte day = gd.date / 10000;
@@ -263,11 +265,17 @@ void processGPS()
   float kph = (float)gd.speed * 1852 / 100000;
   cache.log(PID_GPS_SPEED, kph);
   cache.log(PID_GPS_SAT_COUNT, gd.sat);
-  lastUTC = (uint16_t)gd.time;
-  char buf[48];
-  sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u SATS:%u",
-      gd.time / 1000000, (gd.time % 1000000) / 10000, (gd.time % 10000) / 100, (gd.time % 100) / 10, (unsigned int)gd.sat);
-  Serial.println(buf);
+  
+  sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
+      (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
+      (unsigned int)(gd.time / 1000000), (unsigned int)(gd.time % 1000000) / 10000, (unsigned int)(gd.time % 10000) / 100, ((unsigned int)gd.time % 100) / 10);
+  
+  Serial.print("GPS SATS:");
+  Serial.print(gd.sat);
+  //Serial.print(" ERR:");
+  //Serial.print(gd.errors);
+  Serial.print(" UTC:");
+  Serial.println(isoTime);
 }
 #endif
 
@@ -761,7 +769,7 @@ void process()
   }
 #endif
 
-#if MEMS_MODE
+#if MEMS_MODE && MOTIONLESS_STANDBY
   if (!state.check(STATE_OBD_READY) && state.check(STATE_MEMS_READY)) {
     if (millis() - lastMotionTime > MOTIONLESS_STANDBY * 1000) {
       // enter standby mode

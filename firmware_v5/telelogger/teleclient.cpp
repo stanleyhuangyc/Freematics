@@ -24,6 +24,7 @@ bool processCommand(char* data);
 
 extern char vin[];
 extern GPS_DATA gd;
+extern char isoTime[];
 
 bool TeleClientUDP::verifyChecksum(char* data)
 {
@@ -227,7 +228,6 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
       if (strstr(resp, "200 OK")) {
         // successful
         lastSyncTime = millis();
-        txCount++;
         rxBytes += bytes;
         Serial.print("Time: ");
         Serial.print(millis() - lastSentTime);
@@ -279,6 +279,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
     net.close();
   } else {
     txBytes += ret;
+    txCount++;
   }  
   Serial.println();
   return ret > 0;
