@@ -15,7 +15,7 @@
     <option name="MicroSD" const="STORAGE=STORAGE_SD" default="true"/>
   </define>
   <define name="External Sensors">
-    <option name="None"/>
+    <option name="None" const="LOG_EXT_SENSORS=0"/>
     <option name="Digital Input" const="LOG_EXT_SENSORS=1"/>
     <option name="Analog Input" const="LOG_EXT_SENSORS=2"/>
   </define>
