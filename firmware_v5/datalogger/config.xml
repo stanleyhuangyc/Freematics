@@ -12,8 +12,8 @@
   <define name="Enable Quaternion" type="bool" const="ENABLE_ORIENTATION" default="false"/>
   <define name="Storage">
     <option name="None" const="STORAGE=STORAGE_NONE"/>
-    <option name="Flash (SPIFFS)" const="STORAGE=STORAGE_SPIFFS" default="true"/>
-    <option name="MicroSD" const="STORAGE=STORAGE_SD"/>
+    <option name="Flash (SPIFFS)" const="STORAGE=STORAGE_SPIFFS"/>
+    <option name="MicroSD" const="STORAGE=STORAGE_SD" default="true"/>
   </define>
   <define name="Data Output via Serial" type="bool" const="ENABLE_SERIAL_OUT"/>
   <define name="Enable HTTP Server" type="bool" const="ENABLE_HTTPD" default="true"/>
