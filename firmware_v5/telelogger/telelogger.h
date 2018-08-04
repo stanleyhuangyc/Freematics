@@ -1,3 +1,8 @@
+#include <SPI.h>
+#include <FS.h>
+#include <SD.h>
+#include <SPIFFS.h>
+
 class CStorageNull;
 
 class CStorageNull {
@@ -122,141 +127,155 @@ protected:
     char* m_cache = 0;
 };
 
-extern SDClass SD;
-
-class CStorageSD : public CStorageNull {
+class FileLogger : public CStorageNull {
 public:
-    bool init()
+    virtual void dispatch(const char* buf, byte len)
     {
-        pinMode(PIN_SD_CS, OUTPUT);
-        if(!SD.begin(PIN_SD_CS)){
-            Serial.println("NO SD CARD");
-            return false;
+        if (m_next) m_next->dispatch(buf, len);
+        if (m_file.write((uint8_t*)buf, len) == len) {
+            m_size += len;
         }
-        int cardSize = SD.cardSize();
-        Serial.print("SD CARD:");
-        Serial.print(cardSize);
-        Serial.println("MB");
-        return true;
+        if (m_file.write('\n') == 1) {
+            m_size++;
+        }
     }
-    int begin()
+    virtual uint32_t size()
     {
-        char path[24] = "/DATA";
-        SD.mkdir(path);
-        SDLib::File root = SD.open(path);
-        if (!root) {
-            return 0;
-        } else {
-            SDLib::File file;
-            m_id = 0;
-            while(file = root.openNextFile()) {
-                unsigned int n = atoi(file.name());
-                if (n > m_id) m_id = n;
-            }
-            m_id++;
-        }
-
-        sprintf(path + strlen(path), "/%u.CSV", m_id);
-        Serial.print("File:");
-        Serial.println(path);
-        m_file = SD.open(path, SD_FILE_READ | SD_FILE_WRITE);
-        if (!m_file) {
-            Serial.println("File error");
-            return 0;
-        }
-        return m_id;
+        return m_size;
     }
-    void end()
+    virtual void end()
     {
         m_file.close();
         m_id = 0;
     }
-    void dispatch(const char* buf, byte len)
+    virtual void flush()
     {
-        if (m_file.write((uint8_t*)buf, len) == len) {
-            m_file.write('\n');
-            uint16_t sizeKB = m_file.size() >> 10;
-            if (sizeKB != m_sizeKB) {
-                m_file.flush();
-                m_sizeKB = sizeKB;
+        m_file.flush();
+    }
+protected:
+    int getFileID(File& root)
+    {
+        int id = 0;
+        m_dataCount = 0;
+        if (root) {
+            File file;
+            while(file = root.openNextFile()) {
+                Serial.println(file.name());
+                if (!strncmp(file.name(), "/DATA/", 6)) {
+                    unsigned int n = atoi(file.name() + 6);
+                    if (n > id) id = n;
+                }
             }
+            id++;
         }
-        if (m_next) m_next->dispatch(buf, len);
+        return id;
     }
-    uint32_t size()
-    {
-        return m_file.size();
-    }
-private:
-    SDLib::File m_file;
-    int m_id = 0;
-    uint16_t m_sizeKB = 0;
+    uint32_t m_dataTime = 0;
+    uint32_t m_dataCount = 0;
+    uint32_t m_size;
+    uint32_t m_id = 0;
+    File m_file;
 };
 
-class CStorageSPIFFS : public CStorageNull {
+class SDLogger : public FileLogger {
 public:
     bool init()
     {
-        return SPIFFS.begin(true);
-    }
-    void dispatch(const char* buf, byte len)
-    {
-        if (m_file.write((uint8_t*)buf, len) != len) {
-            purge();
-            if (m_file.write((uint8_t*)buf, len) != len) {
-                Serial.println("Error writing data");
-            }
-        }
-        m_file.write('\n');
-        if (m_next) m_next->dispatch(buf, len);
-    }
-    int begin()
-    {
-        fs::File root = SPIFFS.open("/");
-        if (!root) {
-            return 0;
+        Serial.print("SD: ");
+        SPI.begin();
+        if (SD.begin(PIN_SD_CS, SPI, SPI_FREQ)) {
+            Serial.print((unsigned int)(SD.totalBytes() >> 20));
+            Serial.print(" MB total, ");
+            Serial.print((unsigned int)(SD.usedBytes() >> 20));
+            Serial.println(" MB used");
+            return true;
         } else {
-            fs::File file;
-            m_id = 0;
-            while(file = root.openNextFile()) {
-                if (!strncmp(file.name(), "/DATA/", 6)) {
-                    unsigned int n = atoi(file.name() + 6);
-                    if (n > m_id) m_id = n;
-                }
-            }
-            m_id++;
+            Serial.println("NO CARD");
+            return false;
         }
+    }
+    uint32_t begin()
+    {
+        File root = SD.open("/DATA");
+        m_id = getFileID(root);
+        SD.mkdir("/DATA");
         char path[24];
         sprintf(path, "/DATA/%u.CSV", m_id);
         Serial.print("File: ");
         Serial.println(path);
-        m_file = SPIFFS.open(path, FILE_WRITE);
+        m_file = SD.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
             m_id = 0;
-            return 0;
         }
         return m_id;
     }
-    uint32_t size()
-    {
-        return m_file.size();
-    }
-    void end()
-    {
-        m_file.close();
-        m_id = 0;
-    }
     void flush()
     {
-        m_file.flush();
+        char path[24];
+        sprintf(path, "/DATA/%u.CSV", m_id);
+        m_file.close();
+        m_file = SD.open(path, FILE_APPEND);
+        if (!m_file) {
+            Serial.println("File error");
+        }
+    }
+};
+
+class SPIFFSLogger : public FileLogger {
+public:
+    bool init()
+    {
+        bool mounted = SPIFFS.begin();
+        if (!mounted) {
+            Serial.println("Formatting SPIFFS...");
+            mounted = SPIFFS.begin(true);
+        }
+        Serial.print("SPIFFS: ");
+        if (mounted) {
+            Serial.print(SPIFFS.totalBytes());
+            Serial.print(" bytes total, ");
+            Serial.print(SPIFFS.usedBytes());
+            Serial.println(" bytes used");
+        } else {
+            Serial.println("failed");
+        }
+        return mounted;
+    }
+    void dispatch(const char* buf, byte len)
+    {
+        if (m_next) m_next->dispatch(buf, len);
+        if (m_id == 0) return;
+        if (m_file.write((uint8_t*)buf, len) != len) {
+            purge();
+            if (m_file.write((uint8_t*)buf, len) != len) {
+                Serial.println("Error writing data");
+                return;
+            }
+        }
+        m_file.write('\n');
+    }
+    uint32_t begin()
+    {
+        File root = SPIFFS.open("/");
+        m_id = getFileID(root);
+        char path[24];
+        sprintf(path, "/DATA/%u.CSV", m_id);
+        Serial.print("File: ");
+        Serial.println(path);
+        m_file = SD.open(path, FILE_WRITE);
+        if (!m_file) {
+            Serial.println("File error");
+            m_id = 0;
+        }
+        return m_id;
     }
 private:
     void purge()
     {
         // remove oldest file when unused space is insufficient
-        fs::File root = SPIFFS.open("/");
-        fs::File file;
+        File root = SPIFFS.open("/");
+        File file;
         int idx = 0;
         while(file = root.openNextFile()) {
             if (!strncmp(file.name(), "/DATA/", 6)) {
@@ -276,6 +295,4 @@ private:
             if (!m_file) m_id = 0;
         }
     }
-    fs::File m_file;
-    int m_id = 0;
 };

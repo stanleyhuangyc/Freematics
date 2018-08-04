@@ -64,6 +64,7 @@ uint16_t dtc[6] = {0};
 int16_t batteryVoltage = 0;
 GPS_DATA gd = {0};
 char isoTime[24];
+uint32_t lastGPSDataTime = 0;
 uint8_t deviceTemp = 0; // device temperature
 
 // stats data
@@ -78,6 +79,7 @@ uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 uint8_t connErrors = 0;
 
 int fileid = 0;
+static uint8_t lastSizeKB = 0;
 
 uint32_t lastCmdToken = 0;
 String serialCommand;
@@ -112,10 +114,9 @@ MPU9250_DMP mems;
 
 CStorageRAM cache;
 #if STORAGE == STORAGE_SPIFFS
-CStorageSPIFFS store;
+SPIFFSLogger store;
 #elif STORAGE == STORAGE_SD
-SDClass SD;
-CStorageSD store;
+SDLogger store;
 #endif
 
 #if SERVER_PROTOCOL == PROTOCOL_UDP
@@ -177,8 +178,10 @@ int handlerLiveData(UrlHandlerParam* param)
         millis() - lastMotionTime);
 #endif
 #if ENABLE_GPS
-    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%u,\"sat\":%d}",
-        gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
+    if (lastGPSDataTime) {
+      n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"utc\":\"%s\",\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%u,\"sat\":%d,\"age\":%u}",
+          isoTime, (int)gd.lat, (int)gd.lng, (int)gd.alt, (unsigned int)gd.speed, (int)gd.sat, (unsigned int)(millis() - lastGPSDataTime));
+    }
 #endif
     buf[n++] = '}';
     param->contentLength = n;
@@ -233,7 +236,6 @@ void processOBD()
         printTimeoutStats();
     }
     if (tier > 1) break;
-    idleTasks();
   }
 
   // calculate distance for speed
@@ -253,6 +255,7 @@ void processGPS()
   if (!sys.gpsGetData(&gd) || gd.date == 0) {
     return;
   }
+  lastGPSDataTime = millis();
   byte day = gd.date / 10000;
   cache.log(PID_GPS_TIME, gd.time);
   if (lastGPSDay != day) {
@@ -359,15 +362,6 @@ bool initialize()
   }
 #endif
 
-#if STORAGE != STORAGE_NONE
-  if (!state.check(STATE_STORAGE_READY)) {
-    // init storage
-    if (store.init()) {
-      state.set(STATE_STORAGE_READY);
-    }
-  }
-#endif
-
 #if ENABLE_OBD
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
@@ -414,7 +408,8 @@ bool initialize()
 #if ENABLE_OLED
   oled.print("Connecting WiFi...");
 #endif
-  for (byte attempts = 0; attempts < 3; attempts++) {
+
+  for (byte attempts = 0; attempts < 10; attempts++) {
     if (!teleClient.net.begin()) continue;
     Serial.print("WiFi(SSID:");
     Serial.print(WIFI_SSID);
@@ -544,6 +539,12 @@ bool initialize()
   }
 
 #if STORAGE != STORAGE_NONE
+  if (!state.check(STATE_STORAGE_READY)) {
+    // init storage
+    if (store.init()) {
+      state.set(STATE_STORAGE_READY);
+    }
+  }
   if (state.check(STATE_STORAGE_READY)) {
     fileid = store.begin();
     if (fileid) {
@@ -552,7 +553,9 @@ bool initialize()
   }
 #endif
 
+#if MEMS_MODE
   lastMotionTime = millis();
+#endif
   state.set(STATE_WORKING);
   return true;
 }
@@ -677,6 +680,35 @@ bool processCommand(char* data)
   return true;
 }
 
+void showStats()
+{
+  uint32_t t = millis() - teleClient.startTime;
+  char timestr[24];
+  sprintf(timestr, "%02u:%02u.%c ", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
+  Serial.print(timestr);
+  Serial.print("| Packet #");
+  Serial.print(teleClient.txCount);
+  Serial.print(' ');
+  Serial.print(cache.length());
+  Serial.print(" bytes | Out: ");
+  Serial.print(teleClient.txBytes >> 10);
+  Serial.print(" KB | In: ");
+  Serial.print(teleClient.rxBytes);
+  Serial.print(" bytes");
+#if STORAGE != STORAGE_NONE
+  Serial.print(" | File:");
+  Serial.print(store.size() >> 10);
+  Serial.print("KB");
+#endif
+  Serial.println();
+#if ENABLE_OLED
+  oled.setCursor(0, 5);
+  oled.printInt(teleClient.txCount, 2);
+  oled.setCursor(80, 5);
+  oled.printInt(teleClient.txBytes >> 10, 3);
+#endif
+}
+
 /*******************************************************************************
   Collecting and processing data
 *******************************************************************************/
@@ -724,33 +756,46 @@ void process()
   processExtInputs();
 #endif
 
+#if STORAGE != STORAGE_NONE
+  uint8_t sizeKB = (uint8_t)(store.size() >> 10);
+  if (sizeKB != lastSizeKB) {
+      store.flush();
+      lastSizeKB = sizeKB;
+  }
+#endif
+
   if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
-    Serial.println("NO SYNC");
+    Serial.println("Connection instable");
     connErrors++;
     timeoutsNet++;
     printTimeoutStats();
   } else if (millis() - teleClient.lastSentTime >= sendingInterval && cache.samples() > 0) {
     // start data chunk
     if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+
 #if SERVER_PROTOCOL == PROTOCOL_UDP
     cache.tailer();
 #endif
     if (teleClient.transmit(cache.buffer(), cache.length())) {
       // successfully sent
       connErrors = 0;
+      showStats();
     } else {
       connErrors++;
       timeoutsNet++;
       printTimeoutStats();
       if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-        teleClient.connect();
+        if (teleClient.connect()) {
+          connErrors = 0;
+        }
       }
     }
-    if (ledMode == 0) digitalWrite(PIN_LED, LOW);
-    // purge cache and place a header
+    // purge cache
+    cache.purge();
 #if SERVER_PROTOCOL == PROTOCOL_UDP
     cache.header(teleClient.feedid);
 #endif
+    if (ledMode == 0) digitalWrite(PIN_LED, LOW);
   }
 
   if (deviceTemp >= COOLING_DOWN_TEMP) {
@@ -758,8 +803,6 @@ void process()
     Serial.println("Cooling down");
     delay(10000);
   }
-
-  idleTasks();
 
 #if ENABLE_OBD
   if (obd->errors > MAX_OBD_ERRORS) {
@@ -777,12 +820,17 @@ void process()
     }
   }
 #endif
+
   // maintain minimum loop time
 #if MIN_LOOP_TIME
-  while (millis() - startTime < MIN_LOOP_TIME) {
-    delay(100);
+  do {
+#endif
     idleTasks();
-  }
+#if ENABLE_HTTPD
+    serverProcess(0);
+#endif
+#if MIN_LOOP_TIME
+  } while (millis() - startTime < MIN_LOOP_TIME);
 #endif
 }
 
@@ -870,11 +918,6 @@ void idleTasks()
 {
   teleClient.inbound();
 
-  // process http server requests
-#if ENABLE_HTTPD
-  serverProcess(0);
-#endif
-
   // check serial input for command
   while (Serial.available()) {
     char c = Serial.read();
@@ -933,26 +976,6 @@ void setup()
     uint64_t mac = ESP.getEfuseMac();
     sprintf(vin, "DEVID%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
 
-    Serial.print("SPIFFS...");
-    int fsfree = 0;
-    if (SPIFFS.begin(true)) {
-      fsfree = (SPIFFS.totalBytes() - SPIFFS.usedBytes()) >> 10;
-      Serial.print("OK (");
-      Serial.print(fsfree);
-      Serial.println("KB free)");
-    } else {
-      Serial.println("N/A");
-    }
-#if ENABLE_OLED
-    oled.print("SPIFFS ");
-    if (fsfree) {
-      oled.print(fsfree);
-      oled.println("KB free");
-    } else {
-      oled.println("N/A");
-    }
-#endif
-    
 #if ENABLE_HTTPD
     IPAddress ip;
     Serial.print("HTTPD...");
@@ -981,27 +1004,27 @@ void setup()
 
 void loop()
 {
-    // error handling
-    if (!state.check(STATE_WORKING)) {
-      standby();
-      for (byte n = 0; n < 3; n++) {
-        digitalWrite(PIN_LED, HIGH);
-        initialize();
-        digitalWrite(PIN_LED, LOW);
-        if (state.check(STATE_WORKING)) break;
-        delay(3000);
-      }
-      return;
-    }
-
-    if (connErrors >= MAX_CONN_ERRORS) {
+  // error handling
+  if (!state.check(STATE_WORKING)) {
+    standby();
+    for (byte n = 0; n < 3; n++) {
       digitalWrite(PIN_LED, HIGH);
-      shutDownNet();
       initialize();
       digitalWrite(PIN_LED, LOW);
-      return;
+      if (state.check(STATE_WORKING)) break;
+      delay(3000);
     }
+    return;
+  }
 
-    // collect and transmit data
-    process();
+  if (connErrors >= MAX_CONN_ERRORS) {
+    digitalWrite(PIN_LED, HIGH);
+    shutDownNet();
+    initialize();
+    digitalWrite(PIN_LED, LOW);
+    return;
+  }
+
+  // collect and transmit data
+  process();
 }
