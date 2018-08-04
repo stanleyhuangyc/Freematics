@@ -6,7 +6,6 @@
 *************************************************************************/
 
 #include <Arduino.h>
-#include <SPIFFS.h>
 #include "esp_system.h"
 #include "esp_partition.h"
 #include "nvs_flash.h"
@@ -17,7 +16,6 @@
 #include "FreematicsMEMS.h"
 #include "FreematicsDMP.h"
 #include "FreematicsOBD.h"
-#include "FreematicsSD.h"
 
 #define PIN_LED 4
 #define PIN_SD_CS 5
@@ -33,7 +31,7 @@
 #define PIN_GPS_UART_TXD 33
 #define GPS_UART_NUM UART_NUM_2
 #define GPS_BAUDRATE 115200L
-#define GPS_SOFT_SERIAL 0
+#define GPS_SOFT_SERIAL 1
 
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
