@@ -14,8 +14,12 @@
 * THE SOFTWARE.
 *************************************************************************/
 
-#include <FreematicsPlus.h>
+#include <SPI.h>
+#include <FS.h>
+#include <SD.h>
+#include <SPIFFS.h>
 #include <httpd.h>
+#include <FreematicsPlus.h>
 #include "datalogger.h"
 #include "config.h"
 
@@ -316,18 +320,6 @@ public:
 #endif
     void checkFileSize(uint32_t fileSize)
     {
-        static uint8_t lastSizeKB = 0;
-        static uint8_t flushCount = 0;
-        uint8_t sizeKB = fileSize >> 10;
-        if (sizeKB != lastSizeKB) {
-            lastSizeKB = sizeKB;
-            flushCount = 0;
-        } else if (++flushCount == 100) {
-          // if file size does not increase after many flushes, close file
-          store.close();
-          clearState(STATE_FILE_READY);
-          flushCount = 0;
-        }
     }
     void standby()
     {
@@ -402,10 +394,17 @@ void showStats()
     Serial.print(sps, 1);
     Serial.print(" sps");
     if (fileSize > 0) {
-      logger.checkFileSize(fileSize);
-      Serial.print(" | ");
-      Serial.print(fileSize);
-      Serial.print(" bytes");
+        logger.checkFileSize(fileSize);
+        Serial.print(" | ");
+        Serial.print(fileSize);
+        Serial.print(" bytes");
+        static uint8_t lastSizeKB = 0;
+        uint8_t sizeKB = fileSize >> 10;
+        if (sizeKB != lastSizeKB) {
+            store.flush();
+            lastSizeKB = sizeKB;
+            Serial.print(" (flushed)");
+        }
     }
     Serial.println();
 }
