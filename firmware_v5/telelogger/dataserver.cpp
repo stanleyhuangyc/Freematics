@@ -22,6 +22,10 @@
 * /api/data/<file #>?pid=<PID in hex> - JSON array of PID data
 *************************************************************************/
 
+#include <SPI.h>
+#include <FS.h>
+#include <SD.h>
+#include <SPIFFS.h>
 #include <FreematicsPlus.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -43,8 +47,6 @@ extern "C"
 uint8_t temprature_sens_read();
 uint32_t hall_sens_read();
 }
-
-extern SDClass SD;
 
 HttpParam httpParam;
 
@@ -78,7 +80,8 @@ int handlerInfo(UrlHandlerParam* param)
     bytes += snprintf(buf + bytes, bufsize - bytes, "\"spiffs\":{\"total\":%u,\"used\":%u}",
         SPIFFS.totalBytes(), SPIFFS.usedBytes());
 #else
-    bytes += snprintf(buf + bytes, bufsize - bytes, "\"sd\":{\"total\":%u}", SD.cardSize());
+    bytes += snprintf(buf + bytes, bufsize - bytes, "\"sd\":{\"total\":%llu,\"used\":%llu}",
+        SD.totalBytes(), SD.usedBytes());
 #endif
 
     if (bytes < bufsize - 1) buf[bytes++] = '}';
@@ -90,11 +93,7 @@ int handlerInfo(UrlHandlerParam* param)
 
 class LogDataContext {
 public:
-#if STORAGE == STORAGE_SPIFFS
-    fs::File file;
-#else
-    SDLib::File file;
-#endif
+    File file;
     uint32_t tsStart;
     uint32_t tsEnd;
     uint16_t pid;
@@ -122,7 +121,7 @@ int handlerLogFile(UrlHandlerParam* param)
 #if STORAGE == STORAGE_SPIFFS
         ctx->file = SPIFFS.open(param->pucBuffer, FILE_READ);
 #else
-        ctx->file = SD.open(param->pucBuffer, SD_FILE_READ);
+        ctx->file = SD.open(param->pucBuffer, FILE_READ);
 #endif
         if (!ctx->file) {
             strcat(param->pucBuffer, " not found");
@@ -165,7 +164,7 @@ int handlerLogData(UrlHandlerParam* param)
 #if STORAGE == STORAGE_SPIFFS
         ctx->file = SPIFFS.open(param->pucBuffer, FILE_READ);
 #else
-        ctx->file = SD.open(param->pucBuffer, SD_FILE_READ);
+        ctx->file = SD.open(param->pucBuffer, FILE_READ);
 #endif
         if (!ctx->file) {
             param->contentLength = sprintf(param->pucBuffer, "{\"error\":\"Data file not found\"}");
@@ -233,23 +232,18 @@ int handlerLogList(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
+    File file;
 #if STORAGE == STORAGE_SPIFFS
-    fs::File root = SPIFFS.open("/");
-    fs::File file;
+    File root = SPIFFS.open("/");
 #elif STORAGE == STORAGE_SD
-    SDLib::File root = SD.open("/DATA");
-    SDLib::File file;
+    File root = SD.open("/DATA");
 #endif
     int n = snprintf(buf, bufsize, "[");
     if (root) {
         while(file = root.openNextFile()) {
             const char *fn = file.name();
-#if STORAGE == STORAGE_SPIFFS
             if (!strncmp(fn, "/DATA/", 6)) {
                 fn += 6;
-#else
-            if (1) {
-#endif
                 unsigned int size = file.size();
                 Serial.print(fn);
                 Serial.print(' ');
@@ -300,18 +294,30 @@ void serverProcess(int timeout)
 
 bool serverSetup(IPAddress& ip)
 {
+#if NET_DEVICE == NET_WIFI
+    WiFi.mode (WIFI_AP_STA);
+#else
     WiFi.mode (WIFI_AP);
+#endif
+
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
     ip = WiFi.softAPIP();
 
     mwInitParam(&httpParam, 80, "/spiffs");
     httpParam.pxUrlHandler = urlHandlerList;
+    httpParam.maxClients = 4;
+
+    // start mDNS responder
+    MDNS.begin("telelogger");
+    MDNS.addService("http", "tcp", 80);
 
     if (mwServerStart(&httpParam)) {
         return false;
     }
 
+#if NET_DEVICE == NET_WIFI
     obtainTime();
+#endif
     return true;
 }
 

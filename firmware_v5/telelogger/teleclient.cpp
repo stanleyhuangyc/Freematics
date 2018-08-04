@@ -16,7 +16,6 @@
 ******************************************************************************/
 
 #include <FreematicsPlus.h>
-#include "config.h"
 #include "telelogger.h"
 #include "teleclient.h"
 
@@ -118,20 +117,21 @@ bool TeleClientUDP::notify(byte event, const char* serverKey, const char* payloa
 bool TeleClientUDP::connect()
 {
   // connect to telematics server
-  for (byte attempts = 0; attempts < 10; attempts++) {
+  for (byte attempts = 0; attempts < 5; attempts++) {
     Serial.print("LOGIN(");
     Serial.print(SERVER_HOST);
     Serial.print(':');
     Serial.print(SERVER_PORT);
     Serial.print(")...");
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      Serial.println("NO");
+      Serial.println("network error");
+      delay(1000);
       continue;
     }
     // login Freematics Hub
     if (!notify(EVENT_LOGIN, SERVER_KEY)) {
       net.close();
-      Serial.println("NO");
+      Serial.println("server error");
       delay(1000);
       continue;
     }
@@ -153,38 +153,15 @@ bool TeleClientUDP::connect()
 
 bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
-  bool success = false;
   //Serial.println(cache.buffer()); // print the content to be sent
-  Serial.print('#');
-  Serial.print(txCount);
   // transmit data
   if (net.send(packetBuffer, packetSize)) {
     txBytes += packetSize;
     txCount++;
     lastSentTime = millis();
-    // output some stats
-    Serial.print(" Packet: ");
-    Serial.print(packetSize);
-    Serial.print("B Out: ");
-    Serial.print(txBytes >> 10);
-    Serial.print("KB In: ");
-    Serial.print(rxBytes >> 10);
-    Serial.print("KB");
-#if STORAGE != STORAGE_NONE
-    //Serial.print(" File:");
-    //Serial.print(store.size() >> 10);
-    //Serial.print("KB");
-#endif
-    Serial.println();
-#if ENABLE_OLED
-    oled.setCursor(0, 5);
-    oled.printInt(txCount, 2);
-    oled.setCursor(80, 5);
-    oled.printInt(txBytes >> 10, 3);
-#endif
-    success = true;
+    return true;
   }
-  return success;
+  return false;
 }
 
 void TeleClientUDP::inbound()
@@ -217,9 +194,6 @@ void TeleClientUDP::inbound()
 
 bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
-  Serial.print('#');
-  Serial.print(txCount);
-  Serial.print(' ');
   if (net.state() == HTTP_SENT) {
     // check response
     int bytes = 0;
@@ -229,18 +203,6 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
         // successful
         lastSyncTime = millis();
         rxBytes += bytes;
-        Serial.print("Time: ");
-        Serial.print(millis() - lastSentTime);
-        Serial.print("ms Out: ");
-        Serial.print(txBytes >> 10);
-        Serial.print("KB In: ");
-        Serial.print(rxBytes >> 10);
-        Serial.print("KB");
-#if STORAGE != STORAGE_NONE
-        //Serial.print(" File: ");
-        //Serial.print(store.size() >> 10);
-        //Serial.print("KB");
-#endif
       } else {
         Serial.print(resp);
       }
@@ -260,9 +222,8 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
     }
   }
 
-  // generate ISO time string
   char url[256];
-  sprintf(url, "%s/%s", SERVER_PATH, vin);
+  sprintf(url, "%s?id=%s", SERVER_PATH, vin);
 
   lastSentTime = millis();
   int ret;
