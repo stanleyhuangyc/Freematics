@@ -48,9 +48,8 @@ String ClientWIFI::getIP()
 
 bool ClientWIFI::begin()
 {
-  WiFi.mode(WIFI_STA);
   WiFi.disconnect();
-  //listAPs();
+  listAPs();
   return true;
 }
 
@@ -63,9 +62,9 @@ void ClientWIFI::listAPs()
 {
   int n = WiFi.scanNetworks();
   if (n <= 0) {
-      Serial.println("No WIFI AP found");
+      Serial.println("No WiFi AP found");
   } else {
-      Serial.println("WIFI APs found:");
+      Serial.println("Nearby WiFi APs:");
       for (int i = 0; i < n; ++i) {
           // Print SSID and RSSI for each network found
           Serial.print(i + 1);
@@ -512,6 +511,7 @@ bool ClientSIM5360::setup(const char* apn, bool roaming, unsigned int timeout)
   bool success = false;
   //sendCommand("AT+CNMP=13\r"); // GSM only
   //sendCommand("AT+CNMP=14\r"); // WCDMA only
+  //sendCommand("AT+CNMP=38\r"); // LTE only
   do {
     do {
       Serial.print('.');
@@ -657,16 +657,18 @@ bool ClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const cha
 bool UDPClientSIM5360::open(const char* host, uint16_t port)
 {
   if (host) {
-    String ip = queryIP(host);
-    if (ip.length()) {
-      strncpy(udpIP, ip.c_str(), sizeof(udpIP) - 1);
-    } else {
-      return false;
+    udpIP = queryIP(host);
+    if (!udpIP.length()) {
+      udpIP = host;
     }
     udpPort = port;
   }
-  sprintf(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP, udpPort);
-  return sendCommand(m_buffer, 3000);
+  sprintf(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP.c_str(), udpPort);
+  if (!sendCommand(m_buffer, 3000)) {
+    Serial.println(m_buffer);
+    return false;
+  }
+  return true;
 }
 
 void UDPClientSIM5360::close()
@@ -676,7 +678,7 @@ void UDPClientSIM5360::close()
 
 bool UDPClientSIM5360::send(const char* data, unsigned int len)
 {
-  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP, udpPort);
+  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP.c_str(), udpPort);
   if (sendCommand(m_buffer, 100, ">")) {
     m_device->xbWrite(data, len);
     return sendCommand(0, 1000);

@@ -79,7 +79,7 @@ public:
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
 private:
-    IPAddress udpIP;
+    char udpIP[16];
     uint16_t udpPort;
     WiFiUDP udp;
 };
@@ -170,7 +170,7 @@ public:
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
 protected:
     char* checkIncoming(int* pbytes);
-    char udpIP[16] = {0};
+    String udpIP;
     uint16_t udpPort = 0;
 };
 
