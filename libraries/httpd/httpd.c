@@ -711,7 +711,7 @@ int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateT
 		p+=snprintf(p, end - p,"Content-Range: bytes %u-%u/*\r\n",
 		phsSocket->request.startByte, phsSocket->response.contentLength);
 	}
-	if (!(phsSocket->flags & FLAG_CHUNK)) {
+	if (!ISFLAGSET(phsSocket, FLAG_CHUNK | FLAG_DATA_STREAM)) {
 		p+=snprintf(p, end - p,"Content-Length: %u\r\n", phsSocket->response.contentLength);
 	} else {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");
@@ -959,7 +959,7 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 					phsSocket->ptr=up.pucBuffer;	//keep the pointer which will be used to free memory later
 				}
 			} else if (ret & FLAG_DATA_STREAM) {
-				SETFLAG(phsSocket, FLAG_DATA_STREAM);
+				SETFLAG(phsSocket, FLAG_DATA_STREAM | FLAG_CONN_CLOSE);
 				phsSocket->pucData = up.pucBuffer;
 				phsSocket->contentLength = up.contentLength;
 				phsSocket->response.contentLength = 0;
