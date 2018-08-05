@@ -12,31 +12,31 @@ public:
     virtual void log(uint16_t pid, int value)
     {
         char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);
+        byte len = sprintf(buf, "%X%c%d", pid, m_delimiter, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, unsigned int value)
     {
         char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%u"), pid, value);
+        byte len = sprintf(buf, "%X%c%u", pid, m_delimiter, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, float value)
     {
         char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%.2f"), pid, value);
+        byte len = sprintf(buf, "%X%c%.2f", pid, m_delimiter, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, int value1, int value2, int value3)
     {
         char buf[48];
-        byte len = sprintf_P(buf, PSTR("%X=%d;%d;%d"), pid, value1, value2, value3);
+        byte len = sprintf(buf, "%X%c%d;%d;%d", pid, m_delimiter, value1, value2, value3);
         dispatch(buf, len);
     }
     virtual void logCoordinate(uint16_t pid, int32_t value)
     {
-        char buf[24];
-        byte len = sprintf_P(buf, PSTR("%X=%d.%06u"), pid, (int)(value / 1000000), abs(value) % 1000000);
+        char buf[32];
+        byte len = sprintf(buf, "%X%c%d.%06u", pid, m_delimiter, (int)(value / 1000000), abs(value) % 1000000);
         dispatch(buf, len);
     }
     virtual void timestamp(uint32_t ts)
@@ -64,6 +64,7 @@ protected:
     virtual void header(uint16_t feedid) {}
     virtual void tailer() {}
     uint16_t m_samples = 0;
+    char m_delimiter = '=';
     CStorageNull* m_next = 0;
 };
 
@@ -129,15 +130,22 @@ protected:
 
 class FileLogger : public CStorageNull {
 public:
+    FileLogger() { m_delimiter = ','; }
     virtual void dispatch(const char* buf, byte len)
     {
         if (m_next) m_next->dispatch(buf, len);
-        if (m_file.write((uint8_t*)buf, len) == len) {
-            m_size += len;
+        if (m_id == 0) return;
+
+        if (m_file.write((uint8_t*)buf, len) != len) {
+            // try again
+            if (m_file.write((uint8_t*)buf, len) != len) {
+                Serial.println("Error writing. End file logging.");
+                end();
+                return;
+            }
         }
-        if (m_file.write('\n') == 1) {
-            m_size++;
-        }
+        m_file.write('\n');
+        m_size += (len + 1);
     }
     virtual uint32_t size()
     {
@@ -147,6 +155,7 @@ public:
     {
         m_file.close();
         m_id = 0;
+        m_size = 0;
     }
     virtual void flush()
     {
@@ -172,7 +181,7 @@ protected:
     }
     uint32_t m_dataTime = 0;
     uint32_t m_dataCount = 0;
-    uint32_t m_size;
+    uint32_t m_size = 0;
     uint32_t m_id = 0;
     File m_file;
 };
@@ -241,19 +250,6 @@ public:
             Serial.println("failed");
         }
         return mounted;
-    }
-    void dispatch(const char* buf, byte len)
-    {
-        if (m_next) m_next->dispatch(buf, len);
-        if (m_id == 0) return;
-        if (m_file.write((uint8_t*)buf, len) != len) {
-            purge();
-            if (m_file.write((uint8_t*)buf, len) != len) {
-                Serial.println("Error writing data");
-                return;
-            }
-        }
-        m_file.write('\n');
     }
     uint32_t begin()
     {
