@@ -71,9 +71,9 @@ char isoTime[24] = {0};
 uint8_t deviceTemp = 0; // device temperature
 
 // stats data
-int lastSpeed = 0;
-uint32_t lastSpeedTime = 0;
-uint32_t distance = 0;
+float lastKph = 0;
+uint32_t lastKphTime = 0;
+float distance = 0;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 
@@ -171,14 +171,14 @@ int handlerLiveData(UrlHandlerParam* param)
     uint32_t t = millis();
     for (int i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
         n += snprintf(buf + n, bufsize - n, "{\"pid\":%u,\"value\":%d,\"age\":%u},",
-            0x100 | obdData[i].pid, obdData[i].value, t - obdData[i].ts);
+            0x100 | obdData[i].pid, obdData[i].value, (unsigned int)(t - obdData[i].ts));
     }
     n--;
     n += snprintf(buf + n, bufsize - n, "]}");
 #if MEMS_MODE
     n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":[%d,%d,%d],\"stationary\":%u}",
         (int)((acc[0] - accBias[0]) * 100), (int)((acc[1] - accBias[1]) * 100), (int)((acc[2] - accBias[2]) * 100),
-        millis() - lastMotionTime);
+        (unsigned int)(millis() - lastMotionTime));
 #endif
 #if ENABLE_GPS
     if (gd && gd->ts) {
@@ -241,12 +241,13 @@ void processOBD()
     if (tier > 1) break;
   }
 
-  // calculate distance for speed
-  int speed = obdData[0].value;
-  distance += (speed + lastSpeed) * (t - lastSpeedTime) / 3600 / 2;
-  lastSpeedTime = t;
-  lastSpeed = speed;
-  cache.log(PID_TRIP_DISTANCE, distance);
+  if (!gd || !gd->ts) {
+    // calculate distance for speed
+    float kph = obdData[0].value;
+    distance += (kph + lastKph) * (t - lastKphTime) / 3600 / 2;
+    lastKphTime = t;
+    lastKph = kph;
+  }
 }
 #endif
 
@@ -267,7 +268,7 @@ void processGPS()
 #endif
   }
 
-  if (!gd || lastGPSts == gd->ts) return;
+  if (!gd) return;
   byte day = gd->date / 10000;
   cache.log(PID_GPS_TIME, gd->time);
   if (lastGPSDay != day) {
@@ -281,20 +282,33 @@ void processGPS()
   cache.log(PID_GPS_SPEED, kph);
   cache.log(PID_GPS_SAT_COUNT, gd->sat);
   
-  sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
-      (unsigned int)(gd->date % 100) + 2000, (unsigned int)(gd->date / 100) % 100, (unsigned int)(gd->date / 10000),
-      (unsigned int)(gd->time / 1000000), (unsigned int)(gd->time % 1000000) / 10000, (unsigned int)(gd->time % 10000) / 100, ((unsigned int)gd->time % 100) / 10);
-  
-  Serial.print("[GPS]");
-  if (gd->sat) {
-    Serial.print(" SATS: ");
-    Serial.print(gd->sat);
+  if (kph >= 1 || lastKph >= 1) {
+      // compute distance travelled from average of two speed samples (either is above 1kph)
+      distance += (kph + lastKph) * (gd->ts - lastKphTime) / 3600 / 2;
+      lastKph = kph;
+      lastKphTime = gd->ts;
   }
-  //Serial.print(" ERR: ");
-  //Serial.print(gd->errors);
-  Serial.print(" UTC: ");
-  Serial.println(isoTime);
 
+  // generate ISO time string
+  char *p = isoTime + sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u",
+      (unsigned int)(gd->date % 100) + 2000, (unsigned int)(gd->date / 100) % 100, (unsigned int)(gd->date / 10000),
+      (unsigned int)(gd->time / 1000000), (unsigned int)(gd->time % 1000000) / 10000, (unsigned int)(gd->time % 10000) / 100);
+  unsigned char tenth = (gd->time % 100) / 10;
+  if (tenth) p += sprintf(p, ".%c", '0' + tenth);
+  *p = 'Z';
+  *(p + 1) = 0;
+  
+  Serial.print("[GPS] ");
+  Serial.print((int)kph);
+  Serial.print("km/h ");
+  Serial.print(distance / 1000, 1);
+  Serial.print("km ");
+  if (gd->sat) {
+    Serial.print(gd->sat);
+    Serial.print(" Sats ");
+  }
+  Serial.println(isoTime);
+  //Serial.println(gd->errors);
   lastGPSts = gd->ts;
 }
 #endif
@@ -359,6 +373,31 @@ bool initialize()
 {
   state.clear(STATE_WORKING);
   distance = 0;
+
+#if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+  // initialize network module
+  if (!state.check(STATE_NET_READY)) {
+    Serial.print("CELL...");
+    if (teleClient.net.begin(&sys)) {
+      Serial.println(teleClient.net.deviceName());
+#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+      Serial.print("IMEI:");
+      Serial.println(teleClient.net.IMEI);
+#endif
+      state.set(STATE_NET_READY);
+#if ENABLE_OLED
+      oled.print(teleClient.net.deviceName());
+      oled.print(" OK\r");
+#endif
+    } else {
+      Serial.println("NO");
+#if ENABLE_OLED
+      oled.println("No cell module");
+#endif
+      return false;
+    }
+  }
+#endif
 
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
@@ -446,32 +485,9 @@ bool initialize()
     return false;
   }
 #elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-  // initialize network module
-  if (!state.check(STATE_NET_READY)) {
-    Serial.print("CELL...");
-    if (teleClient.net.begin(&sys)) {
-      Serial.println(teleClient.net.deviceName());
-#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-      Serial.print("IMEI:");
-      Serial.println(teleClient.net.IMEI);
-#endif
-      state.set(STATE_NET_READY);
-#if ENABLE_OLED
-      oled.print(teleClient.net.deviceName());
-      oled.print(" OK\r");
-#endif
-    } else {
-      Serial.println("NO");
-#if ENABLE_OLED
-      oled.println("No cell module");
-#endif
-      return false;
-    }
-  }
-
   Serial.print("NET(APN:");
   Serial.print(CELL_APN);
-  Serial.print(")");
+  Serial.print(")...");
   if (teleClient.net.setup(CELL_APN, !state.check(STATE_GPS_READY))) {
     String op = teleClient.net.getOperatorName();
     if (op.length()) {
@@ -634,13 +650,12 @@ String executeCommand(const char* cmd)
     char buf[64];
     sprintf(buf, "TX:%u OBD:%u NET:%u", teleClient.txCount, timeoutsOBD, timeoutsNet);
     result = buf;
-  #if ENABLE_OBD
+#if ENABLE_OBD
   } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
     // send OBD command
-    String obdcmd = cmd + 4;
-    obdcmd += '\r';
     char buf[256];
-    if (obd->sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
+    sprintf(buf, "%s\r", cmd + 4);
+    if (obd->sendCommand(buf, buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
       Serial.println(buf);
       for (int n = 0; buf[n]; n++) {
         switch (buf[n]) {
@@ -655,7 +670,7 @@ String executeCommand(const char* cmd)
     } else {
       result = "ERROR";
     }
-  #endif
+#endif
   } else {
     return "INVALID";
   }
@@ -786,12 +801,13 @@ void process()
     timeoutsNet++;
     printTimeoutStats();
   } else if (millis() - teleClient.lastSentTime >= sendingInterval && cache.samples() > 0) {
-    // start data chunk
-    if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
-
+    // some data only need once for a transmission
+    if (distance) cache.log(PID_TRIP_DISTANCE, (uint32_t)distance);
 #if SERVER_PROTOCOL == PROTOCOL_UDP
     cache.tailer();
 #endif
+    // start transmission
+    if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
     if (teleClient.transmit(cache.buffer(), cache.length())) {
       // successfully sent
       connErrors = 0;
@@ -1007,10 +1023,12 @@ void setup()
 #endif
 
     // startup initializations
+    sys.begin();
 #if ENABLE_OBD
     while (!(obd = createOBD()));
+    Serial.print("OBD Firmware Version ");
+    Serial.println(obd->getVersion());
 #endif
-    sys.begin();
 
     // initializing components
     initialize();
