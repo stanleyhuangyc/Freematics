@@ -22,6 +22,11 @@
 * /api/data/<file #>?pid=<PID in hex> - JSON array of PID data
 *************************************************************************/
 
+#include <SPI.h>
+#include <FS.h>
+#include <SD.h>
+#include <SPIFFS.h>
+#include <httpd.h>
 #include <FreematicsPlus.h>
 #if defined(ESP32)
 #include <WiFi.h>
@@ -33,7 +38,6 @@
 #else
 #error Unsupported board type
 #endif
-#include <httpd.h>
 #include "config.h"
 
 #define WIFI_TIMEOUT 5000
@@ -46,8 +50,7 @@ uint8_t temprature_sens_read();
 uint32_t hall_sens_read();
 }
 
-extern SDClass SD;
-
+#if ENABLE_HTTPD
 HttpParam httpParam;
 
 int handlerLiveData(UrlHandlerParam* param);
@@ -81,7 +84,8 @@ int handlerInfo(UrlHandlerParam* param)
     bytes += snprintf(buf + bytes, bufsize - bytes, "\"spiffs\":{\"total\":%u,\"used\":%u}",
         SPIFFS.totalBytes(), SPIFFS.usedBytes());
 #else
-    bytes += snprintf(buf + bytes, bufsize - bytes, "\"sd\":{\"total\":%u}", SD.cardSize());
+    bytes += snprintf(buf + bytes, bufsize - bytes, "\"sd\":{\"total\":%llu,\"used\":%llu}",
+        SD.totalBytes(), SD.usedBytes());
 #endif
 
     if (bytes < bufsize - 1) buf[bytes++] = '}';
@@ -95,11 +99,7 @@ int handlerInfo(UrlHandlerParam* param)
 
 class LogDataContext {
 public:
-#if STORAGE == STORAGE_SPIFFS
-    fs::File file;
-#else
-    SDLib::File file;
-#endif
+    File file;
     uint32_t tsStart;
     uint32_t tsEnd;
     uint16_t pid;
@@ -127,7 +127,7 @@ int handlerLogFile(UrlHandlerParam* param)
 #if STORAGE == STORAGE_SPIFFS
         ctx->file = SPIFFS.open(param->pucBuffer, FILE_READ);
 #else
-        ctx->file = SD.open(param->pucBuffer, SD_FILE_READ);
+        ctx->file = SD.open(param->pucBuffer, FILE_READ);
 #endif
         if (!ctx->file) {
             strcat(param->pucBuffer, " not found");
@@ -144,6 +144,8 @@ int handlerLogFile(UrlHandlerParam* param)
     }
     param->contentLength = ctx->file.readBytes(param->pucBuffer, param->bufSize);
     param->contentType = HTTPFILETYPE_TEXT;
+    Serial.print(param->contentLength);
+    Serial.println(" bytes read");
     return FLAG_DATA_STREAM;
 }
 
@@ -170,7 +172,7 @@ int handlerLogData(UrlHandlerParam* param)
 #if STORAGE == STORAGE_SPIFFS
         ctx->file = SPIFFS.open(param->pucBuffer, FILE_READ);
 #else
-        ctx->file = SD.open(param->pucBuffer, SD_FILE_READ);
+        ctx->file = SD.open(param->pucBuffer, FILE_READ);
 #endif
         if (!ctx->file) {
             param->contentLength = sprintf(param->pucBuffer, "{\"error\":\"Data file not found\"}");
@@ -238,23 +240,18 @@ int handlerLogList(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
+    File file;
 #if STORAGE == STORAGE_SPIFFS
-    fs::File root = SPIFFS.open("/");
-    fs::File file;
+    File root = SPIFFS.open("/");
 #elif STORAGE == STORAGE_SD
-    SDLib::File root = SD.open("/DATA");
-    SDLib::File file;
+    File root = SD.open("/DATA");
 #endif
     int n = snprintf(buf, bufsize, "[");
     if (root) {
         while(file = root.openNextFile()) {
             const char *fn = file.name();
-#if STORAGE == STORAGE_SPIFFS
             if (!strncmp(fn, "/DATA/", 6)) {
                 fn += 6;
-#else
-            if (1) {
-#endif
                 unsigned int size = file.size();
                 Serial.print(fn);
                 Serial.print(' ');
@@ -294,6 +291,8 @@ UrlHandler urlHandlerList[]={
     {0}
 };
 
+#endif
+
 void obtainTime()
 {
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
@@ -303,16 +302,24 @@ void obtainTime()
 
 void serverProcess(int timeout)
 {
+#if ENABLE_HTTPD
     mwHttpLoop(&httpParam, timeout);
+#endif
 }
 
-bool serverCheckup()
+bool serverCheckup(int wifiJoinPeriod)
 {
-#if ENABLE_WIFI_STATION
     static uint32_t wifiStartTime = 0;
     if (WiFi.status() != WL_CONNECTED) {
-        if (wifiStartTime == 0 || millis() - wifiStartTime > WIFI_JOIN_TIMEOUT) {
+        if (wifiStartTime == 0 || millis() - wifiStartTime > wifiJoinPeriod) {
             WiFi.disconnect(false);
+#if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
+            WiFi.mode (WIFI_AP_STA);
+#elif ENABLE_WIFI_AP
+            WiFi.mode (WIFI_AP);
+#elif ENABLE_WIFI_STATION
+            WiFi.mode (WIFI_STA);
+#endif
             Serial.print("Connecting to hotspot (SSID:");
             Serial.print(WIFI_SSID);
             Serial.println(')');
@@ -328,12 +335,12 @@ bool serverCheckup()
             // start mDNS responder
             MDNS.begin("gpslogger");
             MDNS.addService("http", "tcp", 80);
+            MDNS.addService("nmea", "tcp", NMEA_TCP_PORT);
 
             wifiStartTime = 0;
         }
         return true;
     }
-#endif
     return false;
 }
 
@@ -352,13 +359,17 @@ bool serverSetup(IPAddress& ip)
     ip = WiFi.softAPIP();
 #endif
 
+#if ENABLE_HTTPD
     mwInitParam(&httpParam, 80, "/spiffs");
     httpParam.pxUrlHandler = urlHandlerList;
 
     if (mwServerStart(&httpParam)) {
         return false;
     }
+#endif
 
+#if ENABLE_WIFI_STATION
     obtainTime();
+#endif
     return true;
 }

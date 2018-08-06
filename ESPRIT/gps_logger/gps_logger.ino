@@ -14,6 +14,10 @@
 * THE SOFTWARE.
 *************************************************************************/
 
+#include <SPI.h>
+#include <FS.h>
+#include <SD.h>
+#include <SPIFFS.h>
 #include <FreematicsPlus.h>
 #include <FreematicsOLED.h>
 #include <httpd.h>
@@ -27,7 +31,7 @@
 
 void serverProcess(int timeout);
 bool serverSetup(IPAddress& ip);
-bool serverCheckup();
+bool serverCheckup(int wifiJoinPeriod = WIFI_JOIN_TIMEOUT);
 void executeCommand();
 
 #ifdef ESP32
@@ -38,17 +42,14 @@ uint32_t hall_sens_read();
 }
 #endif
 
-uint16_t MMDD = 0;
-uint32_t UTC = 0;
-uint32_t gpsDataTime = 0;
+uint32_t lastGPSts = 0;
 uint32_t startTime = 0;
 uint32_t pidErrors = 0;
 uint32_t fileid = 0;
 uint32_t stationeryTimer = 0;
-uint32_t lastSpeedData = 0;
 float distance = 0;
 
-GPS_DATA gd = {0};
+GPS_DATA* gd = 0;
 
 char command[16] = {0};
 
@@ -156,12 +157,12 @@ private:
         // arrange and send data in OsmAnd protocol
         // refer to https://www.traccar.org/osmand
         char data[128];
-        sprintf(data, "&lat=%f&lon=%f&altitude=%d&speed=%f&heading=%d", (float)gd.lat / 1000000, (float)gd.lng / 1000000, (int)(gd.alt / 100), (float)gd.speed / 100, gd.heading);
+        sprintf(data, "&lat=%f&lon=%f&altitude=%.1f&speed=%.1f&heading=%d", gd->lat, gd->lng, gd->alt, gd->speed, gd->heading);
         // generate ISO formatted UTC date/time
         char isotime[24];
         sprintf(isotime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
-            (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
-            (unsigned int)(gd.time / 1000000), (unsigned int)(gd.time % 1000000) / 10000, (unsigned int)(gd.time % 10000) / 100, ((unsigned int)gd.time % 100) / 10);
+            (unsigned int)(gd->date % 100) + 2000, (unsigned int)(gd->date / 100) % 100, (unsigned int)(gd->date / 10000),
+            (unsigned int)(gd->time / 1000000), (unsigned int)(gd->time % 1000000) / 10000, (unsigned int)(gd->time % 10000) / 100, ((unsigned int)gd->time % 100) / 10);
         // send data
         int n = client.print(String("GET /?id=") + TRACCAR_DEV_ID + "&timestamp=" + isotime + data + " HTTP/1.1\r\n" +
             //"Host: " + TRACCAR_HOST + "\r\n" +
@@ -194,8 +195,8 @@ int handlerLiveData(UrlHandlerParam* param)
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
     int n = 0;
-    n += snprintf(buf + n, bufsize - n, "{\"gps\":{\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%d}",
-        gd.lat, gd.lng, gd.alt, gd.speed, gd.sat);
+    n += snprintf(buf + n, bufsize - n, "{\"gps\":{\"lat\":%f,\"lng\":%f,\"alt\":%f,\"speed\":%f,\"sat\":%d}",
+        gd->lat, gd->lng, gd->alt, gd->speed, gd->sat);
     buf[n++] = '}';
     param->contentLength = n;
     param->contentType=HTTPFILETYPE_JSON;
@@ -261,36 +262,22 @@ public:
     bool logGPSData()
     {
         // issue the command to get parsed GPS data
-        if (!sys.gpsGetData(&gd) || gd.time == 0 || gd.time == UTC) {
+        if (!sys.gpsGetData(&gd) || lastGPSts == gd->ts) {
             return false;
         }
-        uint32_t ts = millis();
-        store.setTimestamp(ts);
-        byte day = gd.date / 10000;
-        if (MMDD % 100 != day) {
-            store.log(PID_GPS_DATE, gd.date);
-        }
-        float kph = (float)gd.speed * 1852 / 100000;
-        store.log(PID_GPS_TIME, gd.time);
-        store.log(PID_GPS_LATITUDE, gd.lat);
-        store.log(PID_GPS_LONGITUDE, gd.lng);
-        store.log(PID_GPS_ALTITUDE, gd.alt / 100);
+        store.setTimestamp(millis());
+        store.log(PID_GPS_DATE, gd->date);
+        float kph = (float)gd->speed * 1852 / 1000;
+        store.log(PID_GPS_TIME, gd->time);
+        store.logFloat(PID_GPS_LATITUDE, gd->lat);
+        store.logFloat(PID_GPS_LONGITUDE, gd->lng);
+        store.log(PID_GPS_ALTITUDE, gd->alt);
         store.log(PID_GPS_SPEED, kph);
-        store.log(PID_GPS_HEADING, gd.heading);
-        store.log(PID_GPS_SAT_COUNT, gd.sat);
-        // save current UTC date in MMDD format
-        unsigned int DDMM = gd.date / 100;
-        UTC = gd.time;
-        MMDD = (DDMM % 100) * 100 + (DDMM / 100);
+        store.log(PID_GPS_HEADING, gd->heading);
+        store.log(PID_GPS_SAT_COUNT, gd->sat);
         // some computations
-        if (kph >= 1 || lastSpeedData * 1852 >= 100000) {
-            // compute distance travelled from average of two speed samples (either is above 1kph)
-            distance += (float)(gd.speed + lastSpeedData) / 2 * 1852 / 100000 * (ts - gpsDataTime) / 3600000;
-        } else {
-            stationeryTimer = ts;
-        }
-        gpsDataTime = ts;
-        lastSpeedData = gd.speed;
+        if (kph < 1) stationeryTimer = gd->ts;
+        lastGPSts = gd->ts;
         return true;
     }
     void logSensorData()
@@ -298,7 +285,7 @@ public:
         int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
         store.log(PID_DEVICE_TEMP, deviceTemp);
         store.log(PID_DEVICE_HALL, hall_sens_read() / 100);
-        store.log(PID_ANALOG_INPUT_1, (int16_t)analogRead(A0));
+        store.log(PID_EXT_SENSOR1, analogRead(A0));
     }
     void waitGPS()
     {
@@ -308,45 +295,20 @@ public:
         lcd.setCursor(0, 6);
         lcd.print("Waiting GPS...");
 #endif
-        for (;;) {
-            // read parsed GPS data
-            if (sys.gpsGetData(&gd)) {
-                gpsDataTime = millis();
-                lastSpeedData = gd.speed;
-                break;
-            }
+        while (!sys.gpsGetData(&gd)) {
             Serial.print((millis() - t) / 1000);
             Serial.print("s NMEA:");
-            Serial.print(gd.sentences);
+            Serial.print(gd->sentences);
             Serial.print(" ERR:");
-            Serial.println(gd.errors);
+            Serial.println(gd->errors);
 #if ENABLE_DISPLAY
             lcd.setCursor(0, 7);
             lcd.print((millis() - t) / 1000);
             lcd.print("s NMEA:");
-            lcd.print(gd.sentences);
+            lcd.print(gd->sentences);
 #endif
             delay(1000);
         }
-
-#if 0
-        lcd.clear();
-        int lastSats = 0;
-        do {
-            // read parsed GPS data
-            if (sys.gpsGetData(&gd)) {
-                gpsDataTime = millis();
-                lastSpeedData = gd.speed;
-                if (gd.sat > lastSats) {
-                    lcd.print((millis() - t) / 1000);
-                    lcd.print("s Sats:");
-                    lcd.println(gd.sat);
-                    lastSats = gd.sat;
-                }
-            }
-        } while (gd.sat < 10);
-        for (;;) delay(1000);
-#endif
     }
     void checkFileSize(uint32_t fileSize)
     {
@@ -424,21 +386,21 @@ void updateDisplay(bool updated)
 
     lcd.setFontSize(FONT_SIZE_MEDIUM);
     lcd.setCursor(0, 3);
-    lcd.printInt(gd.alt / 100, 3);
+    lcd.printInt(gd->alt / 100, 3);
     lcd.setFontSize(FONT_SIZE_SMALL);
     lcd.setCursor(0, 5);
     lcd.print("m Alt");
 
     lcd.setFontSize(FONT_SIZE_MEDIUM);
     lcd.setCursor(105, 3);
-    lcd.printInt(gd.sat, 2);
+    lcd.printInt(gd->sat, 2);
     lcd.setFontSize(FONT_SIZE_SMALL);
     lcd.setCursor(103, 5);
     lcd.print("Sats");
 
     lcd.setFontSize(FONT_SIZE_XLARGE);
     lcd.setCursor(50, 2);
-    lcd.printInt(gd.speed * 1852 / 100000, 2);
+    lcd.printInt(gd->speed * 1852 / 100000, 2);
     lcd.setFontSize(FONT_SIZE_SMALL);
     lcd.setCursor(58, 5);
     lcd.print("km/h");
@@ -532,7 +494,7 @@ void setup()
     nmeaServer.begin();
 
     Serial.print("GPS...");
-    if (sys.gpsInit(GPS_SERIAL_BAUDRATE, true)) {
+    if (sys.gpsInit(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
         logger.setState(STATE_GPS_FOUND);
         Serial.println("OK");
         //taskWifi.create(wifi_thread, "wifi_thread", 16 * 1024);
@@ -623,7 +585,7 @@ void loop()
     store.setTimestamp(ts);
     logger.logSensorData();
     bool updated = logger.logGPSData();
-    if (millis() - gpsDataTime > GPS_SIGNAL_TIMEOUT) {
+    if (gd && millis() - gd->ts > GPS_SIGNAL_TIMEOUT) {
 #ifdef ENABLE_WIFI_STATION
         WiFi.disconnect(false);
 #endif
@@ -648,6 +610,11 @@ void loop()
     traccar.process(updated);
 #endif
 
+#if ENABLE_WIFI_AP || ENABLE_WIFI_STATION
+    serverCheckup();
+#endif
+
+#if ENABLE_NMEA_SERVER
     // NMEA-to-TCP bridge
     if (!nmeaClient || !nmeaClient.connected()) {
         nmeaClient.stop();
@@ -655,17 +622,27 @@ void loop()
     }
     do {
         if (nmeaClient.connected()) {
-            char buf[NMEA_BUF_SIZE];
+            char buf[256];
             int bytes = sys.gpsGetNMEA(buf, sizeof(buf));
             if (bytes > 0) nmeaClient.write(buf, bytes);
             bytes = 0;
-            while (nmeaClient.available() && bytes < NMEA_BUF_SIZE) {
+            while (nmeaClient.available() && bytes < sizeof(buf)) {
                 buf[bytes++] = nmeaClient.read();
             }
             if (bytes > 0) sys.gpsSendCommand(buf, bytes);
         }
 #if ENABLE_HTTPD
-        serverProcess(0);
+        serverProcess(50);
+#else
+        delay(50);
 #endif
     } while (millis() - ts < MIN_LOOP_TIME);
+#else
+    ts = millis() - ts;
+#if ENABLE_HTTPD
+    serverProcess(ts < MIN_LOOP_TIME ? (MIN_LOOP_TIME - ts) : 0);
+#else
+    if (ts < MIN_LOOP_TIME) delay(MIN_LOOP_TIME - ts);
+#endif
+#endif
 }
