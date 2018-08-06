@@ -23,11 +23,14 @@
 #include "FreematicsGPS.h"
 
 static TinyGPS gps;
-static bool newGPSData = false;
+static byte gpsDataStage = 0;
 static char* nmeaBuffer = 0;
 static int nmeaBytes = 0;
 Mutex nmeaBufferMutex;
 static Task taskGPS;
+static GPS_DATA* gpsData = 0;
+static float lastSpeed = 0;
+static uint32_t lastSpeedTime = 0;
 
 #if GPS_SOFT_SERIAL
 
@@ -77,7 +80,8 @@ void gps_decode_task(void* inst)
                 nmeaBufferMutex.unlock();
             }
             if (gps.encode(c)) {
-                newGPSData = true;
+                gpsData->ts = millis();
+                gpsDataStage = 1;
                 esp_task_wdt_reset();
             }
         }
@@ -205,12 +209,16 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered)
 		pinMode(PIN_GPS_POWER, OUTPUT);
 		// turn on GPS power
 		digitalWrite(PIN_GPS_POWER, HIGH);
-        delay(10);
 
         if (buffered && !nmeaBuffer) {
             nmeaBuffer = new char[NMEA_BUF_SIZE];
             nmeaBytes = 0;
         }
+
+        if (!gpsData) {
+            gpsData = new GPS_DATA;
+        }
+        memset(gpsData, 0, sizeof(GPS_DATA));
 
         // quick check of input data format
         if (taskGPS.running()) {
@@ -243,34 +251,48 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered)
 	return success;
 }
 
-bool FreematicsESP32::gpsGetData(GPS_DATA* gdata)
+bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
-    gps.stats(&gdata->sentences, &gdata->errors);
-    if (!newGPSData) return false;
-    gps.get_datetime((unsigned long*)&gdata->date, (unsigned long*)&gdata->time, 0);
-    gps.get_position((long*)&gdata->lat, (long*)&gdata->lng, 0);
-    gdata->speed = gps.speed();
-    gdata->alt = gps.altitude();
-    gdata->heading = gps.course() / 100;
-    gdata->sat = gps.satellites();
-    if (gdata->sat > 100) gdata->sat = 0;
-    newGPSData = false;
-    return true;
+    gps.stats(&gpsData->sentences, &gpsData->errors);
+    if (gpsDataStage) {
+        gpsData->speed = (float)gps.speed() / 100;
+        if (gpsData->speed >= 0.54f || lastSpeed >= 0.54f) {
+            // compute distance travelled from average of two speed samples (either is above 1kph)
+            gpsData->distance += (gpsData->speed + lastSpeed) / 2 * (gpsData->ts - lastSpeedTime) / 3600000;
+            lastSpeed = gpsData->speed;
+            lastSpeedTime = gpsData->ts;
+        }
+        gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
+        long lat, lng;
+        gps.get_position(&lat, &lng, 0);
+        gpsData->lat = (float)lat / 1000000;
+        gpsData->lng = (float)lng / 1000000;
+        gpsData->alt = (float)gps.altitude() / 100;
+        gpsData->heading = gps.course() / 100;
+        gpsData->sat = gps.satellites();
+        if (pgd) *pgd = gpsData;
+        gpsDataStage = 0;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 int FreematicsESP32::gpsGetNMEA(char* buffer, int bufsize)
 {
     int bytes = 0;
-    if (nmeaBuffer) {
-        nmeaBufferMutex.lock();
+    if (nmeaBytes > 0) {
         if (bufsize < nmeaBytes) {
+            nmeaBufferMutex.lock();
             memcpy(buffer, nmeaBuffer, bytes = bufsize);
             memmove(nmeaBuffer, nmeaBuffer + bufsize, nmeaBytes -= bufsize);
+            nmeaBufferMutex.unlock();
         } else {
+            nmeaBufferMutex.lock();
             memcpy(buffer, nmeaBuffer, bytes = nmeaBytes);
             nmeaBytes = 0;
+            nmeaBufferMutex.unlock();
         }
-        nmeaBufferMutex.unlock();
     }
     return bytes;
 }

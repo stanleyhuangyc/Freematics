@@ -36,10 +36,25 @@
 #define PID_EXT_SENSOR2 0x91
 
 typedef struct {
-  float pitch;
-  float yaw;
-  float roll;
+	float pitch;
+	float yaw;
+	float roll;
 } ORIENTATION;
+
+typedef struct {
+	uint32_t ts;
+	uint32_t date;
+	uint32_t time;
+	float lat;
+	float lng;
+	float alt; /* meter */
+	float speed; /* knot */
+	float distance; /* nautical mile */
+	int16_t heading; /* degree */
+	uint16_t sat;
+	uint16_t sentences;
+	uint16_t errors;
+} GPS_DATA;
 
 class CFreematics
 {

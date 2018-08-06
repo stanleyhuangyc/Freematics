@@ -215,7 +215,7 @@ void ClientSIM800::end()
   m_stage = 1;
 }
 
-bool ClientSIM800::setup(const char* apn, unsigned int timeout)
+bool ClientSIM800::setup(const char* apn, bool gps, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -503,9 +503,13 @@ void ClientSIM5360::end()
     m_device->xbTogglePower();
     m_stage = 1;
   }
+  if (m_gps) {
+    delete m_gps;
+    m_gps = 0;
+  }
 }
 
-bool ClientSIM5360::setup(const char* apn, bool roaming, unsigned int timeout)
+bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -552,6 +556,15 @@ bool ClientSIM5360::setup(const char* apn, bool roaming, unsigned int timeout)
     sendCommand("AT+NETOPEN\r");
   } while(0);
   if (!success) Serial.println(m_buffer);
+  // enable internal GPS if required
+  if (gps) {
+    if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
+      if (!m_gps) {
+        m_gps = new GPS_DATA;
+        m_gps->ts = 0;
+      }
+    }
+  }
   return success;
 }
 
@@ -573,20 +586,6 @@ String ClientSIM5360::getIP()
     delay(500);
   } while (millis() - t < 15000);
   return "";
-}
-
-bool ClientSIM5360::initGPS()
-{
-  return sendCommand("AT+CGPS=1\r");
-}
-
-bool ClientSIM5360::readGPS()
-{
-    if (sendCommand("AT+CGPSINFO\r") && !strstr(m_buffer, ",,,")) {
-      return true;
-    } else {
-      return false;
-    }
 }
 
 int ClientSIM5360::getSignal()
@@ -698,7 +697,33 @@ char* UDPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 
 char* UDPClientSIM5360::checkIncoming(int* pbytes)
 {
-	char *p = strstr(m_buffer, "+IPD");
+  char *p;
+  if (m_gps) {
+    // check GPS data
+    if ((p = strstr(m_buffer, "+CGPSINFO:"))) do {
+      if (!(p = strchr(p, ':'))) break;
+      if (*(++p) == ',') break;
+      m_gps->lat = atof(p) / 100;
+      if (!(p = strchr(p, ','))) break;
+      if (*(++p) == 'S') m_gps->lat = -m_gps->lat;
+      if (!(p = strchr(p, ','))) break;
+      m_gps->lng = atof(++p) / 100;
+      if (!(p = strchr(p, ','))) break;
+      if (*(++p) == 'W') m_gps->lng = -m_gps->lng;
+      if (!(p = strchr(p, ','))) break;
+      m_gps->date = atoi(++p);
+      if (!(p = strchr(p, ','))) break;
+      m_gps->time = atof(++p) * 100;
+      if (!(p = strchr(p, ','))) break;
+      m_gps->alt = atof(++p);
+      if (!(p = strchr(p, ','))) break;
+      m_gps->speed = atof(++p);
+      if (!(p = strchr(p, ','))) break;
+      m_gps->heading = atoi(++p);
+      m_gps->ts = millis();
+    } while (0);
+  }
+	p = strstr(m_buffer, "+IPD");
 	if (p) {
     *p = '-'; // mark this datagram as checked
     int len = atoi(p + 4);

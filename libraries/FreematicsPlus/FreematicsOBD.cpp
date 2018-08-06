@@ -475,12 +475,6 @@ byte COBD::begin()
 	digitalWrite(PIN_OBD_UART_TX, HIGH);
 	ver = getVersion();
 #else
-	// check if UART occupied
-	uint32_t ret;
-	if (uart_get_baudrate(OBD_UART_NUM, &ret) == ESP_OK && ret < 1000000) {
-		// UART already initialized
-		return 0;
-	}
     uart_config_t uart_config = {
         .baud_rate = OBD_UART_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,

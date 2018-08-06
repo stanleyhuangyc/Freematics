@@ -37,14 +37,14 @@ typedef enum {
 } HTTP_STATES;
 
 typedef struct {
-  float lat;
-  float lng;
-  uint8_t year; /* year past 2000, e.g. 15 for 2015 */
-  uint8_t month;
-  uint8_t day;
-  uint8_t hour;
-  uint8_t minute;
-  uint8_t second;
+    float lat;
+    float lng;
+    uint8_t year; /* year past 2000, e.g. 15 for 2015 */
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
 } NET_LOCATION;
 
 class HTTPClient
@@ -79,7 +79,7 @@ public:
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
 private:
-    char udpIP[16];
+    IPAddress udpIP;
     uint16_t udpPort;
     WiFiUDP udp;
 };
@@ -101,7 +101,7 @@ class ClientSIM800
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, unsigned int timeout = 60000);
+    bool setup(const char* apn, bool gps = false, unsigned int timeout = 60000);
     String getIP();
     int getSignal();
     String getOperatorName();
@@ -143,13 +143,20 @@ class ClientSIM5360
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, bool roaming = false, unsigned int timeout = 30000);
+    bool setup(const char* apn, bool gps = false, bool roaming = false, unsigned int timeout = 30000);
     String getIP();
     int getSignal();
     String getOperatorName();
     String queryIP(const char* host);
-    bool initGPS();
-    bool readGPS();
+    bool getLocation(GPS_DATA** pgd)
+    {
+        if (m_gps) {
+            if (pgd) *pgd = m_gps;
+            return true;
+        } else {
+            return false;
+        }
+    }
     const char* deviceName() { return m_model; }
     char IMEI[16] = {0};
 protected:
@@ -159,6 +166,7 @@ protected:
     uint8_t m_stage = 0;
     char m_model[12] = {0};
     CFreematics* m_device = 0;
+    GPS_DATA* m_gps = 0;
 };
 
 class UDPClientSIM5360 : public ClientSIM5360
