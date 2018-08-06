@@ -34,11 +34,9 @@
 
 void serverProcess(int timeout);
 bool serverSetup();
-void serverCheckup();
+bool serverCheckup(int wifiJoinPeriod = WIFI_JOIN_TIMEOUT);
 void executeCommand();
 
-uint16_t MMDD = 0;
-uint32_t UTC = 0;
 uint32_t startTime = 0;
 uint32_t pidErrors = 0;
 float accBias[3];
@@ -73,7 +71,8 @@ ORIENTATION ori = {0};
 #endif
 
 #if USE_GPS
-GPS_DATA gd = {0};
+GPS_DATA* gd = 0;
+uint32_t lastGPSts = 0;
 #endif
 
 char command[16] = {0};
@@ -82,8 +81,10 @@ COBD* obd = 0;
 
 FreematicsESP32 sys;
 
+#if ENABLE_NMEA_SERVER
 WiFiServer nmeaServer(NMEA_TCP_PORT);
 WiFiClient nmeaClient;
+#endif
 
 class DataOutputter : public NullLogger
 {
@@ -169,9 +170,9 @@ int handlerLiveData(UrlHandlerParam* param)
     buf[n++] = '}';
 #endif
 #if USE_GPS
-    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"date\":%u,\"time\":%u,\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%d,\"sat\":%u,\"sentences\":%u,\"errors\":%u}",
-        gd.date, gd.time, gd.lat, gd.lng, gd.alt, gd.speed, gd.sat,
-        gd.sentences, gd.errors);
+    n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"date\":%u,\"time\":%u,\"lat\":%f,\"lng\":%f,\"alt\":%f,\"speed\":%f,\"sat\":%u,\"sentences\":%u,\"errors\":%u}",
+        gd->date, gd->time, gd->lat, gd->lng, gd->alt, gd->speed, gd->sat,
+        gd->sentences, gd->errors);
 #endif
     buf[n++] = '}';
     param->contentLength = n;
@@ -254,7 +255,7 @@ public:
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("GPS...");
         memset(&gd, 0, sizeof(gd));
-        if (sys.gpsInit(GPS_SERIAL_BAUDRATE, true)) {
+        if (sys.gpsInit(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
           setState(STATE_GPS_FOUND);
           Serial.println("OK");
           //waitGPS();
@@ -270,37 +271,28 @@ public:
     void logGPSData()
     {
         // issue the command to get parsed GPS data
-        if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd)) {
+        if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd) && lastGPSts != gd->ts) {
             store.setTimestamp(millis());
-            if (gd.time != UTC) {
-                byte day = gd.date / 10000;
-                if (MMDD % 100 != day) {
-                    store.log(PID_GPS_DATE, gd.date);
-                }
-                store.log(PID_GPS_TIME, gd.time);
-                store.log(PID_GPS_LATITUDE, gd.lat);
-                store.log(PID_GPS_LONGITUDE, gd.lng);
-                store.log(PID_GPS_ALTITUDE, gd.alt / 100); /* m */
-                float kph = (float)gd.speed * 1852 / 100000;
-                store.log(PID_GPS_SPEED, kph);
-                store.log(PID_GPS_SAT_COUNT, gd.sat);
-                // save current date in MMDD format
-                unsigned int DDMM = gd.date / 100;
-                UTC = gd.time;
-                MMDD = (DDMM % 100) * 100 + (DDMM / 100);
-                // set GPS ready flag
-                setState(STATE_GPS_READY);
-                char buf[48];
-                sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u",
-                    gd.time / 1000000, (gd.time % 1000000) / 10000, (gd.time % 10000) / 100, (gd.time % 100) / 10, (unsigned int)gd.sat);
-                Serial.println(buf);
-            }
+            store.log(PID_GPS_DATE, gd->date);
+            store.log(PID_GPS_TIME, gd->time);
+            store.logFloat(PID_GPS_LATITUDE, gd->lat);
+            store.logFloat(PID_GPS_LONGITUDE, gd->lng);
+            store.log(PID_GPS_ALTITUDE, gd->alt); /* m */
+            float kph = gd->speed * 1852 / 1000;
+            store.log(PID_GPS_SPEED, kph);
+            store.log(PID_GPS_SAT_COUNT, gd->sat);
+            // set GPS ready flag
+            setState(STATE_GPS_READY);
+            char buf[48];
+            sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u Err:%u",
+                gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, (gd->time % 100) / 10, (unsigned int)gd->sat, gd->errors * 100 / gd->sentences);
+            Serial.println(buf);
+            lastGPSts = gd->ts;
         }
     }
     void waitGPS()
     {
         int elapsed = 0;
-        GPS_DATA gd = {0};
         for (uint32_t t = millis(); millis() - t < 300000;) {
           int t1 = (millis() - t) / 1000;
           if (t1 != elapsed) {
@@ -310,17 +302,14 @@ public:
             elapsed = t1;
           }
           // read parsed GPS data
-          if (sys.gpsGetData(&gd) && gd.sat != 0 && gd.sat != 255) {
-            Serial.print("SAT:");
-            Serial.println(gd.sat);
+          if (sys.gpsGetData(&gd) && gd->sat != 0 && gd->sat != 255) {
+            Serial.print("Sats:");
+            Serial.println(gd->sat);
             break;
           }
         }
     }
 #endif
-    void checkFileSize(uint32_t fileSize)
-    {
-    }
     void standby()
     {
       store.close();
@@ -332,7 +321,6 @@ public:
       }
 #endif
       clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
-      serverCheckup();
       setState(STATE_STANDBY);
       Serial.println("Standby");
 #if MEMS_MODE
@@ -347,7 +335,9 @@ public:
               float m = (acc[i] - accBias[i]);
               motion += m * m;
             }
+            
 #if (ENABLE_WIFI_STATION || ENABLE_WIFI_AP)
+            serverCheckup(WIFI_JOIN_TIMEOUT * 4);
             serverProcess(100);
 #else
             delay(100);
@@ -386,15 +376,14 @@ void showStats()
     // output to serial monitor
     char timestr[24];
     sprintf(timestr, "%02u:%02u.%c", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
-    uint32_t fileSize = store.size();
     Serial.print(timestr);
     Serial.print(" | ");
     Serial.print(dataCount);
     Serial.print(" samples | ");
     Serial.print(sps, 1);
     Serial.print(" sps");
+    uint32_t fileSize = store.size();
     if (fileSize > 0) {
-        logger.checkFileSize(fileSize);
         Serial.print(" | ");
         Serial.print(fileSize);
         Serial.print(" bytes");
@@ -425,10 +414,10 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
 
-    sys.begin();
 #if USE_OBD
     while (!(obd = createOBD()));
 #endif
+    sys.begin();
 
 #if MEMS_MODE
     Serial.print("MEMS...");
@@ -476,7 +465,9 @@ void setup()
     }
 #endif
     serverCheckup();
+#if ENABLE_NMEA_SERVER
     nmeaServer.begin();
+#endif
 #endif
 
     pinMode(PIN_LED, LOW);
@@ -543,7 +534,7 @@ void loop()
             pidErrors++;
             Serial.print("PID errors: ");
             Serial.println(pidErrors);
-            if (obd->errors >= 3 && !obd->init()) {
+            if (obd->errors >= 5) {
                 logger.standby();
             }
         }
@@ -606,9 +597,12 @@ void loop()
 
     executeCommand();
 
-#if ENABLE_WIFI_STATION || ENABLE_WIFI_AP
-    // NMEA-to-TCP bridge
+#if ENABLE_WIFI_AP || ENABLE_WIFI_STATION
     serverCheckup();
+#endif
+
+#if ENABLE_NMEA_SERVER
+    // NMEA-to-TCP bridge
     if (!nmeaClient || !nmeaClient.connected()) {
         nmeaClient.stop();
         nmeaClient = nmeaServer.available();
@@ -619,16 +613,23 @@ void loop()
             int bytes = sys.gpsGetNMEA(buf, sizeof(buf));
             if (bytes > 0) nmeaClient.write(buf, bytes);
             bytes = 0;
-            while (nmeaClient.available() && bytes < NMEA_BUF_SIZE) {
+            while (nmeaClient.available() && bytes < sizeof(buf)) {
                 buf[bytes++] = nmeaClient.read();
             }
             if (bytes > 0) sys.gpsSendCommand(buf, bytes);
         }
-        serverProcess(0);
+#if ENABLE_HTTPD
+        serverProcess(50);
+#else
+        delay(50);
+#endif
     } while (millis() - ts < MIN_LOOP_TIME);
 #else
     ts = millis() - ts;
+#if ENABLE_HTTPD
+    serverProcess(ts < MIN_LOOP_TIME ? (MIN_LOOP_TIME - ts) : 0);
+#else
     if (ts < MIN_LOOP_TIME) delay(MIN_LOOP_TIME - ts);
 #endif
-
+#endif
 }

@@ -50,6 +50,13 @@ public:
         write(buf, len);
         m_dataCount++;
     }
+    virtual void logFloat(uint16_t pid, float value)
+    {
+        char buf[32];
+        byte len = sprintf(buf, "%X,%f", pid, value);
+        write(buf, len);
+        m_dataCount++;
+    }
     virtual void setTimestamp(uint32_t ts)
     {
         char buf[16];
@@ -112,7 +119,6 @@ public:
     SDLogger(NullLogger* next = 0) { m_next = next; }
     int begin()
     {
-        //pinMode(PIN_SD_CS, OUTPUT);
         SPI.begin();
         if (SD.begin(PIN_SD_CS, SPI, SPI_FREQ)) {
             return SD.cardSize() >> 20;

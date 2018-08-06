@@ -95,6 +95,8 @@ int handlerInfo(UrlHandlerParam* param)
     return FLAG_DATA_RAW;
 }
 
+#if STORAGE != STORAGE_NONE
+
 class LogDataContext {
 public:
     File file;
@@ -142,6 +144,8 @@ int handlerLogFile(UrlHandlerParam* param)
     }
     param->contentLength = ctx->file.readBytes(param->pucBuffer, param->bufSize);
     param->contentType = HTTPFILETYPE_TEXT;
+    Serial.print(param->contentLength);
+    Serial.println(" bytes read");
     return FLAG_DATA_STREAM;
 }
 
@@ -272,6 +276,8 @@ int handlerLogList(UrlHandlerParam* param)
     return FLAG_DATA_RAW;
 }
 
+#endif
+
 UrlHandler urlHandlerList[]={
     {"api/live", handlerLiveData},
     {"api/info", handlerInfo},
@@ -286,6 +292,13 @@ UrlHandler urlHandlerList[]={
 
 #endif
 
+void obtainTime()
+{
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, (char*)"pool.ntp.org");
+    sntp_init();
+}
+
 void serverProcess(int timeout)
 {
 #if ENABLE_HTTPD
@@ -293,12 +306,11 @@ void serverProcess(int timeout)
 #endif
 }
 
-void serverCheckup()
+bool serverCheckup(int wifiJoinPeriod)
 {
-#if ENABLE_WIFI_STATION
     static uint32_t wifiStartTime = 0;
     if (WiFi.status() != WL_CONNECTED) {
-        if (wifiStartTime == 0 || millis() - wifiStartTime > WIFI_JOIN_TIMEOUT) {
+        if (wifiStartTime == 0 || millis() - wifiStartTime > wifiJoinPeriod) {
             WiFi.disconnect(false);
 #if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
             WiFi.mode (WIFI_AP_STA);
@@ -326,16 +338,9 @@ void serverCheckup()
 
             wifiStartTime = 0;
         }
-
+        return true;
     }
-#endif
-}
-
-void obtainTime()
-{
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, (char*)"pool.ntp.org");
-    sntp_init();
+    return false;
 }
 
 bool serverSetup()

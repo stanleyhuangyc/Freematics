@@ -33,10 +33,10 @@ public:
         byte len = sprintf(buf, "%X%c%d;%d;%d", pid, m_delimiter, value1, value2, value3);
         dispatch(buf, len);
     }
-    virtual void logCoordinate(uint16_t pid, int32_t value)
+    virtual void logFloat(uint16_t pid, float value)
     {
         char buf[32];
-        byte len = sprintf(buf, "%X%c%d.%06u", pid, m_delimiter, (int)(value / 1000000), abs(value) % 1000000);
+        byte len = sprintf(buf, "%X%c%f", pid, m_delimiter, value);
         dispatch(buf, len);
     }
     virtual void timestamp(uint32_t ts)

@@ -62,9 +62,12 @@ uint32_t lastMotionTime = 0;
 char vin[18] = {0};
 uint16_t dtc[6] = {0};
 int16_t batteryVoltage = 0;
-GPS_DATA gd = {0};
-char isoTime[24];
-uint32_t lastGPSDataTime = 0;
+#if ENABLE_GPS
+GPS_DATA* gd = 0;
+uint32_t lastGPSts = 0;
+#endif
+
+char isoTime[24] = {0};
 uint8_t deviceTemp = 0; // device temperature
 
 // stats data
@@ -178,9 +181,9 @@ int handlerLiveData(UrlHandlerParam* param)
         millis() - lastMotionTime);
 #endif
 #if ENABLE_GPS
-    if (lastGPSDataTime) {
-      n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"utc\":\"%s\",\"lat\":%d,\"lng\":%d,\"alt\":%d,\"speed\":%u,\"sat\":%d,\"age\":%u}",
-          isoTime, (int)gd.lat, (int)gd.lng, (int)gd.alt, (unsigned int)gd.speed, (int)gd.sat, (unsigned int)(millis() - lastGPSDataTime));
+    if (gd && gd->ts) {
+      n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"utc\":\"%s\",\"lat\":%f,\"lng\":%f,\"alt\":%f,\"speed\":%f,\"sat\":%d,\"age\":%u}",
+          isoTime, gd->lat, gd->lng, gd->alt, gd->speed, (int)gd->sat, (unsigned int)(millis() - gd->ts));
     }
 #endif
     buf[n++] = '}';
@@ -251,34 +254,48 @@ void processOBD()
 void processGPS()
 {
   static uint8_t lastGPSDay = 0;
-  // read parsed GPS data
-  if (!sys.gpsGetData(&gd) || gd.date == 0) {
-    return;
+  if (state.check(STATE_GPS_READY)) {
+    // read parsed GPS data
+    if (!sys.gpsGetData(&gd)) {
+      return;
+    }
+  } else {
+#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+    if (!teleClient.net.getLocation(&gd)) {
+      return;
+    }
+#endif
   }
-  lastGPSDataTime = millis();
-  byte day = gd.date / 10000;
-  cache.log(PID_GPS_TIME, gd.time);
+
+  if (!gd || lastGPSts == gd->ts) return;
+  byte day = gd->date / 10000;
+  cache.log(PID_GPS_TIME, gd->time);
   if (lastGPSDay != day) {
-    cache.log(PID_GPS_DATE, gd.date);
+    cache.log(PID_GPS_DATE, gd->date);
     lastGPSDay = day;
   }
-  cache.logCoordinate(PID_GPS_LATITUDE, gd.lat);
-  cache.logCoordinate(PID_GPS_LONGITUDE, gd.lng);
-  cache.log(PID_GPS_ALTITUDE, gd.alt / 100); /* m */
-  float kph = (float)gd.speed * 1852 / 100000;
+  cache.logFloat(PID_GPS_LATITUDE, gd->lat);
+  cache.logFloat(PID_GPS_LONGITUDE, gd->lng);
+  cache.log(PID_GPS_ALTITUDE, gd->alt / 100); /* m */
+  float kph = (float)gd->speed * 1852 / 1000;
   cache.log(PID_GPS_SPEED, kph);
-  cache.log(PID_GPS_SAT_COUNT, gd.sat);
+  cache.log(PID_GPS_SAT_COUNT, gd->sat);
   
   sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u.%01uZ",
-      (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
-      (unsigned int)(gd.time / 1000000), (unsigned int)(gd.time % 1000000) / 10000, (unsigned int)(gd.time % 10000) / 100, ((unsigned int)gd.time % 100) / 10);
+      (unsigned int)(gd->date % 100) + 2000, (unsigned int)(gd->date / 100) % 100, (unsigned int)(gd->date / 10000),
+      (unsigned int)(gd->time / 1000000), (unsigned int)(gd->time % 1000000) / 10000, (unsigned int)(gd->time % 10000) / 100, ((unsigned int)gd->time % 100) / 10);
   
-  Serial.print("GPS SATS:");
-  Serial.print(gd.sat);
-  //Serial.print(" ERR:");
-  //Serial.print(gd.errors);
-  Serial.print(" UTC:");
+  Serial.print("[GPS]");
+  if (gd->sat) {
+    Serial.print(" SATS: ");
+    Serial.print(gd->sat);
+  }
+  //Serial.print(" ERR: ");
+  //Serial.print(gd->errors);
+  Serial.print(" UTC: ");
   Serial.println(isoTime);
+
+  lastGPSts = gd->ts;
 }
 #endif
 
@@ -451,10 +468,11 @@ bool initialize()
       return false;
     }
   }
+
   Serial.print("NET(APN:");
   Serial.print(CELL_APN);
   Serial.print(")");
-  if (teleClient.net.setup(CELL_APN)) {
+  if (teleClient.net.setup(CELL_APN, !state.check(STATE_GPS_READY))) {
     String op = teleClient.net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
@@ -696,7 +714,7 @@ void showStats()
   Serial.print(teleClient.rxBytes);
   Serial.print(" bytes");
 #if STORAGE != STORAGE_NONE
-  Serial.print(" | File:");
+  Serial.print(" | File: ");
   Serial.print(store.size() >> 10);
   Serial.print("KB");
 #endif
@@ -747,9 +765,7 @@ void process()
 
 #if ENABLE_GPS
   // process GPS data if connected
-  if (state.check(STATE_GPS_READY)) {
-    processGPS();
-  }
+  processGPS();
 #endif
 
 #if LOG_EXT_SENSORS
@@ -991,10 +1007,10 @@ void setup()
 #endif
 
     // startup initializations
-    sys.begin();
 #if ENABLE_OBD
     while (!(obd = createOBD()));
 #endif
+    sys.begin();
 
     // initializing components
     initialize();
