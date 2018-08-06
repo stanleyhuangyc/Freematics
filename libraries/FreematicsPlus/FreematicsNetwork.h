@@ -109,7 +109,7 @@ public:
     String queryIP(const char* host);
     const char* deviceName() { return "SIM800"; }
 protected:
-    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
+    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
     char m_buffer[256] = {0};
     uint8_t m_stage = 0;
     CFreematics* m_device = 0;
@@ -161,8 +161,10 @@ public:
     char IMEI[16] = {0};
 protected:
     // send command and check for expected response
-    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n", bool terminated = false);
-    char m_buffer[256] = {0};
+    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n");
+    void checkGPS();
+    float parseDegree(const char* s);
+    char m_buffer[384] = {0};
     uint8_t m_stage = 0;
     char m_model[12] = {0};
     CFreematics* m_device = 0;
