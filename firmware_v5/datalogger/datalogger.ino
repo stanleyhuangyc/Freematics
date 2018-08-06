@@ -284,8 +284,9 @@ public:
             // set GPS ready flag
             setState(STATE_GPS_READY);
             char buf[48];
-            sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u",
-                gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, (gd->time % 100) / 10, (unsigned int)gd->sat);
+            sprintf(buf, "[GPS] %ukm/h %u Sats %02u:%02u:%02u.%01u",
+                (unsigned int)kph, (unsigned int)gd->sat,
+                gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, (gd->time % 100) / 10);
             Serial.println(buf);
             lastGPSts = gd->ts;
         }

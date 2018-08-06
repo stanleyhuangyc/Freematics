@@ -49,7 +49,6 @@ typedef struct {
 	float lng;
 	float alt; /* meter */
 	float speed; /* knot */
-	float distance; /* nautical mile */
 	int16_t heading; /* degree */
 	uint16_t sat;
 	uint16_t sentences;

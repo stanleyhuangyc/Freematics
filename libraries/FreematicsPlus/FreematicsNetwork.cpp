@@ -222,7 +222,6 @@ bool ClientSIM800::setup(const char* apn, bool gps, unsigned int timeout)
   sendCommand("ATE0\r");
   do {
     success = sendCommand("AT+CREG?\r", 3000, "+CREG: 0,1") != 0;
-    Serial.print('.');
   } while (!success && millis() - t < timeout);
   if (!success) return false;
   do {
@@ -518,8 +517,6 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
   //sendCommand("AT+CNMP=38\r"); // LTE only
   do {
     do {
-      Serial.print('.');
-      delay(500);
       success = sendCommand("AT+CPSI?\r", 1000, "Online");
       if (strstr(m_buffer, "Off")) {
         success = false;
@@ -561,7 +558,7 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
     if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
       if (!m_gps) {
         m_gps = new GPS_DATA;
-        m_gps->ts = 0;
+        memset(m_gps, 0, sizeof(GPS_DATA));
       }
     }
   }

@@ -159,10 +159,10 @@ byte hex2uint8(const char *p)
 }
 
 /*************************************************************************
-* OBD-II UART Adapter
+* OBD-II UART Bridge
 *************************************************************************/
 
-byte COBD::sendCommand(const char* cmd, char* buf, byte bufsize, int timeout)
+int COBD::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
 {
 	write(cmd);
 	return receive(buf, bufsize, timeout);
@@ -231,15 +231,15 @@ byte COBD::readPID(const byte pid[], byte count, int result[])
 	return results;
 }
 
-byte COBD::readDTC(uint16_t codes[], byte maxCodes)
+int COBD::readDTC(uint16_t codes[], byte maxCodes)
 {
 	/*
 	Response example:
 	0: 43 04 01 08 01 09
 	1: 01 11 01 15 00 00 00
 	*/
-	byte codesRead = 0;
- 	for (byte n = 0; n < 6; n++) {
+	int codesRead = 0;
+ 	for (int n = 0; n < 6; n++) {
 		char buffer[128];
 		sprintf(buffer, n == 0 ? "03\r" : "03%02X\r", n);
 		write(buffer);

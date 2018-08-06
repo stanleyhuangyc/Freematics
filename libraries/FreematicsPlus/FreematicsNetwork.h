@@ -152,7 +152,7 @@ public:
     {
         if (m_gps) {
             if (pgd) *pgd = m_gps;
-            return true;
+            return m_gps->ts != 0;
         } else {
             return false;
         }

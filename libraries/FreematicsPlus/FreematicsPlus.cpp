@@ -29,10 +29,6 @@ static int nmeaBytes = 0;
 Mutex nmeaBufferMutex;
 static Task taskGPS;
 static GPS_DATA* gpsData = 0;
-static float lastSpeed = 0;
-static uint32_t lastSpeedTime = 0;
-
-#if GPS_SOFT_SERIAL
 
 uint32_t inline IRAM_ATTR getCycleCount()
 {
@@ -50,16 +46,31 @@ uint8_t inline IRAM_ATTR readRxPin()
 #endif
 }
 
-#endif
-
 void gps_decode_task(void* inst)
 {
-#if GPS_SOFT_SERIAL
-    portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-#endif
     for (;;) {
         uint8_t c = 0;
-#if GPS_SOFT_SERIAL
+        int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 60000 / portTICK_RATE_MS);
+        if (len != 1) continue;
+        if (nmeaBuffer && nmeaBytes < NMEA_BUF_SIZE) {
+            nmeaBufferMutex.lock();
+            nmeaBuffer[nmeaBytes++] = c;
+            nmeaBufferMutex.unlock();
+        }
+        if (gps.encode(c)) {
+            gpsData->ts = millis();
+            gpsDataStage = 1;
+            esp_task_wdt_reset();
+        }
+    }
+}
+
+void gps_soft_decode_task(void* inst)
+{
+    portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    pinMode(PIN_GPS_UART_RXD, INPUT);
+    for (;;) {
+        uint8_t c = 0;
         while (readRxPin());
         uint32_t start = getCycleCount();
         taskYIELD();
@@ -69,10 +80,6 @@ void gps_decode_task(void* inst)
             c = (c | readRxPin()) >> 1;
         }
         portEXIT_CRITICAL(&mux);
-#else
-        int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 60000 / portTICK_RATE_MS);
-        if (len != 1) continue;
-#endif
         if (c) {
             if (nmeaBuffer && nmeaBytes < NMEA_BUF_SIZE) {
                 nmeaBufferMutex.lock();
@@ -85,9 +92,7 @@ void gps_decode_task(void* inst)
                 esp_task_wdt_reset();
             }
         }
-#if GPS_SOFT_SERIAL
         while (getCycleCount() - start < (uint32_t)9 * F_CPU / GPS_BAUDRATE + F_CPU / GPS_BAUDRATE / 2) taskYIELD();
-#endif
     }
 }
 
@@ -167,25 +172,6 @@ void Mutex::unlock()
 
 void FreematicsESP32::begin(int cpuMHz)
 {
-#if GPS_SOFT_SERIAL
-    pinMode(PIN_GPS_UART_RXD, INPUT);
-#else
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .rx_flow_ctrl_thresh = 122,
-    };
-    //Configure UART parameters
-    uart_param_config(GPS_UART_NUM, &uart_config);
-    //Set UART pins
-    uart_set_pin(GPS_UART_NUM, PIN_GPS_UART_TXD, PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    //Install UART driver
-    uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
-#endif
-
     // Configure dynamic frequency scaling
     rtc_cpu_freq_t max_freq;
     rtc_clk_cpu_freq_from_mhz(cpuMHz, &max_freq);
@@ -202,7 +188,7 @@ void FreematicsESP32::begin(int cpuMHz)
     esp_task_wdt_init(600, 0);
 }
 
-bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered)
+bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered, bool softserial)
 {
 	bool success = true;
 	if (baudrate) {
@@ -210,23 +196,36 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered)
 		// turn on GPS power
 		digitalWrite(PIN_GPS_POWER, HIGH);
 
-        if (buffered && !nmeaBuffer) {
-            nmeaBuffer = new char[NMEA_BUF_SIZE];
-            nmeaBytes = 0;
-        }
+        if (buffered && !nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
+        nmeaBytes = 0;
 
-        if (!gpsData) {
-            gpsData = new GPS_DATA;
-        }
+        if (!gpsData) gpsData = new GPS_DATA;
         memset(gpsData, 0, sizeof(GPS_DATA));
 
-        // quick check of input data format
         if (taskGPS.running()) {
             taskGPS.resume();
+        } else if (!softserial) {
+            uart_config_t uart_config = {
+                .baud_rate = 115200,
+                .data_bits = UART_DATA_8_BITS,
+                .parity = UART_PARITY_DISABLE,
+                .stop_bits = UART_STOP_BITS_1,
+                .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+                .rx_flow_ctrl_thresh = 122,
+            };
+            //Configure UART parameters
+            uart_param_config(GPS_UART_NUM, &uart_config);
+            //Set UART pins
+            uart_set_pin(GPS_UART_NUM, PIN_GPS_UART_TXD, PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+            //Install UART driver
+            uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
+            // start GPS decoding task
+            taskGPS.create(gps_decode_task, "GPS", 0);
         } else {
-            // start GPS decoding thread if not started
-            taskGPS.create(gps_decode_task, "GPS", 1);
+            // start GPS decoding task (soft serial)
+            taskGPS.create(gps_soft_decode_task, "GPS", 2);
         }
+        delay(10);
 
         // test run for a while to see if there is data decoded
         uint16_t s1 = 0, s2 = 0;
@@ -254,23 +253,17 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered)
 bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
     gps.stats(&gpsData->sentences, &gpsData->errors);
+    if (pgd) *pgd = gpsData;
     if (gpsDataStage) {
-        gpsData->speed = (float)gps.speed() / 100;
-        if (gpsData->speed >= 0.54f || lastSpeed >= 0.54f) {
-            // compute distance travelled from average of two speed samples (either is above 1kph)
-            gpsData->distance += (gpsData->speed + lastSpeed) / 2 * (gpsData->ts - lastSpeedTime) / 3600000;
-            lastSpeed = gpsData->speed;
-            lastSpeedTime = gpsData->ts;
-        }
         gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
         long lat, lng;
         gps.get_position(&lat, &lng, 0);
         gpsData->lat = (float)lat / 1000000;
         gpsData->lng = (float)lng / 1000000;
         gpsData->alt = (float)gps.altitude() / 100;
+        gpsData->speed = (float)gps.speed() / 100;
         gpsData->heading = gps.course() / 100;
         gpsData->sat = gps.satellites();
-        if (pgd) *pgd = gpsData;
         gpsDataStage = 0;
         return true;
     } else {
