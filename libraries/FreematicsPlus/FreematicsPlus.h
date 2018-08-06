@@ -31,25 +31,12 @@
 #define PIN_GPS_UART_TXD 33
 #define GPS_UART_NUM UART_NUM_2
 #define GPS_BAUDRATE 115200L
-#define GPS_SOFT_SERIAL 1
+#define GPS_SOFT_SERIAL 0
 
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
 
 #define GPS_TIMEOUT 1000 /* ms */
-
-typedef struct {
-	uint32_t date;
-	uint32_t time;
-	int32_t lat;
-	int32_t lng;
-	int32_t alt; /* 1/100 meter */
-	uint32_t speed; /* 1/100 knot */
-	int16_t heading; /* degree */
-	uint16_t sat;
-	uint16_t sentences;
-	uint16_t errors;
-} GPS_DATA;
 
 uint8_t readChipTemperature();
 int32_t readChipHallSensor();
@@ -85,7 +72,7 @@ public:
   // initialize GPS (set baudrate to 0 to power off GPS)
   bool gpsInit(unsigned long baudrate = GPS_BAUDRATE, bool buffered = false);
   // get parsed GPS data (returns the number of data parsed since last invoke)
-  bool gpsGetData(GPS_DATA* gdata);
+  bool gpsGetData(GPS_DATA** pgd);
   // get buffered NMEA data
   int gpsGetNMEA(char* buffer, int bufsize);
   // send command string to GPS
