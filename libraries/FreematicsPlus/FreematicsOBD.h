@@ -51,9 +51,9 @@ public:
 	// wake up device from low power mode
 	virtual void leaveLowPowerMode();
 	// send AT command and receive response (return bytes received)
-	virtual byte sendCommand(const char* cmd, char* buf, byte bufsize, int timeout = OBD_TIMEOUT_LONG);
+	virtual int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
 	// read diagnostic trouble codes (return number of DTCs read)
-	virtual byte readDTC(uint16_t codes[], byte maxCodes = 1);
+	virtual int readDTC(uint16_t codes[], byte maxCodes = 1);
 	// clear diagnostic trouble code
 	virtual void clearDTC();
 	// get battery voltage (works without ECU)
@@ -89,7 +89,6 @@ protected:
 class COBDSPI : public COBD {
 public:
 	byte begin();
-	// un-initialize
 	void end();
 	// send AT command and receive response
 	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
