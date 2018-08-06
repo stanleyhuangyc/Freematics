@@ -284,8 +284,8 @@ public:
             // set GPS ready flag
             setState(STATE_GPS_READY);
             char buf[48];
-            sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u Err:%u",
-                gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, (gd->time % 100) / 10, (unsigned int)gd->sat, gd->errors * 100 / gd->sentences);
+            sprintf(buf, "GPS UTC:%02u:%02u:%02u.%01u Sats:%u",
+                gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, (gd->time % 100) / 10, (unsigned int)gd->sat);
             Serial.println(buf);
             lastGPSts = gd->ts;
         }
@@ -312,28 +312,33 @@ public:
 #endif
     void standby()
     {
-      store.close();
+        store.close();
 #if USE_GPS
-      if (checkState(STATE_GPS_READY)) {
-        Serial.print("GPS:");
-        sys.gpsInit(0); // turn off GPS power
-        Serial.println("OFF");
-      }
+        if (checkState(STATE_GPS_READY)) {
+            Serial.print("GPS:");
+            sys.gpsInit(0); // turn off GPS power
+            Serial.println("OFF");
+        }
 #endif
-      clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
-      setState(STATE_STANDBY);
-      Serial.println("Standby");
+#if USE_OBD
+        if (checkState(STATE_OBD_READY)) {
+            obd->reset();
+        }
+#endif
+        clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
+        setState(STATE_STANDBY);
+        Serial.println("Standby");
 #if MEMS_MODE
-      if (checkState(STATE_MEMS_READY)) {
+        if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
         while (checkState(STATE_STANDBY)) {
-          // calculate relative movement
-          float motion = 0;
-          for (byte n = 0; n < 10; n++) {
+            // calculate relative movement
+            float motion = 0;
+            for (byte n = 0; n < 10; n++) {
             mems.read(acc);
             for (byte i = 0; i < 3; i++) {
-              float m = (acc[i] - accBias[i]);
-              motion += m * m;
+                float m = (acc[i] - accBias[i]);
+                motion += m * m;
             }
             
 #if (ENABLE_WIFI_STATION || ENABLE_WIFI_AP)
@@ -342,21 +347,21 @@ public:
 #else
             delay(100);
 #endif
-          }
-          // check movement
-          if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+            }
+            // check movement
+            if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
             Serial.print("Motion:");
             Serial.println(motion);
             break;
-          }
-          executeCommand();
+            }
+            executeCommand();
         }
-      }
+        }
 #else
-      while (!obd->init()) Serial.print('.');
+        while (!obd->init()) Serial.print('.');
 #endif
-      Serial.println("Wakeup");
-      //ESP.restart();
+        Serial.println("Wakeup");
+        ESP.restart();
     }
     bool checkState(byte flags) { return (m_state & flags) == flags; }
     void setState(byte flags) { m_state |= flags; }
@@ -536,6 +541,8 @@ void loop()
             Serial.println(pidErrors);
             if (obd->errors >= 5) {
                 logger.standby();
+                logger.init();
+                return;
             }
         }
 #if USE_GPS
@@ -551,14 +558,6 @@ void loop()
     logger.logGPSData();
 #endif
     delay(50);
-#endif
-
-    // re-initialize when OBD is disconnected
-#if USE_OBD
-    if (!logger.checkState(STATE_OBD_READY)) {
-      logger.init();
-      return;
-    }
 #endif
 
 #if MEMS_MODE
@@ -609,7 +608,7 @@ void loop()
     }
     do {
         if (nmeaClient.connected()) {
-            char buf[NMEA_BUF_SIZE];
+            char buf[256];
             int bytes = sys.gpsGetNMEA(buf, sizeof(buf));
             if (bytes > 0) nmeaClient.write(buf, bytes);
             bytes = 0;
@@ -619,9 +618,9 @@ void loop()
             if (bytes > 0) sys.gpsSendCommand(buf, bytes);
         }
 #if ENABLE_HTTPD
-        serverProcess(50);
+        serverProcess(1);
 #else
-        delay(50);
+        delay(1);
 #endif
     } while (millis() - ts < MIN_LOOP_TIME);
 #else
