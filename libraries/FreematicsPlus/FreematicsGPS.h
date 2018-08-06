@@ -128,8 +128,6 @@ private:
   unsigned long parse_decimal();
   unsigned long parse_degrees();
   bool term_complete();
-  bool gpsisdigit(char c) { return c >= '0' && c <= '9'; }
-  long gpsatol(const char *str);
   int gpsstrcmp(const char *str1, const char *str2);
 };
 

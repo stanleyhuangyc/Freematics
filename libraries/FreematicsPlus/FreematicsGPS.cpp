@@ -143,14 +143,14 @@ unsigned long TinyGPS::parse_decimal()
   char *p = _term;
   bool isneg = *p == '-';
   if (isneg) ++p;
-  unsigned long ret = 100UL * gpsatol(p);
-  while (gpsisdigit(*p)) ++p;
+  unsigned long ret = 100UL * atol(p);
+  while (isdigit(*p)) ++p;
   if (*p == '.')
   {
-    if (gpsisdigit(p[1]))
+    if (isdigit(p[1]))
     {
       ret += 10 * (p[1] - '0');
-      if (gpsisdigit(p[2]))
+      if (isdigit(p[2]))
         ret += p[2] - '0';
     }
   }
@@ -160,13 +160,13 @@ unsigned long TinyGPS::parse_decimal()
 unsigned long TinyGPS::parse_degrees()
 {
   char *p;
-  unsigned long left = gpsatol(_term);
+  unsigned long left = atol(_term);
   unsigned long tenk_minutes = (left % 100UL) * 100000UL;
-  for (p=_term; gpsisdigit(*p); ++p);
+  for (p=_term; isdigit(*p); ++p);
   if (*p == '.')
   {
     unsigned long mult = 10000;
-    while (gpsisdigit(*++p))
+    while (isdigit(*++p))
     {
       tenk_minutes += mult * (*p - '0');
       mult /= 10;
@@ -274,7 +274,7 @@ bool TinyGPS::term_complete()
       _new_course = parse_decimal();
       break;
     case COMBINE(_GPS_SENTENCE_GPRMC, 9): // Date (GPRMC)
-      _new_date = gpsatol(_term);
+      _new_date = atol(_term);
       break;
     case COMBINE(_GPS_SENTENCE_GPGGA, 6): // Fix data (GPGGA)
       _gps_data_good = _term[0] > '0';
@@ -293,21 +293,15 @@ bool TinyGPS::term_complete()
   return false;
 }
 
-long TinyGPS::gpsatol(const char *str)
-{
-  long ret = 0;
-  while (gpsisdigit(*str))
-    ret = 10 * ret + *str++ - '0';
-  return ret;
-}
-
 int TinyGPS::gpsstrcmp(const char *str1, const char *str2)
 {
   if (*str1 == *str2) {
   	str1 += 2;
-	str2 += 2;
-	while (*str1 && *str1 == *str2)
-	    ++str1, ++str2;
+	  str2 += 2;
+	  while (*str1 && *str1 == *str2) {
+	    ++str1;
+      ++str2;
+    }
   }
   return *str1;
 }

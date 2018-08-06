@@ -296,7 +296,7 @@ String ClientSIM800::queryIP(const char* host)
   return "";
 }
 
-bool ClientSIM800::sendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
+bool ClientSIM800::sendCommand(const char* cmd, unsigned int timeout, const char* expected)
 {
   if (cmd) {
     m_device->xbWrite(cmd);
@@ -304,10 +304,6 @@ bool ClientSIM800::sendCommand(const char* cmd, unsigned int timeout, const char
   m_buffer[0] = 0;
   byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
   if (ret) {
-    if (terminated) {
-      char *p = strstr(m_buffer, expected);
-      if (p) *p = 0;
-    }
     return true;
   } else {
     return false;
@@ -569,7 +565,7 @@ String ClientSIM5360::getIP()
 {
   uint32_t t = millis();
   do {
-    if (sendCommand("AT+IPADDR\r", 3000, "\r\nOK\r\n", true)) {
+    if (sendCommand("AT+IPADDR\r", 3000, "\r\nOK\r\n")) {
       char *p = strstr(m_buffer, "+IPADDR:");
       if (p) {
         char *ip = p + 9;
@@ -632,7 +628,7 @@ String ClientSIM5360::queryIP(const char* host)
   return "";
 }
 
-bool ClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
+bool ClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const char* expected)
 {
   if (cmd) {
     m_device->xbWrite(cmd);
@@ -640,13 +636,56 @@ bool ClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const cha
   m_buffer[0] = 0;
   byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
   if (ret) {
-    if (terminated) {
-      char *p = strstr(m_buffer, expected);
-      if (p) *p = 0;
-    }
     return true;
   } else {
     return false;
+  }
+}
+
+float ClientSIM5360::parseDegree(const char* s)
+{
+  char *p;
+  unsigned long left = atol(s);
+  unsigned long tenk_minutes = (left % 100UL) * 100000UL;
+  if ((p = strchr(s, '.')))
+  {
+    unsigned long mult = 10000;
+    while (isdigit(*++p))
+    {
+      tenk_minutes += mult * (*p - '0');
+      mult /= 10;
+    }
+  }
+  return (left / 100) + (float)tenk_minutes / 6 / 1000000;
+}
+
+void ClientSIM5360::checkGPS()
+{
+  if (m_gps) {
+    // check and parse GPS data
+    char *p;
+    if ((p = strstr(m_buffer, "+CGPSINFO:"))) do {
+      if (!(p = strchr(p, ':'))) break;
+      if (*(++p) == ',') break;
+      m_gps->lat = parseDegree(p);
+      if (!(p = strchr(p, ','))) break;
+      if (*(++p) == 'S') m_gps->lat = -m_gps->lat;
+      if (!(p = strchr(p, ','))) break;
+      m_gps->lng = parseDegree(++p);
+      if (!(p = strchr(p, ','))) break;
+      if (*(++p) == 'W') m_gps->lng = -m_gps->lng;
+      if (!(p = strchr(p, ','))) break;
+      m_gps->date = atoi(++p);
+      if (!(p = strchr(p, ','))) break;
+      m_gps->time = atof(++p) * 100;
+      if (!(p = strchr(p, ','))) break;
+      m_gps->alt = atof(++p);
+      if (!(p = strchr(p, ','))) break;
+      m_gps->speed = atof(++p);
+      if (!(p = strchr(p, ','))) break;
+      m_gps->heading = atoi(++p);
+      m_gps->ts = millis();
+    } while (0);
   }
 }
 
@@ -694,33 +733,8 @@ char* UDPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 
 char* UDPClientSIM5360::checkIncoming(int* pbytes)
 {
-  char *p;
-  if (m_gps) {
-    // check GPS data
-    if ((p = strstr(m_buffer, "+CGPSINFO:"))) do {
-      if (!(p = strchr(p, ':'))) break;
-      if (*(++p) == ',') break;
-      m_gps->lat = atof(p) / 100;
-      if (!(p = strchr(p, ','))) break;
-      if (*(++p) == 'S') m_gps->lat = -m_gps->lat;
-      if (!(p = strchr(p, ','))) break;
-      m_gps->lng = atof(++p) / 100;
-      if (!(p = strchr(p, ','))) break;
-      if (*(++p) == 'W') m_gps->lng = -m_gps->lng;
-      if (!(p = strchr(p, ','))) break;
-      m_gps->date = atoi(++p);
-      if (!(p = strchr(p, ','))) break;
-      m_gps->time = atof(++p) * 100;
-      if (!(p = strchr(p, ','))) break;
-      m_gps->alt = atof(++p);
-      if (!(p = strchr(p, ','))) break;
-      m_gps->speed = atof(++p);
-      if (!(p = strchr(p, ','))) break;
-      m_gps->heading = atoi(++p);
-      m_gps->ts = millis();
-    } while (0);
-  }
-	p = strstr(m_buffer, "+IPD");
+  checkGPS();
+  char *p = strstr(m_buffer, "+IPD");
 	if (p) {
     *p = '-'; // mark this datagram as checked
     int len = atoi(p + 4);
@@ -781,8 +795,10 @@ int HTTPClientSIM5360::send(HTTP_METHOD method, const char* path, bool keepAlive
 char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 {
   const char* expected = "+CHTTPS: RECV EVENT";
+  checkGPS();
   if (!strstr(m_buffer, expected)) {
-    bool hasEvent = m_device->xbRead(m_buffer, sizeof(m_buffer), timeout) > 0 && strstr(m_buffer, expected) != 0;
+    bool hasEvent = sendCommand(0, timeout, expected);
+    checkGPS();
     if (!hasEvent) return 0;
   }
 
@@ -792,9 +808,12 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
   /*
     +CHTTPSRECV:XX\r\n
     [XX bytes from server]\r\n
-    \r\n+CHTTPSRECV: 0\r\n
+    +CHTTPSRECV: 0\r\n
   */
-  if (sendCommand("AT+CHTTPSRECV=384\r", HTTP_CONN_TIMEOUT, "\r\n+CHTTPSRECV: 0", true)) {
+  sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", sizeof(m_buffer) - 36);
+  bool success = sendCommand(m_buffer, HTTP_CONN_TIMEOUT, "\r\n+CHTTPSRECV: 0");
+  checkGPS();
+  if (success) {
     char *p = strstr(m_buffer, "+CHTTPSRECV:");
     if (p) {
       p = strchr(p, ',');
@@ -802,6 +821,9 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
         received = atoi(p + 1);
         char *q = strchr(p, '\n');
         payload = q ? (q + 1) : p;
+        if (m_buffer + sizeof(m_buffer) - payload > received) {
+          payload[received] = 0;
+        }
       }
     }
   }
