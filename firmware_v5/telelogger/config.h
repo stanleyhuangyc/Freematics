@@ -20,7 +20,8 @@
 #define STORAGE_SD 2
 
 #define PROTOCOL_UDP 1
-#define PROTOCOL_HTTP 2
+#define PROTOCOL_HTTP_GET 2
+#define PROTOCOL_HTTP_POST 3
 
 /**************************************
 * OBD-II configurations

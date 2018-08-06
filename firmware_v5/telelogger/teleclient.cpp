@@ -233,11 +233,11 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 
   lastSentTime = millis();
   int ret;
-  if (!packetBuffer) {
-    ret = net.send(HTTP_GET, url, true);
-  } else {
-    ret = net.send(HTTP_POST, url, true, packetBuffer, packetSize);
-  }
+#if SERVER_PROTOCOL == PROTOCOL_HTTP_POST
+  ret = net.send(HTTP_POST, url, true, packetBuffer, packetSize);
+#else
+  ret = net.send(HTTP_GET, url, true);
+#endif
   if (ret == 0) {
     Serial.println("Connection closed by server");
     net.close();
@@ -248,7 +248,6 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
     txBytes += ret;
     txCount++;
   }  
-  Serial.println();
   return ret > 0;
 }
 
