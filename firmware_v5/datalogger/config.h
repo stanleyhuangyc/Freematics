@@ -31,6 +31,7 @@
 #endif
 
 #define WIFI_JOIN_TIMEOUT 30000
+#define ENABLE_NMEA_SERVER 0
 #define NMEA_TCP_PORT 4000
 
 /**************************************
