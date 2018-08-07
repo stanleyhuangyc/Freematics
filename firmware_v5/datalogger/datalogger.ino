@@ -420,10 +420,10 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
 
+    sys.begin();
 #if USE_OBD
     while (!(obd = createOBD()));
 #endif
-    sys.begin();
 
 #if MEMS_MODE
     Serial.print("MEMS...");

@@ -308,7 +308,7 @@ void serverProcess(int timeout)
 
 bool serverCheckup(int wifiJoinPeriod)
 {
-#ifdef ENABLE_WIFI_STATION
+#if ENABLE_WIFI_STATION
     static uint32_t wifiStartTime = 0;
     if (WiFi.status() != WL_CONNECTED) {
         if (wifiStartTime == 0 || millis() - wifiStartTime > wifiJoinPeriod) {
