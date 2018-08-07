@@ -308,15 +308,14 @@ void serverProcess(int timeout)
 
 bool serverCheckup(int wifiJoinPeriod)
 {
+#ifdef ENABLE_WIFI_STATION
     static uint32_t wifiStartTime = 0;
     if (WiFi.status() != WL_CONNECTED) {
         if (wifiStartTime == 0 || millis() - wifiStartTime > wifiJoinPeriod) {
             WiFi.disconnect(false);
-#if ENABLE_WIFI_AP && ENABLE_WIFI_STATION
+#if ENABLE_WIFI_AP
             WiFi.mode (WIFI_AP_STA);
-#elif ENABLE_WIFI_AP
-            WiFi.mode (WIFI_AP);
-#elif ENABLE_WIFI_STATION
+#else
             WiFi.mode (WIFI_STA);
 #endif
             Serial.print("Connecting to hotspot (SSID:");
@@ -331,15 +330,11 @@ bool serverCheckup(int wifiJoinPeriod)
             Serial.print("Connected to hotspot. IP:");
             Serial.println(WiFi.localIP());
 
-            // start mDNS responder
-            MDNS.begin("datalogger");
-            MDNS.addService("http", "tcp", 80);
-            MDNS.addService("nmea", "tcp", NMEA_TCP_PORT);
-
             wifiStartTime = 0;
         }
         return true;
     }
+#endif
     return false;
 }
 
@@ -360,9 +355,16 @@ bool serverSetup()
     Serial.print(' ');
 #endif
 
+    // start mDNS responder
+    MDNS.begin("datalogger");
+#if ENABLE_NMEA_SERVER
+    MDNS.addService("nmea", "tcp", NMEA_TCP_PORT);
+#endif
+
 #if ENABLE_HTTPD
     mwInitParam(&httpParam, 80, "/spiffs");
     httpParam.pxUrlHandler = urlHandlerList;
+    MDNS.addService("http", "tcp", 80);
 
     if (mwServerStart(&httpParam)) {
         return false;
