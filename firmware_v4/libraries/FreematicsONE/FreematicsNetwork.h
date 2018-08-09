@@ -84,11 +84,7 @@ public:
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
     char* checkIncoming(int* pbytes);
-#ifdef ESP32
-    char m_buffer[256] = {0};
-#else
     char m_buffer[80] = {0};
-#endif
     uint8_t m_stage = 0;
     CFreematics* m_device = 0;
 };
@@ -106,19 +102,15 @@ public:
     void close();
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
-    String queryIP(const char* host);
     char* getBuffer() { return m_buffer; }
     const char* deviceName() { return "SIM5360"; }
 private:
-    // send command and check for expected response
-    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
-    char* checkIncoming(int* pbytes);
-#ifdef ESP32
-    char m_buffer[256] = {0};
-#else
-    char m_buffer[80] = {0};
-#endif
-    char udpIP[16] = {0};
+    // send command and check for expected response 
+    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
+    char* checkIncoming(char* ipd, int* pbytes);
+    void checkGPS();
+    char m_buffer[128] = {0};
+    byte udpIP[4] = {0};
     uint16_t udpPort = 0;
     uint8_t m_stage = 0;
     CFreematics* m_device = 0;

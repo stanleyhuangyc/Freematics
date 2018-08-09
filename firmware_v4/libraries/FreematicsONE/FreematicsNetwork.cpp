@@ -206,7 +206,7 @@ bool UDPClientSIM800::setup(const char* apn, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
-  sendCommand("ATE0\r");
+  if (!sendCommand("ATE0\r") && !sendCommand("ATE0\r")) return false;
   do {
     success = sendCommand("AT+CREG?\r", 3000, "+CREG: 0,1") != 0;
     Serial.print('.');
@@ -294,8 +294,8 @@ bool UDPClientSIM800::send(const char* data, unsigned int len)
 {
   sprintf_P(m_buffer, PSTR("AT+CIPSEND=%u\r"), len);
   if (sendCommand(m_buffer, 200, ">")) {
-    m_device->xbWrite(data, len);
-    m_device->xbWrite("\r", 1);
+    m_device->xbWrite(data);
+    m_device->xbWrite("\r");
     if (sendCommand(0, 5000, "\r\nSEND OK")) {
       return true;
     }
@@ -435,7 +435,7 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
-  sendCommand("ATE0\r");
+  if (!sendCommand("ATE0\r") && !sendCommand("ATE0\r")) return false;
   if (only3G) sendCommand("AT+CNMP=14\r"); // use WCDMA only
   do {
     do {
@@ -473,6 +473,7 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
     //sendCommand("AT+CSOCKAUTH=,,\"password\",\"password\"\r");
     sendCommand("AT+CIPMODE=0\r");
     sendCommand("AT+NETOPEN\r");
+    //sendCommand("AT+CGPS=1\r");
   } while(0);
   if (!success) Serial.println(m_buffer);
   return success;
@@ -482,7 +483,7 @@ String UDPClientSIM5360::getIP()
 {
   uint32_t t = millis();
   do {
-    if (sendCommand("AT+IPADDR\r", 3000, "OK\r\n", true)) {
+    if (sendCommand("AT+IPADDR\r", 3000)) {
       char *p = strstr(m_buffer, "+IPADDR:");
       if (p) {
         char *ip = p + 9;
@@ -530,15 +531,31 @@ String UDPClientSIM5360::getOperatorName()
 bool UDPClientSIM5360::open(const char* host, uint16_t port)
 {
   if (host) {
-    String ip = queryIP(host);
-    if (ip.length()) {
-      strncpy(udpIP, ip.c_str(), sizeof(udpIP) - 1);
-    } else {
+    sprintf_P(m_buffer, PSTR("AT+CDNSGIP=\"%s\"\r"), host);
+    if (sendCommand(m_buffer, 10000, "+CDNSGIP:")) {
+      char *p = strstr(m_buffer, host);
+      if (p) {
+        if ((p = strchr(p, ','))) {
+          p += 2;
+          do {
+            udpIP[0] = atoi(p);
+            if (!(p = strchr(p, '.'))) break;
+            udpIP[1] = atoi(++p);
+            if (!(p = strchr(p, '.'))) break;
+            udpIP[2] = atoi(++p);
+            if (!(p = strchr(p, '.'))) break;
+            udpIP[3] = atoi(++p);
+          } while(0);
+        }
+      }
+    }
+    if (!udpIP[0]) {
       return false;
     }
     udpPort = port;
   }
-  sprintf_P(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP, udpPort);
+  sprintf_P(m_buffer, PSTR("AT+CIPOPEN=0,\"UDP\",\"%u.%u.%u.%u\",%u,8000\r"),
+    udpIP[0], udpIP[1], udpIP[2], udpIP[3], udpPort);
   return sendCommand(m_buffer, 3000);
 }
 
@@ -549,58 +566,61 @@ void UDPClientSIM5360::close()
 
 bool UDPClientSIM5360::send(const char* data, unsigned int len)
 {
-  sprintf_P(m_buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, udpIP, udpPort);
-  if (sendCommand(m_buffer, 100, ">")) {
-    m_device->xbWrite(data, len);
-    return sendCommand(0, 1000);
-  }
-  return false;
+  sprintf_P(m_buffer, PSTR("AT+CIPSEND=0,%u,\"%u.%u.%u.%u\",%u\r"),
+    len, udpIP[0], udpIP[1], udpIP[2], udpIP[3], udpPort);
+  m_device->xbWrite(m_buffer);
+  delay(10);
+  return sendCommand(data, 1000);
 }
 
 char* UDPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 {
-	char *data = checkIncoming(pbytes);
-	if (data) return data;
-  if (sendCommand(0, timeout, "+IPD")) {
-		return checkIncoming(pbytes);
+  for (;;) {
+    checkGPS();
+    char *ipd = strstr(m_buffer, "+IPD");
+    if (ipd) {
+      char *payload = checkIncoming(ipd, pbytes);
+      if (payload) {
+        *ipd = '-';
+        return payload;
+      }
+      if (sendCommand("AT+CGPSINFO\r", timeout)) {
+        checkGPS();
+        return m_buffer;
+      }
+      break;
+    } else {
+      if (!sendCommand("AT+CGPSINFO\r", timeout, "+IPD")) {
+        checkGPS();
+        break;
+      }
+    }
   }
   return 0;
 }
 
-char* UDPClientSIM5360::checkIncoming(int* pbytes)
+char* UDPClientSIM5360::checkIncoming(char* ipd, int* pbytes)
 {
-	char *p = strstr(m_buffer, "+IPD");
-	if (!p) return 0;
-	*p = '-'; // mark this datagram as checked
-	int len = atoi(p + 4);
+	unsigned int len = atoi(ipd + 4);
+  if (len == 0) return 0;
 	if (pbytes) *pbytes = len;
-	p = strchr(p, '\n');
+	char *p = strchr(ipd, '\n');
 	if (p) {
-		*(++p + len) = 0;
+    if (strlen(++p) > len) *(p + len) = 0;
 		return p;
 	}
 	return 0;
 }
 
-String UDPClientSIM5360::queryIP(const char* host)
+void UDPClientSIM5360::checkGPS()
 {
-  sprintf_P(m_buffer, PSTR("AT+CDNSGIP=\"%s\"\r"), host);
-  if (sendCommand(m_buffer, 10000)) {
-    char *p = strstr(m_buffer, host);
-    if (p) {
-      p = strstr(p, ",\"");
-      if (p) {
-        char *ip = p + 2;
-        p = strchr(ip, '\"');
-        if (p) *p = 0;
-        return ip;
-      }
-    }
+  char *p = strstr_P(m_buffer, PSTR("+CGPSINFO:"));
+  if (p) {
+    // TODO
   }
-  return "";
 }
 
-bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const char* expected, bool terminated)
+bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const char* expected)
 {
   if (cmd) {
     m_device->xbWrite(cmd);
@@ -608,10 +628,6 @@ bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const 
   m_buffer[0] = 0;
   byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
   if (ret) {
-    if (terminated) {
-      char *p = strstr(m_buffer, expected);
-      if (p) *p = 0;
-    }
     return true;
   } else {
     return false;

@@ -36,19 +36,15 @@ char vin[18] = DEFAULT_VIN;
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
-uint32_t lastSentTime = 0;
-uint32_t lastSyncTime = 0;
 uint8_t deviceTemp = 0; // device temperature
-uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 
 uint16_t feedid = 0;
 uint32_t txCount = 0;
 uint8_t connErrors = 0;
-
+uint32_t lastSyncTime = 0;
 uint32_t lastCmdToken = 0;
 
-
-void idleTasks();
+void idleTasks(int timeout);
 
 class State {
 public:
@@ -117,12 +113,13 @@ bool notifyServer(byte event, const char* serverKey, const char* payload)
   //Serial.println(cache.buffer());
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.send(cache.buffer(), cache.length())) {
-      Serial.print('.');
+      Serial.println("Error sending");
       delay(1000);
       continue;
     }
     if (event == EVENT_ACK) return true; // no reply for ACK
     // receive reply
+    delay(1000);
     int len;
     char *data = net.receive(&len);
     if (!data) {
@@ -149,6 +146,7 @@ bool notifyServer(byte event, const char* serverKey, const char* payload)
     Serial.print(' ');
     connErrors = 0;
     // success
+    lastSyncTime = millis();
     return true;
   }
   return false;
@@ -203,7 +201,6 @@ void transmit()
     Serial.print(' ');
     Serial.print(cache.length());
     Serial.println(" bytes");
-    lastSentTime = millis();
   } else {
     connErrors++;
   }
@@ -329,6 +326,22 @@ bool initialize()
   state.clear(STATE_ALL_GOOD);
   distance = 0;
 
+  if (!state.check(STATE_OBD_READY)) {
+    obd.begin();
+  }
+  // initialize network module
+  if (!state.check(STATE_NET_READY)) {
+    Serial.print(net.deviceName());
+    Serial.print("...");
+    if (net.begin(&sys)) {
+      Serial.println("OK");
+      state.set(STATE_NET_READY);
+    } else {
+      Serial.println("NO");
+      return false;
+    }
+  }
+
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
     Serial.print("MEMS...");
@@ -343,7 +356,6 @@ bool initialize()
 
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
-    obd.begin();
     Serial.print("OBD...");
     if (!obd.init()) {
       Serial.println("NO");
@@ -361,7 +373,7 @@ bool initialize()
     Serial.println();
   }
 
-#ifdef ENABLE_GPS
+#if ENABLE_GPS
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     Serial.print("GPS...");
@@ -374,18 +386,6 @@ bool initialize()
   }
 #endif
 
-  // initialize network module
-  if (!state.check(STATE_NET_READY)) {
-    Serial.print(net.deviceName());
-    Serial.print("...");
-    if (net.begin(&sys)) {
-      Serial.println("OK");
-      state.set(STATE_NET_READY);
-    } else {
-      Serial.println("NO");
-      return false;
-    }
-  }
 #if NET_DEVICE == NET_WIFI
   for (byte attempts = 0; attempts < 3; attempts++) {
     Serial.print("WIFI(SSID:");
@@ -446,12 +446,6 @@ bool initialize()
     return false;
   }
   state.set(STATE_CONNECTED);
-
-  lastSyncTime = millis();
-#if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
-  // log signal level
-  if (csq) cache.log(PID_CSQ, csq);
-#endif
 
   state.set(STATE_ALL_GOOD);
   return true;
@@ -584,15 +578,15 @@ void process()
   }
 #endif
 
-  if (syncInterval > 10000 && millis() - lastSyncTime > syncInterval) {
-    Serial.println("NO SYNC");
-    connErrors++;
-  } else if (cache.samples() > 0) {
+  if (cache.samples() > 0) {
     // start data chunk
     transmit();
   }
 
-  idleTasks();
+  if (millis() - lastSyncTime > SERVER_SYNC_INTERVAL * 1000) {
+    Serial.println("NO SYNC");
+    connErrors++;
+  }
 
   if (obd.errors > MAX_OBD_ERRORS) {
     obd.reset();
@@ -601,10 +595,12 @@ void process()
 
   // maintain minimum loop time
 #if MIN_LOOP_TIME
-  while (millis() - startTime < MIN_LOOP_TIME) {
-    delay(100);
-    idleTasks();
-  }
+  int elapsed = millis() - startTime;
+  if (elapsed < MIN_LOOP_TIME) idleTasks(MIN_LOOP_TIME - elapsed);
+  elapsed = millis() - startTime;
+  if (elapsed < MIN_LOOP_TIME) delay (MIN_LOOP_TIME - elapsed);
+#else
+  idleTasks(50);
 #endif
 }
 
@@ -654,6 +650,7 @@ void standby()
 #endif
   state.clear(STATE_STANDBY);
   Serial.println("Wakeup");
+  delay(1000);
 #if RESET_AFTER_WAKEUP
     void(* resetFunc) (void) = 0;
     resetFunc();
@@ -663,12 +660,12 @@ void standby()
 /*******************************************************************************
   Tasks to perform in idle/waiting time
 *******************************************************************************/
-void idleTasks()
+void idleTasks(int timeout)
 {
   // check incoming datagram
   do {
     int len = 0;
-    char *data = net.receive(&len, 0);
+    char *data = net.receive(&len, timeout);
     if (data) {
       data[len] = 0;
       if (!verifyChecksum(data)) {
@@ -682,10 +679,8 @@ void idleTasks()
       case EVENT_COMMAND:
         processCommand(data);
         break;
-      case EVENT_SYNC:
-        lastSyncTime = millis();
-        break;
       }
+      lastSyncTime = millis();
     }
   } while(0);
 }
