@@ -65,6 +65,7 @@ int16_t batteryVoltage = 0;
 #if ENABLE_GPS
 GPS_DATA* gd = 0;
 uint32_t lastGPSts = 0;
+uint8_t lastGPSDay = 0;
 #endif
 
 char isoTime[24] = {0};
@@ -241,10 +242,13 @@ void processOBD()
     if (tier > 1) break;
   }
 
-  if (!gd || !gd->ts) {
+#if ENABLE_GPS
+  if (!gd || !gd->ts)
+#endif
+  {
     // calculate distance for speed
     float kph = obdData[0].value;
-    distance += (kph + lastKph) * (t - lastKphTime) / 3600 / 2;
+    if (lastKphTime) distance += (kph + lastKph) * (t - lastKphTime) / 3600 / 2;
     lastKphTime = t;
     lastKph = kph;
   }
@@ -254,7 +258,6 @@ void processOBD()
 #if ENABLE_GPS
 void processGPS()
 {
-  static uint8_t lastGPSDay = 0;
   if (state.check(STATE_GPS_READY)) {
     // read parsed GPS data
     if (!sys.gpsGetData(&gd)) {
@@ -268,7 +271,8 @@ void processGPS()
 #endif
   }
 
-  if (!gd) return;
+  if (!gd || lastGPSts == gd->ts) return;
+
   byte day = gd->date / 10000;
   cache.log(PID_GPS_TIME, gd->time);
   if (lastGPSDay != day) {
@@ -284,7 +288,7 @@ void processGPS()
   
   if (kph >= 1 || lastKph >= 1) {
       // compute distance travelled from average of two speed samples (either is above 1kph)
-      distance += (kph + lastKph) * (gd->ts - lastKphTime) / 3600 / 2;
+      if (lastKphTime) distance += (kph + lastKph) * (gd->ts - lastKphTime) / 3600 / 2;
       lastKph = kph;
       lastKphTime = gd->ts;
   }
@@ -397,6 +401,10 @@ bool initialize()
       return false;
     }
   }
+#elif NET_DEVICE == NET_WIFI
+  Serial.print("WiFi...");
+  teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.println(WIFI_SSID);
 #endif
 
 #if MEMS_MODE
@@ -443,12 +451,11 @@ bool initialize()
   }
 #endif
 
-#ifdef ENABLE_GPS
+#if ENABLE_GPS
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     Serial.print("GPS...");
-    memset(&gd, 0, sizeof(gd));
-    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false, true)) {
       state.set(STATE_GPS_READY);
       Serial.println("OK");
 #if ENABLE_OLED
@@ -456,6 +463,7 @@ bool initialize()
 #endif
     } else {
       Serial.println("NO");
+      sys.gpsEnd();
     }
   }
 #endif
@@ -466,16 +474,10 @@ bool initialize()
 #endif
 
   for (byte attempts = 0; attempts < 10; attempts++) {
-    if (!teleClient.net.begin()) continue;
-    Serial.print("WiFi(SSID:");
-    Serial.print(WIFI_SSID);
-    Serial.print(")...");
-    if (teleClient.net.setup(WIFI_SSID, WIFI_PASSWORD)) {
+    Serial.print("WiFi...");
+    if (teleClient.net.setup()) {
       Serial.println("OK");
       state.set(STATE_NET_READY);
-#if ENABLE_OLED
-      oled.print("OK");
-#endif
       break;
     } else {
       Serial.println("NO");
@@ -726,8 +728,8 @@ void showStats()
   Serial.print(" bytes | Out: ");
   Serial.print(teleClient.txBytes >> 10);
   Serial.print(" KB | In: ");
-  Serial.print(teleClient.rxBytes);
-  Serial.print(" bytes");
+  Serial.print(teleClient.rxBytes >> 10);
+  Serial.print(" KB");
 #if STORAGE != STORAGE_NONE
   Serial.print(" | File: ");
   Serial.print(store.size() >> 10);
@@ -841,12 +843,15 @@ void process()
     Serial.println("Reset OBD");
     obd->reset();
     state.clear(STATE_OBD_READY | STATE_WORKING);
+  } else if (obd->errors > 3) {
+    delay(5000);
   }
 #endif
 
 #if MEMS_MODE && MOTIONLESS_STANDBY
-  if (!state.check(STATE_OBD_READY) && state.check(STATE_MEMS_READY)) {
+  if (state.check(STATE_MEMS_READY)) {
     if (millis() - lastMotionTime > MOTIONLESS_STANDBY * 1000) {
+      Serial.println("No motion detected");
       // enter standby mode
       state.clear(STATE_WORKING);
     }
@@ -854,16 +859,10 @@ void process()
 #endif
 
   // maintain minimum loop time
-#if MIN_LOOP_TIME
   do {
-#endif
     idleTasks();
-#if ENABLE_HTTPD
     serverProcess(0);
-#endif
-#if MIN_LOOP_TIME
   } while (millis() - startTime < MIN_LOOP_TIME);
-#endif
 }
 
 /*******************************************************************************
@@ -881,7 +880,7 @@ void standby()
 #if ENABLE_GPS
   if (state.check(STATE_GPS_READY)) {
     Serial.println("GPS OFF");
-    sys.gpsInit(0); // turn off GPS power
+    sys.gpsEnd();
   }
 #endif
 #if ENABLE_OBD
@@ -915,11 +914,7 @@ void standby()
         Serial.println(motion);
         break;
       }
-#if ENABLE_HTTPD
       serverProcess(100);
-#else
-      delay(100);
-#endif
     }
   }
 #elif ENABLE_OBD

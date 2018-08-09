@@ -29,9 +29,8 @@ unsigned int HTTPClient::genHeader(char* header, HTTP_METHOD method, const char*
   Implementation for WiFi (on top of Arduino WiFi library)
 *******************************************************************************/
 
-bool ClientWIFI::setup(const char* ssid, const char* password, unsigned int timeout)
+bool ClientWIFI::setup(unsigned int timeout)
 {
-  WiFi.begin(ssid, password);
   for (uint32_t t = millis(); millis() - t < timeout;) {
     if (WiFi.status() == WL_CONNECTED) {
       return true;
@@ -46,16 +45,16 @@ String ClientWIFI::getIP()
   return WiFi.localIP().toString();
 }
 
-bool ClientWIFI::begin()
+bool ClientWIFI::begin(const char* ssid, const char* password)
 {
-  WiFi.disconnect();
-  listAPs();
+  //listAPs();
+  WiFi.begin(ssid, password);
   return true;
 }
 
 void ClientWIFI::end()
 {
-  WiFi.disconnect(true);
+  WiFi.disconnect(false);
 }
 
 void ClientWIFI::listAPs()
@@ -741,7 +740,7 @@ char* UDPClientSIM5360::checkIncoming(int* pbytes)
     if (pbytes) *pbytes = len;
     p = strchr(p, '\n');
     if (p) {
-      *(++p + len) = 0;
+      if (strlen(++p) > len) *(p + len) = 0;
       return p;
     }
   }

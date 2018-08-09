@@ -494,7 +494,7 @@ void setup()
     nmeaServer.begin();
 
     Serial.print("GPS...");
-    if (sys.gpsInit(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
         logger.setState(STATE_GPS_FOUND);
         Serial.println("OK");
         //taskWifi.create(wifi_thread, "wifi_thread", 16 * 1024);
