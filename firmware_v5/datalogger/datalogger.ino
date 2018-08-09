@@ -254,8 +254,7 @@ public:
 #if USE_GPS
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("GPS...");
-        memset(&gd, 0, sizeof(gd));
-        if (sys.gpsInit(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
+        if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
           setState(STATE_GPS_FOUND);
           Serial.println("OK");
           //waitGPS();
@@ -317,7 +316,7 @@ public:
 #if USE_GPS
         if (checkState(STATE_GPS_READY)) {
             Serial.print("GPS:");
-            sys.gpsInit(0); // turn off GPS power
+            sys.gpsEnd(); // turn off GPS power
             Serial.println("OFF");
         }
 #endif

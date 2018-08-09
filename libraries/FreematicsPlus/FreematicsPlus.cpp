@@ -188,55 +188,8 @@ void FreematicsESP32::begin(int cpuMHz)
     esp_task_wdt_init(600, 0);
 }
 
-bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered, bool softserial)
+void FreematicsESP32::gpsEnd()
 {
-	bool success = true;
-	if (baudrate) {
-		pinMode(PIN_GPS_POWER, OUTPUT);
-		// turn on GPS power
-		digitalWrite(PIN_GPS_POWER, HIGH);
-
-        if (buffered && !nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
-        nmeaBytes = 0;
-
-        if (!gpsData) gpsData = new GPS_DATA;
-        memset(gpsData, 0, sizeof(GPS_DATA));
-
-        if (taskGPS.running()) {
-            taskGPS.resume();
-        } else if (!softserial) {
-            uart_config_t uart_config = {
-                .baud_rate = 115200,
-                .data_bits = UART_DATA_8_BITS,
-                .parity = UART_PARITY_DISABLE,
-                .stop_bits = UART_STOP_BITS_1,
-                .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-                .rx_flow_ctrl_thresh = 122,
-            };
-            //Configure UART parameters
-            uart_param_config(GPS_UART_NUM, &uart_config);
-            //Set UART pins
-            uart_set_pin(GPS_UART_NUM, PIN_GPS_UART_TXD, PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-            //Install UART driver
-            uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
-            // start GPS decoding task
-            taskGPS.create(gps_decode_task, "GPS", 0);
-        } else {
-            // start GPS decoding task (soft serial)
-            taskGPS.create(gps_soft_decode_task, "GPS", 2);
-        }
-        delay(10);
-
-        // test run for a while to see if there is data decoded
-        uint16_t s1 = 0, s2 = 0;
-        gps.stats(&s1, 0);
-        for (int i = 0; i < 20; i++) {
-            delay(100);
-            gps.stats(&s2, 0);
-            if (s1 != s2) return true;
-        }
-        success = false;
-	}
     // uninitialize
     if (nmeaBuffer) {
         nmeaBufferMutex.lock();
@@ -247,7 +200,53 @@ bool FreematicsESP32::gpsInit(unsigned long baudrate, bool buffered, bool softse
     taskGPS.suspend();
 	//turn off GPS power
   	digitalWrite(PIN_GPS_POWER, LOW);
-	return success;
+}
+
+bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softserial)
+{
+    pinMode(PIN_GPS_POWER, OUTPUT);
+    // turn on GPS power
+    digitalWrite(PIN_GPS_POWER, HIGH);
+
+    if (buffered && !nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
+    nmeaBytes = 0;
+
+    if (!gpsData) gpsData = new GPS_DATA;
+    memset(gpsData, 0, sizeof(GPS_DATA));
+
+    if (taskGPS.running()) {
+        taskGPS.resume();
+    } else if (!softserial) {
+        uart_config_t uart_config = {
+            .baud_rate = 115200,
+            .data_bits = UART_DATA_8_BITS,
+            .parity = UART_PARITY_DISABLE,
+            .stop_bits = UART_STOP_BITS_1,
+            .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+            .rx_flow_ctrl_thresh = 122,
+        };
+        //Configure UART parameters
+        uart_param_config(GPS_UART_NUM, &uart_config);
+        //Set UART pins
+        uart_set_pin(GPS_UART_NUM, PIN_GPS_UART_TXD, PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        //Install UART driver
+        uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
+        // start GPS decoding task
+        taskGPS.create(gps_decode_task, "GPS", 0);
+    } else {
+        // start GPS decoding task (soft serial)
+        taskGPS.create(gps_soft_decode_task, "GPS", 2);
+    }
+
+    // test run for a while to see if there is data decoded
+    uint16_t s1 = 0, s2 = 0;
+    gps.stats(&s1, 0);
+    for (int i = 0; i < 20; i++) {
+        delay(100);
+        gps.stats(&s2, 0);
+        if (s1 != s2) return true;
+    }
+    return false;
 }
 
 bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)

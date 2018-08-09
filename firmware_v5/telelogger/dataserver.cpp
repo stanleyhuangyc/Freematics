@@ -321,4 +321,11 @@ bool serverSetup(IPAddress& ip)
     return true;
 }
 
+#else
+
+void serverProcess(int timeout)
+{
+    delay(timeout);
+}
+
 #endif

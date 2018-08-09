@@ -174,11 +174,7 @@ bool COBD::readPID(byte pid, int& result)
 	char* data = 0;
 	sprintf(buffer, "%02X%02X\r", dataMode, pid);
 	write(buffer);
-#if SPI_SAFE_MODE
-	delay(20);
-#else
 	delay(1);
-#endif
 	uint32_t t = millis();
 	int ret = receive(buffer, sizeof(buffer), pidWaitTime);
 	pidWaitTime = millis() - t + (pidWaitTime >> 1);
@@ -201,6 +197,7 @@ bool COBD::readPID(byte pid, int& result)
 
 	if (!data) {
 		errors++;
+		recover();
 		return false;
 	}
 	result = normalizeData(pid, data);
@@ -519,30 +516,42 @@ int COBD::receive(char* buffer, int bufsize, unsigned int timeout)
 	unsigned long startTime = millis();
 	unsigned long elapsed;
 	for (;;) {
-		char c = 0;
 		elapsed = millis() - startTime;
 		if (elapsed > timeout) break;
 #if !USE_SOFT_SERIAL
-		int len = uart_read_bytes(OBD_UART_NUM, (uint8_t*)&c, 1, (timeout - elapsed) / portTICK_RATE_MS);
+		if (n >= bufsize - 1) break;
+		int len = uart_read_bytes(OBD_UART_NUM, (uint8_t*)buffer + n, bufsize - n - 1, 1);
 		if (len < 0) break;
 		if (len == 0) continue;
+		buffer[n + len] = 0;
+		if (strchr(buffer + n, '>')) {
+			n += len;
+			break;
+		}
+		n += len;
+		if (strstr(buffer, "...")) {
+			buffer[0] = 0;
+			n = 0;
+			timeout += OBD_TIMEOUT_LONG;
+		}
 #else
+		char c = 0;
 		int ret = serialRx(timeout);
 		if (ret <= 0) continue;
 		c = (char)ret;
-#endif
 		if (c) {
 			if (c == '>') break;
 			if (n < bufsize - 1) {
 				if (c == '.' && n > 2 && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
 					// waiting siginal
 					n = 0;
-					timeout = OBD_TIMEOUT_LONG;
+					timeout += OBD_TIMEOUT_LONG;
 				} else {
 					buffer[n++] = c;
 				}
 			}
 		}
+#endif
 	}
 #ifdef DEBUG
 	DEBUG.print(">>>");
