@@ -10,7 +10,6 @@
 #include <Wire.h>
 #include "FreematicsONE.h"
 
-#define SAFE_MODE 1
 //#define XBEE_DEBUG
 //#define DEBUG Serial
 
@@ -135,9 +134,6 @@ bool COBDSPI::readPID(byte pid, int& result)
 	// receive and parse the response
 	char buffer[64];
 	char* data = 0;
-#if SAFE_MODE
-	sleep(10);
-#endif
 	idleTasks();
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
@@ -408,7 +404,6 @@ byte COBDSPI::begin()
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
 	SPI.setClockDivider(SPI_CLOCK_DIV64);
-	reset();
 	return getVersion();
 }
 
@@ -444,11 +439,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				break;
 			}
 		}
-#if SAFE_MODE
-		delay(10);
-#else
 		delay(1);
-#endif
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
@@ -465,21 +456,10 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				// SEARCHING...
 				n = 4;
 				timeout += OBD_TIMEOUT_LONG;
-			} else if (c != 0 && c != 0xff) {
-				if (n == bufsize - 1) {
-					int bytesDumped = dumpLine(buffer, n);
-					n -= bytesDumped;
-#ifdef DEBUG
-					debugOutput("BUFFER FULL");
-#endif
-				}
-				buffer[n] = c;
-				eos = (c == 0x9 && buffer[n - 1] =='>');
-				if (eos) {
-					n--;
-					break;
-				}
-				n++;
+			} else if (c == 0x9) {
+				eos = true;
+			} else if (c != 0 && c != 0xff && n < bufsize - 1) {
+				buffer[n++] = c;
 			}
 		}
 		delay(1);
@@ -549,11 +529,7 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int 
 	byte n;
 	do {
 		write(cmd);
-#if SAFE_MODE
-		sleep(20);
-#else
 		delay(1);
-#endif
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp_P(buf + 5, PSTR("NO DATA"), 7))) {
 			// data not ready
@@ -716,10 +692,10 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 	uint32_t t = millis();
 	buffer[0] = 0;
 	do {
-		if (bytesRecv >= bufsize - 16) {
+		while (bytesRecv >= bufsize / 2) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1);
+		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv);
 		if (n > 0) {
 			buffer[bytesRecv + n] = 0;
 			// skip 4-byte header
