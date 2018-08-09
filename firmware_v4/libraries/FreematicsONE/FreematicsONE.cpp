@@ -416,9 +416,9 @@ byte COBDSPI::getVersion()
 {
 	byte version = 0;
 	setTarget(TARGET_OBD);
-	for (byte n = 0; n < 3; n++) {
+	for (byte n = 0; n < 10; n++) {
 		char buffer[32];
-		if (sendCommand("ATI\r", buffer, sizeof(buffer), 500)) {
+		if (sendCommand("ATI\r", buffer, sizeof(buffer), 1000)) {
 			char *p = strstr(buffer, "OBDUART");
 			if (p) {
 				p += 9;
@@ -475,7 +475,10 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				}
 				buffer[n] = c;
 				eos = (c == 0x9 && buffer[n - 1] =='>');
-				if (eos) break;
+				if (eos) {
+					n--;
+					break;
+				}
 				n++;
 			}
 		}
@@ -489,10 +492,6 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		debugOutput("RECV TIMEOUT");
 	}
 #endif
-	if (m_target != TARGET_RAW && eos) {
-		// eliminate ending char
-		n--;
-	}
 	buffer[n] = 0;
 #ifdef DEBUG
 	if (m_target == TARGET_OBD) {
@@ -518,7 +517,7 @@ void COBDSPI::write(const char* s)
 			SPI.transfer(targets[m_target][i]);
 		}
 	}
-	char c = 0;
+	byte c = 0;
 	for (; *s ;s++) {
 		c = *s;
 		SPI.transfer((byte)c);
@@ -689,70 +688,75 @@ void COBDSPI::xbWrite(const char* cmd)
 {
 #ifdef XBEE_DEBUG
 	Serial.print("[SEND]");
-	Serial.print(cmd);
+	Serial.println(cmd);
 	Serial.println("[/SEND]");
 #endif
 	setTarget(TARGET_BEE);
 	write(cmd);
 }
 
-int COBDSPI::xbRead(char* buffer, int bufsize, unsigned int timeout)
+int COBDSPI::xbRead(char* buffer, int bufsize)
 {
 	setTarget(TARGET_OBD);
 	write("ATGRD\r");
 	sleep(10);
-	return receive(buffer, bufsize, timeout);
-}
-
-int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char* expected)
-{
-	return xbReceive(buffer, bufsize, timeout, expected ? &expected : 0, expected ? 1 : 0);
+	int bytes = receive(buffer, bufsize, 500);
+	if (bytes < 4 || memcmp(buffer, targets[TARGET_BEE], 4)) {
+		bytes = -1;
+	} else if (bytes >= 11 && !memcmp_P(buffer + 4, PSTR("NO DATA"), 7)) {
+		buffer[0] = 0;
+		bytes = 0;
+	}
+	return bytes;
 }
 
 int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)
 {
 	int bytesRecv = 0;
 	uint32_t t = millis();
+	buffer[0] = 0;
 	do {
 		if (bytesRecv >= bufsize - 16) {
 			bytesRecv -= dumpLine(buffer, bytesRecv);
 		}
-		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1, 500);
+		int n = xbRead(buffer + bytesRecv, bufsize - bytesRecv - 1);
 		if (n > 0) {
 			buffer[bytesRecv + n] = 0;
-			if (n < 5 || memcmp(buffer + bytesRecv, targets[TARGET_BEE], 4)) {
-				Serial.println("[RECV ERROR]");
-				break;
-			} else if (!memcmp_P(buffer + bytesRecv + 4, PSTR("NO DATA"), 7)) {
-				sleep(100);
-			} else {
-				char *p = buffer + bytesRecv + 4;
-				n -= 4;
-				if (bytesRecv > 0 && *p == '\n') {
-					// strip first \n
-					p++;
-					n--;
-				}
-				memmove(buffer + bytesRecv, p, n);
-				bytesRecv += n;
-				buffer[bytesRecv] = 0;
+			// skip 4-byte header
+			char *p = buffer + bytesRecv + 4;
+			n -= 4;
+			if (bytesRecv == 0 && *p == '\n') {
+				// strip first \n
+				p++;
+				n--;
+			}
+			memmove(buffer + bytesRecv, p, n);
+			bytesRecv += n;
+			buffer[bytesRecv] = 0;
 #ifdef XBEE_DEBUG
+			if (n > 0) {
 				Serial.print("[RECV]");
 				Serial.print(buffer + bytesRecv - n);
 				Serial.println("[/RECV]");
+			}
 #endif
-				if (expectedCount == 0) {
-					break;
-				}
-				for (byte i = 0; i < expectedCount; i++) {
-					// match expected string(s)
-					if (expected[i] && strstr(buffer, expected[i])) return i + 1;
-				}
+			if (expectedCount == 0 && bytesRecv > 0) {
+				return bytesRecv;
+			}
+			for (byte i = 0; i < expectedCount; i++) {
+				// match expected string(s)
+				if (expected[i] && strstr(buffer, expected[i])) return i + 1;
 			}
 			sleep(50);
+		} if (n < 0) {
+			break;
+		} else {
+			if (millis() - t + 200 < timeout)
+				sleep(200);
+			else
+				break;
 		}
 	} while (millis() - t < timeout);
-	buffer[bytesRecv] = 0;
 	return 0;
 }
 

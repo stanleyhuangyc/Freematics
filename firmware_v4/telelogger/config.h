@@ -19,7 +19,7 @@
 #define DEFAULT_VIN "FREEMATICS"
 
 // minimum processing loop time
-#define MIN_LOOP_TIME 500 /* ms */
+#define MIN_LOOP_TIME 1000 /* ms */
 
 /**************************************
 * Networking configurations
@@ -31,7 +31,7 @@
 #define WIFI_SSID "HOTSPOT"
 #define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network
-#define CELL_APN "connect"
+#define CELL_APN "mdata.net.au"
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 8081
