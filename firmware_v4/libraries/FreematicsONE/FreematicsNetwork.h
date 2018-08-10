@@ -15,27 +15,37 @@
 #define EVENT_ACK 6
 
 typedef struct {
-  float lat;
-  float lng;
-  uint8_t year; /* year past 2000, e.g. 15 for 2015 */
-  uint8_t month;
-  uint8_t day;
-  uint8_t hour;
-  uint8_t minute;
-  uint8_t second;
+    float lat;
+    float lng;
+    uint8_t year; /* year past 2000, e.g. 15 for 2015 */
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
 } NET_LOCATION;
+
+typedef struct {
+    uint32_t date;
+    uint32_t time;
+    int32_t lat;
+    int32_t lng;
+    uint16_t speed; /* 0.01km */
+    int16_t alt; /* meter */
+    int16_t heading; /* degree */
+} GPS_LOCATION;
 
 class NullClient
 {
 public:
-  virtual bool begin() { return true; }
-  virtual void end() {}
-  virtual bool open(const char* host, uint16_t port) = 0;
-  virtual void close() {}
-  virtual bool send(const char* data, unsigned int len) = 0;
-  virtual char* receive(int* pbytes, unsigned int timeout) = 0;
-  virtual bool getLocation(NET_LOCATION* loc) { return false; }
-  virtual const char* deviceName() = 0;
+    virtual bool begin() { return true; }
+    virtual void end() {}
+    virtual bool open(const char* host, uint16_t port) = 0;
+    virtual void close() {}
+    virtual bool send(const char* data, unsigned int len) = 0;
+    virtual char* receive(int* pbytes, unsigned int timeout) = 0;
+    virtual bool getLocation(NET_LOCATION* loc) { return false; }
+    virtual const char* deviceName() = 0;
 };
 
 class UDPClientESP8266AT
@@ -94,7 +104,7 @@ class UDPClientSIM5360 : virtual NullClient
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, bool only3G = false, unsigned int timeout = 60000);
+    bool setup(const char* apn, bool gps = false, unsigned int timeout = 15000);
     String getIP();
     int getSignal();
     String getOperatorName();
@@ -104,14 +114,18 @@ public:
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     char* getBuffer() { return m_buffer; }
     const char* deviceName() { return "SIM5360"; }
+    GPS_LOCATION* getLocation() { return m_gps; }
+    char IMEI[16] = {0};
 private:
     // send command and check for expected response 
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
     char* checkIncoming(char* ipd, int* pbytes);
+    long parseDegree(const char* s);
     void checkGPS();
     char m_buffer[128] = {0};
     byte udpIP[4] = {0};
     uint16_t udpPort = 0;
     uint8_t m_stage = 0;
+    GPS_LOCATION* m_gps;
     CFreematics* m_device = 0;
 };

@@ -67,7 +67,7 @@ public:
     virtual void uninit() {}
     virtual bool begin() { return true; }
     virtual void end() {}
-    virtual void log(uint16_t pid, int16_t value)
+    virtual void log(uint16_t pid, int value)
     {
         char buf[16];
         byte len = sprintf_P(buf, PSTR("%X=%d"), pid, value);

@@ -12,11 +12,8 @@
 /**************************************
 * OBD-II configurations
 **************************************/
-// maximum consecutive OBD-II access errors before entering standby
-#define MAX_OBD_ERRORS 3
-
-// VIN used when real one unavailable
-#define DEFAULT_VIN "FREEMATICS"
+// maximum consecutive OBD-II access errors before disconnecting
+#define MAX_OBD_ERRORS 10
 
 // minimum processing loop time
 #define MIN_LOOP_TIME 1000 /* ms */
@@ -26,7 +23,7 @@
 **************************************/
 #ifndef NET_DEVICE
 // change the following line to change network device
-#define NET_DEVICE NET_WIFI
+#define NET_DEVICE NET_SIM5360
 // WIFI settings
 #define WIFI_SSID "HOTSPOT"
 #define WIFI_PASSWORD "PASSWORD"
@@ -55,6 +52,8 @@
 * MEMS motion sensors
 **************************************/
 #define MEMS_MODE 1 /* 0 to disable */
+#define MOTIONLESS_STANDBY 180 /* seconds, 0 to disable */
+#define MOTION_THRESHOLD 0.3f /* in unit of G */
 
 /**************************************
 * GPS
@@ -68,9 +67,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 1
-// motion threshold for waking up
-#define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
+#define RESET_AFTER_WAKEUP 0
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
