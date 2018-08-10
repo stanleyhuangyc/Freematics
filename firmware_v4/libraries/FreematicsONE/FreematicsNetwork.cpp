@@ -417,7 +417,7 @@ bool UDPClientSIM5360::begin(CFreematics* device)
       if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         m_stage = 2;
         // retrieve module info
-        char *p = strstr(m_buffer, "IMEI:");
+        char *p = strstr_P(m_buffer, PSTR("IMEI:"));
         if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
         return true;
       }
@@ -492,7 +492,7 @@ String UDPClientSIM5360::getIP()
   uint32_t t = millis();
   do {
     if (sendCommand("AT+IPADDR\r", 2000)) {
-      char *p = strstr(m_buffer, "+IPADDR:");
+      char *p = strstr_P(m_buffer, PSTR("+IPADDR:"));
       if (p) {
         char *ip = p + 9;
         if (*ip != '0') {
@@ -640,7 +640,7 @@ long UDPClientSIM5360::parseDegree(const char* s)
 void UDPClientSIM5360::checkGPS()
 {
   char *p;
-  if (m_gps && (p = strstr(m_buffer, "+CGPSINFO:"))) do {
+  if (m_gps && (p = strstr_P(m_buffer, PSTR("+CGPSINFO:")))) do {
     if (!(p = strchr(p, ':'))) break;
     if (*(++p) == ',') break;
     m_gps->lat = parseDegree(p);
@@ -668,8 +668,7 @@ bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const 
   if (cmd) {
     m_device->xbWrite(cmd);
   }
-  delay(10);
-  m_buffer[0] = 0;
+  memset(m_buffer, 0, sizeof(m_buffer));
   byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
   if (ret) {
     return true;

@@ -53,7 +53,7 @@
 **************************************/
 #define MEMS_MODE 1 /* 0 to disable */
 #define MOTIONLESS_STANDBY 180 /* seconds, 0 to disable */
-#define MOTION_THRESHOLD 0.3f /* in unit of G */
+#define MOTION_THRESHOLD 0.2f /* in unit of G */
 
 /**************************************
 * GPS
