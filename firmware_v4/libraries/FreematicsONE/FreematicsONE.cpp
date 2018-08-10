@@ -298,12 +298,14 @@ void COBDSPI::reset()
 	char buf[32];
 	sendCommand("ATR\r", buf, sizeof(buf));
 	delay(3000);
+	errors = 0;
 }
 
-void COBDSPI::uninit()
+void COBDSPI::end()
 {
 	char buf[32];
 	sendCommand("ATPC\r", buf, sizeof(buf));
+	SPI.end();
 }
 
 byte COBDSPI::checkErrorMessage(const char* buffer)

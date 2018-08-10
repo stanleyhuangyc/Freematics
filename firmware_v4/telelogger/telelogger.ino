@@ -26,13 +26,14 @@
 #define STATE_MEMS_READY 0x8
 #define STATE_NET_READY 0x10
 #define STATE_CONNECTED 0x20
-#define STATE_ALL_GOOD 0x40
+#define STATE_WORKING 0x40
 #define STATE_STANDBY 0x80
 
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
+uint32_t lastMotionTime = 0;
 #endif
-char vin[18] = DEFAULT_VIN;
+char vin[18] = {0};
 int lastSpeed = 0;
 uint32_t lastSpeedTime = 0;
 uint32_t distance = 0;
@@ -92,22 +93,30 @@ bool verifyChecksum(char* data)
   return false;
 }
 
-bool notifyServer(byte event, const char* serverKey, const char* payload)
+bool notifyServer(byte event, const char* serverKey, const char* extra = 0)
 {
   cache.header(feedid);
-  char buf[16];
-  byte len = sprintf_P(buf, PSTR("EV=%X"), (unsigned int)event);
+  char buf[32];
+  byte len = snprintf_P(buf, sizeof(buf), PSTR("EV=%X"), (unsigned int)event);
   cache.dispatch(buf, len);
-  len = sprintf_P(buf, PSTR("TS=%lu"), millis());
+  len = snprintf_P(buf, sizeof(buf), PSTR("TS=%lu"), millis());
   cache.dispatch(buf, len);
-  /*
   if (serverKey) {
-    len = sprintf_P(buf, PSTR("SK=%s"), serverKey);
+    len = snprintf_P(buf, sizeof(buf), PSTR("SK=%s"), serverKey);
     cache.dispatch(buf, len);
   }
-  */
-  if (payload) {
-    cache.dispatch(payload, strlen(payload));
+  if (event == EVENT_LOGIN) {
+#if NET_DEVICE == NET_SIM5360
+    len = snprintf_P(buf, sizeof(buf), PSTR("ID=ID%s"), net.IMEI);
+    cache.dispatch(buf, len);
+#endif
+    if (vin[0]) {
+      len = snprintf_P(buf, sizeof(buf), PSTR("VIN=%s"), vin);
+      cache.dispatch(buf, len);
+    }
+    cache.dispatch(buf, len);
+  } else if (extra) {
+    cache.dispatch(extra, strlen(extra));
   }
   cache.tailer();
   //Serial.println(cache.buffer());
@@ -139,14 +148,13 @@ bool notifyServer(byte event, const char* serverKey, const char* payload)
       Serial.print("Invalid reply");
       continue;
     }
+    lastSyncTime = millis();
     if (event == EVENT_LOGIN) {
       // extract info from server response
       feedid = hex2uint16(data);
     }
-    Serial.print(' ');
     connErrors = 0;
     // success
-    lastSyncTime = millis();
     return true;
   }
   return false;
@@ -161,22 +169,15 @@ bool login()
       Serial.println("NO");
       continue;
     }
-
-    char *buf = net.getBuffer(); /* re-use buffer, for saving SRAM */
-    sprintf(buf, "VIN=%s", vin);
-
     // login Freematics Hub
-    if (!notifyServer(EVENT_LOGIN, SERVER_KEY, buf)) {
+    if (!notifyServer(EVENT_LOGIN, SERVER_KEY)) {
       net.close();
       Serial.println("NO");
       continue;
     } else {
-      Serial.println("OK");
+      Serial.print("FEED ID:");
+      Serial.println(feedid);
     }
-
-    Serial.print("FEED ID:");
-    Serial.println(feedid);
-
     return true;
   }
   return false;
@@ -273,12 +274,55 @@ void processGPS()
         cache.log(PID_GPS_SPEED, gd.speed);
         cache.log(PID_GPS_SAT_COUNT, gd.sat);
         lastUTC = (uint16_t)gd.time;
-        char buf[32];
-        sprintf(buf, "UTC:%08lu SAT:%u", gd.time, (unsigned int)gd.sat);
-        Serial.println(buf);
+        Serial.print("[GPS] ");
+        Serial.print(gd.lat);
+        Serial.print(' ');
+        Serial.print(gd.lng);
+        Serial.print(' ');
+        Serial.print(gd.alt);
+        Serial.print("m UTC:");
+        Serial.print(gd.time);
+        Serial.print(" SAT:");
+        Serial.println((unsigned int)gd.sat);
       }
   }
 }
+
+#else
+
+void processLocation()
+{
+#if NET_DEVICE == NET_SIM5360
+  static uint16_t lastUTC = 0;
+  static uint8_t lastGPSDay = 0;
+  GPS_LOCATION* gi = net.getLocation();
+  // read parsed GPS data
+  if (gi) {
+      if (gi->date && lastUTC != (uint16_t)gi->time) {
+        byte day = gi->date / 10000;
+        cache.log(PID_GPS_TIME, gi->time);
+        if (lastGPSDay != day) {
+          cache.log(PID_GPS_DATE, gi->date);
+          lastGPSDay = day;
+        }
+        cache.logCoordinate(PID_GPS_LATITUDE, gi->lat);
+        cache.logCoordinate(PID_GPS_LONGITUDE, gi->lng);
+        cache.log(PID_GPS_ALTITUDE, gi->alt);
+        cache.log(PID_GPS_SPEED, (int)(gi->speed / 100));
+        lastUTC = (uint16_t)gi->time;
+        Serial.print("[GPS] ");
+        Serial.print(gi->lat);
+        Serial.print(' ');
+        Serial.print(gi->lng);
+        Serial.print(' ');
+        Serial.print(gi->alt);
+        Serial.print("m UTC:");
+        Serial.println(gi->time);
+      }
+  }
+#endif
+}
+
 #endif
 
 #if MEMS_MODE
@@ -290,6 +334,16 @@ void processMEMS()
     mems.read(acc, 0, 0, &temp);
     deviceTemp = temp / 10;
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+    cache.log(PID_DEVICE_TEMP, deviceTemp);
+    // calculate instant motion
+    float motion = 0;
+    for (byte i = 0; i < 3; i++) {
+      float m = (acc[i] - accBias[i]);
+      motion += m * m;
+    }
+    if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
+      lastMotionTime = millis();
+    }
 }
 
 void calibrateMEMS()
@@ -323,11 +377,17 @@ void calibrateMEMS()
 *******************************************************************************/
 bool initialize()
 {
-  state.clear(STATE_ALL_GOOD);
+  state.clear(STATE_WORKING);
   distance = 0;
 
   if (!state.check(STATE_OBD_READY)) {
-    obd.begin();
+    byte ver = obd.begin();
+    while (ver == 0) {
+      ver = obd.getVersion();
+      delay(3000);
+    }
+    Serial.print("VER.");
+    Serial.println((int)ver);
   }
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
@@ -341,6 +401,11 @@ bool initialize()
       return false;
     }
   }
+
+#if NET_DEVICE == NET_SIM5360
+  Serial.print("IMEI:");
+  Serial.println(net.IMEI);
+#endif
 
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
@@ -406,7 +471,7 @@ bool initialize()
   Serial.print("CELL(APN:");
   Serial.print(CELL_APN);
   Serial.print(")");
-  if (net.setup(CELL_APN)) {
+  if (net.setup(CELL_APN, ENABLE_GPS ? false : true)) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
@@ -422,6 +487,7 @@ bool initialize()
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
+    lastMotionTime = millis();
   }
 #endif
 
@@ -447,7 +513,7 @@ bool initialize()
   }
   state.set(STATE_CONNECTED);
 
-  state.set(STATE_ALL_GOOD);
+  state.set(STATE_WORKING);
   return true;
 }
 
@@ -455,7 +521,7 @@ void shutDownNet()
 {
   if (state.check(STATE_NET_READY)) {
     if (state.check(STATE_CONNECTED)) {
-      notifyServer(EVENT_LOGOUT, SERVER_KEY, 0);
+      notifyServer(EVENT_LOGOUT, SERVER_KEY);
     }
   }
   Serial.print(net.deviceName());
@@ -478,7 +544,7 @@ String executeCommand(const char* cmd)
     resetFunc();
     // never reach here
   } else if (!strcmp(cmd, "STANDBY")) {
-    state.clear(STATE_ALL_GOOD);
+    state.clear(STATE_WORKING);
     result = "OK";
   } else if (!strcmp(cmd, "WAKEUP")) {
     state.clear(STATE_STANDBY);
@@ -522,7 +588,7 @@ bool processCommand(char* data)
     String result = executeCommand(cmd);
     // send command response
     char buf[128];
-    snprintf(buf, sizeof(buf), "TK=%lu,MSG=%s", token, result.c_str());
+    snprintf_P(buf, sizeof(buf), PSTR("TK=%lu,MSG=%s"), token, result.c_str());
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.println("ACK...");
       if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
@@ -533,7 +599,7 @@ bool processCommand(char* data)
   } else {
     // previously executed command
     char buf[64];
-    snprintf(buf, sizeof(buf), "TK=%lu,DUP=1", token);
+    snprintf_P(buf, sizeof(buf), PSTR("TK=%lu,DUP=1"), token);
     for (byte attempts = 0; attempts < 3; attempts++) {
       Serial.println("ACK...");
       if (notifyServer(EVENT_ACK, SERVER_KEY, buf)) {
@@ -568,7 +634,7 @@ void process()
 #endif
 
   // read and log car battery voltage, data in 0.01v
-  int v = obd.getVoltage() * 100;
+  int v = (int)(obd.getVoltage() * 100);
   cache.log(PID_BATTERY_VOLTAGE, v);
 
 #if ENABLE_GPS
@@ -576,6 +642,8 @@ void process()
   if (state.check(STATE_GPS_READY)) {
     processGPS();
   }
+#else 
+  processLocation();
 #endif
 
   if (cache.samples() > 0) {
@@ -583,21 +651,31 @@ void process()
     transmit();
   }
 
-  if (millis() - lastSyncTime > SERVER_SYNC_INTERVAL * 1000) {
+  if (millis() - lastSyncTime > 1000L * SERVER_SYNC_INTERVAL) {
     Serial.println("NO SYNC");
     connErrors++;
   }
 
   if (obd.errors > MAX_OBD_ERRORS) {
     obd.reset();
-    state.clear(STATE_OBD_READY | STATE_ALL_GOOD);
+    state.clear(STATE_OBD_READY);
   }
+
+#if MEMS_MODE && MOTIONLESS_STANDBY
+  if (state.check(STATE_MEMS_READY)) {
+    if (millis() - lastMotionTime > 1000L * MOTIONLESS_STANDBY) {
+      Serial.println("NO MOTION");
+      // enter standby mode
+      state.clear(STATE_WORKING);
+    }
+  }
+#endif
 
   // maintain minimum loop time
 #if MIN_LOOP_TIME
-  int elapsed = millis() - startTime;
+  unsigned int elapsed = (unsigned int)(millis() - startTime);
   if (elapsed < MIN_LOOP_TIME) idleTasks(MIN_LOOP_TIME - elapsed);
-  elapsed = millis() - startTime;
+  elapsed = (unsigned int)(millis() - startTime);
   if (elapsed < MIN_LOOP_TIME) delay (MIN_LOOP_TIME - elapsed);
 #else
   idleTasks(50);
@@ -616,10 +694,7 @@ void standby()
     sys.gpsInit(0); // turn off GPS power
   }
 #endif
-  if (obd.errors > MAX_OBD_ERRORS) {
-    // inaccessible OBD treated as end of trip
-    feedid = 0;
-  }
+  obd.end();
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
   state.set(STATE_STANDBY);
   Serial.println("Standby");
@@ -627,7 +702,7 @@ void standby()
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
     while (state.check(STATE_STANDBY)) {
-      delay(100);
+      delay(200);
       // calculate relative movement
       float motion = 0;
       float acc[3];
@@ -636,9 +711,8 @@ void standby()
         float m = (acc[i] - accBias[i]);
         motion += m * m;
       }
-      //Serial.println(motion);
       // check movement
-      if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+      if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         break;
       }
     }
@@ -650,10 +724,10 @@ void standby()
 #endif
   state.clear(STATE_STANDBY);
   Serial.println("Wakeup");
-  delay(1000);
 #if RESET_AFTER_WAKEUP
-    void(* resetFunc) (void) = 0;
-    resetFunc();
+  delay(100);
+  void(* resetFunc) (void) = 0;
+  resetFunc();
 #endif  
 }
 
@@ -695,14 +769,10 @@ void setup()
 
 void loop()
 {
-  // error handling
-  if (!state.check(STATE_ALL_GOOD)) {
+  // standby mode
+  if (!state.check(STATE_WORKING)) {
     standby();
-    for (byte n = 0; n < 3; n++) {
-      initialize();
-      if (state.check(STATE_ALL_GOOD)) break;
-      delay(3000);
-    }
+    initialize();
     return;
   }
   // deal with network errors

@@ -113,10 +113,9 @@ class COBDSPI : public CFreematics {
 public:
 	COBDSPI():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	byte begin();
+	void end();
     // initialize OBD-II connection
 	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
-	// un-initialize OBD-II connection
-	void uninit();
 	// reset OBD
 	void reset();
 	// read specified OBD-II PID value
@@ -161,6 +160,8 @@ public:
 	void sendQuery(byte pid);
 	// determine if the PID is supported
 	bool isValidPID(byte pid);
+	// get firmware version
+	byte getVersion();
 	// set current PID mode
 	byte dataMode;
 	// occurrence of errors
@@ -179,8 +180,6 @@ protected:
 	virtual void idleTasks() { delay(1); }
 	OBD_STATES m_state;
 private:
-	// get firmware version
-	byte getVersion();
 	uint8_t getPercentageValue(char* data)
 	{
 		return (uint16_t)hex2uint8(data) * 100 / 255;

@@ -414,8 +414,11 @@ bool UDPClientSIM5360::begin(CFreematics* device)
     // discard any stale data
     device->xbPurge();
     for (byte m = 0; m < 5; m++) {
-      if (sendCommand("AT\r")) {
+      if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         m_stage = 2;
+        // retrieve module info
+        char *p = strstr(m_buffer, "IMEI:");
+        if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
         return true;
       }
     }
@@ -431,16 +434,15 @@ void UDPClientSIM5360::end()
   }
 }
 
-bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
+bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
-  if (!sendCommand("ATE0\r") && !sendCommand("ATE0\r")) return false;
-  if (only3G) sendCommand("AT+CNMP=14\r"); // use WCDMA only
+  //sendCommand("AT+CNMP=14\r"); // use WCDMA only
   do {
     do {
       Serial.print('.');
-      delay(500);
+      delay(1000);
       success = sendCommand("AT+CPSI?\r", 1000, "Online");
       if (success) {
         if (!strstr_P(m_buffer, PSTR("NO SERVICE")))
@@ -473,9 +475,15 @@ bool UDPClientSIM5360::setup(const char* apn, bool only3G, unsigned int timeout)
     //sendCommand("AT+CSOCKAUTH=,,\"password\",\"password\"\r");
     sendCommand("AT+CIPMODE=0\r");
     sendCommand("AT+NETOPEN\r");
-    //sendCommand("AT+CGPS=1\r");
   } while(0);
   if (!success) Serial.println(m_buffer);
+  if (gps) {
+    if (!m_gps) {
+      m_gps = new GPS_LOCATION;
+      memset(m_gps, 0, sizeof(GPS_LOCATION));
+    }
+    sendCommand("AT+CGPS=1\r");
+  }
   return success;
 }
 
@@ -483,7 +491,7 @@ String UDPClientSIM5360::getIP()
 {
   uint32_t t = millis();
   do {
-    if (sendCommand("AT+IPADDR\r", 3000)) {
+    if (sendCommand("AT+IPADDR\r", 2000)) {
       char *p = strstr(m_buffer, "+IPADDR:");
       if (p) {
         char *ip = p + 9;
@@ -495,7 +503,7 @@ String UDPClientSIM5360::getIP()
       }
     }
     delay(500);
-  } while (millis() - t < 15000);
+  } while (millis() - t < 10000);
   return "";
 }
 
@@ -612,12 +620,47 @@ char* UDPClientSIM5360::checkIncoming(char* ipd, int* pbytes)
 	return 0;
 }
 
+long UDPClientSIM5360::parseDegree(const char* s)
+{
+  char *p;
+  unsigned long left = atol(s);
+  unsigned long tenk_minutes = (left % 100UL) * 100000UL;
+  if ((p = strchr(s, '.')))
+  {
+    unsigned long mult = 10000;
+    while (isdigit(*++p))
+    {
+      tenk_minutes += mult * (*p - '0');
+      mult /= 10;
+    }
+  }
+  return (left / 100) * 1000000 + tenk_minutes / 6;
+}
+
 void UDPClientSIM5360::checkGPS()
 {
-  char *p = strstr_P(m_buffer, PSTR("+CGPSINFO:"));
-  if (p) {
-    // TODO
-  }
+  char *p;
+  if (m_gps && (p = strstr(m_buffer, "+CGPSINFO:"))) do {
+    if (!(p = strchr(p, ':'))) break;
+    if (*(++p) == ',') break;
+    m_gps->lat = parseDegree(p);
+    if (!(p = strchr(p, ','))) break;
+    if (*(++p) == 'S') m_gps->lat = -m_gps->lat;
+    if (!(p = strchr(p, ','))) break;
+    m_gps->lng = parseDegree(++p);
+    if (!(p = strchr(p, ','))) break;
+    if (*(++p) == 'W') m_gps->lng = -m_gps->lng;
+    if (!(p = strchr(p, ','))) break;
+    m_gps->date = atol(++p);
+    if (!(p = strchr(p, ','))) break;
+    m_gps->time = atol(++p) * 100;
+    if (!(p = strchr(p, ','))) break;
+    m_gps->alt = atoi(++p);
+    if (!(p = strchr(p, ','))) break;
+    m_gps->speed = atof(++p) * 185;
+    if (!(p = strchr(p, ','))) break;
+    m_gps->heading = atoi(++p);
+  } while (0);
 }
 
 bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const char* expected)
@@ -625,6 +668,7 @@ bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const 
   if (cmd) {
     m_device->xbWrite(cmd);
   }
+  delay(10);
   m_buffer[0] = 0;
   byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, &expected, 1);
   if (ret) {
