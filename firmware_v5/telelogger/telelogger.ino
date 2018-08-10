@@ -55,7 +55,6 @@ PID_POLLING_INFO obdData[]= {
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
 float acc[3] = {0};
-uint32_t lastMotionTime = 0;
 #endif
 
 // live data
@@ -75,6 +74,7 @@ uint8_t deviceTemp = 0; // device temperature
 float lastKph = 0;
 uint32_t lastKphTime = 0;
 float distance = 0;
+uint32_t lastMotionTime = 0;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 
@@ -242,12 +242,13 @@ void processOBD()
     if (tier > 1) break;
   }
 
+  // calculate distance for speed
+  float kph = obdData[0].value;
+  if (kph >= 1) lastMotionTime = millis();
 #if ENABLE_GPS
   if (!gd || !gd->ts)
 #endif
   {
-    // calculate distance for speed
-    float kph = obdData[0].value;
     if (lastKphTime) distance += (kph + lastKph) * (t - lastKphTime) / 3600 / 2;
     lastKphTime = t;
     lastKph = kph;
@@ -282,7 +283,8 @@ void processGPS()
   cache.logFloat(PID_GPS_LATITUDE, gd->lat);
   cache.logFloat(PID_GPS_LONGITUDE, gd->lng);
   cache.log(PID_GPS_ALTITUDE, gd->alt / 100); /* m */
-  float kph = (float)gd->speed * 1852 / 1000;
+  float kph = gd->speed * 1.852f;
+  if (kph >= 1) lastMotionTime = millis();
   cache.log(PID_GPS_SPEED, kph);
   cache.log(PID_GPS_SAT_COUNT, gd->sat);
   
@@ -303,6 +305,10 @@ void processGPS()
   *(p + 1) = 0;
   
   Serial.print("[GPS] ");
+  Serial.print(gd->lat);
+  Serial.print(' ');
+  Serial.print(gd->lng);
+  Serial.print(' ');
   Serial.print((int)kph);
   Serial.print("km/h ");
   Serial.print(distance / 1000, 1);
@@ -462,8 +468,8 @@ bool initialize()
       oled.println("GPS OK");
 #endif
     } else {
-      Serial.println("NO");
       sys.gpsEnd();
+      Serial.println("NO");
     }
   }
 #endif
@@ -600,7 +606,10 @@ void shutDownNet()
 {
   if (state.check(STATE_NET_READY)) {
     if (state.check(STATE_CONNECTED)) {
-      teleClient.notify(EVENT_LOGOUT, SERVER_KEY, 0);
+      Serial.print("Logout...");
+      if (teleClient.notify(EVENT_LOGOUT, SERVER_KEY, 0))
+        Serial.print("OK");
+      Serial.println();
     }
   }
   Serial.print(teleClient.net.deviceName());
@@ -848,13 +857,11 @@ void process()
   }
 #endif
 
-#if MEMS_MODE && MOTIONLESS_STANDBY
-  if (state.check(STATE_MEMS_READY)) {
-    if (millis() - lastMotionTime > MOTIONLESS_STANDBY * 1000) {
-      Serial.println("No motion detected");
-      // enter standby mode
-      state.clear(STATE_WORKING);
-    }
+#if MOTIONLESS_STANDBY
+  if (millis() - lastMotionTime > MOTIONLESS_STANDBY * 1000) {
+    Serial.println("No motion detected");
+    // enter standby mode
+    state.clear(STATE_WORKING);
   }
 #endif
 
