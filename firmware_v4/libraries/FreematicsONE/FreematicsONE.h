@@ -111,7 +111,6 @@ uint8_t hex2uint8(const char *p);
 
 class COBDSPI : public CFreematics {
 public:
-	COBDSPI():dataMode(1),errors(0),m_state(OBD_DISCONNECTED) {}
 	byte begin();
 	void end();
     // initialize OBD-II connection
@@ -163,22 +162,22 @@ public:
 	// get firmware version
 	byte getVersion();
 	// set current PID mode
-	byte dataMode;
+	byte dataMode = 1;
 	// occurrence of errors
-	byte errors;
+	byte errors = 0;
 	// bit map of supported PIDs
-	byte pidmap[4 * 4];
+	byte pidmap[4 * 4] = {0};
 protected:
 	// write data to SPI bus
 	void write(const char* s);
 	// receive data from SPI bus
 	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
 	// set SPI data target
-	void setTarget(byte target) { m_target = target; }
 	void debugOutput(const char* s);
 	int normalizeData(byte pid, char* data);
 	virtual void idleTasks() { delay(1); }
-	OBD_STATES m_state;
+	OBD_STATES m_state = OBD_DISCONNECTED;
+	byte m_target = TARGET_OBD;
 private:
 	uint8_t getPercentageValue(char* data)
 	{
@@ -197,5 +196,4 @@ private:
 		return (int)hex2uint8(data) - 40;
 	}
 	byte checkErrorMessage(const char* buffer);
-	byte m_target;
 };
