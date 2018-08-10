@@ -7,7 +7,6 @@
 
 #include <Arduino.h>
 #include <SPI.h>
-#include <Wire.h>
 #include "FreematicsONE.h"
 
 //#define XBEE_DEBUG
@@ -90,7 +89,7 @@ byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 		write(buffer);
 		if (receive(buffer, sizeof(buffer)) > 0) {
 			if (!strstr_P(buffer, PSTR("NO DATA"))) {
-				char *p = strstr(buffer, "43");
+				char *p = strstr_P(buffer, PSTR("43"));
 				if (p) {
 					while (codesRead < maxCodes && *p) {
 						p += 6;
@@ -114,7 +113,6 @@ byte COBDSPI::readDTC(uint16_t codes[], byte maxCodes)
 void COBDSPI::clearDTC()
 {
 	char buffer[32];
-    setTarget(TARGET_OBD);
 	write("04\r");
 	receive(buffer, sizeof(buffer));
 }
@@ -123,7 +121,6 @@ void COBDSPI::sendQuery(byte pid)
 {
 	char cmd[8];
 	sprintf_P(cmd, PSTR("%02X%02X\r"), dataMode, pid);
-    setTarget(TARGET_OBD);
 	write(cmd);
 }
 
@@ -245,7 +242,6 @@ int COBDSPI::normalizeData(byte pid, char* data)
 float COBDSPI::getVoltage()
 {
 	char buf[32];
-	setTarget(TARGET_OBD);
 	if (sendCommand("ATRV\r", buf, sizeof(buf)) > 0) {
 		return atof(buf + 4);
 	}
@@ -254,7 +250,6 @@ float COBDSPI::getVoltage()
 
 bool COBDSPI::getVIN(char* buffer, int bufsize)
 {
-	setTarget(TARGET_OBD);
 	for (byte n = 0; n < 5; n++) {
 		if (sendCommand("0902\r", buffer, bufsize)) {
 			int len = hex2uint16(buffer + sizeof(targets[0]));
@@ -310,16 +305,16 @@ void COBDSPI::end()
 
 byte COBDSPI::checkErrorMessage(const char* buffer)
 {
-	const char *errmsg[] = {"UNABLE", "ERROR", "TIMEOUT", "NO DATA"};
+	const char *errmsg[] = {PSTR("UNABLE"), PSTR("ERROR"), PSTR("TIMEOUT"), PSTR("NO DATA")};
 	for (byte i = 0; i < sizeof(errmsg) / sizeof(errmsg[0]); i++) {
-		if (strstr(buffer, errmsg[i])) return i + 1;
+		if (strstr_P(buffer, errmsg[i])) return i + 1;
 	}
 	return 0;
 }
 
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
+	const char *initcmd[] = {PSTR("ATZ\r"), PSTR("ATE0\r"), PSTR("ATH0\r")};
 	char buffer[64];
 	byte stage;
 
@@ -329,13 +324,14 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 		if (n != 0) reset();
 		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 			delay(10);
-			if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
+			strcpy_P(buffer, initcmd[i]);
+			if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
 				continue;
 			}
 		}
 		stage = 1;
 		if (protocol != PROTO_AUTO) {
-			sprintf(buffer, "ATSP%u\r", protocol);
+			sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
 			delay(10);
 			if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
 				continue;
@@ -351,12 +347,11 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 		memset(pidmap, 0xff, sizeof(pidmap));
 		for (byte i = 0; i < 4; i++) {
 			byte pid = i * 0x20;
-			sprintf(buffer, "%02X%02X\r", dataMode, pid);
-			delay(10);
+			sprintf_P(buffer, PSTR("%02X%02X\r"), dataMode, pid);
 			write(buffer);
 			delay(10);
 			if (!receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) break;
-			for (char *p = buffer; (p = strstr(p, "41 ")); ) {
+			for (char *p = buffer; (p = strstr_P(p, PSTR("41 "))); ) {
 				p += 3;
 				if (hex2uint8(p) == pid) {
 					p += 2;
@@ -412,11 +407,10 @@ byte COBDSPI::begin()
 byte COBDSPI::getVersion()
 {
 	byte version = 0;
-	setTarget(TARGET_OBD);
 	for (byte n = 0; n < 10; n++) {
 		char buffer[32];
 		if (sendCommand("ATI\r", buffer, sizeof(buffer), 1000)) {
-			char *p = strstr(buffer, "OBDUART");
+			char *p = strstr_P(buffer, PSTR("OBDUART"));
 			if (p) {
 				p += 9;
 				version = (*p - '0') * 10 + (*(p + 2) - '0');
@@ -435,10 +429,10 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			delay(1);
 			if (millis() - t > timeout) {
-				Serial.println("NO SPI DATA");
-				break;
+				Serial.println("NO DATA");
+				delay(3000);
+				return 0;
 			}
 		}
 		delay(1);
@@ -554,7 +548,6 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 {
 	bool success = false;
 	char buf[64];
-	m_target = TARGET_OBD;
 	if (baudrate) {
 		if (sendCommand("ATGPSON\r", buf, sizeof(buf))) {
 			sprintf_P(buf, PSTR("ATBR2%lu\r"), baudrate);
@@ -562,7 +555,7 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 			uint32_t t = millis();
 			delay(100);
 			do {
-				if (gpsGetRawData(buf, sizeof(buf)) && strstr(buf, "S$G")) {
+				if (gpsGetRawData(buf, sizeof(buf)) && strstr_P(buf, PSTR("S$G"))) {
 					return true;
 				}
 			} while (millis() - t < GPS_INIT_TIMEOUT);
@@ -578,11 +571,10 @@ bool COBDSPI::gpsInit(unsigned long baudrate)
 bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 {
 	char buf[128];
-	m_target = TARGET_OBD;
 	if (sendCommand("ATGPS\r", buf, sizeof(buf), GPS_READ_TIMEOUT) == 0) {
 		return false;
 	}
-	if (memcmp(buf, "$GPS,", 5)) {
+	if (memcmp_P(buf, PSTR("$GPS,"), 5)) {
 		return false;
 	}
 
@@ -634,7 +626,6 @@ bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 
 int COBDSPI::gpsGetRawData(char* buf, int bufsize)
 {
-	m_target = TARGET_OBD;
 	int n = sendCommand("ATGRR\r", buf, bufsize, GPS_READ_TIMEOUT);
 	if (n > 2) {
 		n -= 2;
@@ -645,15 +636,15 @@ int COBDSPI::gpsGetRawData(char* buf, int bufsize)
 
 void COBDSPI::gpsSendCommand(const char* cmd)
 {
-	setTarget(TARGET_GPS);
+	m_target = TARGET_GPS;
 	write(cmd);
+	m_target = TARGET_OBD;
 }
 
 bool COBDSPI::xbBegin(unsigned long baudrate)
 {
 	char buf[16];
 	sprintf_P(buf, PSTR("ATBR1%lu\r"), baudrate);
-	setTarget(TARGET_OBD);
 	if (sendCommand(buf, buf, sizeof(buf))) {
 		xbPurge();
 		return true;
@@ -669,13 +660,13 @@ void COBDSPI::xbWrite(const char* cmd)
 	Serial.println(cmd);
 	Serial.println("[/SEND]");
 #endif
-	setTarget(TARGET_BEE);
+	m_target = TARGET_BEE;
 	write(cmd);
+	m_target = TARGET_OBD;
 }
 
 int COBDSPI::xbRead(char* buffer, int bufsize)
 {
-	setTarget(TARGET_OBD);
 	write("ATGRD\r");
 	sleep(10);
 	int bytes = receive(buffer, bufsize, 500);
@@ -740,14 +731,12 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 
 void COBDSPI::xbPurge()
 {
-	char buf[16];
-	setTarget(TARGET_OBD);
+	char buf[32];
 	sendCommand("ATCLRGSM\r", buf, sizeof(buf));
 }
 
 void COBDSPI::xbTogglePower()
 {
-	setTarget(TARGET_OBD);
-	char buffer[64];
-	sendCommand("ATGSMPWR\r", buffer, sizeof(buffer));
+	char buf[32];
+	sendCommand("ATGSMPWR\r", buf, sizeof(buf));
 }
