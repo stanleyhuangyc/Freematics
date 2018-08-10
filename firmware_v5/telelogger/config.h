@@ -31,7 +31,7 @@
 #endif
 
 // maximum consecutive OBD-II access errors before entering standby
-#define MAX_OBD_ERRORS 3
+#define MAX_OBD_ERRORS 10
 
 // minimum processing loop time
 #define MIN_LOOP_TIME 500 /* ms */
@@ -113,9 +113,9 @@
 **************************************/
 #define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
-#define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
+#define MOTION_THRESHOLD 0.2f /* moving vehicle motion threshold in G */
 // time before entering motion-less standby, 0 for disabled
-#define MOTIONLESS_STANDBY 0 /* seconds */
+#define MOTIONLESS_STANDBY 180 /* seconds */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
