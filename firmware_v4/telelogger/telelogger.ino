@@ -31,12 +31,8 @@
 
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
-uint32_t lastMotionTime = 0;
 #endif
 char vin[18] = {0};
-int lastSpeed = 0;
-uint32_t lastSpeedTime = 0;
-uint32_t distance = 0;
 uint8_t deviceTemp = 0; // device temperature
 
 uint16_t feedid = 0;
@@ -44,6 +40,7 @@ uint32_t txCount = 0;
 uint8_t connErrors = 0;
 uint32_t lastSyncTime = 0;
 uint32_t lastCmdToken = 0;
+uint32_t lastMotionTime = 0;
 
 void idleTasks(int timeout);
 
@@ -233,12 +230,7 @@ void processOBD()
   if (speed == -1) {
     return;
   }
-  // calculate distance for speed
-  uint32_t t = millis();
-  distance += (speed + lastSpeed) * (t - lastSpeedTime) / 3600 / 2;
-  lastSpeedTime = t;
-  lastSpeed = speed;
-  cache.log(PID_TRIP_DISTANCE, distance);
+  if (speed > 0) lastMotionTime = millis();
   // poll more PIDs
   const byte pids[]= {PID_RPM, PID_ENGINE_LOAD, PID_THROTTLE};
   for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
@@ -274,6 +266,7 @@ void processGPS()
         cache.log(PID_GPS_SPEED, gd.speed);
         cache.log(PID_GPS_SAT_COUNT, gd.sat);
         lastUTC = (uint16_t)gd.time;
+        if (gd.speed >= 1) lastMotionTime = millis();
         Serial.print("[GPS] ");
         Serial.print(gd.lat);
         Serial.print(' ');
@@ -308,7 +301,9 @@ void processLocation()
         cache.logCoordinate(PID_GPS_LATITUDE, gi->lat);
         cache.logCoordinate(PID_GPS_LONGITUDE, gi->lng);
         cache.log(PID_GPS_ALTITUDE, gi->alt);
-        cache.log(PID_GPS_SPEED, (int)(gi->speed / 100));
+        int kph = gi->speed / 100;
+        cache.log(PID_GPS_SPEED, kph);
+        if (kph >= 1) lastMotionTime = millis();
         lastUTC = (uint16_t)gi->time;
         Serial.print("[GPS] ");
         Serial.print(gi->lat);
@@ -378,7 +373,6 @@ void calibrateMEMS()
 bool initialize()
 {
   state.clear(STATE_WORKING);
-  distance = 0;
 
   if (!state.check(STATE_OBD_READY)) {
     byte ver = obd.begin();
@@ -538,18 +532,18 @@ String executeCommand(const char* cmd)
 {
   String result;
   Serial.println(cmd);
-  if (!strcmp(cmd, "REBOOT")) {
+  if (!strcmp_P(cmd, PSTR("REBOOT"))) {
     shutDownNet();
     void(* resetFunc) (void) = 0;
     resetFunc();
     // never reach here
-  } else if (!strcmp(cmd, "STANDBY")) {
+  } else if (!strcmp_P(cmd, PSTR("STANDBY"))) {
     state.clear(STATE_WORKING);
     result = "OK";
-  } else if (!strcmp(cmd, "WAKEUP")) {
+  } else if (!strcmp_P(cmd, PSTR("WAKEUP"))) {
     state.clear(STATE_STANDBY);
     result = "OK";
-  } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
+  } else if (!strncmp_P(cmd, PSTR("OBD"), 3) && cmd[4]) {
     // send OBD command
     String obdcmd = cmd + 4;
     obdcmd += '\r';
@@ -578,9 +572,9 @@ String executeCommand(const char* cmd)
 bool processCommand(char* data)
 {
   char *p;
-  if (!(p = strstr(data, "TK="))) return false;
+  if (!(p = strstr_P(data, PSTR("TK=")))) return false;
   uint32_t token = atol(p + 3);
-  if (!(p = strstr(data, "CMD="))) return false;
+  if (!(p = strstr_P(data, PSTR("CMD=")))) return false;
   char *cmd = p + 4;
 
   if (token > lastCmdToken) {
@@ -661,13 +655,11 @@ void process()
     state.clear(STATE_OBD_READY);
   }
 
-#if MEMS_MODE && MOTIONLESS_STANDBY
-  if (state.check(STATE_MEMS_READY)) {
-    if (millis() - lastMotionTime > 1000L * MOTIONLESS_STANDBY) {
-      Serial.println("NO MOTION");
-      // enter standby mode
-      state.clear(STATE_WORKING);
-    }
+#if MOTIONLESS_STANDBY
+  if (millis() - lastMotionTime > 1000L * MOTIONLESS_STANDBY) {
+    Serial.println("NO MOTION");
+    // enter standby mode
+    state.clear(STATE_WORKING);
   }
 #endif
 
@@ -746,7 +738,7 @@ void idleTasks(int timeout)
         Serial.println(data);
         break;
       }
-      char *p = strstr(data, "EV=");
+      char *p = strstr_P(data, PSTR("EV="));
       if (!p) break;
       int eventID = atoi(p + 3);
       switch (eventID) {
