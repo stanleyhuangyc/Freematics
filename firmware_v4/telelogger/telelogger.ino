@@ -17,6 +17,7 @@
 
 #include <FreematicsONE.h>
 #include <FreematicsNetwork.h>
+#include "telelogger.h"
 #include "config.h"
 
 // logger states
@@ -119,7 +120,7 @@ bool notifyServer(byte event, const char* serverKey, const char* extra = 0)
   //Serial.println(cache.buffer());
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.send(cache.buffer(), cache.length())) {
-      Serial.println("Error sending");
+      Serial.println("Unsent");
       delay(1000);
       continue;
     }
@@ -142,7 +143,7 @@ bool notifyServer(byte event, const char* serverKey, const char* extra = 0)
     char pattern[16];
     sprintf(pattern, "EV=%u", event);
     if (!strstr(data, pattern)) {
-      Serial.print("Invalid reply");
+      Serial.print("Bad reply");
       continue;
     }
     lastSyncTime = millis();
@@ -343,7 +344,6 @@ void processMEMS()
 
 void calibrateMEMS()
 {
-  Serial.print("ACC BIAS...");
   accBias[0] = 0;
   accBias[1] = 0;
   accBias[2] = 0;
@@ -359,11 +359,6 @@ void calibrateMEMS()
   accBias[0] /= n;
   accBias[1] /= n;
   accBias[2] /= n;
-  Serial.print(accBias[0]);
-  Serial.print('/');
-  Serial.print(accBias[1]);
-  Serial.print('/');
-  Serial.println(accBias[2]);
 }
 #endif
 
@@ -505,9 +500,7 @@ bool initialize()
   if (!login()) {
     return false;
   }
-  state.set(STATE_CONNECTED);
-
-  state.set(STATE_WORKING);
+  state.set(STATE_CONNECTED | STATE_WORKING);
   return true;
 }
 
@@ -689,7 +682,7 @@ void standby()
   obd.end();
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
   state.set(STATE_STANDBY);
-  Serial.println("Standby");
+  Serial.println("STANDBY");
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
@@ -754,7 +747,6 @@ void idleTasks(int timeout)
 void setup()
 {
   Serial.begin(115200);
-  delay(500);
   // initializing all components
   initialize();
 }
