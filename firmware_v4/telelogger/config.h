@@ -15,8 +15,11 @@
 // maximum consecutive OBD-II access errors before disconnecting
 #define MAX_OBD_ERRORS 10
 
-// minimum processing loop time
-#define MIN_LOOP_TIME 1000 /* ms */
+// motion response
+#define MOTIONLESS_SLOWDOWN 30 /* seconds, 0 to disable */
+#define MOTIONLESS_STANDBY 120 /* seconds, 0 to disable */
+#define NORMAL_INTERVAL 1000 /* ms */
+#define SLOW_INTERVAL 5000 /* ms */
 
 /**************************************
 * Networking configurations
@@ -52,7 +55,6 @@
 * MEMS motion sensors
 **************************************/
 #define MEMS_MODE 1 /* 0 to disable */
-#define MOTIONLESS_STANDBY 180 /* seconds, 0 to disable */
 #define MOTION_THRESHOLD 0.2f /* in unit of G */
 
 /**************************************

@@ -17,6 +17,7 @@
 
 #include <FreematicsONE.h>
 #include <FreematicsNetwork.h>
+#include <avr/pgmspace.h>
 #include "telelogger.h"
 #include "config.h"
 
@@ -42,6 +43,7 @@ uint8_t connErrors = 0;
 uint32_t lastSyncTime = 0;
 uint32_t lastCmdToken = 0;
 uint32_t lastMotionTime = 0;
+uint32_t loopTime = 0;
 
 void idleTasks(int timeout);
 
@@ -74,6 +76,18 @@ CStorageRAM cache;
 
 COBDSPI obd;
 #define sys obd
+
+void print(const char* PROGMEM s)
+{
+  char c;
+  while ((c = pgm_read_byte(s++))) Serial.print(c);
+}
+
+void println(const char* PROGMEM s)
+{
+  print(s);
+  Serial.println();
+}
 
 /*******************************************************************************
   Freematics Hub client implementation
@@ -120,7 +134,7 @@ bool notifyServer(byte event, const char* serverKey, const char* extra = 0)
   //Serial.println(cache.buffer());
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.send(cache.buffer(), cache.length())) {
-      Serial.println("Unsent");
+      println(PSTR("Unsent"));
       delay(1000);
       continue;
     }
@@ -143,7 +157,7 @@ bool notifyServer(byte event, const char* serverKey, const char* extra = 0)
     char pattern[16];
     sprintf(pattern, "EV=%u", event);
     if (!strstr(data, pattern)) {
-      Serial.print("Bad reply");
+      println(PSTR("Bad reply"));
       continue;
     }
     lastSyncTime = millis();
@@ -164,16 +178,16 @@ bool login()
   for (byte attempts = 0; attempts < 3; attempts++) {
     Serial.print("LOGIN...");
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      Serial.println("NO");
+      println(PSTR("NO"));
       continue;
     }
     // login Freematics Hub
     if (!notifyServer(EVENT_LOGIN, SERVER_KEY)) {
       net.close();
-      Serial.println("NO");
+      println(PSTR("NO"));
       continue;
     } else {
-      Serial.print("FEED ID:");
+      print(PSTR("FEED ID:"));
       Serial.println(feedid);
     }
     return true;
@@ -375,51 +389,51 @@ bool initialize()
       ver = obd.getVersion();
       delay(3000);
     }
-    Serial.print("VER.");
+    print(PSTR("VER."));
     Serial.println((int)ver);
   }
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
     Serial.print(net.deviceName());
-    Serial.print("...");
+    print(PSTR("..."));
     if (net.begin(&sys)) {
-      Serial.println("OK");
+      println(PSTR("OK"));
       state.set(STATE_NET_READY);
     } else {
-      Serial.println("NO");
+      println(PSTR("NO"));
       return false;
     }
   }
 
 #if NET_DEVICE == NET_SIM5360
-  Serial.print("IMEI:");
+  print(PSTR("IMEI:"));
   Serial.println(net.IMEI);
 #endif
 
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
-    Serial.print("MEMS...");
+    print(PSTR("MEMS..."));
     if (mems.begin()) {
       state.set(STATE_MEMS_READY);
-      Serial.println("OK");
+      println(PSTR("OK"));
     } else {
-      Serial.println("NO");
+      println(PSTR("NO"));
     }
   }
 #endif
 
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
-    Serial.print("OBD...");
+    print(PSTR("OBD..."));
     if (!obd.init()) {
-      Serial.println("NO");
+      println(PSTR("NO"));
       return false;
     }
-    Serial.println("OK");
+    println(PSTR("OK"));
     state.set(STATE_OBD_READY);
 
     char buf[128];
-    Serial.print("VIN:");
+    print(PSTR("VIN:"));
     if (obd.getVIN(buf, sizeof(buf))) {
       strncpy(vin, buf, sizeof(vin) - 1);
       Serial.print(vin);
@@ -430,45 +444,45 @@ bool initialize()
 #if ENABLE_GPS
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-    Serial.print("GPS...");
+    print(PSTR("GPS..."));
     if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
       state.set(STATE_GPS_READY);
-      Serial.println("OK");
+      println(PSTR("OK"));
     } else {
-      Serial.println("NO");
+      println(PSTR("NO"));
     }
   }
 #endif
 
 #if NET_DEVICE == NET_WIFI
   for (byte attempts = 0; attempts < 3; attempts++) {
-    Serial.print("WIFI(SSID:");
+    print(PSTR("WIFI(SSID:"));
     Serial.print(WIFI_SSID);
-    Serial.print(")...");
+    print(PSTR(")..."));
     if (net.setup(WIFI_SSID, WIFI_PASSWORD)) {
-      Serial.println("OK");
+      println(PSTR("OK"));
       state.set(STATE_NET_READY);
       break;
     } else {
-      Serial.println("NO");
+      println(PSTR("NO"));
     }
   }
   if (!state.check(STATE_NET_READY)) {
     return false;
   }
 #elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
-  Serial.print("CELL(APN:");
+  print(PSTR("CELL(APN:"));
   Serial.print(CELL_APN);
-  Serial.print(")");
+  Serial.print(')');
   if (net.setup(CELL_APN, ENABLE_GPS ? false : true)) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
     } else {
-      Serial.println("OK");
+      println(PSTR("OK"));
     }
   } else {
-    Serial.println("NO");
+    println(PSTR("NO"));
     return false;
   }
 #endif
@@ -476,23 +490,22 @@ bool initialize()
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
-    lastMotionTime = millis();
   }
 #endif
 
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360
-  Serial.print("IP...");
+  print(PSTR("IP..."));
   String ip = net.getIP();
   if (ip.length()) {
     Serial.println(ip);
   } else {
-    Serial.println("NO");
+    println(PSTR("NO"));
   }
   int csq = net.getSignal();
   if (csq > 0) {
-    Serial.print("CSQ...");
+    print(PSTR("CSQ..."));
     Serial.print((float)csq / 10, 1);
-    Serial.println("dB");
+    println(PSTR("dB"));
   }
 #endif
 
@@ -500,6 +513,9 @@ bool initialize()
   if (!login()) {
     return false;
   }
+  lastMotionTime = millis();
+  loopTime = NORMAL_INTERVAL;
+
   state.set(STATE_CONNECTED | STATE_WORKING);
   return true;
 }
@@ -515,7 +531,7 @@ void shutDownNet()
   net.close();
   net.end();
   state.clear(STATE_NET_READY);
-  Serial.println(" OFF");
+  println(PSTR(" OFF"));
 }
 
 /*******************************************************************************
@@ -639,7 +655,7 @@ void process()
   }
 
   if (millis() - lastSyncTime > 1000L * SERVER_SYNC_INTERVAL) {
-    Serial.println("NO SYNC");
+    println(PSTR("NO SYNC"));
     connErrors++;
   }
 
@@ -648,23 +664,23 @@ void process()
     state.clear(STATE_OBD_READY);
   }
 
-#if MOTIONLESS_STANDBY
-  if (millis() - lastMotionTime > 1000L * MOTIONLESS_STANDBY) {
-    Serial.println("NO MOTION");
+  unsigned int motionless = (millis() - lastMotionTime) / 1000;
+  if (motionless > MOTIONLESS_STANDBY) {
     // enter standby mode
     state.clear(STATE_WORKING);
+    println(PSTR("STATIONARY"));
+  } else if (motionless > MOTIONLESS_SLOWDOWN) {
+    loopTime = SLOW_INTERVAL;
+    println(PSTR("SLOW RATE"));
+  } else {
+    loopTime = NORMAL_INTERVAL;
   }
-#endif
 
-  // maintain minimum loop time
-#if MIN_LOOP_TIME
-  unsigned int elapsed = (unsigned int)(millis() - startTime);
-  if (elapsed < MIN_LOOP_TIME) idleTasks(MIN_LOOP_TIME - elapsed);
-  elapsed = (unsigned int)(millis() - startTime);
-  if (elapsed < MIN_LOOP_TIME) delay (MIN_LOOP_TIME - elapsed);
-#else
-  idleTasks(50);
-#endif
+  // maintain loop time
+  uint32_t elapsed = millis() - startTime;
+  idleTasks(elapsed < loopTime ? (loopTime - elapsed) : 0);
+  elapsed = millis() - startTime;
+  if (elapsed < loopTime) delay (loopTime - elapsed);
 }
 
 /*******************************************************************************
@@ -675,14 +691,14 @@ void standby()
   shutDownNet();
 #if ENABLE_GPS
   if (state.check(STATE_GPS_READY)) {
-    Serial.println("GPS OFF");
+    println(PSTR("GPS OFF"));
     sys.gpsInit(0); // turn off GPS power
   }
 #endif
-  obd.end();
+  //obd.end();
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
   state.set(STATE_STANDBY);
-  Serial.println("STANDBY");
+  println(PSTR("STANDBY"));
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
@@ -708,7 +724,7 @@ void standby()
   } while (obd.getVoltage() < JUMPSTART_VOLTAGE);
 #endif
   state.clear(STATE_STANDBY);
-  Serial.println("Wakeup");
+  println(PSTR("WAKE UP"));
 #if RESET_AFTER_WAKEUP
   delay(100);
   void(* resetFunc) (void) = 0;
