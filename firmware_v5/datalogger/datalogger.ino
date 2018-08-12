@@ -549,7 +549,7 @@ void loop()
         logger.logGPSData();
 #endif
         if (tier > 1) break;
-#if ENABLE_WIFI_STATION || ENABLE_WIFI_AP
+#if ENABLE_HTTPD
         serverProcess(0);
 #endif
     }

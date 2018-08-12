@@ -557,6 +557,8 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
       }
     }
   }
+  sendCommand("AT+CVAUXV=61\r");
+  sendCommand("AT+CVAUXS=1\r");
   return success;
 }
 
