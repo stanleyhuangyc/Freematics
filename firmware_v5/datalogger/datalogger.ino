@@ -237,11 +237,13 @@ public:
         Serial.println("OK");
         pidErrors = 0;
         // retrieve VIN
+        Serial.print("VIN...");
         char buffer[128];
         if (obd->getVIN(buffer, sizeof(buffer))) {
-          Serial.print("VIN:");
-          Serial.println(buffer);
-          strncpy(vin, buffer, sizeof(vin) - 1);
+            Serial.println(buffer);
+            strncpy(vin, buffer, sizeof(vin) - 1);
+        } else {
+            Serial.println("NO");
         }
       } else {
         Serial.println("NO");
