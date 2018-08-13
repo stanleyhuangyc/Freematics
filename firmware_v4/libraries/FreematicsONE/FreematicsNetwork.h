@@ -46,21 +46,17 @@ class UDPClientESP8266AT
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* ssid, const char* password, unsigned int timeout = 10000);
+    bool setup(const char* ssid, const char* password, unsigned int timeout = 15000);
     String getIP();
     int getSignal() { return 0; }
     bool open(const char* host, uint16_t port);
     void close();
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
-    String queryIP(const char* host);
     char* getBuffer() { return buffer; }
     const char* deviceName() { return "ESP8266-AT"; }
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK");
-    bool connected = false;
-    char udpIP[16] = {0};
-    uint16_t udpPort = 0;
     char* rxBuf = 0;
     int rxLen = 0;
     CFreematics* m_device = 0;

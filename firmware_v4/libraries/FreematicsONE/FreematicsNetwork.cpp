@@ -74,34 +74,11 @@ String UDPClientESP8266AT::getIP()
   return "";
 }
 
-String UDPClientESP8266AT::queryIP(const char* host)
-{
-  sprintf_P(buffer, PSTR("AT+CIPDOMAIN=\"%s\"\r\n"), host);
-  if (sendCommand(buffer, 5000)) {
-    char *p = strchr(buffer, ':');
-    if (p) {
-      char *ip = p + 1;
-      p = strchr(ip, '\r');
-      if (p) *p = 0;
-      return ip;
-    }
-  }
-  return "";
-}
-
 bool UDPClientESP8266AT::open(const char* host, uint16_t port)
 {
-  if (host) {
-    String ip = queryIP(host);
-    if (ip.length()) {
-      strncpy(udpIP, ip.c_str(), sizeof(udpIP) - 1);
-    } else {
-      return false;
-    }
-    udpPort = port;
-  }
   for (byte n = 0; n < 3; n++) {
-    sprintf_P(buffer, PSTR("AT+CIPSTART=\"UDP\",\"%s\",%d,8000,0\r\n"), udpIP, udpPort);
+    close();
+    sprintf_P(buffer, PSTR("AT+CIPSTART=\"UDP\",\"%s\",%u,8000,0\r\n"), host, port);
     if (sendCommand(buffer, 3000)) {
       return true;
     } else {

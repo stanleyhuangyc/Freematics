@@ -176,7 +176,7 @@ bool login()
 {
   // connect to telematics server
   for (byte attempts = 0; attempts < 3; attempts++) {
-    Serial.print("LOGIN...");
+    print(PSTR("LOGIN..."));
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
       println(PSTR("NO"));
       continue;
@@ -267,7 +267,7 @@ void processGPS()
   static uint8_t lastGPSDay = 0;
   GPS_DATA gd = {0};
   // read parsed GPS data
-  if (sys.gpsGetData(&gd)) {
+  if (sys.gpsGetData(&gd) && gd.sat >= 3) {
       if (gd.date && lastUTC != (uint16_t)gd.time) {
         byte day = gd.date / 10000;
         cache.log(PID_GPS_TIME, gd.time);
@@ -392,6 +392,19 @@ bool initialize()
     print(PSTR("VER."));
     Serial.println((int)ver);
   }
+
+#if MEMS_MODE
+  if (!state.check(STATE_MEMS_READY)) {
+    print(PSTR("MEMS..."));
+    if (mems.begin()) {
+      state.set(STATE_MEMS_READY);
+      println(PSTR("OK"));
+    } else {
+      println(PSTR("NO"));
+    }
+  }
+#endif
+
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
     Serial.print(net.deviceName());
@@ -408,18 +421,6 @@ bool initialize()
 #if NET_DEVICE == NET_SIM5360
   print(PSTR("IMEI:"));
   Serial.println(net.IMEI);
-#endif
-
-#if MEMS_MODE
-  if (!state.check(STATE_MEMS_READY)) {
-    print(PSTR("MEMS..."));
-    if (mems.begin()) {
-      state.set(STATE_MEMS_READY);
-      println(PSTR("OK"));
-    } else {
-      println(PSTR("NO"));
-    }
-  }
 #endif
 
   // initialize OBD communication
@@ -695,7 +696,7 @@ void standby()
     sys.gpsInit(0); // turn off GPS power
   }
 #endif
-  //obd.end();
+  obd.end();
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
   state.set(STATE_STANDBY);
   println(PSTR("STANDBY"));
