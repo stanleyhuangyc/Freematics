@@ -634,7 +634,7 @@ void UDPClientSIM5360::checkGPS()
     if (!(p = strchr(p, ','))) break;
     m_gps->alt = atoi(++p);
     if (!(p = strchr(p, ','))) break;
-    m_gps->speed = atof(++p) * 185;
+    m_gps->speed = atof(++p) * 100;
     if (!(p = strchr(p, ','))) break;
     m_gps->heading = atoi(++p);
   } while (0);

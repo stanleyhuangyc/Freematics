@@ -19,6 +19,12 @@ public:
         byte len = sprintf_P(buf, PSTR("%X:%d"), pid, value);
         dispatch(buf, len);
     }
+    virtual void log(uint16_t pid, unsigned int value)
+    {
+        char buf[16];
+        byte len = sprintf_P(buf, PSTR("%X:%u"), pid, value);
+        dispatch(buf, len);
+    }
     virtual void log(uint16_t pid, int32_t value)
     {
         char buf[20];
