@@ -23,7 +23,7 @@ typedef struct {
     uint32_t time;
     int32_t lat;
     int32_t lng;
-    uint16_t speed; /* 0.01km */
+    uint16_t speed; /* 0.01 Knot */
     int16_t alt; /* meter */
     int16_t heading; /* degree */
 } GPS_LOCATION;

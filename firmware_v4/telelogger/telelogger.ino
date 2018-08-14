@@ -278,17 +278,20 @@ void processGPS()
         cache.logCoordinate(PID_GPS_LATITUDE, gd.lat);
         cache.logCoordinate(PID_GPS_LONGITUDE, gd.lng);
         cache.log(PID_GPS_ALTITUDE, gd.alt);
-        cache.log(PID_GPS_SPEED, gd.speed);
         cache.log(PID_GPS_SAT_COUNT, gd.sat);
+        unsigned int kph = gd.speed  * 1852 / 100000;
+        cache.log(PID_GPS_SPEED, kph);
+        if (kph >= 2) lastMotionTime = millis();
         lastUTC = (uint16_t)gd.time;
-        if (gd.speed >= 1) lastMotionTime = millis();
         Serial.print("[GPS] ");
         Serial.print(gd.lat);
         Serial.print(' ');
         Serial.print(gd.lng);
         Serial.print(' ');
         Serial.print(gd.alt);
-        Serial.print("m UTC:");
+        Serial.print("m ");
+        Serial.print(kph);
+        Serial.print("km/h UTC:");
         Serial.print(gd.time);
         Serial.print(" SAT:");
         Serial.println((unsigned int)gd.sat);
@@ -316,7 +319,7 @@ void processLocation()
         cache.logCoordinate(PID_GPS_LATITUDE, gi->lat);
         cache.logCoordinate(PID_GPS_LONGITUDE, gi->lng);
         cache.log(PID_GPS_ALTITUDE, gi->alt);
-        int kph = gi->speed / 100;
+        unsigned int kph = gi->speed * 1852 / 100000;
         cache.log(PID_GPS_SPEED, kph);
         if (kph >= 1) lastMotionTime = millis();
         lastUTC = (uint16_t)gi->time;
@@ -696,6 +699,7 @@ void standby()
     sys.gpsInit(0); // turn off GPS power
   }
 #endif
+  obd.reset();
   obd.end();
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
   state.set(STATE_STANDBY);

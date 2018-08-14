@@ -92,10 +92,10 @@ typedef struct {
     uint32_t time;
     int32_t lat;
     int32_t lng;
-    int16_t alt;
-    uint8_t speed;
-    uint8_t sat;
+    int16_t alt; /* meter */
+    uint16_t speed; /* 1/100 Knot */
     int16_t heading;
+    uint8_t sat;
 } GPS_DATA;
 
 uint16_t hex2uint16(const char *p);

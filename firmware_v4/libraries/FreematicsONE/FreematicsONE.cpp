@@ -586,7 +586,7 @@ bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 	for (char* p = s; *p && valid; p++) {
 		char c = *p;
 		if (c == ',' || c == '>' || c <= 0x0d) {
-			int32_t value = atol(s);
+			long value = atol(s);
 			switch (index) {
 			case 0:
 				if (value == 0)
