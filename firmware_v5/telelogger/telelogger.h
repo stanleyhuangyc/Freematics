@@ -64,7 +64,7 @@ protected:
     virtual void header(uint16_t feedid) {}
     virtual void tailer() {}
     uint16_t m_samples = 0;
-    char m_delimiter = '=';
+    char m_delimiter = ':';
     CStorageNull* m_next = 0;
 };
 
