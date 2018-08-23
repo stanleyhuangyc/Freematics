@@ -259,7 +259,7 @@ public:
         sprintf(path, "/DATA/%u.CSV", m_id);
         Serial.print("File: ");
         Serial.println(path);
-        m_file = SD.open(path, FILE_WRITE);
+        m_file = SPIFFS.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
             m_id = 0;
