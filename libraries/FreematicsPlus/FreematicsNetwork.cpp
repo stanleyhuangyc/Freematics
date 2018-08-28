@@ -466,24 +466,21 @@ bool ClientSIM5360::begin(CFreematics* device)
     // discard any stale data
     device->xbPurge();
     for (byte m = 0; m < 5; m++) {
-      if (sendCommand("AT\r")) {
+      if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         m_stage = 2;
-        sendCommand("ATE0\r");
-        if (sendCommand("ATI\r")) {
-          // retrieve module info
-          char *p = strstr(m_buffer, "Model:");
-          if (p) p = strchr(p, '_');
-          if (p++) {
-            int i = 0;
-            while (i < sizeof(m_model) - 1 && p[i] && p[i] != '\r' && p[i] != '\n') {
-              m_model[i] = p[i];
-              i++;
-            }
-            m_model[i] = 0;
+        // retrieve module info
+        char *p = strstr(m_buffer, "Model:");
+        if (p) p = strchr(p, '_');
+        if (p++) {
+          int i = 0;
+          while (i < sizeof(m_model) - 1 && p[i] && p[i] != '\r' && p[i] != '\n') {
+            m_model[i] = p[i];
+            i++;
           }
-          p = strstr(m_buffer, "IMEI:");
-          if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
+          m_model[i] = 0;
         }
+        p = strstr(m_buffer, "IMEI:");
+        if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
         return true;
       }
     }
@@ -662,32 +659,30 @@ float ClientSIM5360::parseDegree(const char* s)
 
 void ClientSIM5360::checkGPS()
 {
-  if (m_gps) {
-    // check and parse GPS data
-    char *p;
-    if ((p = strstr(m_buffer, "+CGPSINFO:"))) do {
-      if (!(p = strchr(p, ':'))) break;
-      if (*(++p) == ',') break;
-      m_gps->lat = parseDegree(p);
-      if (!(p = strchr(p, ','))) break;
-      if (*(++p) == 'S') m_gps->lat = -m_gps->lat;
-      if (!(p = strchr(p, ','))) break;
-      m_gps->lng = parseDegree(++p);
-      if (!(p = strchr(p, ','))) break;
-      if (*(++p) == 'W') m_gps->lng = -m_gps->lng;
-      if (!(p = strchr(p, ','))) break;
-      m_gps->date = atoi(++p);
-      if (!(p = strchr(p, ','))) break;
-      m_gps->time = atof(++p) * 100;
-      if (!(p = strchr(p, ','))) break;
-      m_gps->alt = atof(++p);
-      if (!(p = strchr(p, ','))) break;
-      m_gps->speed = atof(++p);
-      if (!(p = strchr(p, ','))) break;
-      m_gps->heading = atoi(++p);
-      m_gps->ts = millis();
-    } while (0);
-  }
+  // check and parse GPS data
+  char *p;
+  if (m_gps && (p = strstr(m_buffer, "+CGPSINFO:"))) do {
+    if (!(p = strchr(p, ':'))) break;
+    if (*(++p) == ',') break;
+    m_gps->lat = parseDegree(p);
+    if (!(p = strchr(p, ','))) break;
+    if (*(++p) == 'S') m_gps->lat = -m_gps->lat;
+    if (!(p = strchr(p, ','))) break;
+    m_gps->lng = parseDegree(++p);
+    if (!(p = strchr(p, ','))) break;
+    if (*(++p) == 'W') m_gps->lng = -m_gps->lng;
+    if (!(p = strchr(p, ','))) break;
+    m_gps->date = atoi(++p);
+    if (!(p = strchr(p, ','))) break;
+    m_gps->time = atof(++p) * 100;
+    if (!(p = strchr(p, ','))) break;
+    m_gps->alt = atof(++p);
+    if (!(p = strchr(p, ','))) break;
+    m_gps->speed = atof(++p);
+    if (!(p = strchr(p, ','))) break;
+    m_gps->heading = atoi(++p);
+    m_gps->ts = millis();
+  } while (0);
 }
 
 bool UDPClientSIM5360::open(const char* host, uint16_t port)
