@@ -699,7 +699,6 @@ byte COBDSPI::begin()
 	SPI.setFrequency(SPI_FREQ);
 	delay(50);
 	byte ver = getVersion();
-	if (ver == 0) end();
 	return ver;
 }
 
@@ -829,10 +828,7 @@ COBD* createOBD()
     if (!obd->begin()) {
         delete obd;    
         obd = new COBDSPI;
-        if (!obd->begin()) {
-			delete obd;
-			obd = 0;
-		}
+        obd->begin();
     }
 	return obd;
 }
