@@ -235,7 +235,7 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
         taskGPS.create(gps_decode_task, "GPS", 0);
     } else {
         // start GPS decoding task (soft serial)
-        taskGPS.create(gps_soft_decode_task, "GPS", 2);
+        taskGPS.create(gps_soft_decode_task, "GPS", 1);
     }
 
     // test run for a while to see if there is data decoded
