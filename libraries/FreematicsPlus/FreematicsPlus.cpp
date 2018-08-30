@@ -67,19 +67,19 @@ void gps_decode_task(void* inst)
 
 void gps_soft_decode_task(void* inst)
 {
-    portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    //portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
     pinMode(PIN_GPS_UART_RXD, INPUT);
     for (;;) {
         uint8_t c = 0;
         while (readRxPin());
         uint32_t start = getCycleCount();
         taskYIELD();
-        portENTER_CRITICAL(&mux);
+        //portENTER_CRITICAL(&mux);
         for (uint32_t i = 1; i <= 7; i++) {
             while (getCycleCount() - start < i * F_CPU / GPS_BAUDRATE + F_CPU / GPS_BAUDRATE / 3);
             c = (c | readRxPin()) >> 1;
         }
-        portEXIT_CRITICAL(&mux);
+        //portEXIT_CRITICAL(&mux);
         if (c) {
             if (nmeaBuffer && nmeaBytes < NMEA_BUF_SIZE) {
                 nmeaBufferMutex.lock();
@@ -259,10 +259,16 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         gps.get_position(&lat, &lng, 0);
         gpsData->lat = (float)lat / 1000000;
         gpsData->lng = (float)lng / 1000000;
-        gpsData->alt = (float)gps.altitude() / 100;
-        gpsData->speed = (float)gps.speed() / 100;
-        gpsData->heading = gps.course() / 100;
-        gpsData->sat = gps.satellites();
+        long alt = gps.altitude();
+        if (alt != TinyGPS::GPS_INVALID_ALTITUDE) gpsData->alt = (float)alt / 100;
+        unsigned long knot = gps.speed();
+        if (knot != TinyGPS::GPS_INVALID_SPEED) gpsData->speed = (float)knot / 100;
+        unsigned long course = gps.course();
+        if (course < 36000) gpsData->heading = course / 100;
+        unsigned short sat = gps.satellites();
+        if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData->sat = sat;
+        unsigned long hdop = gps.hdop();
+        gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
         gpsDataStage = 0;
         return true;
     } else {

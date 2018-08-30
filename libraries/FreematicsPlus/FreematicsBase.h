@@ -19,6 +19,7 @@
 #define PID_GPS_SAT_COUNT 0xF
 #define PID_GPS_TIME 0x10
 #define PID_GPS_DATE 0x11
+#define PID_GPS_HDOP 0x12
 #define PID_ACC 0x20
 #define PID_GYRO 0x21
 #define PID_COMPASS 0x22
@@ -49,8 +50,9 @@ typedef struct {
 	float lng;
 	float alt; /* meter */
 	float speed; /* knot */
-	int16_t heading; /* degree */
-	uint16_t sat;
+	uint16_t heading; /* degree */
+	uint8_t hdop;
+	uint8_t sat;
 	uint16_t sentences;
 	uint16_t errors;
 } GPS_DATA;
