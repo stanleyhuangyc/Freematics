@@ -47,7 +47,7 @@ String ClientWIFI::getIP()
 
 bool ClientWIFI::begin(const char* ssid, const char* password)
 {
-  //listAPs();
+  listAPs();
   WiFi.begin(ssid, password);
   return true;
 }
@@ -490,7 +490,8 @@ bool ClientSIM5360::begin(CFreematics* device)
 
 void ClientSIM5360::end()
 {
-  if (m_stage == 2 || sendCommand("AT\r")) {
+  bool success = sendCommand("AT+CRESET\r");
+  if (m_stage == 2 || success) {
     m_device->xbTogglePower();
     m_stage = 1;
   }
