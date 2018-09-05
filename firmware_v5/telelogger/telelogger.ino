@@ -32,7 +32,8 @@
 #define STATE_NET_READY 0x10
 #define STATE_CONNECTED 0x20
 #define STATE_WORKING 0x40
-#define STATE_STANDBY 0x80
+#define STATE_OBD_FOUND 0x80
+#define STATE_STANDBY 0x100
 
 typedef struct {
   byte pid;
@@ -64,10 +65,10 @@ int16_t batteryVoltage = 0;
 #if ENABLE_GPS
 GPS_DATA* gd = 0;
 uint32_t lastGPSts = 0;
-uint8_t lastGPSDay = 0;
 #endif
 
-char isoTime[24] = {0};
+char devid[16] = {0};
+char isoTime[26] = {0};
 uint8_t deviceTemp = 0; // device temperature
 
 // stats data
@@ -78,12 +79,17 @@ uint32_t lastMotionTime = 0;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 
-uint32_t sendingInterval = DATA_SENDING_INTERVAL;
+uint16_t sendingInterval = 0;
 uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 uint8_t connErrors = 0;
+uint32_t stationaryTime[] = STATIONARY_TIME_TABLE;
+uint16_t sendingIntervals[] = SENDING_INTERVAL_TABLE;
+uint32_t dataIntervals[] = DATA_INTERVAL_TABLE;
 
+#if STORAGE != STORAGE_NONE
 int fileid = 0;
 static uint8_t lastSizeKB = 0;
+#endif
 
 uint32_t lastCmdToken = 0;
 String serialCommand;
@@ -272,21 +278,19 @@ void processGPS()
 #endif
   }
 
-  if (!gd || lastGPSts == gd->ts) return;
+  if (!gd || gd->date == 0 || lastGPSts == gd->ts) return;
 
-  byte day = gd->date / 10000;
+  cache.log(PID_GPS_DATE, gd->date);
   cache.log(PID_GPS_TIME, gd->time);
-  if (lastGPSDay != day) {
-    cache.log(PID_GPS_DATE, gd->date);
-    lastGPSDay = day;
-  }
   cache.logFloat(PID_GPS_LATITUDE, gd->lat);
   cache.logFloat(PID_GPS_LONGITUDE, gd->lng);
-  cache.log(PID_GPS_ALTITUDE, gd->alt / 100); /* m */
+  cache.log(PID_GPS_ALTITUDE, gd->alt); /* m */
   float kph = gd->speed * 1.852f;
   if (kph >= 1) lastMotionTime = millis();
   cache.log(PID_GPS_SPEED, kph);
+  cache.log(PID_GPS_HEADING, gd->heading);
   cache.log(PID_GPS_SAT_COUNT, gd->sat);
+  cache.log(PID_GPS_HDOP, gd->hdop);
   
   if (kph >= 1 || lastKph >= 1) {
       // compute distance travelled from average of two speed samples (either is above 1kph)
@@ -300,23 +304,25 @@ void processGPS()
       (unsigned int)(gd->date % 100) + 2000, (unsigned int)(gd->date / 100) % 100, (unsigned int)(gd->date / 10000),
       (unsigned int)(gd->time / 1000000), (unsigned int)(gd->time % 1000000) / 10000, (unsigned int)(gd->time % 10000) / 100);
   unsigned char tenth = (gd->time % 100) / 10;
-  if (tenth) p += sprintf(p, ".%c", '0' + tenth);
+  if (tenth) p += sprintf(p, ".%c00", '0' + tenth);
   *p = 'Z';
   *(p + 1) = 0;
-  
+
   Serial.print("[GPS] ");
   Serial.print(gd->lat);
   Serial.print(' ');
   Serial.print(gd->lng);
   Serial.print(' ');
   Serial.print((int)kph);
-  Serial.print("km/h ");
-  Serial.print(distance / 1000, 1);
-  Serial.print("km ");
+  Serial.print("km/h");
   if (gd->sat) {
+    Serial.print(" SATS:");
     Serial.print(gd->sat);
-    Serial.print(" Sats ");
   }
+  Serial.print(" Heading:");
+  Serial.print(gd->heading);
+
+  Serial.print(' ');
   Serial.println(isoTime);
   //Serial.println(gd->errors);
   lastGPSts = gd->ts;
@@ -408,9 +414,7 @@ bool initialize()
     }
   }
 #elif NET_DEVICE == NET_WIFI
-  Serial.print("WiFi...");
   teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.println(WIFI_SSID);
 #endif
 
 #if MEMS_MODE
@@ -439,7 +443,6 @@ bool initialize()
     Serial.print("OBD...");
     if (obd->init()) {
       Serial.println("OK");
-      state.set(STATE_OBD_READY);
       char buf[192];
       if (obd->getVIN(buf, sizeof(buf))) {
         strncpy(vin, buf, sizeof(vin) - 1);
@@ -451,8 +454,13 @@ bool initialize()
         Serial.print("DTC:");
         Serial.println(dtcCount);
       }
+      state.set(STATE_OBD_READY | STATE_OBD_FOUND);
     } else {
       Serial.println("NO");
+      if (state.check(STATE_OBD_FOUND)) {
+        // if OBD was ever connected, require connection
+        return false;
+      }
     }
   }
 #endif
@@ -753,6 +761,39 @@ void showStats()
 #endif
 }
 
+bool waitMotion(unsigned int timeout)
+{
+#if MEMS_MODE
+  if (state.check(STATE_MEMS_READY)) {
+    uint32_t t = millis();
+    for (;;) {
+      if (timeout == 0) {
+        if (!state.check(STATE_STANDBY)) break;
+      } else if (millis() - t >= timeout) {
+        break;
+      }
+      serverProcess(100);
+      // calculate relative movement
+      float motion = 0;
+      float acc[3];
+      mems.read(acc);
+      for (byte i = 0; i < 3; i++) {
+        float m = (acc[i] - accBias[i]);
+        motion += m * m;
+      }
+      // check movement
+      if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
+        lastMotionTime = millis();
+        return true;
+      }
+    }
+    return false;
+  }
+#endif
+  delay(timeout);
+  return true;
+}
+
 /*******************************************************************************
   Collecting and processing data
 *******************************************************************************/
@@ -769,6 +810,9 @@ void process()
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
     processOBD();
+    if (obd->errors > MAX_OBD_ERRORS) {
+      state.clear(STATE_OBD_READY | STATE_WORKING);
+    }
   }
 #else
   int temp = (int)readChipTemperature() * 165 / 255 - 40;
@@ -811,7 +855,8 @@ void process()
     connErrors++;
     timeoutsNet++;
     printTimeoutStats();
-  } else if (millis() - teleClient.lastSentTime >= sendingInterval && cache.samples() > 0) {
+  }
+  if (millis() - teleClient.lastSentTime >= sendingInterval && cache.samples() > 0) {
     // some data only need once for a transmission
     if (distance) cache.log(PID_TRIP_DISTANCE, (uint32_t)distance);
 #if SERVER_PROTOCOL == PROTOCOL_UDP
@@ -847,29 +892,27 @@ void process()
     delay(10000);
   }
 
-#if ENABLE_OBD
-  if (obd->errors > MAX_OBD_ERRORS) {
-    Serial.println("Reset OBD");
-    obd->reset();
-    state.clear(STATE_OBD_READY | STATE_WORKING);
-  } else if (obd->errors > 3) {
-    delay(5000);
-  }
-#endif
-
-#if MOTIONLESS_STANDBY
-  if (millis() - lastMotionTime > MOTIONLESS_STANDBY * 1000) {
-    Serial.println("No motion detected");
-    // enter standby mode
-    state.clear(STATE_WORKING);
-  }
-#endif
-
-  // maintain minimum loop time
-  do {
+  // motion adaptive data interval control
+  for (;;) {
+    unsigned int motionless = (millis() - lastMotionTime) / 1000;
+    long loopTime = -1;
+    for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
+      if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
+        loopTime = dataIntervals[i];
+        sendingInterval = 1000L * sendingIntervals[i];
+        break;
+      }
+    }
+    if (loopTime == -1) {
+      state.clear(STATE_WORKING);
+      teleClient.feedid = 0;
+      break;
+    }
     idleTasks();
-    serverProcess(0);
-  } while (millis() - startTime < MIN_LOOP_TIME);
+    long n = loopTime + startTime - millis();
+    if (n < 0) break;
+    waitMotion(min(n, 3000));
+  }
 }
 
 /*******************************************************************************
@@ -892,9 +935,7 @@ void standby()
 #endif
 #if ENABLE_OBD
   if (state.check(STATE_OBD_READY)) {
-    if (obd->errors > MAX_OBD_ERRORS) {
-      // inaccessible OBD treated as end of trip
-    }
+    obd->reset();
   }
 #endif
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_CONNECTED);
@@ -904,26 +945,8 @@ void standby()
   oled.clear();
 #endif
 #if MEMS_MODE
-  if (state.check(STATE_MEMS_READY)) {
-    calibrateMEMS();
-    while (state.check(STATE_STANDBY)) {
-      // calculate relative movement
-      mems.read(acc);
-      float motion = 0;
-      for (byte i = 0; i < 3; i++) {
-        float m = (acc[i] - accBias[i]);
-        motion += m * m;
-      }
-      // check movement
-      if (motion > MOTION_THRESHOLD * MOTION_THRESHOLD) {
-        lastMotionTime = millis();
-        Serial.print("Motion:");
-        Serial.println(motion);
-        break;
-      }
-      serverProcess(100);
-    }
-  }
+  calibrateMEMS();
+  waitMotion(0);
 #elif ENABLE_OBD
   float v;
   obd->reset();
@@ -1008,7 +1031,7 @@ void setup()
 #endif
     // generate a unique ID in case VIN is inaccessible
     uint64_t mac = ESP.getEfuseMac();
-    sprintf(vin, "DEVID%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
+    sprintf(devid, "ID%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
 
 #if ENABLE_HTTPD
     IPAddress ip;

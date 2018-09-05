@@ -190,7 +190,7 @@ class SDLogger : public FileLogger {
 public:
     bool init()
     {
-        Serial.print("SD: ");
+        Serial.print("SD:");
         SPI.begin();
         if (SD.begin(PIN_SD_CS, SPI, SPI_FREQ)) {
             Serial.print((unsigned int)(SD.totalBytes() >> 20));
@@ -240,7 +240,7 @@ public:
             Serial.println("Formatting SPIFFS...");
             mounted = SPIFFS.begin(true);
         }
-        Serial.print("SPIFFS: ");
+        Serial.print("SPIFFS:");
         if (mounted) {
             Serial.print(SPIFFS.totalBytes());
             Serial.print(" bytes total, ");

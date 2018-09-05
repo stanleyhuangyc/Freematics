@@ -33,9 +33,6 @@
 // maximum consecutive OBD-II access errors before entering standby
 #define MAX_OBD_ERRORS 10
 
-// minimum processing loop time
-#define MIN_LOOP_TIME 500 /* ms */
-
 /**************************************
 * Networking configurations
 **************************************/
@@ -74,22 +71,24 @@
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
+// data receiving timeout
+#define DATA_RECEIVING_TIMEOUT 5000 /* ms */
+// expected maximum server sync signal interval
+#define SERVER_SYNC_INTERVAL 60 /* seconds, 0 to disable */
+// data interval configurations
+#define STATIONARY_TIME_TABLE {60, 180, 0} /* seconds */
+#define SENDING_INTERVAL_TABLE {1, 3, 10} /* seconds */
+#define DATA_INTERVAL_TABLE {500, 2000, 10000} /* ms */
 
 /**************************************
 * Data storage configurations
 **************************************/
 #ifndef STORAGE
 // change the following line to change storage type
-#define STORAGE STORAGE_SD
+#define STORAGE STORAGE_NONE
 #endif
 
 #define RAM_CACHE_SIZE 1024 /* bytes */
-
-#ifndef DATA_SENDING_INTERVAL
-#define DATA_SENDING_INTERVAL 1000 /* ms */
-#endif
-#define SERVER_SYNC_INTERVAL 60 /* seconds, 0 to disable */
-#define DATA_RECEIVING_TIMEOUT 5000 /* ms */
 
 /**************************************
 * MEMS sensors
@@ -111,11 +110,9 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 0
+#define RESET_AFTER_WAKEUP 1
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.2f /* moving vehicle motion threshold in G */
-// time before entering motion-less standby, 0 for disabled
-#define MOTIONLESS_STANDBY 180 /* seconds */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
