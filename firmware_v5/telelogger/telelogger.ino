@@ -104,11 +104,11 @@ bool processCommand(char* data);
 
 class State {
 public:
-  bool check(byte flags) { return (m_state & flags) == flags; }
-  void set(byte flags) { m_state |= flags; }
-  void clear(byte flags) { m_state &= ~flags; }
+  bool check(uint16_t flags) { return (m_state & flags) == flags; }
+  void set(uint16_t flags) { m_state |= flags; }
+  void clear(uint16_t flags) { m_state &= ~flags; }
 private:
-  byte m_state = 0;
+  uint16_t m_state = 0;
 };
 
 FreematicsESP32 sys;
