@@ -928,13 +928,13 @@ void standby()
       break;
     }
     // start ping
-    Serial.print("Ping");
-    if (!teleClient.net.begin(&sys)) continue;
-    Serial.print('.');
-    if (!teleClient.net.setup(CELL_APN)) continue;
-    Serial.print('.');
+    Serial.print("Ping...");
+#if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+    if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) continue;
+#else
+    if (!teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD) || !teleClient.net.setup()) continue;
+#endif
     teleClient.net.getIP();
-    Serial.print('.');
     state.set(STATE_NET_READY);
     if (teleClient.ping()) {
       Serial.println(millis());
