@@ -1,5 +1,13 @@
 #include "config.h"
 
+#define EVENT_LOGIN 1
+#define EVENT_LOGOUT 2
+#define EVENT_SYNC 3
+#define EVENT_RECONNECT 4
+#define EVENT_COMMAND 5
+#define EVENT_ACK 6
+#define EVENT_PING 7
+
 class TeleClient
 {
 public:
@@ -10,7 +18,7 @@ public:
         rxBytes = 0;
         startTime = millis();
     }
-    virtual bool notify(byte event, const char* serverKey, const char* payload = 0) { return true; }
+    virtual bool notify(byte event, const char* payload = 0) { return true; }
     virtual bool connect() { return true; }
     virtual bool transmit(const char* packetBuffer, unsigned int packetSize)  { return true; }
     virtual void inbound() {}
@@ -28,9 +36,10 @@ public:
 class TeleClientUDP : public TeleClient
 {
 public:
-    bool notify(byte event, const char* serverKey, const char* payload = 0);
+    bool notify(byte event, const char* payload = 0);
     bool connect();
     bool transmit(const char* packetBuffer, unsigned int packetSize);
+    bool ping();
     void inbound();
     bool verifyChecksum(char* data);
 #if NET_DEVICE == NET_WIFI
@@ -51,6 +60,7 @@ class TeleClientHTTP : public TeleClient
 public:
     bool connect();
     bool transmit(const char* packetBuffer, unsigned int packetSize);
+    bool ping();
 #if NET_DEVICE == NET_WIFI
     HTTPClientWIFI net;
 #elif NET_DEVICE == NET_SIM800

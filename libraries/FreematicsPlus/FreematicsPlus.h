@@ -37,8 +37,8 @@
 
 #define GPS_TIMEOUT 1000 /* ms */
 
-uint8_t readChipTemperature();
-int32_t readChipHallSensor();
+int readChipTemperature();
+int readChipHallSensor();
 uint16_t getFlashSize(); /* KB */
 
 class Task

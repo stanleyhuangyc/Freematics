@@ -39,7 +39,7 @@ bool TeleClientUDP::verifyChecksum(char* data)
   return false;
 }
 
-bool TeleClientUDP::notify(byte event, const char* serverKey, const char* payload)
+bool TeleClientUDP::notify(byte event, const char* payload)
 {
   char buf[48];
   CStorageRAM netbuf;
@@ -53,10 +53,6 @@ bool TeleClientUDP::notify(byte event, const char* serverKey, const char* payloa
   netbuf.dispatch(buf, len);
   if (vin[0]) {
     len = sprintf(buf, "VIN=%s", vin);
-    netbuf.dispatch(buf, len);
-  }
-  if (serverKey) {
-    len = sprintf(buf, PSTR("SK=%s"), serverKey);
     netbuf.dispatch(buf, len);
   }
   if (payload) {
@@ -87,13 +83,13 @@ bool TeleClientUDP::notify(byte event, const char* serverKey, const char* payloa
     // verify checksum
     if (!verifyChecksum(data)) {
       Serial.print("Checksum mismatch:");
-      Serial.print(data);
+      Serial.println(data);
       continue;
     }
     char pattern[16];
     sprintf(pattern, "EV=%u", event);
     if (!strstr(data, pattern)) {
-      Serial.print("Invalid reply");
+      Serial.println("Invalid reply");
       continue;
     }
     if (event == EVENT_LOGIN) {
@@ -112,7 +108,6 @@ bool TeleClientUDP::notify(byte event, const char* serverKey, const char* payloa
       }
       feedid = hex2uint16(data);
     }
-    Serial.print(' ');
     // success
     return true;
   }
@@ -129,14 +124,14 @@ bool TeleClientUDP::connect()
     Serial.print(SERVER_PORT);
     Serial.print(")...");
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      Serial.println("network error");
+      Serial.println("Network Error");
       delay(1000);
       continue;
     }
     // login Freematics Hub
-    if (!notify(EVENT_LOGIN, SERVER_KEY)) {
+    if (!notify(EVENT_LOGIN)) {
       net.close();
-      Serial.println("server error");
+      Serial.println("Server Error");
       delay(1000);
       continue;
     }
@@ -154,6 +149,16 @@ bool TeleClientUDP::connect()
     return true;
   }
   return false;
+}
+
+bool TeleClientUDP::ping()
+{
+    if (!net.open(SERVER_HOST, SERVER_PORT)) {
+      return false;
+    }
+    bool success = notify(EVENT_PING);
+    if (success) lastSyncTime = millis();
+    return success;
 }
 
 bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
@@ -273,3 +278,7 @@ bool TeleClientHTTP::connect()
   return true;
 }
 
+bool TeleClientHTTP::ping()
+{
+  return connect();
+}

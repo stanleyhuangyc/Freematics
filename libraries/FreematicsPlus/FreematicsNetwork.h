@@ -15,13 +15,6 @@
 
 #include "FreematicsBase.h"
 
-#define EVENT_LOGIN 1
-#define EVENT_LOGOUT 2
-#define EVENT_SYNC 3
-#define EVENT_RECONNECT 4
-#define EVENT_COMMAND 5
-#define EVENT_ACK 6
-
 #define HTTP_CONN_TIMEOUT 5000
 
 typedef enum {

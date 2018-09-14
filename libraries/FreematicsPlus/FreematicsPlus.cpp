@@ -102,12 +102,12 @@ int32_t hall_sens_read();
 }
 
 // get chip temperature sensor
-uint8_t readChipTemperature()
+int readChipTemperature()
 {
-  return temprature_sens_read();
+    return (int)temprature_sens_read() * 165 / 255 - 40;
 }
 
-int32_t readChipHallSensor()
+int readChipHallSensor()
 {
   return hall_sens_read();
 }
