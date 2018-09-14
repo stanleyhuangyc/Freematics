@@ -60,7 +60,6 @@
 #endif
 
 #define SERVER_PATH "/api/post"
-#define SERVER_KEY "TEST_SERVER_KEY"
 
 #define WIFI_AP_SSID "TELELOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
@@ -74,18 +73,19 @@
 // data receiving timeout
 #define DATA_RECEIVING_TIMEOUT 5000 /* ms */
 // expected maximum server sync signal interval
-#define SERVER_SYNC_INTERVAL 60 /* seconds, 0 to disable */
+#define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
 // data interval configurations
-#define STATIONARY_TIME_TABLE {60, 180, 0} /* seconds */
-#define SENDING_INTERVAL_TABLE {1, 3, 10} /* seconds */
-#define DATA_INTERVAL_TABLE {500, 2000, 10000} /* ms */
+#define STATIONARY_TIME_TABLE {60, 300} /* seconds */
+#define SENDING_INTERVAL_TABLE {1, 3} /* seconds */
+#define DATA_INTERVAL_TABLE {500, 1000} /* ms */
+#define PING_BACK_INTERVAL 900 /* seconds */
 
 /**************************************
 * Data storage configurations
 **************************************/
 #ifndef STORAGE
 // change the following line to change storage type
-#define STORAGE STORAGE_NONE
+#define STORAGE STORAGE_SD
 #endif
 
 #define RAM_CACHE_SIZE 1024 /* bytes */
@@ -110,7 +110,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 1
+#define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.2f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage

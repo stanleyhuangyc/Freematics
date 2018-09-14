@@ -491,6 +491,7 @@ bool ClientSIM5360::begin(CFreematics* device)
 void ClientSIM5360::end()
 {
   bool success = sendCommand("AT+CRESET\r");
+  sendCommand("AT+GPS=0\r");
   if (m_stage == 2 || success) {
     m_device->xbTogglePower();
     m_stage = 1;
