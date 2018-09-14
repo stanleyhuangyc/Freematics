@@ -368,7 +368,10 @@ bool initialize()
   state.clear(STATE_WORKING);
   
   if (!state.check(STATE_NET_READY)) {
-#if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+#if NET_DEVICE == NET_WIFI
+    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
+    state.set(STATE_NET_READY);
+#else
     // power on network module
     Serial.print("CELL...");
     if (teleClient.net.begin(&sys)) {
@@ -388,9 +391,6 @@ bool initialize()
       oled.println("No cell module");
 #endif
     }
-#elif NET_DEVICE == NET_WIFI
-    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
-    state.set(STATE_NET_READY);
 #endif
   }
 
@@ -484,7 +484,7 @@ bool initialize()
       Serial.println("NO");
     }
   }
-#elif NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+#else
   if (!state.check(STATE_NET_CONNECTED)) {
     Serial.print("NET(APN:");
     Serial.print(CELL_APN);
@@ -929,10 +929,10 @@ void standby()
     }
     // start ping
     Serial.print("Ping...");
-#if NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-    if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) continue;
-#else
+#if NET_DEVICE == NET_WIFI
     if (!teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD) || !teleClient.net.setup()) continue;
+#else
+    if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) continue;
 #endif
     teleClient.net.getIP();
     state.set(STATE_NET_READY);
@@ -1034,6 +1034,8 @@ void setup()
     // generate a unique ID in case VIN is inaccessible
     uint64_t mac = ESP.getEfuseMac();
     sprintf(devid, "ID%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
+    Serial.print("Device ID:");
+    Serial.println(devid);
 
 #if ENABLE_HTTPD
     IPAddress ip;
