@@ -507,7 +507,6 @@ void COBDSPI::write(const char* s)
 	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.endTransaction();
-	//delay(1);
 }
 
 byte COBDSPI::readPID(const byte pid[], byte count, int result[])

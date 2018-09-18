@@ -10,8 +10,9 @@
 #include "driver/uart.h"
 #include "FreematicsOBD.h"
 
-#define SPI_SAFE_MODE 0
 //#define DEBUG Serial
+
+static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 #ifdef DEBUG
 void debugOutput(const char *s)
@@ -697,7 +698,7 @@ byte COBDSPI::begin()
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
 	SPI.setFrequency(SPI_FREQ);
-	delay(50);
+	//delay(50);
 	byte ver = getVersion();
 	return ver;
 }
@@ -712,7 +713,6 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	int n = 0;
 	bool eos = false;
 	bool matched = false;
-	portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
@@ -724,11 +724,6 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				break;
 			}
 		}
-#if SPI_SAFE_MODE
-		delay(10);
-#endif
-		taskYIELD();
-		portENTER_CRITICAL(&mux);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
@@ -766,7 +761,6 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			}
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
-	    portEXIT_CRITICAL(&mux);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -792,6 +786,7 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
+	SPI.beginTransaction(settings);
 	digitalWrite(SPI_PIN_CS, LOW);
 	int len = strlen(s);
 	uint8_t *buf = (uint8_t*)malloc(sizeof(header) + len + 1);
@@ -800,8 +795,9 @@ void COBDSPI::write(const char* s)
 	buf[sizeof(header) + len] = 0x1B;
 	SPI.writeBytes((uint8_t*)buf, sizeof(header) + len + 1);
 	free(buf);
-	delay(1);
+	//delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
+	SPI.endTransaction();
 }
 
 int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
@@ -810,11 +806,11 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 	int n;
 	do {
 		write(cmd);
-		delay(20);
+		//delay(20);
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
 			// data not ready
-			delay(20);
+			delay(50);
 		} else {
 	  		break;
 		}
