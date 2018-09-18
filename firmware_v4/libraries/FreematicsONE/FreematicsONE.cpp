@@ -18,6 +18,8 @@ static const uint8_t targets[][4] = {
 	{0x24, 0x47, 0x53, 0x4D}
 };
 
+static SPISettings settings = SPISettings(250000, MSBFIRST, SPI_MODE0);
+
 uint16_t hex2uint16(const char *p)
 {
 	char c = *p;
@@ -319,9 +321,8 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 	byte stage;
 
 	m_state = OBD_DISCONNECTED;
-	for (byte n = 0; n < 3; n++) {
+	for (byte n = 0; n < 2; n++) {
 		stage = 0;
-		if (n != 0) reset();
 		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 			delay(10);
 			strcpy_P(buffer, initcmd[i]);
@@ -372,7 +373,6 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 		DEBUG.print("Stage:");
 		DEBUG.println(stage);
 #endif
-		reset();
 		return false;
 	}
 }
@@ -387,7 +387,6 @@ void COBDSPI::debugOutput(const char *s)
 }
 #endif
 
-
 byte COBDSPI::begin()
 {
 	// turn off ADC
@@ -398,11 +397,9 @@ byte COBDSPI::begin()
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
-	digitalWrite(SPI_PIN_CS, LOW);
-	delay(10);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
-	SPI.setClockDivider(SPI_CLOCK_DIV64);
+	//SPI.setClockDivider(SPI_CLOCK_DIV64);
 	return getVersion();
 }
 
@@ -432,12 +429,11 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
 			if (millis() - t > timeout) {
-				Serial.println("NO DATA");
-				delay(3000);
+				Serial.println("NO SPI DATA");
 				return 0;
 			}
 		}
-		delay(1);
+		SPI.beginTransaction(settings);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
@@ -447,6 +443,9 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 					buffer[0] = c;
 					n = 1;
 					matched = true;	
+				} else if (c == 0x9) {
+					eos = true;
+					break;
 				}
 				continue;
 			}
@@ -456,12 +455,14 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				timeout += OBD_TIMEOUT_LONG;
 			} else if (c == 0x9) {
 				eos = true;
+				break;
 			} else if (c != 0 && c != 0xff && n < bufsize - 1) {
 				buffer[n++] = c;
 			}
 		}
 		delay(1);
 		digitalWrite(SPI_PIN_CS, HIGH);
+		SPI.endTransaction();
 		delay(1);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
@@ -486,10 +487,10 @@ void COBDSPI::write(const char* s)
 #ifdef DEBUG
 	debugOutput(s);
 #endif
-	delay(1);
+	//delay(1);
+	SPI.beginTransaction(settings);
 	digitalWrite(SPI_PIN_CS, LOW);
-	delay(5);
-	//SPI.beginTransaction(spiSettings);
+	delay(1);
 	if (*s != '$') {
 		for (byte i = 0; i < sizeof(targets[0]); i++) {
 			SPI.transfer(targets[m_target][i]);
@@ -504,9 +505,9 @@ void COBDSPI::write(const char* s)
 	// send terminating byte
 	SPI.transfer(0x1B);
 	delay(1);
-	//SPI.endTransaction();
 	digitalWrite(SPI_PIN_CS, HIGH);
-	delay(1);
+	SPI.endTransaction();
+	//delay(1);
 }
 
 byte COBDSPI::readPID(const byte pid[], byte count, int result[])
@@ -527,11 +528,11 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int 
 	byte n;
 	do {
 		write(cmd);
-		delay(1);
+		//delay(1);
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp_P(buf + 5, PSTR("NO DATA"), 7))) {
 			// data not ready
-			sleep(20);
+			sleep(50);
 		} else {
 	  		break;
 		}
