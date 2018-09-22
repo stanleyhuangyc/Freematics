@@ -12,7 +12,7 @@
 
 //#define DEBUG Serial
 
-static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
+//static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 #ifdef DEBUG
 void debugOutput(const char *s)
@@ -768,10 +768,6 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		debugOutput("RECV TIMEOUT");
 	}
 #endif
-	if (eos) {
-		// eliminate ending char
-		n -= 2;
-	}
 	buffer[n] = 0;
 #ifdef DEBUG
 	debugOutput(buffer);
@@ -792,11 +788,11 @@ void COBDSPI::write(const char* s)
 	memcpy(buf, (uint8_t*)header, sizeof(header));
 	memcpy(buf + sizeof(header), s, len);
 	buf[len + sizeof(header)] = 0x1B;
-	SPI.beginTransaction(settings);
+	//SPI.beginTransaction(settings);
 	digitalWrite(SPI_PIN_CS, LOW);
 	SPI.writeBytes((uint8_t*)buf, bufsize);
 	digitalWrite(SPI_PIN_CS, HIGH);
-	SPI.endTransaction();
+	//SPI.endTransaction();
 	free(buf);
 }
 
@@ -806,7 +802,6 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 	int n;
 	do {
 		write(cmd);
-		//delay(20);
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
 			// data not ready
