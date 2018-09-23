@@ -257,11 +257,12 @@ public:
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("GPS...");
         if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
-          setState(STATE_GPS_FOUND);
-          Serial.println("OK");
-          //waitGPS();
+            setState(STATE_GPS_FOUND);
+            Serial.println("OK");
+            //waitGPS();
         } else {
-          Serial.println("NO");
+            sys.gpsEnd();
+            Serial.println("NO");
         }
       }
 #endif
@@ -284,11 +285,28 @@ public:
             store.log(PID_GPS_SAT_COUNT, gd->sat);
             // set GPS ready flag
             setState(STATE_GPS_READY);
-            char buf[48];
-            sprintf(buf, "[GPS] %ukm/h %u Sats %02u:%02u:%02u.%01u",
-                (unsigned int)kph, (unsigned int)gd->sat,
-                gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, (gd->time % 100) / 10);
-            Serial.println(buf);
+    
+            Serial.print("[GPS] ");
+
+            char buf[32];
+            sprintf(buf, "%02u:%02u:%02u.%c",
+                gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, '0' + (gd->time % 100) / 10);
+            Serial.print(buf);
+
+            Serial.print(' ');
+            Serial.print(gd->lat, 6);
+            Serial.print(' ');
+            Serial.print(gd->lng, 6);
+            Serial.print(' ');
+            Serial.print((int)kph);
+            Serial.print("km/h");
+            if (gd->sat) {
+                Serial.print(" SATS:");
+                Serial.print(gd->sat);
+            }
+            Serial.print(" Course:");
+            Serial.print(gd->heading);
+
             lastGPSts = gd->ts;
         }
     }
@@ -394,11 +412,11 @@ void showStats()
         Serial.print(" | ");
         Serial.print(fileSize);
         Serial.print(" bytes");
-        static uint8_t lastSizeKB = 0;
-        uint8_t sizeKB = fileSize >> 10;
-        if (sizeKB != lastSizeKB) {
+        static uint8_t lastFlushCount = 0;
+        uint8_t flushCount = fileSize >> 12;
+        if (flushCount != lastFlushCount) {
             store.flush();
-            lastSizeKB = sizeKB;
+            lastFlushCount = flushCount;
             Serial.print(" (flushed)");
         }
     }
