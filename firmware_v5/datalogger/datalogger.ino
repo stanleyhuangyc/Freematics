@@ -304,8 +304,7 @@ public:
                 Serial.print(" SATS:");
                 Serial.print(gd->sat);
             }
-            Serial.print(" Course:");
-            Serial.print(gd->heading);
+            Serial.println();
 
             lastGPSts = gd->ts;
         }
