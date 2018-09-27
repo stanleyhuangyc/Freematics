@@ -420,17 +420,6 @@ bool initialize()
     Serial.print("OBD...");
     if (obd->init()) {
       Serial.println("OK");
-      char buf[192];
-      if (obd->getVIN(buf, sizeof(buf))) {
-        strncpy(vin, buf, sizeof(vin) - 1);
-        Serial.print("VIN:");
-        Serial.println(vin);
-      }
-      int dtcCount = obd->readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
-      if (dtcCount > 0) {
-        Serial.print("DTC:");
-        Serial.println(dtcCount);
-      }
       state.set(STATE_OBD_READY | STATE_OBD_FOUND);
     } else {
       Serial.println("NO");
@@ -536,6 +525,26 @@ bool initialize()
   if (!state.check(STATE_NET_CONNECTED)) {
     return false;
   }
+
+  // re-try OBD if connection not established
+#if ENABLE_OBD
+  if (!state.check(STATE_OBD_READY) && obd->init()) {
+    state.set(STATE_OBD_READY | STATE_OBD_FOUND);
+  }
+  if (state.check(STATE_OBD_READY)) {
+    char buf[128];
+    if (obd->getVIN(buf, sizeof(buf))) {
+      strncpy(vin, buf, sizeof(vin) - 1);
+      Serial.print("VIN:");
+      Serial.println(vin);
+    }
+    int dtcCount = obd->readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+    if (dtcCount > 0) {
+      Serial.print("DTC:");
+      Serial.println(dtcCount);
+    }
+  }
+#endif
 
 #if ENABLE_OLED
   oled.clear();
@@ -1033,8 +1042,8 @@ void setup()
 #endif
     // generate a unique ID in case VIN is inaccessible
     uint64_t mac = ESP.getEfuseMac();
-    sprintf(devid, "ID%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
-    Serial.print("Device ID:");
+    sprintf(devid, "ESP32%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
+    Serial.print("DEVICE ID:");
     Serial.println(devid);
 
 #if ENABLE_HTTPD
