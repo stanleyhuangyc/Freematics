@@ -67,7 +67,7 @@ GPS_DATA* gd = 0;
 uint32_t lastGPSts = 0;
 #endif
 
-char devid[16] = {0};
+char devid[18] = {0};
 char isoTime[26] = {0};
 
 // stats data
@@ -1042,7 +1042,7 @@ void setup()
 #endif
     // generate a unique ID in case VIN is inaccessible
     uint64_t mac = ESP.getEfuseMac();
-    sprintf(devid, "ESP32%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
+    snprintf(devid, sizeof(devid), "ESP32%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
     Serial.print("DEVICE ID:");
     Serial.println(devid);
 
