@@ -54,7 +54,7 @@ bool ClientWIFI::begin(const char* ssid, const char* password)
 
 void ClientWIFI::end()
 {
-  WiFi.disconnect(false);
+  WiFi.disconnect(true);
 }
 
 void ClientWIFI::listAPs()
