@@ -907,8 +907,8 @@ void standby()
     Serial.println("GPS OFF");
     sys.gpsEnd();
   }
-#endif
   gd = 0;
+#endif
   state.clear(STATE_GPS_READY | STATE_NET_READY | STATE_NET_CONNECTED);
   state.set(STATE_STANDBY);
   //Serial.println("Standby");
