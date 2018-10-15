@@ -12,7 +12,7 @@
 
 //#define DEBUG Serial
 
-//static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
+static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 #ifdef DEBUG
 void debugOutput(const char *s)
@@ -783,17 +783,16 @@ void COBDSPI::write(const char* s)
 	debugOutput(s);
 #endif
 	int len = strlen(s);
-	int bufsize = sizeof(header) + len + 1;
-	uint8_t *buf = (uint8_t*)malloc(bufsize);
-	memcpy(buf, (uint8_t*)header, sizeof(header));
-	memcpy(buf + sizeof(header), s, len);
-	buf[len + sizeof(header)] = 0x1B;
-	//SPI.beginTransaction(settings);
+	uint8_t tail = 0x1B;
+	SPI.beginTransaction(settings);
 	digitalWrite(SPI_PIN_CS, LOW);
-	SPI.writeBytes((uint8_t*)buf, bufsize);
+	delay(1);
+	SPI.writeBytes((uint8_t*)header, sizeof(header));
+	SPI.writeBytes((uint8_t*)s, len);
+	SPI.writeBytes((uint8_t*)&tail, 1);
+	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
-	//SPI.endTransaction();
-	free(buf);
+	SPI.endTransaction();
 }
 
 int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)

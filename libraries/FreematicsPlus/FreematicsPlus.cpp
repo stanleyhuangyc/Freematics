@@ -232,7 +232,7 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
         //Install UART driver
         uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
         // start GPS decoding task
-        taskGPS.create(gps_decode_task, "GPS", 0);
+        taskGPS.create(gps_decode_task, "GPS", 1);
     } else {
         // start GPS decoding task (soft serial)
         taskGPS.create(gps_soft_decode_task, "GPS", 1);
