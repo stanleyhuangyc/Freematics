@@ -124,14 +124,14 @@ bool TeleClientUDP::connect()
     Serial.print(SERVER_PORT);
     Serial.print(")...");
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      Serial.println("Network Error");
+      Serial.println("Network error");
       delay(1000);
       continue;
     }
     // login Freematics Hub
     if (!notify(EVENT_LOGIN)) {
       net.close();
-      Serial.println("Server Error");
+      Serial.println("Server timeout");
       delay(1000);
       continue;
     }
