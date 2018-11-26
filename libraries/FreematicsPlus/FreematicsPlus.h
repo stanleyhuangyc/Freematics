@@ -69,7 +69,7 @@ class FreematicsESP32 : public CFreematics
 public:
   void begin(int cpuMHz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ);
   // start GPS
-  bool gpsBegin(unsigned long baudrate = GPS_BAUDRATE, bool buffered = false, bool softserial = false);
+  bool gpsBegin(unsigned long baudrate = GPS_BAUDRATE, bool buffered = false, bool softserial = true);
   // turn off GPS
   void gpsEnd();
   // get parsed GPS data (returns the number of data parsed since last invoke)
