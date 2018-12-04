@@ -706,7 +706,7 @@ bool UDPClientSIM5360::open(const char* host, uint16_t port)
 
 void UDPClientSIM5360::close()
 {
-  sendCommand("AT+CIPCLOSE\r");
+  sendCommand("AT+CIPCLOSE=0\r");
 }
 
 bool UDPClientSIM5360::send(const char* data, unsigned int len)
