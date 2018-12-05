@@ -698,6 +698,7 @@ bool UDPClientSIM5360::open(const char* host, uint16_t port)
   }
   sprintf(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP.c_str(), udpPort);
   if (!sendCommand(m_buffer, 3000)) {
+    close();
     Serial.println(m_buffer);
     return false;
   }
