@@ -36,10 +36,10 @@
 #define STATE_STANDBY 0x100
 
 typedef struct {
-  uint32_t ts;
-  int value;
   byte pid;
   byte tier;
+  int value;
+  uint32_t ts;
 } PID_POLLING_INFO;
 
 PID_POLLING_INFO obdData[]= {
@@ -790,6 +790,7 @@ void process()
   if (state.check(STATE_OBD_READY)) {
     processOBD();
     if (obd->errors > MAX_OBD_ERRORS) {
+      Serial.println("OBD disconnected");
       state.clear(STATE_OBD_READY | STATE_WORKING);
     }
   }
