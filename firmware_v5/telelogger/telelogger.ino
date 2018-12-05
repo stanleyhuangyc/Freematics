@@ -36,10 +36,10 @@
 #define STATE_STANDBY 0x100
 
 typedef struct {
+  uint32_t ts;
+  int value;
   byte pid;
   byte tier;
-  int16_t value;
-  uint32_t ts;
 } PID_POLLING_INFO;
 
 PID_POLLING_INFO obdData[]= {
@@ -235,6 +235,7 @@ void processOBD()
     int value;
     if (obd->readPID(pid, value)) {
         obdData[i].ts = millis();
+        obdData[i].value = value;
         cache.log((uint16_t)pid | 0x100, value);
     } else {
         timeoutsOBD++;
@@ -242,9 +243,7 @@ void processOBD()
     }
     if (tier > 1) break;
   }
-
-  // calculate distance for speed
-  float kph = obdData[0].value;
+  int kph = obdData[0].value;
   if (kph >= 1) lastMotionTime = millis();
 }
 #endif
