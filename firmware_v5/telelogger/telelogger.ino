@@ -436,7 +436,7 @@ bool initialize()
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     Serial.print("GPS...");
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false, obd->getType() == 0)) {
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false, obd && obd->getType() == 0)) {
       state.set(STATE_GPS_READY);
       Serial.println("OK");
 #if ENABLE_OLED
