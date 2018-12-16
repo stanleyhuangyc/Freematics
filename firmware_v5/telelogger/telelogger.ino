@@ -343,7 +343,8 @@ void calibrateMEMS()
     accBias[1] = 0;
     accBias[2] = 0;
     int n;
-    for (n = 0; n < 100; n++) {
+    unsigned long t = millis();
+    for (n = 0; millis() - t < 1000; n++) {
       float acc[3] = {0};
       mems.read(acc);
       accBias[0] += acc[0];
@@ -368,21 +369,6 @@ void calibrateMEMS()
 bool initialize()
 {
   state.clear(STATE_WORKING);
-
-#if MEMS_MODE
-  if (!state.check(STATE_MEMS_READY)) {
-    Serial.print("MEMS...");
-    byte ret = mems.begin(ENABLE_ORIENTATION);
-    if (ret) {
-      state.set(STATE_MEMS_READY);
-      if (ret == 2) Serial.print("9-DOF ");
-      Serial.println("OK");
-      calibrateMEMS();
-    } else {
-      Serial.println("NO");
-    }
-  }
-#endif
 
   if (!state.check(STATE_NET_READY)) {
 #if NET_DEVICE == NET_WIFI
@@ -410,6 +396,23 @@ bool initialize()
     }
 #endif
   }
+
+#if MEMS_MODE
+  if (!state.check(STATE_MEMS_READY)) {
+    Serial.print("MEMS...");
+    byte ret = mems.begin(ENABLE_ORIENTATION);
+    if (ret) {
+      state.set(STATE_MEMS_READY);
+      if (ret == 2) Serial.print("9-DOF ");
+      Serial.println("OK");
+    } else {
+      Serial.println("NO");
+    }
+  }
+  if (state.check(STATE_MEMS_READY)) {
+    calibrateMEMS();
+  }
+#endif
 
 #if ENABLE_OBD
   // initialize OBD communication
