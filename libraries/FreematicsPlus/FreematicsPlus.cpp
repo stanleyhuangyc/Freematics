@@ -112,7 +112,7 @@ static void gps_soft_decode_task(void* inst)
 
     // turn on GPS power
     digitalWrite(PIN_GPS_POWER, HIGH);
-    delay(100);
+    delay(200);
 
 #if GPS_BAUDRATE != GPS_SOFT_BAUDRATE
     // switch M8030 GNSS to 38400bps
@@ -266,7 +266,9 @@ void FreematicsESP32::gpsEnd()
 bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softserial)
 {
     pinMode(PIN_GPS_POWER, OUTPUT);
-
+    digitalWrite(PIN_GPS_POWER, LOW);
+    delay(10);
+    
     if (buffered && !nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
     nmeaBytes = 0;
 
@@ -318,9 +320,6 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
 bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
     gps.stats(&gpsData->sentences, &gpsData->errors);
-    Serial.print(gpsData->sentences);
-    Serial.print(' ');
-    Serial.println(gpsData->errors);
     if (pgd) *pgd = gpsData;
     if (gpsDataStage) {
         gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
