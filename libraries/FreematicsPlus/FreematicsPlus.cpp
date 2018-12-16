@@ -50,6 +50,9 @@ static uint8_t inline readRxPin()
 
 static void gps_decode_task(void* inst)
 {
+    // turn on GPS power
+    digitalWrite(PIN_GPS_POWER, HIGH);
+    delay(100);
     for (;;) {
         uint8_t c = 0;
         int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 60000 / portTICK_RATE_MS);
@@ -105,15 +108,23 @@ static void gps_soft_decode_task(void* inst)
 {
     pinMode(PIN_GPS_UART_RXD, INPUT);
     pinMode(PIN_GPS_UART_TXD, OUTPUT);
+    setTxPinHigh();
+
+    // turn on GPS power
+    digitalWrite(PIN_GPS_POWER, HIGH);
+    delay(100);
+
+#if GPS_BAUDRATE != GPS_SOFT_BAUDRATE
     // switch M8030 GNSS to 38400bps
     {
-        const uint8_t packet1[] = {0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
+        const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
         const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
         for (int i = 0; i < sizeof(packet1); i++) softSerialTx(packet1[i]);
         delay(10);
         for (int i = 0; i < sizeof(packet2); i++) softSerialTx(packet2[i]);
         delay(10);
     }
+#endif
     // start receiving and decoding
     for (;;) {
         uint8_t c = 0;
@@ -255,8 +266,6 @@ void FreematicsESP32::gpsEnd()
 bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softserial)
 {
     pinMode(PIN_GPS_POWER, OUTPUT);
-    // turn on GPS power
-    digitalWrite(PIN_GPS_POWER, HIGH);
 
     if (buffered && !nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
     nmeaBytes = 0;
@@ -268,7 +277,7 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
         taskGPS.resume();
     } else if (!softserial) {
         uart_config_t uart_config = {
-            .baud_rate = 115200,
+            .baud_rate = GPS_BAUDRATE,
             .data_bits = UART_DATA_8_BITS,
             .parity = UART_PARITY_DISABLE,
             .stop_bits = UART_STOP_BITS_1,
@@ -301,6 +310,8 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
         uart_driver_delete(GPS_UART_NUM);
     }
     taskGPS.destroy();
+    delete gpsData;
+    gpsData = 0;
     return false;
 }
 
