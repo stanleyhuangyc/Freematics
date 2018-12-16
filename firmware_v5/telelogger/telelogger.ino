@@ -57,6 +57,7 @@ PID_POLLING_INFO obdData[]= {
 float accBias[3] = {0}; // calibrated reference accelerometer data
 float acc[3] = {0};
 #endif
+int16_t deviceTemp = 0;
 
 // live data
 char vin[18] = {0};
@@ -312,15 +313,17 @@ void processGPS()
 void processMEMS()
 {
     // load and store accelerometer
+    
 #if ENABLE_ORIENTATION
     ORIENTATION ori;
     float gyr[3];
     float mag[3];
-    mems.read(acc, gyr, mag, 0, &ori);
+    mems.read(acc, gyr, mag, &deviceTemp, &ori);
     cache.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
 #else
-    mems.read(acc);
+    mems.read(acc, 0, 0, &deviceTemp);
 #endif
+    deviceTemp /= 10;
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
     // calculate instant motion
     float motion = 0;
@@ -365,7 +368,22 @@ void calibrateMEMS()
 bool initialize()
 {
   state.clear(STATE_WORKING);
-  
+
+#if MEMS_MODE
+  if (!state.check(STATE_MEMS_READY)) {
+    Serial.print("MEMS...");
+    byte ret = mems.begin(ENABLE_ORIENTATION);
+    if (ret) {
+      state.set(STATE_MEMS_READY);
+      if (ret == 2) Serial.print("9-DOF ");
+      Serial.println("OK");
+      calibrateMEMS();
+    } else {
+      Serial.println("NO");
+    }
+  }
+#endif
+
   if (!state.check(STATE_NET_READY)) {
 #if NET_DEVICE == NET_WIFI
     teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -392,25 +410,6 @@ bool initialize()
     }
 #endif
   }
-
-#if MEMS_MODE
-  if (!state.check(STATE_MEMS_READY)) {
-    Serial.print("MEMS...");
-    byte ret = mems.begin(ENABLE_ORIENTATION);
-    if (ret) {
-      state.set(STATE_MEMS_READY);
-      if (ret == 2) Serial.print("9-DOF ");
-      Serial.println("OK");
-#if ENABLE_OLED
-      oled.print("MEMS:");
-      oled.println(ret == 2 ? "9-DOF" : "6-DOF");
-#endif
-      calibrateMEMS();
-    } else {
-      Serial.println("NO");
-    }
-  }
-#endif
 
 #if ENABLE_OBD
   // initialize OBD communication
@@ -474,9 +473,7 @@ bool initialize()
   }
 #else
   if (!state.check(STATE_NET_CONNECTED)) {
-    Serial.print("NET(APN:");
-    Serial.print(CELL_APN);
-    Serial.print(")...");
+    Serial.print("NET...");
     if (teleClient.net.setup(CELL_APN, !state.check(STATE_GPS_READY))) {
       String op = teleClient.net.getOperatorName();
       if (op.length()) {
@@ -762,14 +759,15 @@ bool waitMotion(unsigned long timeout)
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         lastMotionTime = millis();
+        Serial.print("Motion:");
+        Serial.println(motion);
         return true;
       }
     }
     return false;
   }
-#else
-  delay(timeout);
 #endif
+  delay(timeout);
   return false;
 }
 
@@ -781,11 +779,7 @@ void process()
   uint32_t startTime = millis();
   cache.timestamp(startTime);
 
-  int deviceTemp = 0;
 #if ENABLE_OBD
-  if ((teleClient.txCount % 100) == 1) {
-    cache.log(PID_DEVICE_TEMP, deviceTemp = readChipTemperature());
-  }
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
     processOBD();
@@ -795,20 +789,18 @@ void process()
     }
   }
 #else
-  cache.log(PID_DEVICE_TEMP, deviceTemp = readChipTemperature());
   cache.log(PID_DEVICE_HALL, readChipHallSensor() / 200);
 #endif
-  if (deviceTemp >= COOLING_DOWN_TEMP) {
-    // device too hot, cool down
-    Serial.println("Cooling down");
-    delay(10000);
-  }
 
 #if MEMS_MODE
   // process MEMS data if available
   if (state.check(STATE_MEMS_READY)) {
     processMEMS();
+  } else {
+    deviceTemp = readChipTemperature();
   }
+#else
+  deviceTemp = readChipTemperature();
 #endif
 
 #if ENABLE_OBD
@@ -825,6 +817,10 @@ void process()
 #if LOG_EXT_SENSORS
   processExtInputs();
 #endif
+
+  if ((teleClient.txCount % 100) == 1) {
+    cache.log(PID_DEVICE_TEMP, deviceTemp);
+  }
 
 #if STORAGE != STORAGE_NONE
   uint8_t sizeKB = (uint8_t)(store.size() >> 10);
@@ -858,7 +854,17 @@ void process()
       if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
         if (teleClient.connect()) {
           connErrors = 0;
+        } else {
+          // unable to reconnect
+          Serial.println("Re-init network");
+          digitalWrite(PIN_LED, HIGH);
+          shutDownNet();
+          initialize();
+          digitalWrite(PIN_LED, LOW);
+          return;
         }
+      } else {
+        delay(1000L * connErrors);
       }
     }
     // purge cache
@@ -888,6 +894,12 @@ void process()
     long n = loopTime + startTime - millis();
     if (n < 0) break;
     waitMotion(min(n, 3000));
+  }
+
+  if (deviceTemp >= COOLING_DOWN_TEMP) {
+    // device too hot, cool down
+    Serial.println("Cooling down");
+    delay(10000);
   }
 }
 
@@ -926,6 +938,7 @@ void standby()
     if (waitMotion(1000L * PING_BACK_INTERVAL)) {
       // to wake up
       state.clear(STATE_STANDBY);
+      break;
     }
     cache.timestamp(millis());
     cache.log(PID_DEVICE_TEMP, readChipTemperature());
@@ -1088,14 +1101,6 @@ void loop()
     }
     standby();
     digitalWrite(PIN_LED, HIGH);
-    initialize();
-    digitalWrite(PIN_LED, LOW);
-    return;
-  }
-
-  if (connErrors >= MAX_CONN_ERRORS) {
-    digitalWrite(PIN_LED, HIGH);
-    shutDownNet();
     initialize();
     digitalWrite(PIN_LED, LOW);
     return;
