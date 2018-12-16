@@ -319,7 +319,6 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
     if (!gpsData) return false;
     gps.stats(&gpsData->sentences, &gpsData->errors);
-    Serial.println(gpsData->errors);
     if (pgd) *pgd = gpsData;
     if (gpsPendingData) {
         gpsData->ts = millis();

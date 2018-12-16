@@ -436,7 +436,7 @@ bool initialize()
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     Serial.print("GPS...");
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false, obd->getType() == 0)) {
       state.set(STATE_GPS_READY);
       Serial.println("OK");
 #if ENABLE_OLED
@@ -762,8 +762,6 @@ bool waitMotion(unsigned long timeout)
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         lastMotionTime = millis();
-        Serial.print("Motion:");
-        Serial.println(motion);
         return true;
       }
     }

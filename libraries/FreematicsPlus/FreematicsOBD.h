@@ -64,6 +64,8 @@ public:
 	virtual bool isValidPID(byte pid);
 	// get adapter firmware version
 	virtual byte getVersion();
+	// get interface type
+	virtual byte getType() { return 0; }
 	// set current PID mode
 	byte dataMode = 1;
 	// occurrence of errors
@@ -97,6 +99,8 @@ protected:
 	int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
 	// write data to SPI
 	void write(const char* s);
+	// get interface type
+	byte getType() { return 1; }
 private:
 	const uint8_t header[4] = {0x24, 0x4f, 0x42, 0x44};
 };
