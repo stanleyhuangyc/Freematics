@@ -256,7 +256,7 @@ public:
 #if USE_GPS
         if (!checkState(STATE_GPS_FOUND)) {
             Serial.print("GPS...");
-            if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false, obd->getType() == 0)) {
+            if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false, obd && obd->getType() == 0)) {
                 setState(STATE_GPS_FOUND);
                 Serial.println("OK");
                 //waitGPS();
