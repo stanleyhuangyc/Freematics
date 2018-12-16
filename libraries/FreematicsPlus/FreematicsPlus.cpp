@@ -19,6 +19,8 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "soc/uart_struct.h"
+#include "soc/rtc_cntl_reg.h"
+#include "soc/sens_reg.h"
 #include "FreematicsPlus.h"
 #include "FreematicsGPS.h"
 
@@ -142,7 +144,17 @@ int32_t hall_sens_read();
 // get chip temperature sensor
 int readChipTemperature()
 {
-    return (int)temprature_sens_read() * 165 / 255 - 40;
+    SET_PERI_REG_BITS(SENS_SAR_MEAS_WAIT2_REG, SENS_FORCE_XPD_SAR, 3, SENS_FORCE_XPD_SAR_S);
+    SET_PERI_REG_BITS(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_CLK_DIV, 10, SENS_TSENS_CLK_DIV_S);
+    CLEAR_PERI_REG_MASK(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_POWER_UP);
+    CLEAR_PERI_REG_MASK(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_DUMP_OUT);
+    SET_PERI_REG_MASK(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_POWER_UP_FORCE);
+    SET_PERI_REG_MASK(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_POWER_UP);
+    ets_delay_us(100);
+    SET_PERI_REG_MASK(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_DUMP_OUT);
+    ets_delay_us(5);
+    int res = GET_PERI_REG_BITS2(SENS_SAR_SLAVE_ADDR3_REG, SENS_TSENS_OUT, SENS_TSENS_OUT_S);
+    return (res - 32) * 5 / 9;
 }
 
 int readChipHallSensor()
@@ -219,7 +231,7 @@ void FreematicsESP32::begin(int cpuMHz)
     };
     esp_err_t ret = esp_pm_configure(&pm_config);
     if (ret == ESP_ERR_NOT_SUPPORTED) {
-        //Serial.println("Power-saving disabled");
+        //Serial.println("PM Disabled");
     }
 
     // set watchdog timeout to 600 seconds
@@ -284,6 +296,11 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
         gps.stats(&s2, 0);
         if (s1 != s2) return true;
     }
+
+    if (!softserial) {
+        uart_driver_delete(GPS_UART_NUM);
+    }
+    taskGPS.destroy();
     return false;
 }
 
