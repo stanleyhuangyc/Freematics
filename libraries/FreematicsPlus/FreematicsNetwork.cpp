@@ -534,10 +534,10 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
-    do {
+    if (apn && *apn) {
       sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
-      success = sendCommand(m_buffer);
-    } while (!success && millis() - t < timeout);
+      sendCommand(m_buffer);
+    }
     if (!success) break;
 
     //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
