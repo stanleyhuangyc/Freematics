@@ -232,42 +232,42 @@ public:
     void init()
     {
 #if USE_OBD
-      Serial.print("OBD...");
-      if (obd->init()) {
-        Serial.println("OK");
-        pidErrors = 0;
-        // retrieve VIN
-        Serial.print("VIN...");
-        char buffer[128];
-        if (obd->getVIN(buffer, sizeof(buffer))) {
-            Serial.println(buffer);
-            strncpy(vin, buffer, sizeof(vin) - 1);
+        Serial.print("OBD...");
+        if (obd->init()) {
+            Serial.println("OK");
+            pidErrors = 0;
+            // retrieve VIN
+            Serial.print("VIN...");
+            char buffer[128];
+            if (obd->getVIN(buffer, sizeof(buffer))) {
+                Serial.println(buffer);
+                strncpy(vin, buffer, sizeof(vin) - 1);
+            } else {
+                Serial.println("NO");
+            }
         } else {
             Serial.println("NO");
+            standby();
+            return;
         }
-      } else {
-        Serial.println("NO");
-        standby();
-        return;
-      }
-      setState(STATE_OBD_READY);
+        setState(STATE_OBD_READY);
 #endif
 
 #if USE_GPS
-      if (!checkState(STATE_GPS_FOUND)) {
-        Serial.print("GPS...");
-        if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
-            setState(STATE_GPS_FOUND);
-            Serial.println("OK");
-            //waitGPS();
-        } else {
-            sys.gpsEnd();
-            Serial.println("NO");
+        if (!checkState(STATE_GPS_FOUND)) {
+            Serial.print("GPS...");
+            if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false, obd->getType() == 0)) {
+                setState(STATE_GPS_FOUND);
+                Serial.println("OK");
+                //waitGPS();
+            } else {
+                sys.gpsEnd();
+                Serial.println("NO");
+            }
         }
-      }
 #endif
 
-      startTime = millis();
+        startTime = millis();
     }
 #if USE_GPS
     void logGPSData()
