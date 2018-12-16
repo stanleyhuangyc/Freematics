@@ -25,7 +25,7 @@
 #include "FreematicsGPS.h"
 
 static TinyGPS gps;
-static byte gpsDataStage = 0;
+static byte gpsPendingData = 0;
 static char* nmeaBuffer = 0;
 static int nmeaBytes = 0;
 Mutex nmeaBufferMutex;
@@ -63,8 +63,7 @@ static void gps_decode_task(void* inst)
             nmeaBufferMutex.unlock();
         }
         if (gps.encode(c)) {
-            gpsData->ts = millis();
-            gpsDataStage = 1;
+            gpsPendingData++;
         }
     }
 }
@@ -138,8 +137,7 @@ static void gps_soft_decode_task(void* inst)
             c = (c | readRxPin()) >> 1;
         }
         if (gps.encode(c)) {
-            gpsData->ts = millis();
-            gpsDataStage = 1;
+            gpsPendingData++;
         }
         do {
             taskYIELD();
@@ -265,19 +263,13 @@ void FreematicsESP32::gpsEnd()
 
 bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softserial)
 {
+    if (taskGPS.running()) return false;
+
     pinMode(PIN_GPS_POWER, OUTPUT);
     digitalWrite(PIN_GPS_POWER, LOW);
     delay(10);
     
-    if (buffered && !nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
-    nmeaBytes = 0;
-
-    if (!gpsData) gpsData = new GPS_DATA;
-    memset(gpsData, 0, sizeof(GPS_DATA));
-
-    if (taskGPS.running()) {
-        taskGPS.resume();
-    } else if (!softserial) {
+    if (!softserial) {
         uart_config_t uart_config = {
             .baud_rate = GPS_BAUDRATE,
             .data_bits = UART_DATA_8_BITS,
@@ -305,23 +297,32 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
     for (int i = 0; i < 20; i++) {
         delay(100);
         gps.stats(&s2, 0);
-        if (s1 != s2) return true;
+        if (s1 != s2) {
+            // data is coming in
+            if (!gpsData) gpsData = new GPS_DATA;
+            memset(gpsData, 0, sizeof(GPS_DATA));
+            if (buffered && !nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
+            nmeaBytes = 0;
+            return true;
+        }
     }
 
+    // no data coming in
     if (!softserial) {
         uart_driver_delete(GPS_UART_NUM);
     }
     taskGPS.destroy();
-    delete gpsData;
-    gpsData = 0;
     return false;
 }
 
 bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
+    if (!gpsData) return false;
     gps.stats(&gpsData->sentences, &gpsData->errors);
+    Serial.println(gpsData->errors);
     if (pgd) *pgd = gpsData;
-    if (gpsDataStage) {
+    if (gpsPendingData) {
+        gpsData->ts = millis();
         gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
         long lat, lng;
         gps.get_position(&lat, &lng, 0);
@@ -338,7 +339,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData->sat = sat;
         unsigned long hdop = gps.hdop();
         gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
-        gpsDataStage = 0;
+        gpsPendingData = 0;
         return true;
     } else {
         return false;
