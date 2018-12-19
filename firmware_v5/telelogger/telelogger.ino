@@ -744,13 +744,10 @@ void showStats()
 
 bool waitMotion(unsigned long timeout)
 {
+  unsigned long t = millis();
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
-    unsigned long t = millis();
-    for (;;) {
-      if (millis() - t >= timeout) {
-        break;
-      }
+    do {
       serverProcess(100);
       // calculate relative movement
       float motion = 0;
@@ -764,11 +761,18 @@ bool waitMotion(unsigned long timeout)
         lastMotionTime = millis();
         return true;
       }
-    }
+    } while (millis() - t < timeout);
     return false;
   }
 #endif
-  delay(timeout);
+  if (timeout <= 10000) {
+    serverProcess(timeout);
+  } else {
+    do {
+      serverProcess(10000);
+      if (obd->init()) return true;
+    } while (millis() - t < timeout);
+  }
   return false;
 }
 
