@@ -90,7 +90,7 @@ protected:
 
 class COBDSPI : public COBD {
 public:
-	byte begin();
+	byte begin(unsigned long freq = SPI_FREQ);
 	void end();
 	// send AT command and receive response
 	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);

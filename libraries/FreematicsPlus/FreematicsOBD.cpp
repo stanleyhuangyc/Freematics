@@ -587,13 +587,13 @@ int16_t COBD::getTemperatureValue(char* data)
 * OBD-II SPI bridge
 *************************************************************************/
 
-byte COBDSPI::begin()
+byte COBDSPI::begin(unsigned long freq)
 {
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.begin();
-	SPI.setFrequency(SPI_FREQ);
+	SPI.setFrequency(freq);
 	//delay(50);
 	byte ver = getVersion();
 	return ver;
