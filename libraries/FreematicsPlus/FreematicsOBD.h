@@ -29,7 +29,7 @@ class COBD
 public:
 	virtual ~COBD() = default;
 	// begin serial UART
-	virtual byte begin();
+	virtual byte begin(unsigned long baudrate = OBD_UART_BAUDRATE);
 	// terminate communication channel
 	virtual void end();
 	// initialize OBD-II connection

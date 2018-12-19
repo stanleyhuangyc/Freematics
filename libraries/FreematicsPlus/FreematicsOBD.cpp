@@ -24,82 +24,6 @@ void debugOutput(const char *s)
 }
 #endif
 
-#if USE_SOFT_SERIAL
-
-static uint32_t inline IRAM_ATTR getCycleCount()
-{
-	uint32_t ccount;
-	__asm__ __volatile__("esync; rsr %0,ccount":"=a" (ccount));
-	return ccount;
-}
-
-static uint8_t inline IRAM_ATTR readRxPin()
-{
-#if PIN_OBD_UART_RX < 32
-	return (uint8_t)(GPIO.in >> PIN_OBD_UART_RX) << 7;
-#else
-	return (uint8_t)(GPIO.in1.val >> (PIN_OBD_UART_RX - 32)) << 7;
-#endif
-}
-
-static void inline setTxPinHigh()
-{
-#if PIN_OBD_UART_TX < 32
-	GPIO.out_w1ts = ((uint32_t)1 << PIN_OBD_UART_TX);
-#else
-	GPIO.out1_w1ts.val = ((uint32_t)1 << (PIN_OBD_UART_TX - 32));
-#endif
-}
-
-static void inline setTxPinLow()
-{
-#if PIN_OBD_UART_TX < 32
-	GPIO.out_w1tc = ((uint32_t)1 << PIN_OBD_UART_TX);
-#else
-	GPIO.out1_w1tc.val = ((uint32_t)1 << (PIN_OBD_UART_TX - 32));
-#endif
-}
-
-static void serialTx(uint8_t c)
-{
-	uint32_t start = getCycleCount();
-	// start bit
-	setTxPinLow();
-	for (uint32_t i = 1; i <= 8; i++, c >>= 1) {
-	while (getCycleCount() - start < i * F_CPU / OBD_UART_BAUDRATE);
-	if (c & 0x1)
-		setTxPinHigh();
-	else
-		setTxPinLow();
-	}
-	while (getCycleCount() - start < (uint32_t)9 * F_CPU / OBD_UART_BAUDRATE) taskYIELD();
-	setTxPinHigh();
-	while (getCycleCount() - start < (uint32_t)10 * F_CPU / OBD_UART_BAUDRATE) taskYIELD();
-}
-
-static int serialRx(int timeout)
-{
-	portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-	for (uint32_t t = millis(); readRxPin() && millis() - t <= timeout;);
-	if (readRxPin()) return -1;
-    uint32_t start = getCycleCount();
-    uint8_t c = 0;
-    taskYIELD();
-    taskENTER_CRITICAL(&mux);
-    for (uint32_t i = 1; i <= 8; i++) {
-		while (getCycleCount() - start < i * F_CPU / OBD_UART_BAUDRATE + F_CPU / OBD_UART_BAUDRATE / 3);
-		c = (c | readRxPin()) >> 1;
-    }
-    taskEXIT_CRITICAL(&mux);
-    if (c) {
-    	Serial.write(c);
-    }
-    while (getCycleCount() - start < (uint32_t)9 * F_CPU / OBD_UART_BAUDRATE + F_CPU / OBD_UART_BAUDRATE / 2) taskYIELD();
-	return c;
-}
-
-#endif
-
 int dumpLine(char* buffer, int len)
 {
 	int bytesToDump = len >> 1;
@@ -277,11 +201,7 @@ void COBD::write(const char* s)
 	DEBUG.print("<<<");
 	DEBUG.println(s);
 #endif
-#if USE_SOFT_SERIAL
-	while (*s) serialTx(*(s++));
-#else
 	uart_write_bytes(OBD_UART_NUM, s, strlen(s));
-#endif
 }
 
 int COBD::normalizeData(byte pid, char* data)
@@ -464,15 +384,8 @@ bool COBD::isValidPID(byte pid)
 	return (pidmap[i] & b) != 0;
 }
 
-byte COBD::begin()
+byte COBD::begin(unsigned long baudrate)
 {
-	byte ver = 0;
-#if USE_SOFT_SERIAL
-	pinMode(PIN_OBD_UART_RX, INPUT);
-	pinMode(PIN_OBD_UART_TX, OUTPUT);
-	digitalWrite(PIN_OBD_UART_TX, HIGH);
-	ver = getVersion();
-#else
     uart_config_t uart_config = {
         .baud_rate = OBD_UART_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
@@ -488,9 +401,8 @@ byte COBD::begin()
     //Install UART driver
     if (uart_driver_install(OBD_UART_NUM, OBD_UART_BUF_SIZE, 0, 0, NULL, 0) != ESP_OK)
 		return 0;
-	ver = getVersion();
+	byte ver = getVersion();
 	if (ver == 0) end();
-#endif
 	return ver;
 }
 
@@ -519,7 +431,6 @@ int COBD::receive(char* buffer, int bufsize, unsigned int timeout)
 	for (;;) {
 		elapsed = millis() - startTime;
 		if (elapsed > timeout) break;
-#if !USE_SOFT_SERIAL
 		if (n >= bufsize - 1) break;
 		int len = uart_read_bytes(OBD_UART_NUM, (uint8_t*)buffer + n, bufsize - n - 1, 1);
 		if (len < 0) break;
@@ -535,24 +446,6 @@ int COBD::receive(char* buffer, int bufsize, unsigned int timeout)
 			n = 0;
 			timeout += OBD_TIMEOUT_LONG;
 		}
-#else
-		char c = 0;
-		int ret = serialRx(timeout);
-		if (ret <= 0) continue;
-		c = (char)ret;
-		if (c) {
-			if (c == '>') break;
-			if (n < bufsize - 1) {
-				if (c == '.' && n > 2 && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
-					// waiting siginal
-					n = 0;
-					timeout += OBD_TIMEOUT_LONG;
-				} else {
-					buffer[n++] = c;
-				}
-			}
-		}
-#endif
 	}
 #ifdef DEBUG
 	DEBUG.print(">>>");
@@ -634,14 +527,17 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 void COBD::end()
 {
 	m_state = OBD_DISCONNECTED;
-#if !USE_SOFT_SERIAL
 	uart_driver_delete(OBD_UART_NUM);
-#endif
 }
 
 bool COBD::setBaudRate(unsigned long baudrate)
 {
-    return false;
+	char buf[32];
+	sprintf(buf, "ATBR1 %lu\r", baudrate);
+	sendCommand(buf, buf, sizeof(buf));
+	delay(50);
+	end();
+	return begin(baudrate) != 0;
 }
 
 void COBD::reset()
