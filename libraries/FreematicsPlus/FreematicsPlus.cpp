@@ -319,30 +319,32 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
     if (!gpsData) return false;
     gps.stats(&gpsData->sentences, &gpsData->errors);
+    if (!gpsPendingData) return false;
     if (pgd) *pgd = gpsData;
-    if (gpsPendingData) {
-        gpsData->ts = millis();
-        gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
-        long lat, lng;
-        gps.get_position(&lat, &lng, 0);
-        if (lat == 0 && lng == 0) return false;
-        gpsData->lat = (float)lat / 1000000;
-        gpsData->lng = (float)lng / 1000000;
-        long alt = gps.altitude();
-        if (alt != TinyGPS::GPS_INVALID_ALTITUDE) gpsData->alt = (float)alt / 100;
-        unsigned long knot = gps.speed();
-        if (knot != TinyGPS::GPS_INVALID_SPEED) gpsData->speed = (float)knot / 100;
-        unsigned long course = gps.course();
-        if (course < 36000) gpsData->heading = course / 100;
-        unsigned short sat = gps.satellites();
-        if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData->sat = sat;
-        unsigned long hdop = gps.hdop();
-        gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
-        gpsPendingData = 0;
-        return true;
-    } else {
-        return false;
+    long lat, lng;
+    gps.get_position(&lat, &lng, 0);
+    if (gpsData->lat || gpsData->lng) {
+        // filter out invalid coordinates
+        if (abs(lat - gpsData->lat * 1000000) >= 100000) lat = 0;
+        if (abs(lng - gpsData->lng * 1000000) >= 100000) lng = 0;
     }
+    if (lat == 0 || lng == 0) return false;
+    gpsData->ts = millis();
+    gpsData->lat = (float)lat / 1000000;
+    gpsData->lng = (float)lng / 1000000;
+    gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
+    long alt = gps.altitude();
+    if (alt != TinyGPS::GPS_INVALID_ALTITUDE) gpsData->alt = (float)alt / 100;
+    unsigned long knot = gps.speed();
+    if (knot != TinyGPS::GPS_INVALID_SPEED) gpsData->speed = (float)knot / 100;
+    unsigned long course = gps.course();
+    if (course < 36000) gpsData->heading = course / 100;
+    unsigned short sat = gps.satellites();
+    if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData->sat = sat;
+    unsigned long hdop = gps.hdop();
+    gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
+    gpsPendingData = 0;
+    return true;
 }
 
 int FreematicsESP32::gpsGetNMEA(char* buffer, int bufsize)
