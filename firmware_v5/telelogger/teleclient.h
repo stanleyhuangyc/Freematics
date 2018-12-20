@@ -16,6 +16,7 @@ public:
         txCount = 0;
         txBytes = 0;
         rxBytes = 0;
+        feedid = 0;
         startTime = millis();
     }
     virtual bool notify(byte event, const char* payload = 0) { return true; }

@@ -551,7 +551,6 @@ bool initialize()
   oled.println(vin);
 #endif
 
-  teleClient.reset();  
   if (!teleClient.connect()) {
     return false;
   }
@@ -789,8 +788,13 @@ void process()
   if (state.check(STATE_OBD_READY)) {
     processOBD();
     if (obd->errors > MAX_OBD_ERRORS) {
-      Serial.println("OBD disconnected");
-      state.clear(STATE_OBD_READY | STATE_WORKING);
+      if (!obd->init()) {
+        Serial.print("Logout(ECU)...");
+        if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
+        Serial.println();
+        teleClient.reset();
+        state.clear(STATE_OBD_READY | STATE_WORKING);
+      }
     }
   }
 #else
@@ -892,6 +896,11 @@ void process()
       }
     }
     if (loopTime == -1) {
+      // stationery timeout, trip ended
+      Serial.print("Logout(stationary)...");
+      if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
+      Serial.println();
+      teleClient.reset();
       state.clear(STATE_WORKING);
       break;
     }
@@ -1089,6 +1098,9 @@ void setup()
     // allocate for data cache
     cache.init(RAM_CACHE_SIZE);
 
+    // reset client stats
+    teleClient.reset();  
+
     // initializing components
     initialize();
 
@@ -1099,11 +1111,6 @@ void loop()
 {
   // error handling
   if (!state.check(STATE_WORKING)) {
-    if (state.check(STATE_NET_CONNECTED)) {
-      Serial.print("Logout...");
-      if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
-      Serial.println();
-    }
     standby();
     digitalWrite(PIN_LED, HIGH);
     initialize();
