@@ -16,7 +16,7 @@ public:
         txCount = 0;
         txBytes = 0;
         rxBytes = 0;
-        feedid = 0;
+        login = false;
     }
     virtual bool notify(byte event, const char* payload = 0) { return true; }
     virtual bool connect() { return true; }
@@ -31,6 +31,7 @@ public:
     uint32_t lastSentTime = 0;
     uint16_t feedid = 0;
     uint32_t startTime = 0;
+    bool login = false;
 };
 
 class TeleClientUDP : public TeleClient

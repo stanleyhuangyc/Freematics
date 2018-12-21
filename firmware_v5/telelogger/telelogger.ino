@@ -966,14 +966,19 @@ void standby()
     // start ping
     Serial.print("Ping...");
 #if NET_DEVICE == NET_WIFI
-    if (!teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD) || !teleClient.net.setup()) continue;
+    if (!teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD) || !teleClient.net.setup()) {
+      Serial.println("No WiFi");
+      continue;
+    }
 #else
-    if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) continue;
+    if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) {
+      Serial.println("No network");
+      continue;
+    }
 #endif
-    teleClient.net.getIP();
+    Serial.println(teleClient.net.getIP());
     state.set(STATE_NET_READY);
     if (teleClient.ping()) {
-      Serial.println(millis());
       state.set(STATE_NET_CONNECTED);
       // ping back data
       Serial.print("Ping back data...");
@@ -1099,7 +1104,7 @@ void setup()
     cache.init(RAM_CACHE_SIZE);
 
     // reset client stats
-    teleClient.reset();  
+    teleClient.reset();
 
     // initializing components
     initialize();
