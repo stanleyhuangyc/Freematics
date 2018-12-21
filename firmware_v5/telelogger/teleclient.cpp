@@ -107,7 +107,9 @@ bool TeleClientUDP::notify(byte event, const char* payload)
         if (q) *q = 0;
       }
       feedid = hex2uint16(data);
-      if (feedid) login = true;
+      login = true;
+    } else if (event == EVENT_LOGOUT) {
+      login = false;
     }
     // success
     return true;
@@ -117,7 +119,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
 
 bool TeleClientUDP::connect()
 {
-  byte event = feedid == 0 ? EVENT_LOGIN : EVENT_RECONNECT;
+  byte event = login ? EVENT_RECONNECT : EVENT_LOGIN;
   // connect to telematics server
   for (byte attempts = 0; attempts < 5; attempts++) {
     Serial.print(event == EVENT_LOGIN ? "LOGIN(" : "RECONNECT(");
