@@ -107,6 +107,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
         if (q) *q = 0;
       }
       feedid = hex2uint16(data);
+      if (feedid) login = true;
     }
     // success
     return true;
@@ -154,12 +155,13 @@ bool TeleClientUDP::connect()
 
 bool TeleClientUDP::ping()
 {
-    if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      return false;
-    }
-    bool success = notify(EVENT_PING);
-    if (success) lastSyncTime = millis();
-    return success;
+  bool success = false;
+  for (byte n = 0; n < 2 && !success; n++) {
+    success = net.open(SERVER_HOST, SERVER_PORT);
+    if (success) success = notify(EVENT_PING);
+  }
+  if (success) lastSyncTime = millis();
+  return success;
 }
 
 bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
