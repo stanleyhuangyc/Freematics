@@ -4,7 +4,6 @@
 /**************************************
 * Configuration Definitions
 **************************************/
-#define NET_NONE 0
 #define NET_WIFI 1
 #define NET_SIM800 2
 #define NET_SIM5360 3
@@ -64,8 +63,6 @@
 #define WIFI_AP_SSID "TELELOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
 
-// maximum consecutive communication errors before entering standby
-#define MAX_CONN_ERRORS 20
 // maximum consecutive communication errors before reconnecting
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
@@ -95,7 +92,7 @@
 **************************************/
 #define ENABLE_ORIENTATION 0
 #ifndef MEMS_MODE
-#define MEMS_MODE MEMS_ACC
+#define MEMS_MODE MEMS_9DOF
 #endif
 
 /**************************************
@@ -106,13 +103,14 @@
 #define ENABLE_GPS 1
 #endif
 #define GPS_SERIAL_BAUDRATE 115200L
+#define GPS_MOTION_TIMEOUT 180 /* seconds */
 
 /**************************************
 * Standby/wakeup
 **************************************/
 #define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
-#define MOTION_THRESHOLD 0.2f /* moving vehicle motion threshold in G */
+#define MOTION_THRESHOLD 0.25f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
