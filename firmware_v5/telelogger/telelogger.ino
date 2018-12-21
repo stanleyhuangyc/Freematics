@@ -250,22 +250,22 @@ void processOBD()
 #endif
 
 #if ENABLE_GPS
-void processGPS()
+bool processGPS()
 {
   if (state.check(STATE_GPS_READY)) {
     // read parsed GPS data
     if (!sys.gpsGetData(&gd)) {
-      return;
+      return false;
     }
   } else {
 #if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
     if (!teleClient.net.getLocation(&gd)) {
-      return;
+      return false;
     }
 #endif
   }
 
-  if (!gd || gd->date == 0 || lastGPSts == gd->ts) return;
+  if (!gd || gd->date == 0 || lastGPSts == gd->ts) return false;
 
   cache.log(PID_GPS_DATE, gd->date);
   cache.log(PID_GPS_TIME, gd->time);
@@ -306,6 +306,7 @@ void processGPS()
   Serial.println(isoTime);
   //Serial.println(gd->errors);
   lastGPSts = gd->ts;
+  return true;
 }
 #endif
 
@@ -591,9 +592,7 @@ bool initialize()
   }
 #endif
 
-#if MEMS_MODE
   lastMotionTime = millis();
-#endif
   state.set(STATE_WORKING);
   return true;
 }
@@ -917,6 +916,21 @@ void process()
   }
 }
 
+#if ENABLE_GPS
+bool waitMotionGPS(int timeout)
+{
+  unsigned long t = millis();
+  lastMotionTime = 0;
+  do {
+    delay(100);
+    cache.purge();
+    if (!processGPS()) continue;
+    if (lastMotionTime) return true;
+  } while (millis() - t < timeout);
+  return false;
+}
+#endif
+
 /*******************************************************************************
   Implementing stand-by mode
 *******************************************************************************/
@@ -1120,6 +1134,14 @@ void loop()
     digitalWrite(PIN_LED, HIGH);
     initialize();
     digitalWrite(PIN_LED, LOW);
+#if ENABLE_GPS
+    // wait for movement from GPS when OBD not connected
+    if (!state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
+      if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
+        state.clear(STATE_WORKING);
+      }
+    }
+#endif
     return;
   }
 
