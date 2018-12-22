@@ -256,19 +256,18 @@ void FreematicsESP32::gpsEnd()
         nmeaBuffer = 0;
         nmeaBufferMutex.unlock();
     }
-    taskGPS.suspend();
+    taskGPS.destroy();
+    uart_driver_delete(GPS_UART_NUM);
 	//turn off GPS power
   	digitalWrite(PIN_GPS_POWER, LOW);
 }
 
 bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softserial)
 {
-    if (taskGPS.running()) return false;
-
     pinMode(PIN_GPS_POWER, OUTPUT);
     digitalWrite(PIN_GPS_POWER, LOW);
     delay(10);
-    
+   
     if (!softserial) {
         uart_config_t uart_config = {
             .baud_rate = GPS_BAUDRATE,
@@ -312,6 +311,7 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
         uart_driver_delete(GPS_UART_NUM);
     }
     taskGPS.destroy();
+    digitalWrite(PIN_GPS_POWER, LOW);
     return false;
 }
 

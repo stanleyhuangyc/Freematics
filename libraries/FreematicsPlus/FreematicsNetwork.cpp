@@ -47,7 +47,7 @@ String ClientWIFI::getIP()
 
 bool ClientWIFI::begin(const char* ssid, const char* password)
 {
-  //listAPs();
+  listAPs();
   WiFi.begin(ssid, password);
   return true;
 }
