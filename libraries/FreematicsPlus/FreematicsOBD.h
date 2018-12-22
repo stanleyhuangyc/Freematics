@@ -102,6 +102,7 @@ protected:
 	// get interface type
 	byte getType() { return 1; }
 private:
+	void recover() {}
 	const uint8_t header[4] = {0x24, 0x4f, 0x42, 0x44};
 };
 
