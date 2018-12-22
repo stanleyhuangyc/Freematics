@@ -339,6 +339,7 @@ void processMEMS()
 
 void calibrateMEMS()
 {
+  if (state.check(STATE_MEMS_READY)) {
     Serial.print("ACC BIAS...");
     accBias[0] = 0;
     accBias[1] = 0;
@@ -361,6 +362,7 @@ void calibrateMEMS()
     Serial.print(accBias[1]);
     Serial.print('/');
     Serial.println(accBias[2]);
+  }
 }
 #endif
 
@@ -430,10 +432,7 @@ bool initialize(bool wait = false)
 #endif
 
   if (!state.check(STATE_NET_READY)) {
-#if NET_DEVICE == NET_WIFI
-    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
-    state.set(STATE_NET_READY);
-#else
+#if NET_DEVICE != NET_WIFI
     // power on network module
     Serial.print("CELL...");
     if (teleClient.net.begin(&sys)) {
@@ -462,12 +461,14 @@ bool initialize(bool wait = false)
 #endif
   for (byte attempts = 0; attempts < 10; attempts++) {
     Serial.print("WiFi...");
+    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
     if (teleClient.net.setup()) {
       Serial.println("OK");
-      state.set(STATE_NET_CONNECTED);
+      state.set(STATE_NET_READY);
       Serial.print("IP...");
       String ip = teleClient.net.getIP();
       if (ip.length()) {
+        state.set(STATE_NET_CONNECTED);
         Serial.println(ip);
 #if ENABLE_OLED
         oled.print("IP:");
@@ -604,11 +605,13 @@ bool initialize(bool wait = false)
 
 void shutDownNet()
 {
-  Serial.print(teleClient.net.deviceName());
-  teleClient.net.close();
-  teleClient.net.end();
+  if (state.check(STATE_NET_READY)) {
+    Serial.print(teleClient.net.deviceName());
+    teleClient.net.close();
+    teleClient.net.end();
+    Serial.println(" OFF");
+  }
   state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-  Serial.println(" OFF");
 }
 
 /*******************************************************************************
@@ -951,10 +954,10 @@ void standby()
   if (state.check(STATE_GPS_READY)) {
     Serial.println("GPS OFF");
     sys.gpsEnd();
+    state.clear(STATE_GPS_READY);
   }
   gd = 0;
 #endif
-  state.clear(STATE_GPS_READY | STATE_NET_READY | STATE_NET_CONNECTED);
   state.set(STATE_STANDBY);
   //Serial.println("Standby");
 #if ENABLE_OLED
