@@ -794,13 +794,14 @@ void process()
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
     processOBD();
-    if (obd->errors > MAX_OBD_ERRORS) {
+    if (obd->errors >= MAX_OBD_ERRORS) {
       if (!obd->init()) {
         Serial.print("Logout(ECU)...");
         if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
         Serial.println();
         teleClient.reset();
         state.clear(STATE_OBD_READY | STATE_WORKING);
+        return;
       }
     }
   }
