@@ -32,7 +32,7 @@ Mutex nmeaBufferMutex;
 static Task taskGPS;
 static GPS_DATA* gpsData = 0;
 
-static uint32_t IRAM_ATTR getCycleCount()
+static uint32_t inline getCycleCount()
 {
   uint32_t ccount;
   __asm__ __volatile__("esync; rsr %0,ccount":"=a" (ccount));
@@ -250,16 +250,17 @@ void FreematicsESP32::begin(int cpuMHz)
 void FreematicsESP32::gpsEnd()
 {
     // uninitialize
+    taskGPS.destroy();
+    if (!(gpsFlags & GF_SOFT_SERIAL)) uart_driver_delete(GPS_UART_NUM);
     if (nmeaBuffer) {
         nmeaBufferMutex.lock();
         delete nmeaBuffer;
         nmeaBuffer = 0;
         nmeaBufferMutex.unlock();
     }
-    taskGPS.destroy();
-    uart_driver_delete(GPS_UART_NUM);
 	//turn off GPS power
-  	digitalWrite(PIN_GPS_POWER, LOW);
+    digitalWrite(PIN_GPS_POWER, LOW);
+    gpsFlags = 0;
 }
 
 bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softserial)
@@ -267,7 +268,7 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
     pinMode(PIN_GPS_POWER, OUTPUT);
     digitalWrite(PIN_GPS_POWER, LOW);
     delay(10);
-   
+
     if (!softserial) {
         uart_config_t uart_config = {
             .baud_rate = GPS_BAUDRATE,
@@ -288,6 +289,7 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
     } else {
         // start GPS decoding task (soft serial)
         taskGPS.create(gps_soft_decode_task, "GPS", 1);
+        gpsFlags |= GF_SOFT_SERIAL;
     }
 
     // test run for a while to see if there is data decoded
@@ -300,18 +302,17 @@ bool FreematicsESP32::gpsBegin(unsigned long baudrate, bool buffered, bool softs
             // data is coming in
             if (!gpsData) gpsData = new GPS_DATA;
             memset(gpsData, 0, sizeof(GPS_DATA));
-            if (buffered && !nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
+            if (buffered) {
+                if (!nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
+                gpsFlags |= GF_BUFFERED;
+            } 
             nmeaBytes = 0;
             return true;
         }
     }
 
-    // no data coming in
-    if (!softserial) {
-        uart_driver_delete(GPS_UART_NUM);
-    }
-    taskGPS.destroy();
-    digitalWrite(PIN_GPS_POWER, LOW);
+    // when no data coming in
+    gpsEnd();
     return false;
 }
 

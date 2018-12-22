@@ -36,7 +36,8 @@
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
 
-#define GPS_TIMEOUT 1000 /* ms */
+#define GF_BUFFERED 0x1
+#define GF_SOFT_SERIAL 0x2
 
 int readChipTemperature();
 int readChipHallSensor();
@@ -93,4 +94,6 @@ public:
   void xbPurge();
   // toggle xBee module power
   void xbTogglePower();
+private:
+  byte gpsFlags = 0;
 };
