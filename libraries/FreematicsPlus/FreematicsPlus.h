@@ -30,7 +30,6 @@
 #define PIN_GPS_UART_RXD 32
 #define PIN_GPS_UART_TXD 33
 #define GPS_UART_NUM UART_NUM_2
-#define GPS_BAUDRATE 115200L
 #define GPS_SOFT_BAUDRATE 38400L
 
 #define UART_BUF_SIZE 256
@@ -71,7 +70,7 @@ class FreematicsESP32 : public CFreematics
 public:
   void begin(int cpuMHz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ);
   // start GPS
-  bool gpsBegin(unsigned long baudrate = GPS_BAUDRATE, bool buffered = false, bool softserial = true);
+  bool gpsBegin(int baudrate = 115200, bool buffered = false, bool softserial = true);
   // turn off GPS
   void gpsEnd();
   // get parsed GPS data (returns the number of data parsed since last invoke)
