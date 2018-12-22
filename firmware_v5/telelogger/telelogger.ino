@@ -367,36 +367,9 @@ void calibrateMEMS()
 /*******************************************************************************
   Initializing all components and network
 *******************************************************************************/
-bool initialize()
+bool initialize(bool wait = false)
 {
   state.clear(STATE_WORKING);
-
-  if (!state.check(STATE_NET_READY)) {
-#if NET_DEVICE == NET_WIFI
-    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
-    state.set(STATE_NET_READY);
-#else
-    // power on network module
-    Serial.print("CELL...");
-    if (teleClient.net.begin(&sys)) {
-      Serial.println(teleClient.net.deviceName());
-#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-      Serial.print("IMEI:");
-      Serial.println(teleClient.net.IMEI);
-#endif
-#if ENABLE_OLED
-      oled.print(teleClient.net.deviceName());
-      oled.print(" OK\r");
-#endif
-      state.set(STATE_NET_READY);
-    } else {
-      Serial.println("NO");
-#if ENABLE_OLED
-      oled.println("No cell module");
-#endif
-    }
-#endif
-  }
 
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
@@ -443,12 +416,45 @@ bool initialize()
 #if ENABLE_OLED
       oled.println("GPS OK");
 #endif
+      // wait for movement from GPS when OBD not connected
+      if (wait && !state.check(STATE_OBD_READY)) {
+        Serial.println("Waiting...");
+        if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
+          return false;
+        }
+      }
     } else {
-      sys.gpsEnd();
       Serial.println("NO");
     }
   }
 #endif
+
+  if (!state.check(STATE_NET_READY)) {
+#if NET_DEVICE == NET_WIFI
+    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
+    state.set(STATE_NET_READY);
+#else
+    // power on network module
+    Serial.print("CELL...");
+    if (teleClient.net.begin(&sys)) {
+      Serial.println(teleClient.net.deviceName());
+#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+      Serial.print("IMEI:");
+      Serial.println(teleClient.net.IMEI);
+#endif
+#if ENABLE_OLED
+      oled.print(teleClient.net.deviceName());
+      oled.print(" OK\r");
+#endif
+      state.set(STATE_NET_READY);
+    } else {
+      Serial.println("NO");
+#if ENABLE_OLED
+      oled.println("No cell module");
+#endif
+    }
+#endif
+  }
 
 #if NET_DEVICE == NET_WIFI
 #if ENABLE_OLED
@@ -543,13 +549,12 @@ bool initialize()
       Serial.print("DTC:");
       Serial.println(dtcCount);
     }
-  }
-#endif
-
 #if ENABLE_OLED
-  oled.clear();
-  oled.print("VIN:");
-  oled.println(vin);
+    oled.clear();
+    oled.print("VIN:");
+    oled.println(vin);
+#endif
+  }
 #endif
 
   if (!teleClient.connect()) {
@@ -1132,16 +1137,8 @@ void loop()
   if (!state.check(STATE_WORKING)) {
     standby();
     digitalWrite(PIN_LED, HIGH);
-    initialize();
+    initialize(true);
     digitalWrite(PIN_LED, LOW);
-#if ENABLE_GPS
-    // wait for movement from GPS when OBD not connected
-    if (!state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
-      if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
-        state.clear(STATE_WORKING);
-      }
-    }
-#endif
     return;
   }
 
