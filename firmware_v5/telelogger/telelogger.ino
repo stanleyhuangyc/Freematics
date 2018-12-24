@@ -65,7 +65,7 @@ uint16_t dtc[6] = {0};
 int16_t batteryVoltage = 0;
 #if ENABLE_GPS
 GPS_DATA* gd = 0;
-uint32_t lastGPSts = 0;
+uint32_t lastGPStime = 0;
 #endif
 
 char devid[18] = {0};
@@ -242,6 +242,7 @@ void processOBD()
         timeoutsOBD++;
         printTimeoutStats();
     }
+    delay(5);
     if (tier > 1) break;
   }
   int kph = obdData[0].value;
@@ -265,7 +266,7 @@ bool processGPS()
 #endif
   }
 
-  if (!gd || gd->date == 0 || lastGPSts == gd->ts) return false;
+  if (!gd || lastGPStime == gd->time) return false;
 
   cache.log(PID_GPS_DATE, gd->date);
   cache.log(PID_GPS_TIME, gd->time);
@@ -305,7 +306,7 @@ bool processGPS()
   Serial.print(' ');
   Serial.println(isoTime);
   //Serial.println(gd->errors);
-  lastGPSts = gd->ts;
+  lastGPStime = gd->time;
   return true;
 }
 #endif
@@ -959,6 +960,7 @@ void standby()
   }
   gd = 0;
 #endif
+  state.clear(STATE_OBD_READY);
   state.set(STATE_STANDBY);
   //Serial.println("Standby");
 #if ENABLE_OLED
