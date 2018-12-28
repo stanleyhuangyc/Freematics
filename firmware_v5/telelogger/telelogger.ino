@@ -242,7 +242,7 @@ void processOBD()
         timeoutsOBD++;
         printTimeoutStats();
     }
-    delay(5);
+    if (obd->getType() == 1) delay(10);
     if (tier > 1) break;
   }
   int kph = obdData[0].value;
@@ -308,6 +308,19 @@ bool processGPS()
   //Serial.println(gd->errors);
   lastGPStime = gd->time;
   return true;
+}
+
+bool waitMotionGPS(int timeout)
+{
+  unsigned long t = millis();
+  lastMotionTime = 0;
+  do {
+    delay(100);
+    cache.purge();
+    if (!processGPS()) continue;
+    if (lastMotionTime) return true;
+  } while (millis() - t < timeout);
+  return false;
 }
 #endif
 
@@ -925,21 +938,6 @@ void process()
     delay(10000);
   }
 }
-
-#if ENABLE_GPS
-bool waitMotionGPS(int timeout)
-{
-  unsigned long t = millis();
-  lastMotionTime = 0;
-  do {
-    delay(100);
-    cache.purge();
-    if (!processGPS()) continue;
-    if (lastMotionTime) return true;
-  } while (millis() - t < timeout);
-  return false;
-}
-#endif
 
 /*******************************************************************************
   Implementing stand-by mode
