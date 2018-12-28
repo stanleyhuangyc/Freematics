@@ -12,7 +12,7 @@
 
 //#define DEBUG Serial
 
-static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
+//static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 #ifdef DEBUG
 void debugOutput(const char *s)
@@ -99,7 +99,6 @@ bool COBD::readPID(byte pid, int& result)
 	char* data = 0;
 	sprintf(buffer, "%02X%02X\r", dataMode, pid);
 	write(buffer);
-	delay(1);
 	uint32_t t = millis();
 	int ret = receive(buffer, sizeof(buffer), pidWaitTime);
 	pidWaitTime = millis() - t + (pidWaitTime >> 1);
@@ -609,6 +608,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	int n = 0;
 	bool eos = false;
 	bool matched = false;
+	portMUX_TYPE m = portMUX_INITIALIZER_UNLOCKED;
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
@@ -620,6 +620,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 				break;
 			}
 		}
+		portENTER_CRITICAL(&m);
 		digitalWrite(SPI_PIN_CS, LOW);
 		while (digitalRead(SPI_PIN_READY) == LOW && millis() - t < timeout) {
 			char c = SPI.transfer(' ');
@@ -657,6 +658,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			}
 		}
 		digitalWrite(SPI_PIN_CS, HIGH);
+		portEXIT_CRITICAL(&m);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -675,12 +677,14 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 
 void COBDSPI::write(const char* s)
 {
+	portMUX_TYPE m = portMUX_INITIALIZER_UNLOCKED;
 #ifdef DEBUG
 	debugOutput(s);
 #endif
 	int len = strlen(s);
 	uint8_t tail = 0x1B;
-	SPI.beginTransaction(settings);
+	//SPI.beginTransaction(settings);
+	portENTER_CRITICAL(&m);
 	digitalWrite(SPI_PIN_CS, LOW);
 	delay(1);
 	SPI.writeBytes((uint8_t*)header, sizeof(header));
@@ -688,7 +692,8 @@ void COBDSPI::write(const char* s)
 	SPI.writeBytes((uint8_t*)&tail, 1);
 	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
-	SPI.endTransaction();
+	portEXIT_CRITICAL(&m);
+	//SPI.endTransaction();
 }
 
 int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
