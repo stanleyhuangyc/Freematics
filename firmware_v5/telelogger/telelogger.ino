@@ -241,8 +241,8 @@ void processOBD()
     } else {
         timeoutsOBD++;
         printTimeoutStats();
+        break;
     }
-    if (obd->getType() == 1) delay(10);
     if (tier > 1) break;
   }
   int kph = obdData[0].value;
@@ -1057,6 +1057,16 @@ void idleTasks()
   }
 }
 
+void genDeviceID(char* buf)
+{
+    uint64_t seed = ESP.getEfuseMac() >> 8;
+    for (int i = 0; i < 8; i++, seed >>= 5) {
+      byte x = (byte)seed & 0x1f;
+      buf[i] = (x >= 10) ? (x - 10 + 'A') : (x + '0');
+    }
+    buf[8] = 0;
+}
+
 void setup()
 {
 #if ENABLE_OLED
@@ -1097,9 +1107,8 @@ void setup()
     oled.println("MB Flash");
 #endif
     // generate a unique ID in case VIN is inaccessible
-    uint64_t mac = ESP.getEfuseMac();
-    snprintf(devid, sizeof(devid), "%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
-    Serial.print("DEVICE ID:");
+    genDeviceID(devid);
+    Serial.print("DEVICE ID: ");
     Serial.println(devid);
 
 #if ENABLE_HTTPD
