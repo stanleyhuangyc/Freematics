@@ -12,7 +12,7 @@
 
 //#define DEBUG Serial
 
-//static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
+static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 #ifdef DEBUG
 void debugOutput(const char *s)
@@ -683,7 +683,6 @@ void COBDSPI::write(const char* s)
 #endif
 	int len = strlen(s);
 	uint8_t tail = 0x1B;
-	//SPI.beginTransaction(settings);
 	portENTER_CRITICAL(&m);
 	digitalWrite(SPI_PIN_CS, LOW);
 	delay(1);
@@ -693,7 +692,6 @@ void COBDSPI::write(const char* s)
 	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	portEXIT_CRITICAL(&m);
-	//SPI.endTransaction();
 }
 
 int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
@@ -701,8 +699,9 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 	uint32_t t = millis();
 	int n;
 	do {
+		SPI.beginTransaction(settings);
 		write(cmd);
-		delay(1);
+		SPI.endTransaction();
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
 			// data not ready
