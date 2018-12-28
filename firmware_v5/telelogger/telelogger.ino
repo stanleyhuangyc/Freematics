@@ -619,12 +619,10 @@ bool initialize(bool wait = false)
 
 void shutDownNet()
 {
-  if (state.check(STATE_NET_READY)) {
-    Serial.print(teleClient.net.deviceName());
-    teleClient.net.close();
-    teleClient.net.end();
-    Serial.println(" OFF");
-  }
+  Serial.print(teleClient.net.deviceName());
+  teleClient.net.close();
+  teleClient.net.end();
+  Serial.println(" OFF");
   state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
 }
 
@@ -836,8 +834,11 @@ void process()
 
 #if ENABLE_OBD
   // read and log car battery voltage, data in 0.01v
-  batteryVoltage = obd->getVoltage() * 100;
-  cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+  float volts = obd->getVoltage();
+  if (volts) {
+    batteryVoltage = volts * 100;
+    cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+  }
 #endif
 
 #if ENABLE_GPS
@@ -1097,7 +1098,7 @@ void setup()
 #endif
     // generate a unique ID in case VIN is inaccessible
     uint64_t mac = ESP.getEfuseMac();
-    snprintf(devid, sizeof(devid), "ESP32%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
+    snprintf(devid, sizeof(devid), "%04X%08X", (uint32_t)(mac >> 32), (uint32_t)mac);
     Serial.print("DEVICE ID:");
     Serial.println(devid);
 
