@@ -29,7 +29,7 @@ bool UDPClientESP8266AT::begin(CFreematics* device)
 
 void UDPClientESP8266AT::end()
 {
-  sendCommand("AT+CWQAP\r\n");
+  //sendCommand("AT+CWQAP\r\n");
 }
 
 bool UDPClientESP8266AT::setup(const char* ssid, const char* password, unsigned int timeout)
@@ -87,6 +87,7 @@ bool UDPClientESP8266AT::open(const char* host, uint16_t port)
     }
     Serial.println(buffer);
   }
+  close();
   return false;
 }
 
@@ -192,9 +193,9 @@ bool UDPClientSIM800::setup(const char* apn, unsigned int timeout)
   do {
     success = sendCommand("AT+CGATT?\r", 3000, "+CGATT: 1");
   } while (!success && millis() - t < timeout);
-  sprintf_P(m_buffer, PSTR("AT+CSTT=\"%s\"\r"), apn);
-  if (!sendCommand(m_buffer)) {
-    return false;
+  if (*apn) {
+    sprintf_P(m_buffer, PSTR("AT+CSTT=\"%s\"\r"), apn);
+    sendCommand(m_buffer);
   }
   sendCommand("AT+CIICR\r");
   return success;
@@ -259,7 +260,9 @@ bool UDPClientSIM800::open(const char* host, uint16_t port)
   sendCommand("AT+CIPSRIP=1\r");
   //sendCommand("AT+CIPUDPMODE=1\r");
   sprintf_P(m_buffer, PSTR("AT+CIPSTART=\"UDP\",\"%s\",\"%u\"\r"), host, port);
-  return sendCommand(m_buffer, 3000);
+  if (sendCommand(m_buffer, 3000)) return true;
+  close();
+  return false;
 }
 
 void UDPClientSIM800::close()
@@ -384,12 +387,12 @@ bool UDPClientSIM5360::begin(CFreematics* device)
     device->xbBegin(XBEE_BAUDRATE);
     m_stage = 1;
   }
-  for (byte n = 0; n < 10; n++) {
+  for (byte n = 0; n < 5; n++) {
     // try turning on module
     device->xbTogglePower();
     delay(2000);
     // discard any stale data
-    device->xbPurge();
+    //device->xbPurge();
     for (byte m = 0; m < 5; m++) {
       if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         m_stage = 2;
@@ -405,9 +408,15 @@ bool UDPClientSIM5360::begin(CFreematics* device)
 
 void UDPClientSIM5360::end()
 {
-  if (m_stage == 2 || sendCommand("AT\r")) {
+  bool success = sendCommand("AT+CRESET\r");
+  sendCommand("AT+GPS=0\r");
+  if (m_stage == 2 || success) {
     m_device->xbTogglePower();
     m_stage = 1;
+  }
+  if (m_gps) {
+    delete m_gps;
+    m_gps = 0;
   }
 }
 
@@ -442,11 +451,10 @@ bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout)
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
-    do {
+    if (*apn) {
       sprintf_P(m_buffer, PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), apn);
-      success = sendCommand(m_buffer);
-    } while (!success && millis() - t < timeout);
-    if (!success) break;
+      sendCommand(m_buffer);
+    }
 
     sendCommand("AT+CSOCKSETPN=1\r");
     //sendCommand("AT+CSOCKAUTH=,,\"password\",\"password\"\r");
@@ -541,12 +549,14 @@ bool UDPClientSIM5360::open(const char* host, uint16_t port)
   }
   sprintf_P(m_buffer, PSTR("AT+CIPOPEN=0,\"UDP\",\"%u.%u.%u.%u\",%u,8000\r"),
     udpIP[0], udpIP[1], udpIP[2], udpIP[3], udpPort);
-  return sendCommand(m_buffer, 3000);
+  if (sendCommand(m_buffer, 3000)) return true;
+  close();
+  return false;
 }
 
 void UDPClientSIM5360::close()
 {
-  sendCommand("AT+CIPCLOSE\r");
+  sendCommand("AT+CIPCLOSE=0\r");
 }
 
 bool UDPClientSIM5360::send(const char* data, unsigned int len)
@@ -618,25 +628,27 @@ void UDPClientSIM5360::checkGPS()
 {
   char *p;
   if (m_gps && (p = strstr_P(m_buffer, PSTR("+CGPSINFO:")))) do {
+    GPS_LOCATION gl;
     if (!(p = strchr(p, ':'))) break;
     if (*(++p) == ',') break;
-    m_gps->lat = parseDegree(p);
+    gl.lat = parseDegree(p);
     if (!(p = strchr(p, ','))) break;
-    if (*(++p) == 'S') m_gps->lat = -m_gps->lat;
+    if (*(++p) == 'S') gl.lat = -gl.lat;
     if (!(p = strchr(p, ','))) break;
-    m_gps->lng = parseDegree(++p);
+    gl.lng = parseDegree(++p);
     if (!(p = strchr(p, ','))) break;
-    if (*(++p) == 'W') m_gps->lng = -m_gps->lng;
+    if (*(++p) == 'W') gl.lng = -gl.lng;
     if (!(p = strchr(p, ','))) break;
-    m_gps->date = atol(++p);
+    gl.date = atol(++p);
     if (!(p = strchr(p, ','))) break;
-    m_gps->time = atol(++p) * 100;
+    gl.time = atol(++p) * 100;
     if (!(p = strchr(p, ','))) break;
-    m_gps->alt = atoi(++p);
+    gl.alt = atoi(++p);
     if (!(p = strchr(p, ','))) break;
-    m_gps->speed = atof(++p) * 100;
+    gl.speed = atof(++p) * 100;
     if (!(p = strchr(p, ','))) break;
-    m_gps->heading = atoi(++p);
+    gl.heading = atoi(++p);
+    memcpy(m_gps, &gl, sizeof(gl));
   } while (0);
 }
 

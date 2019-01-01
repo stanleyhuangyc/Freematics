@@ -28,19 +28,25 @@ public:
 #endif
         dataCount++;
     }
-    void log(uint16_t pid, int16_t value)
+    void log(uint16_t pid, int value)
     {
         char buf[24];
         byte len = sprintf_P(buf, PSTR("%lu,%X,%d"), dataTime, pid, value) ;
         record(buf, len);
     }
-    void log(uint16_t pid, int32_t value)
+    void log(uint16_t pid, unsigned int value)
+    {
+        char buf[24];
+        byte len = sprintf_P(buf, PSTR("%lu,%X,%u"), dataTime, pid, value) ;
+        record(buf, len);
+    }
+    void log(uint16_t pid, long value)
     {
         char buf[28];
         byte len = sprintf_P(buf, PSTR("%lu,%X,%ld"), dataTime, pid, value);
         record(buf, len);
     }
-    void log(uint16_t pid, uint32_t value)
+    void log(uint16_t pid, unsigned long value)
     {
         char buf[28];
         byte len = sprintf_P(buf, PSTR("%lu,%X,%lu"), dataTime, pid, value);
@@ -52,7 +58,7 @@ public:
         byte len = sprintf_P(buf, PSTR("%lu,%X,%d;%d;%d"), dataTime, pid, value1, value2, value3);
         record(buf, len);
     }
-    void logCoordinate(uint16_t pid, int32_t value)
+    void logCoordinate(uint16_t pid, long value)
     {
         char buf[32];
         byte len = sprintf_P(buf, PSTR("%lu,%X,%d.%06lu"), dataTime, pid, (int)(value / 1000000), abs(value) % 1000000);

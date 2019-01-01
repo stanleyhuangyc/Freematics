@@ -4,6 +4,9 @@
 #define EVENT_RECONNECT 4
 #define EVENT_COMMAND 5
 #define EVENT_ACK 6
+#define EVENT_PING 7
+
+#define CACHE_SIZE 160
 
 class CStorageNull;
 
@@ -106,9 +109,12 @@ public:
         if (m_next) m_next->dispatch(buf, len);
     }
 
-    void header(uint16_t feedid)
+    void header(uint16_t feedid, const char* devid = 0)
     {
-        m_cacheBytes = sprintf_P(m_cache, PSTR("%X#"), (unsigned int)feedid);
+        if (feedid || !devid)
+            m_cacheBytes = sprintf_P(m_cache, PSTR("%X#"), (unsigned int)feedid);
+        else
+            m_cacheBytes = sprintf_P(m_cache, PSTR("%s#"), devid);
     }
     void tailer()
     {

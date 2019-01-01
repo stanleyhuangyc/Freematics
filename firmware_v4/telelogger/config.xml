@@ -4,13 +4,13 @@
   <define name="Enable GPS" type="bool" const="ENABLE_GPS" default="true"/>
   <define name="Enable Motion Sensor" type="bool" const="MEMS_MODE" default="true"/>
   <define name="Networking">
-    <option name="WIFI" const="NET_DEVICE=NET_WIFI" default="true"/>
+    <option name="WIFI" const="NET_DEVICE=NET_WIFI"/>
     <option name="GSM/GPRS (SIM800)" const="NET_DEVICE=NET_SIM800"/>
-    <option name="WCDMA/GSM (SIM5360)" const="NET_DEVICE=NET_SIM5360"/>
+    <option name="WCDMA/GSM (SIM5360)" const="NET_DEVICE=NET_SIM5360" default="true"/>
   </define>
   <define name="WIFI SSID" const="WIFI_SSID" type="string" default="FREEMATICS" dep="NET_WIFI"/>
   <define name="WIFI Password" const="WIFI_PASSWORD" type="string" default="PASSWORD" dep="NET_WIFI"/>
-  <define name="Cellular Network APN" const="CELL_APN" type="string" default="connect" dep="NET_SIM5360 NET_SIM800"/>
+  <define name="Cellular Network APN" const="CELL_APN" type="string" dep="NET_SIM5360 NET_SIM800"/>
   <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
   <define name="Server Port" const="SERVER_PORT" type="number" default="8081"/>
 </target>
