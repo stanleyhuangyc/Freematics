@@ -75,7 +75,7 @@ protected:
         for (int i = 0; i < len; i++) sum += data[i];
         return sum;
     }
-    virtual void header(uint16_t feedid) {}
+    virtual void header(const char* devid) {}
     virtual void tailer() {}
     uint32_t m_dataTime = 0;
     uint16_t m_samples = 0;
@@ -109,12 +109,9 @@ public:
         if (m_next) m_next->dispatch(buf, len);
     }
 
-    void header(uint16_t feedid, const char* devid = 0)
+    void header(const char* devid)
     {
-        if (feedid || !devid)
-            m_cacheBytes = sprintf_P(m_cache, PSTR("%X#"), (unsigned int)feedid);
-        else
-            m_cacheBytes = sprintf_P(m_cache, PSTR("%s#"), devid);
+        m_cacheBytes = sprintf_P(m_cache, PSTR("%s#"), devid);
     }
     void tailer()
     {
