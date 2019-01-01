@@ -463,14 +463,6 @@ bool initialize()
     } else {
       println(PSTR("OK"));
       state.set(STATE_OBD_READY);
-
-      char buf[128];
-      print(PSTR("VIN:"));
-      if (obd.getVIN(buf, sizeof(buf))) {
-        strncpy(vin, buf, sizeof(vin) - 1);
-        Serial.print(vin);
-      }
-      Serial.println();
     }
   }
 
