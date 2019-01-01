@@ -112,7 +112,7 @@ bool verifyChecksum(char* data)
 
 bool notify(byte event, const char* extra = 0)
 {
-  cache.header(feedid, devid);
+  cache.header(devid);
   char buf[32];
   byte len = snprintf_P(buf, sizeof(buf), PSTR("EV=%X"), (unsigned int)event);
   cache.dispatch(buf, len);
@@ -397,7 +397,7 @@ bool initialize()
   state.clear(STATE_WORKING);
 
   byte ver;
-  for (;;) {
+  for (byte n = 0; n < 10; n++) {
     if ((ver = obd.getVersion())) break;
     delay(3000);
   }
@@ -496,9 +496,7 @@ bool initialize()
     return false;
   }
 #else
-  print(PSTR("CELL(APN:"));
-  Serial.print(CELL_APN);
-  Serial.print(')');
+  print(PSTR("CELL..."));
   if (net.setup(CELL_APN, state.check(STATE_GPS_READY) ? false : true)) {
     String op = net.getOperatorName();
     if (op.length()) {
@@ -669,7 +667,7 @@ void process()
 {
   uint32_t startTime = millis();
 
-  cache.header(feedid, devid);
+  cache.header(devid);
   cache.timestamp(startTime);
 
   // process OBD data if connected
@@ -773,7 +771,7 @@ void standby()
       // to wake up
       break;
     }
-    cache.header(feedid, devid);
+    cache.header(devid);
     cache.timestamp(millis());
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
     cache.log(PID_DEVICE_TEMP, deviceTemp);
@@ -832,16 +830,6 @@ void idleTasks(int timeout)
       switch (eventID) {
       case EVENT_COMMAND:
         processCommand(data);
-        break;
-      case EVENT_SYNC:
-        {
-          uint16_t id = atoi(data);
-          if (id && id != feedid) {
-            feedid = id;
-            Serial.print("FEED#");
-            Serial.println(feedid);
-          }
-        }
         break;
       }
       lastSyncTime = millis();
