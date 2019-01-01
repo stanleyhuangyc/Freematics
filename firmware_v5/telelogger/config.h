@@ -30,7 +30,7 @@
 #endif
 
 // maximum consecutive OBD-II access errors before entering standby
-#define MAX_OBD_ERRORS 10
+#define MAX_OBD_ERRORS 5
 
 /**************************************
 * Networking configurations
@@ -41,8 +41,8 @@
 // WIFI settings
 #define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "PASSWORD"
-// APN settings for cellular network
-#define CELL_APN "mdata.net.au"
+// APN settings for cellular network (if required)
+#define CELL_APN ""
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 0
