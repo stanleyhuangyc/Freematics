@@ -418,6 +418,7 @@ byte COBD::getVersion()
 				break;
 			}
 		}
+		delay(100);
 	}
 	return version;
 }
@@ -467,7 +468,10 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 	m_state = OBD_DISCONNECTED;
 	for (byte n = 0; n < 3; n++) {
 		stage = 0;
-		if (n != 0) reset();
+		if (n != 0) {
+			reset();
+			delay(2000);
+		}
 		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
 			delay(10);
 			if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
@@ -543,8 +547,6 @@ void COBD::reset()
 {
 	char buf[32];
 	sendCommand("ATR\r", buf, sizeof(buf));
-	delay(3000);
-	sendCommand("ATZ\r", buf, sizeof(buf));
 }
 
 void COBD::uninit()
