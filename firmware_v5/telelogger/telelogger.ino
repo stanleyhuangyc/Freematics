@@ -409,6 +409,9 @@ bool initialize(bool wait = false)
   if (!state.check(STATE_OBD_READY)) {
     timeoutsOBD = 0;
     Serial.print("OBD...");
+    if (state.check(STATE_OBD_FOUND)) {
+      obd->begin();
+    }
     if (obd->init()) {
       Serial.println("OK");
       state.set(STATE_OBD_READY | STATE_OBD_FOUND);
@@ -959,7 +962,12 @@ void standby()
   }
   gd = 0;
 #endif
-  state.clear(STATE_OBD_READY);
+#if ENABLE_OBD
+  if (state.check(STATE_OBD_FOUND)) {
+    obd->end();
+    state.clear(STATE_OBD_READY);
+  }
+#endif
   state.set(STATE_STANDBY);
   //Serial.println("Standby");
 #if ENABLE_OLED
@@ -980,9 +988,6 @@ void standby()
     }
     cache.timestamp(millis());
     cache.log(PID_DEVICE_TEMP, readChipTemperature());
-#if ENABLE_OBD
-    cache.log(PID_BATTERY_VOLTAGE, (uint16_t)(obd->getVoltage() * 100));
-#endif
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
     if (!state.check(STATE_STANDBY)) {
       break;
@@ -1017,7 +1022,7 @@ void standby()
   }
 #elif ENABLE_OBD
   float v;
-  obd->reset();
+  obd->begin();
   do {
     delay(5000);
     v = obd->getVoltage();
@@ -1062,13 +1067,52 @@ void genDeviceID(char* buf)
     uint64_t seed = ESP.getEfuseMac() >> 8;
     for (int i = 0; i < 8; i++, seed >>= 5) {
       byte x = (byte)seed & 0x1f;
-      buf[i] = (x >= 10) ? (x - 10 + 'A') : (x + '0');
+      if (x >= 10) {
+        x = x - 10 + 'A';
+        switch (x) {
+          case 'B': x = 'W'; break;
+          case 'D': x = 'X'; break;
+          case 'I': x = 'Y'; break;
+          case 'O': x = 'Z'; break;
+        }
+      } else {
+        x += '0';
+      }
+      buf[i] = x;
     }
     buf[8] = 0;
 }
 
+void showSysInfo()
+{
+  Serial.print("CPU:");
+  Serial.print(ESP.getCpuFreqMHz());
+  Serial.print("MHz Flash:");
+  Serial.print(getFlashSize() >> 10);
+  Serial.print("MB RAM:");
+  Serial.print(ESP.getHeapSize() >> 10);
+  Serial.print("KB");
+  if (psramInit()) {
+    Serial.print(" PSRAM:");
+    Serial.print(ESP.getPsramSize() >> 10);
+    Serial.print("KB");
+  }
+  Serial.println();
+
+#if ENABLE_OLED
+  oled.clear();
+  oled.print("CPU:");
+  oled.print(freq);
+  oled.print(" Mhz ");
+  oled.print(flashSize);
+  oled.println("MB Flash");
+#endif
+}
+
 void setup()
 {
+    sys.begin();
+
 #if ENABLE_OLED
     oled.begin();
     oled.setFontSize(FONT_SIZE_MEDIUM);
@@ -1076,6 +1120,7 @@ void setup()
     oled.setFontSize(FONT_SIZE_SMALL);
     oled.println();
 #endif
+
     delay(1000);
 
     // init LED pin
@@ -1090,22 +1135,9 @@ void setup()
     // initialize USB serial
     Serial.begin(115200);
 
-    // display system info
-    int freq = ESP.getCpuFreqMHz();
-    int flashSize = getFlashSize() >> 10;
-    Serial.print("ESP32 ");
-    Serial.print(freq);
-    Serial.print("MHz ");
-    Serial.print(flashSize);
-    Serial.println("MB Flash");
-#if ENABLE_OLED
-    oled.clear();
-    oled.print("CPU:");
-    oled.print(freq);
-    oled.print(" Mhz ");
-    oled.print(flashSize);
-    oled.println("MB Flash");
-#endif
+    // show system information
+    showSysInfo();
+
     // generate a unique ID in case VIN is inaccessible
     genDeviceID(devid);
     Serial.print("DEVICE ID: ");
@@ -1125,12 +1157,13 @@ void setup()
     }
 #endif
 
-    // startup initializations
-    sys.begin();
 #if ENABLE_OBD
     while (!(obd = createOBD()));
-    Serial.print("OBD Firmware Version ");
-    Serial.println(obd->getVersion());
+    int ver = obd->getVersion();
+    if (ver) {
+      Serial.print("OBD Firmware: v");
+      Serial.println(ver);
+    }
 #endif
 
     // allocate for data cache
