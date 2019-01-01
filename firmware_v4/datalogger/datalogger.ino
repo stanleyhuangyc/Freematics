@@ -93,7 +93,6 @@ public:
         Serial.println("OK");
       } else {
         Serial.println("NO");
-        reconnect();
       }
       state |= STATE_OBD_READY;
 
@@ -122,10 +121,12 @@ public:
 #endif
 
       // retrieve VIN
-      char buffer[128];
-      if ((state & STATE_OBD_READY) && getVIN(buffer, sizeof(buffer))) {
-        Serial.print("VIN:");
-        Serial.println(buffer);
+      if (state & STATE_OBD_READY) {
+        char buffer[128];
+        if (getVIN(buffer, sizeof(buffer))) {
+          Serial.print("VIN:");
+          Serial.println(buffer);
+        }
       }
 
       calibrateMEMS();
@@ -209,9 +210,8 @@ public:
         gpsInit(0);
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
+        end();
         Serial.println("Standby");
-        // put OBD chips into low power mode
-        reset();
 #if USE_MEMS
         if (state & STATE_MEMS_READY) {
           calibrateMEMS();

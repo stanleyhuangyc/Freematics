@@ -33,8 +33,6 @@
 #define PID_DEVICE_TEMP 0x82
 #define PID_DEVICE_HALL 0x83
 
-#define CACHE_SIZE 128
-
 typedef struct {
   float pitch;
   float yaw;

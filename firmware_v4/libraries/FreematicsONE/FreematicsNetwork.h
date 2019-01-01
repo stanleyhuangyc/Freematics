@@ -60,7 +60,7 @@ private:
     char* rxBuf = 0;
     int rxLen = 0;
     CFreematics* m_device = 0;
-    char buffer[96];
+    char buffer[128];
 };
 
 class UDPClientSIM800 : virtual NullClient
@@ -115,6 +115,6 @@ private:
     byte udpIP[4] = {0};
     uint16_t udpPort = 0;
     uint8_t m_stage = 0;
-    GPS_LOCATION* m_gps;
+    GPS_LOCATION* m_gps = 0;
     CFreematics* m_device = 0;
 };
