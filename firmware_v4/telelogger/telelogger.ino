@@ -460,13 +460,17 @@ bool initialize()
     print(PSTR("OBD..."));
     if (!obd.init()) {
       println(PSTR("NO"));
-      if (state.check(STATE_OBD_FOUND)) {
-        // if OBD was ever connected, require connection
-        return false;
-      }
     } else {
       println(PSTR("OK"));
-      state.set(STATE_OBD_READY | STATE_OBD_FOUND);
+      state.set(STATE_OBD_READY);
+
+      char buf[128];
+      print(PSTR("VIN:"));
+      if (obd.getVIN(buf, sizeof(buf))) {
+        strncpy(vin, buf, sizeof(vin) - 1);
+        Serial.print(vin);
+      }
+      Serial.println();
     }
   }
 

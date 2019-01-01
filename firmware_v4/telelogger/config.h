@@ -42,7 +42,7 @@
 #define SERVER_SYNC_INTERVAL 180 /* seconds, 0 to disable */
 // data interval configurations
 #define DATA_INTERVAL 1000 /* ms */
-#define STATIONARY_TIME_TABLE {30, 60} /* seconds */
+#define STATIONARY_TIME_TABLE {30, 180} /* seconds */
 #define SENDING_INTERVAL_TABLE {1, 5} /* seconds */
 #define PING_BACK_INTERVAL 900 /* seconds */
 
