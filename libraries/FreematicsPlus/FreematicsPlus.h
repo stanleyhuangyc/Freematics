@@ -68,7 +68,7 @@ private:
 class FreematicsESP32 : public CFreematics
 {
 public:
-  void begin(int cpuMHz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ);
+  void begin(int cpuMHz = 0);
   // start GPS
   bool gpsBegin(int baudrate = 115200, bool buffered = false, bool softserial = true);
   // turn off GPS

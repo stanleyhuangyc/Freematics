@@ -209,17 +209,18 @@ void Mutex::unlock()
 
 void FreematicsESP32::begin(int cpuMHz)
 {
-    // Configure dynamic frequency scaling
-    rtc_cpu_freq_t max_freq;
-    rtc_clk_cpu_freq_from_mhz(cpuMHz, &max_freq);
-    esp_pm_config_esp32_t pm_config = {
-            .max_cpu_freq = max_freq,
-            .min_cpu_freq = RTC_CPU_FREQ_XTAL
-    };
-    esp_err_t ret = esp_pm_configure(&pm_config);
-    if (ret == ESP_ERR_NOT_SUPPORTED) {
-        //Serial.println("PM Disabled");
+#if 0
+    if (cpuMHz) {
+        esp_pm_config_esp32_t pm_config;
+        pm_config.max_freq_mhz = cpuMHz;
+        pm_config.min_freq_mhz = RTC_CPU_FREQ_XTAL;
+        pm_config.light_sleep_enable = true;
+        esp_err_t ret = esp_pm_configure(&pm_config);
+        if (ret == ESP_ERR_NOT_SUPPORTED) {
+            Serial.println("PM Disabled");
+        }
     }
+#endif
 
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);
