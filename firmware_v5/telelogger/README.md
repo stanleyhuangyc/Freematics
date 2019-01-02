@@ -54,8 +54,7 @@ Once the sketch is running and data is being submitted to hub.freematics.com, yo
 Prerequisites
 -------------
 
-* [Freematics ONE+](https://freematics.com/products/freematics-one-plus/)
+* [Freematics ONE+](https://freematics.com/products/freematics-one-plus/) or [Freematics ONE+ Model B](https://freematics.com/products/freematics-one-plus-model-b/) 
 * SIM800 or SIM5360 bee module and a micro SIM card if cellular network required
-* [Freematics Hub server software](https://freematics.com/hub) (freeware)
 * [PlatformIO](http://platformio.org/), [Arduino IDE](https://github.com/espressif/arduino-esp32#installation-instructions) or [Freematics Arduino Builder](https://freematics.com/software/arduino-builder) for compiling and uploading code
 * A car with OBD-II port or [Freematics OBD-II Emulator](https://freematics.com/products/freematics-obd-emulator-mk2/)
