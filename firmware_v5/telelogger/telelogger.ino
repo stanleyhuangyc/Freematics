@@ -1089,7 +1089,9 @@ void showSysInfo()
   Serial.print(ESP.getCpuFreqMHz());
   Serial.print("MHz Flash:");
   Serial.print(getFlashSize() >> 10);
-  Serial.print("MB RAM:");
+  Serial.println("MB");
+#ifdef BOARD_HAS_PSRAM
+  Serial.print("IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
   Serial.print("KB");
   if (psramInit()) {
@@ -1098,7 +1100,8 @@ void showSysInfo()
     Serial.print("KB");
   }
   Serial.println();
-
+#endif
+  
 #if ENABLE_OLED
   oled.clear();
   oled.print("CPU:");
