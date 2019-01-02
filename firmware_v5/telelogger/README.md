@@ -3,11 +3,11 @@ This Arduino sketch is designed for running on [Freematics ONE+](https://freemat
 Data Collection
 ---------------
 
-The sketch can collect following data.
+The sketch collects following data.
 
 * Vehicle OBD-II PIDs data (from OBD port)
 * Battery voltage (from OBD port)
-* Geolocation data (from connected GPS receiver)
+* Geolocation data (from cellular module's internal GNSS or external GNSS receiver)
 * Acceleration data (from built-in motion sensor)
 * Orientation data (computed from motion sensor data)
 * CPU temperature (from ESP32 built-in sensor)
@@ -17,10 +17,10 @@ Data Transmissions
 
 The sketch implements data transmissions with following networking hardware.
 
-* BLE (ESP32 built-in)
-* WIFI (ESP32 built-in)
-* GSM/GPRS (optional SIM800 bee module)
-* WCDMA (optional SIM5360 bee module)
+* WiFi(ESP32 built-in)
+* GSM/GPRS (SIM800)
+* 3G WCDMA (SIM5360)
+* 4G LTE (SIM7600)
 
 Data Storage
 ------------
@@ -28,7 +28,7 @@ Data Storage
 The sketch implements following data storage.
 
 * MicroSD card storage
-* ESP32 built-in Flash memory storage (under development)
+* ESP32 built-in Flash memory storage (SPIFFS)
 
 Remote Commands
 ---------------
@@ -44,6 +44,12 @@ Commands can be sent to Freematics ONE+ to execute with results responded, throu
 * STATS - returning some stats
 * OBD [PID] - querying and returning specified OBD-II PID value (raw data)
 
+Viewing Live Data
+-----------------
+
+Once the sketch is running and data is being submitted to hub.freematics.com, you can open https://hub.freematics.com/dash from any of your devices and enter your device ID (displayed in serial output) to view the live data instantly.
+
+![Freematics Hub Dashboard](https://freematics.com/pages/wp-content/uploads/2019/01/freematics_hub_dash-1024x576.png)
 
 Prerequisites
 -------------
