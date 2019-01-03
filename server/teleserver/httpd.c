@@ -116,8 +116,8 @@ const char *httpDateTimeFormat="%s, %02d %s %d %02d:%02d:%02d GMT";
 
 char* mwGetVarValue(HttpVariables* vars, const char *varname, const char *defval)
 {
-	int i;
 	if (vars && varname) {
+		int i;
 		for (i=0; (vars+i)->name; i++) {
 			if (!strcmp((vars+i)->name,varname)) {
 				return (vars+i)->value;
@@ -129,8 +129,8 @@ char* mwGetVarValue(HttpVariables* vars, const char *varname, const char *defval
 
 int mwGetVarValueInt(HttpVariables* vars, const char *varname, int defval)
 {
-	int i;
 	if (vars && varname) {
+		int i;
 		for (i=0; (vars+i)->name; i++) {
 			if (!strcmp((vars+i)->name,varname)) {
 				char *p = (vars+i)->value;
@@ -139,6 +139,34 @@ int mwGetVarValueInt(HttpVariables* vars, const char *varname, int defval)
 		}
 	}
 	return defval;
+}
+
+int64_t mwGetVarValueInt64(HttpVariables* vars, const char *varname)
+{
+	if (vars && varname) {
+		int i;
+		for (i = 0; (vars + i)->name; i++) {
+			if (!strcmp((vars + i)->name, varname)) {
+				char *p = (vars + i)->value;
+				return *p ? atoll(p) : 0;
+			}
+		}
+	}
+	return 0;
+}
+
+float mwGetVarValueFloat(HttpVariables* vars, const char *varname)
+{
+	if (vars && varname) {
+		int i;
+		for (i = 0; (vars + i)->name; i++) {
+			if (!strcmp((vars + i)->name, varname)) {
+				char *p = (vars + i)->value;
+				return *p ? (float)atof(p) : 0;
+			}
+		}
+	}
+	return 0;
 }
 
 static unsigned int hex2uint32(const char *p)
@@ -186,13 +214,22 @@ int mwGetHttpDateTime(time_t timer, char *buf, int bufsize)
 		btm->tm_sec);
 }
 
-void mwInitParam(HttpParam* hp, int port, const char* pchWebPath)
+void mwInitParam(HttpParam* hp, int port, const char* webPath, unsigned int flags)
 {
+#ifdef WIN32
+	WSADATA wsaData;
+	if (WSAStartup(MAKEWORD(2, 1), &wsaData) &&
+		WSAStartup(MAKEWORD(1, 1), &wsaData)) {
+		return;
+	}
+#endif
+
 	memset(hp, 0, sizeof(HttpParam));
 	hp->httpPort = port;
-	hp->tmSocketExpireTime = HTTP_EXPIRATION_TIME;
 	hp->maxClients = HTTP_MAX_CLIENTS_DEFAULT;
-	if (pchWebPath) strncpy(hp->pchWebPath, pchWebPath, sizeof(hp->pchWebPath) - 1);
+	hp->pchWebPath = webPath;
+	hp->flags = flags;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -202,7 +239,6 @@ void mwInitParam(HttpParam* hp, int port, const char* pchWebPath)
 int mwServerStart(HttpParam* hp)
 {
 	if (hp->bWebserverRunning) {
-		DBG("Error: Webserver thread already running\n");
 		return -1;
 	}
 
@@ -211,14 +247,12 @@ int mwServerStart(HttpParam* hp)
 		return -1;
 	}
 	if (!(hp->listenSocket=_mwStartListening(hp))) {
-		DBG("Error listening on port %d\n", hp->httpPort);
 		return -1;
 	}
 
 	hp->hsSocketQueue = calloc(hp->maxClients, sizeof(HttpSocket));
 	hp->bKillWebserver=FALSE;
 	hp->bWebserverRunning=TRUE;
-	if (!hp->tmSocketExpireTime) hp->tmSocketExpireTime = HTTP_EXPIRATION_TIME;
 	return 0;
 }
 
@@ -231,7 +265,6 @@ int mwServerShutdown(HttpParam* hp)
 	int i;
 	if (hp->bKillWebserver || !hp->bWebserverRunning) return -1;
 
-	DBG("Shutting down...\n");
 	_mwCloseAllConnections(hp);
 
 	// signal webserver thread to quit
@@ -239,10 +272,6 @@ int mwServerShutdown(HttpParam* hp)
 
 	// and wait for thread to exit
 	for (i=0;hp->bWebserverRunning && i<30;i++) msleep(100);
-
-	if (!hp->bWebserverRunning)
-		DBG("Webserver shutdown complete\n");
-
 	return 0;
 }
 
@@ -310,7 +339,6 @@ SOCKET _mwStartListening(HttpParam* hp)
     // create a new socket
     listenSocket=socket(AF_INET,SOCK_STREAM,0);
 	if (listenSocket <= 0) {
-		DBG("Error creating socket\n");
 		return 0;
 	}
 
@@ -333,45 +361,24 @@ SOCKET _mwStartListening(HttpParam* hp)
 	sinAddress.sin_port = htons(hp->httpPort); // http port
 	iRc=bind(listenSocket,(struct sockaddr*)&sinAddress, sizeof(struct sockaddr_in));
 	if (iRc<0) {
-		DBG("Error binding on port %d\n",hp->httpPort);
 		return 0;
 	}
-
-#ifndef WIN32
-    // set to non-blocking to avoid lockout issue (see Section 15.6
-    // in Unix network programming book)
-    {
-      int iSockFlags;
-      iSockFlags = fcntl(listenSocket, F_GETFL, 0);
-      iSockFlags |= O_NONBLOCK;
-		fcntl(listenSocket, F_SETFL, iSockFlags);
-    }
-#else
-	{
-		u_long iMode = 1; // non-blocking mode
-		ioctlsocket(listenSocket, FIONBIO, &iMode);
-	}
-#endif
+	_mwSetSocketOpts(listenSocket);
 
     // listen on the socket for incoming calls
 	if (listen(listenSocket, hp->maxClients)) {
-		DBG("Unable to listen on socket %d\n",listenSocket);
 		return 0;
 	}
-	DBG("Listening on port %d with socket %d\n", hp->httpPort, listenSocket);
 
 	// create UDP socket
 	if (hp->udpPort) {
 		hp->udpSocket = socket(AF_INET, SOCK_DGRAM, 0);
+		_mwSetSocketOpts(hp->udpSocket);
 		memset(&sinAddress, 0, sizeof(struct sockaddr_in));
 		sinAddress.sin_family = AF_INET;
 		sinAddress.sin_addr.s_addr = hp->hlBindIP;
 		sinAddress.sin_port = htons(hp->udpPort); // UDP port
-		iRc = bind(hp->udpSocket, (struct sockaddr*)&sinAddress, sizeof(struct sockaddr_in));
-		if (iRc<0) {
-			DBG("Error binding UDP socket on port %d\n", hp->udpPort);
-		}
-		DBG("Listening on port %d with UDP socket %d\n", hp->udpPort, hp->udpSocket);
+		bind(hp->udpSocket, (struct sockaddr*)&sinAddress, sizeof(struct sockaddr_in));
 	}
 
 	return listenSocket;
@@ -393,9 +400,9 @@ void _mwInitSocketData(HttpSocket *phsSocket)
 	phsSocket->request.pucAuthInfo = NULL;
 	phsSocket->response.statusCode = 200;
 	phsSocket->fp = 0;
-	phsSocket->flags = FLAG_RECEIVING;
+	phsSocket->flags = 0;
 	phsSocket->pucData = phsSocket->buffer;
-	phsSocket->dataLength = 0;
+	phsSocket->contentLength = 0;
 	phsSocket->bufferSize = HTTP_BUFFER_SIZE;
 	phsSocket->handler = NULL;
 	phsSocket->mimeType = NULL;
@@ -422,6 +429,10 @@ void _mwCloseAllConnections(HttpParam* hp)
 		closesocket(hp->listenSocket);
 		hp->listenSocket = 0;
 	}
+	if (hp->udpSocket) {
+		closesocket(hp->udpSocket);
+		hp->udpSocket = 0;
+	}
 	for (i = 0; i < hp->maxClients; i++) {
 		if (hp->hsSocketQueue[i].socket) {
 			closesocket(hp->hsSocketQueue[i].socket);
@@ -434,12 +445,12 @@ void _mwCloseAllConnections(HttpParam* hp)
 // _mwHttpThread
 // Webserver independant processing thread. Handles all connections
 ////////////////////////////////////////////////////////////////////////////
-int mwHttpLoop(HttpParam *hp, uint32_t timeout)
+void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 {
 	HttpSocket *phsSocketCur;
-	SOCKET socket;
+	SOCKET sock;
 	struct sockaddr_in sinaddr;
-  int iRc;
+	int iRc;
 	int i;
 
 	time_t tmCurrentTime;
@@ -465,15 +476,15 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		phsSocketCur = hp->hsSocketQueue + i;
 
 		// get socket fd
-		socket = phsSocketCur->socket;
-		if (!socket) continue;
+		sock = phsSocketCur->socket;
+		if (!sock) continue;
 
 		{
 			int iError=0;
 			socklen_t iOptSize = sizeof(int);
-			if (getsockopt(socket,SOL_SOCKET,SO_ERROR,(char*)&iError,&iOptSize)) {
+			if (getsockopt(sock,SOL_SOCKET,SO_ERROR,(char*)&iError,&iOptSize)) {
 				// if a socket contains a error, close it
-				SYSLOG(LOG_INFO,"[%d] Socket no longer vaild.\n",socket);
+				SYSLOG(LOG_INFO,"[%d] Socket no longer vaild.\n",sock);
 				phsSocketCur->flags=FLAG_CONN_CLOSE;
 				_mwCloseSocket(hp, phsSocketCur);
 				continue;
@@ -481,29 +492,20 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		}
 		// check expiration timer (for non-listening, in-use sockets)
 		if (tmCurrentTime > phsSocketCur->tmExpirationTime) {
-			SYSLOG(LOG_INFO,"[%d] Socket expired and closed\n",phsSocketCur->socket);
 			// close connection
 			phsSocketCur->flags=FLAG_CONN_CLOSE;
 			_mwCloseSocket(hp, phsSocketCur);
 		} else {
-			if (phsSocketCur->dwResumeTick) {
-				// suspended
-				if (phsSocketCur->dwResumeTick > GetTickCount())
-					continue;
-				else
-					phsSocketCur->dwResumeTick = 0;
-			}
-			if (ISFLAGSET(phsSocketCur,FLAG_RECEIVING)) {
-				// add to read descriptor set
-				FD_SET(socket,&fdsSelectRead);
-			}
 			if (ISFLAGSET(phsSocketCur,FLAG_SENDING)) {
 				// add to write descriptor set
-				FD_SET(socket,&fdsSelectWrite);
+				FD_SET(sock,&fdsSelectWrite);
+			} else {
+				// add to read descriptor set
+				FD_SET(sock,&fdsSelectRead);
 			}
 			// check if new max socket
-			if (socket>iSelectMaxFds) {
-				iSelectMaxFds=socket;
+			if (sock>iSelectMaxFds) {
+				iSelectMaxFds=sock;
 			}
 		}
 	}
@@ -520,8 +522,14 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 	}
 
 	if (iRc <= 0) {
-		return iRc;
+		return;
 	}
+
+	// check if any udp socket to read
+	if (hp->udpSocket && FD_ISSET(hp->udpSocket, &fdsSelectRead)) {
+		hp->pfnIncomingUDP(hp);
+	}
+
 	// check which sockets are read/write able
 	for (i = 0; i < hp->maxClients; i++) {
 		BOOL bRead;
@@ -530,29 +538,24 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		phsSocketCur = hp->hsSocketQueue + i;
 
 		// get socket fd
-		socket = phsSocketCur->socket;
-		if (!socket) continue;
+		sock = phsSocketCur->socket;
+		if (!sock) continue;
 
 		// get read/write status for socket
-		bRead = FD_ISSET(socket, &fdsSelectRead);
-		bWrite = FD_ISSET(socket, &fdsSelectWrite);
+		bRead = FD_ISSET(sock, &fdsSelectRead);
+		bWrite = FD_ISSET(sock, &fdsSelectWrite);
 
-		if ((bRead|bWrite)!=0) {
-			//DBG("socket %d bWrite=%d, bRead=%d\n",phsSocketCur->socket,bWrite,bRead);
-			// if readable or writeable then process
-			if (bWrite && ISFLAGSET(phsSocketCur,FLAG_SENDING)) {
-				DBG("SENDING\n");
+		if (bRead || bWrite) {
+			iRc = -1;
+			if (ISFLAGSET(phsSocketCur,FLAG_SENDING) && bWrite) {
 				iRc=_mwProcessWriteSocket(hp, phsSocketCur);
-			} else if (bRead && ISFLAGSET(phsSocketCur,FLAG_RECEIVING)) {
-				DBG("RECEIVING\n");
+			} else if (bRead) {
+				SETFLAG(phsSocketCur, FLAG_RECEIVING);
 				iRc=_mwProcessReadSocket(hp,phsSocketCur);
-			} else {
-				iRc=-1;
-				DBG("Invalid socket state (flag: %08x)\n",phsSocketCur->flags);
 			}
-			if (!iRc) {
-				// and reset expiration timer
-				phsSocketCur->tmExpirationTime=time(NULL)+hp->tmSocketExpireTime;
+			if (iRc == 0) {
+				// reset expiration timer
+				phsSocketCur->tmExpirationTime = time(NULL) + HTTP_EXPIRATION_TIME;
 			} else {
 				if (iRc == -1) {
 					SETFLAG(phsSocketCur, FLAG_CONN_CLOSE);
@@ -563,7 +566,7 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 	}
 
 	// check if any socket to accept and accept the socket
-	if (FD_ISSET(hp->listenSocket, &fdsSelectRead)) {
+	if (FD_ISSET(hp->listenSocket, &fdsSelectRead)) do {
 		// find empty slot
 		phsSocketCur = 0;
 		for (i = 0; i < hp->maxClients; i++) {
@@ -574,15 +577,28 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		}
 
 		if (!phsSocketCur) {
-			DBG("WARNING: clientCount:%d > maxClients:%d\n", hp->stats.clientCount, hp->maxClients);
-			_mwDenySocket(hp,&sinaddr);
-			return 0;
+			// all slots occupied
+			// find longest waiting idle socket and close it
+			time_t earliest = 0;
+			for (i = 0; i < hp->maxClients; i++) {
+				if (!ISFLAGSET((hp->hsSocketQueue + i), FLAG_RECEIVING | FLAG_SENDING)
+					&& (earliest == 0 || hp->hsSocketQueue[i].tmExpirationTime < earliest)) {
+					phsSocketCur = hp->hsSocketQueue + i;
+					earliest = hp->hsSocketQueue[i].tmExpirationTime;
+				}
+			}
+			if (!phsSocketCur) {
+			    SYSLOG(LOG_INFO,"Connection denied\n");
+				break;
+			} else {
+				SETFLAG(phsSocketCur, FLAG_CONN_CLOSE);
+				_mwCloseSocket(hp, phsSocketCur);
+			}
 		}
 
-		DBG("ACCEPTING\n");
 		phsSocketCur->socket = _mwAcceptSocket(hp,&sinaddr);
 		if (phsSocketCur->socket == 0)
-			return 0;
+			break;
 		phsSocketCur->ipAddr.laddr=ntohl(sinaddr.sin_addr.s_addr);
 		SYSLOG(LOG_INFO,"[%d] Client IP: %d.%d.%d.%d\n",
 			phsSocketCur->socket,
@@ -595,20 +611,11 @@ int mwHttpLoop(HttpParam *hp, uint32_t timeout)
 
 		//fill structure with data
 		_mwInitSocketData(phsSocketCur);
-		phsSocketCur->request.pucPayload = 0;
-		phsSocketCur->tmAcceptTime=time(NULL);
-		phsSocketCur->tmExpirationTime=phsSocketCur->tmAcceptTime+hp->tmSocketExpireTime;
-		phsSocketCur->iRequestCount=0;
-		DBG("Connected clients: %d\n",hp->stats.clientCount);
+		phsSocketCur->tmExpirationTime = time(NULL) + HTTP_EXPIRATION_TIME;
 
 		//update max client count
 		if (hp->stats.clientCount>hp->stats.clientCountMax) hp->stats.clientCountMax=hp->stats.clientCount;
-	}
-	// check if any udp socket to read
-	if (hp->udpSocket && FD_ISSET(hp->udpSocket, &fdsSelectRead)) {
-		hp->pfnIncomingUDP(hp);
-	}
-	return iRc;
+	} while(0);
 } // end of _mwHttpThread
 
 void mwServerExit(HttpParam* hp)
@@ -619,57 +626,29 @@ void mwServerExit(HttpParam* hp)
 	for (i = 0; i < hp->maxClients; i++) {
 		if (hp->hsSocketQueue[i].buffer) free(hp->hsSocketQueue[i].buffer);
 	}
-	free(hp->hsSocketQueue);
-	hp->hsSocketQueue = 0;
+	if (hp->hsSocketQueue) {
+		free(hp->hsSocketQueue);
+		hp->hsSocketQueue = 0;
+	}
 
 	// clear state vars
 	hp->bKillWebserver = FALSE;
 	hp->bWebserverRunning = FALSE;
+#ifdef WIN32
+	WSACleanup();
+#endif
 }
 ////////////////////////////////////////////////////////////////////////////
 // _mwAcceptSocket
 // Accept an incoming connection
 ////////////////////////////////////////////////////////////////////////////
-SOCKET _mwAcceptSocket(HttpParam* hp,struct sockaddr_in *sinaddr)
+SOCKET _mwAcceptSocket(HttpParam* hp, struct sockaddr_in *sinaddr)
 {
-  SOCKET socket;
-	socklen_t namelen=sizeof(struct sockaddr);
-
-	socket=accept(hp->listenSocket, (struct sockaddr*)sinaddr,&namelen);
-
-	if ((int)socket<=0) {
-		DBG("Error accepting socket\n");
-		return 0;
-  }
-
-  DBG("[%d] connection accepted\n",socket);
-
-#ifndef WIN32
-    // set to non-blocking to stop sends from locking up thread
-	{
-        int iSockFlags;
-        iSockFlags = fcntl(socket, F_GETFL, 0);
-        iSockFlags |= O_NONBLOCK;
-        fcntl(socket, F_SETFL, iSockFlags);
-	}
-#endif
-
-	if (hp->socketRcvBufSize) {
-		int iSocketBufSize=hp->socketRcvBufSize<<10;
-		setsockopt(socket, SOL_SOCKET, SO_RCVBUF, (const char*)&iSocketBufSize, sizeof(int));
-	}
+	socklen_t namelen = sizeof(struct sockaddr);
+	SOCKET socket = accept(hp->listenSocket, (struct sockaddr*)sinaddr, &namelen);
+	_mwSetSocketOpts(socket);
 
 	return socket;
-} // end of _mwAcceptSocket
-
-void _mwDenySocket(HttpParam* hp,struct sockaddr_in *sinaddr)
-{
-    SOCKET socket;
-	socklen_t namelen=sizeof(struct sockaddr);
-	socket=accept(hp->listenSocket, (struct sockaddr*)sinaddr,&namelen);
-    SYSLOG(LOG_INFO,"[%d] connection denied\n",socket);
-	_mwSendErrorPage(socket, HTTP403_HEADER, HTTP403_BODY);
-	closesocket(socket);
 } // end of _mwDenySocket
 
 int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateTime, char* buffer)
@@ -691,11 +670,6 @@ int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateT
 		status = "";
 	}
 
-
-	if (hp->maxClientsPerIP && _mwGetConnFromIP(hp, phsSocket->ipAddr) >= hp->maxClientsPerIP) {
-		keepalive = FALSE;
-	}
-
 	p+=snprintf(p, end - p, HTTP200_HEADER,
 #ifdef ENABLE_RTSP
 		(phsSocket->flags & (FLAG_REQUEST_DESCRIBE | FLAG_REQUEST_SETUP)) ? "RTSP/1.0" : "HTTP/1.1",
@@ -706,24 +680,32 @@ int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateT
 		HTTP_SERVER_NAME,
 		keepalive ? "keep-alive" : "close");
 
+	if (keepalive) {
+		p += snprintf(p, end - p, "Keep-Alive: timeout=%u, max=1000\r\n", HTTP_KEEPALIVE_TIME);
+	}
 	if (!(hp->flags & FLAG_DISABLE_RANGE)) {
 		p += snprintf(p, end - p, "Accept-Ranges: bytes\r\n");
 	}
 
-	if (contentDateTime) {
+	if ((int)contentDateTime > 0) {
 		p += snprintf(p, end - p, "Last-Modified: ");
-		p+=mwGetHttpDateTime(contentDateTime, p, 512);
+		p += mwGetHttpDateTime(contentDateTime, p, end - p);
 		strcpy(p, "\r\n");
 		p+=2;
 	}
 	if (phsSocket->request.iCSeq) {
 		p += snprintf(p, end - p, "CSeq: %d\r\n", phsSocket->request.iCSeq);
 	}
-	p+=snprintf(p, end - p, "Content-Type: %s\r\n", phsSocket->mimeType ? phsSocket->mimeType : contentTypeTable[phsSocket->response.fileType]);
-	if (phsSocket->response.contentLength > 0 && !(phsSocket->flags & FLAG_CHUNK)) {
-		p+=snprintf(p, end - p,"Content-Length: %lld\r\n", (long long)phsSocket->response.contentLength);
+	if (phsSocket->response.contentLength > 0) {
+		p += snprintf(p, end - p, "Content-Type: %s\r\n", phsSocket->mimeType ? phsSocket->mimeType : contentTypeTable[phsSocket->response.fileType]);
+		if (phsSocket->request.startByte) {
+			p += snprintf(p, end - p, "Content-Range: bytes %u-%u/*\r\n",
+				phsSocket->request.startByte, phsSocket->response.contentLength);
+		}
 	}
-	if (phsSocket->flags & FLAG_CHUNK) {
+	if (!(phsSocket->flags & FLAG_CHUNK)) {
+		p+=snprintf(p, end - p,"Content-Length: %u\r\n", phsSocket->response.contentLength);
+	} else {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");
 	}
 	if (phsSocket->response.statusCode == 301 || phsSocket->response.statusCode == 307) {
@@ -954,37 +936,33 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 			up.payloadSize = phsSocket->request.payloadSize;
 			up.iVarCount=-1;
 			phsSocket->handler = puh;
-			if (!ISFLAGSET(phsSocket,FLAG_REQUEST_POST)) mwParseQueryString(&up);
+			if (strchr(up.pucRequest, '?')) mwParseQueryString(&up);
 			ret=(*puh->pfnUrlHandler)(&up);
 			if (!ret) continue;
 			if (phsSocket->response.statusCode >= 500) phsSocket->flags |= FLAG_CONN_CLOSE;
 			phsSocket->flags|=ret;
-			phsSocket->response.fileType=up.fileType;
+			phsSocket->response.fileType = up.contentType;
 			if (ret & FLAG_DATA_RAW) {
 				SETFLAG(phsSocket, FLAG_DATA_RAW);
 				phsSocket->pucData=up.pucBuffer;
-				phsSocket->dataLength=up.contentLength;
+				phsSocket->contentLength=up.contentLength;
 				phsSocket->response.contentLength=up.contentLength;
 				if (ret & FLAG_TO_FREE) {
 					phsSocket->ptr=up.pucBuffer;	//keep the pointer which will be used to free memory later
 				}
-				DBG("URL handler: raw data\n");
 			} else if (ret & FLAG_DATA_STREAM) {
 				SETFLAG(phsSocket, FLAG_DATA_STREAM);
 				phsSocket->pucData = up.pucBuffer;
-				phsSocket->dataLength = up.contentLength;
+				phsSocket->contentLength = up.contentLength;
 				phsSocket->response.contentLength = 0;
-				DBG("URL handler: stream\n");
 			} else if (ret & FLAG_DATA_FILE) {
 				SETFLAG(phsSocket, FLAG_DATA_FILE);
 				if (up.pucBuffer[0]) {
 					free(phsSocket->request.pucPath);
 					phsSocket->request.pucPath=strdup(up.pucBuffer);
 				}
-				DBG("URL handler: file\n");
 			} else if (ret & FLAG_DATA_REDIRECT) {
 				phsSocket->pucData = up.pucBuffer;
-				DBG("URL handler: redirect\n");
 			}
 			_mwFreeJSONPairs(&up);
 			break;
@@ -1001,15 +979,14 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 {
 	int iLength = recv(phsSocket->socket,
-					phsSocket->pucData+phsSocket->dataLength,
-					(int)(phsSocket->bufferSize - phsSocket->dataLength - 1), 0);
+					phsSocket->pucData+phsSocket->contentLength,
+					(int)(phsSocket->bufferSize - phsSocket->contentLength - 1), 0);
 	if (iLength <= 0) {
-		DBG("[%d] socket closed by client\n",phsSocket->socket);
 		return -1;
 	}
 	// add in new data received
-	phsSocket->dataLength += iLength;
-	phsSocket->pucData[phsSocket->dataLength] = 0;
+	phsSocket->contentLength += iLength;
+	phsSocket->pucData[phsSocket->contentLength] = 0;
 
 	// check if end of request
 	if (phsSocket->request.headerSize==0) {
@@ -1034,28 +1011,23 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 			return -1;
 		}
 
+		// count connections from this IP and duplicated connection
+		if (hp->maxClientsPerIP && _mwGetConnFromIP(hp, phsSocket->ipAddr) > hp->maxClientsPerIP) {
+			// too many connection from the same IP
+			SYSLOG(LOG_INFO,"[%d] Too many connections from same IP\n", phsSocket->socket);
+			send(phsSocket->socket, HTTP403_HEADER, sizeof(HTTP403_HEADER) - 1, 0);
+			return -1;
+		}
+
 		phsSocket->request.headerSize = (int)(headerEnd - phsSocket->buffer + 4);
-		DBG("[%d] HTTP Header (%d bytes):\n%s", phsSocket->socket, phsSocket->request.headerSize, phsSocket->buffer);
 		if (_mwParseHttpHeader(phsSocket)) {
 			SYSLOG(LOG_INFO,"Error parsing request\n");
-			SETFLAG(phsSocket, FLAG_CONN_CLOSE);
 			return -1;
 		} else {
 			int pathLen;
 
 			if ((hp->flags & FLAG_DISABLE_RANGE) && phsSocket->request.startByte > 0) {
-				_mwSendErrorPage(phsSocket->socket, HTTP403_HEADER, HTTP403_BODY);
-				return -1;
-			}
-
-			DBG("Header parsed\n");
-
-			// count connections from this IP and duplicated connection
-			DBG("Checking connections from IP\n");
-			if (hp->maxClientsPerIP && _mwGetConnFromIP(hp, phsSocket->ipAddr) > hp->maxClientsPerIP) {
-				// too many connection from the same IP
-				SYSLOG(LOG_INFO,"[%d] Too many connections from this IP\n", phsSocket->socket);
-				_mwSendErrorPage(phsSocket->socket, HTTP403_HEADER, HTTP403_BODY);
+				send(phsSocket->socket, HTTP403_HEADER, sizeof(HTTP403_HEADER) - 1, 0);
 				return -1;
 			}
 
@@ -1074,7 +1046,7 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 			phsSocket->request.pucPath = malloc(pathLen + 1);
 			memcpy(phsSocket->request.pucPath, path, pathLen);
 			phsSocket->request.pucPath[pathLen] = 0;
-			SYSLOG(LOG_INFO, "[%d] Request path: %s\n", phsSocket->socket, phsSocket->request.pucPath);
+			//SYSLOG(LOG_INFO, "[%d] Request path: %s\n", phsSocket->socket, phsSocket->request.pucPath);
 
 			if (ISFLAGSET(phsSocket,FLAG_REQUEST_POST)) {
 				if (!phsSocket->request.pucPayload) {
@@ -1084,27 +1056,25 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 					phsSocket->request.pucPayload = malloc(phsSocket->bufferSize);
 					phsSocket->pucData = phsSocket->request.pucPayload;
 					// payload length already received
-					phsSocket->dataLength -= phsSocket->request.headerSize;
+					phsSocket->contentLength -= phsSocket->request.headerSize;
 					// copy already received payload to payload buffer
-					if (phsSocket->dataLength > phsSocket->request.payloadSize) {
-						phsSocket->dataLength = phsSocket->request.payloadSize;
+					if (phsSocket->contentLength > phsSocket->request.payloadSize) {
+						phsSocket->contentLength = phsSocket->request.payloadSize;
 					}
-					memcpy(phsSocket->request.pucPayload, phsSocket->buffer + phsSocket->request.headerSize, phsSocket->dataLength);
-					phsSocket->request.pucPayload[phsSocket->dataLength]=0;
+					memcpy(phsSocket->request.pucPayload, phsSocket->buffer + phsSocket->request.headerSize, phsSocket->contentLength);
+					phsSocket->request.pucPayload[phsSocket->contentLength]=0;
 				}
 			}
 		}
 	}
 
-	DBG("[%d] Payload: %d Data Length: %d\n", phsSocket->socket, phsSocket->request.payloadSize, phsSocket->dataLength);
-	if (phsSocket->request.payloadSize > 0 && phsSocket->dataLength < (int)phsSocket->request.payloadSize) {
+	if (phsSocket->request.payloadSize > 0 && phsSocket->contentLength < (int)phsSocket->request.payloadSize) {
 		// there is more data
 		return 0;
 	}
 
 	// add header zero terminator
 	phsSocket->buffer[phsSocket->request.headerSize]=0;
-	DBG("%s",phsSocket->buffer);
 
 	if (phsSocket->request.headerSize) {
 		phsSocket->pucData = phsSocket->buffer + phsSocket->request.headerSize + 4;
@@ -1114,9 +1084,8 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 		phsSocket->bufferSize = HTTP_BUFFER_SIZE;
 	}
 
-	DBG("[%d] request path: %s\n",phsSocket->socket,phsSocket->request.pucPath);
-
 	hp->stats.reqCount++;
+	phsSocket->reqCount++;
 
 	if (hp->pxAuthHandler != NULL) {
 		int ret = _mwBasicAuthorizationHandlers(hp, phsSocket);
@@ -1132,25 +1101,23 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 		}
 	}
 
-	phsSocket->iRequestCount++;
-
 	if (!hp->pxUrlHandler || !_mwCheckUrlHandlers(hp,phsSocket))
 		SETFLAG(phsSocket,FLAG_DATA_FILE);
 		
 	// set state to SENDING (actual sending will occur on next select)
 	CLRFLAG(phsSocket,FLAG_RECEIVING)
-	SETFLAG(phsSocket,FLAG_SENDING);
 	if (phsSocket->request.iHttpVer == 0) {
 		CLRFLAG(phsSocket, FLAG_CHUNK);
 	}
 	if (ISFLAGSET(phsSocket,FLAG_DATA_RAW | FLAG_DATA_STREAM)) {
+		SETFLAG(phsSocket,FLAG_SENDING);
 		return _mwStartSendRawData(hp, phsSocket);
 	} else if (ISFLAGSET(phsSocket,FLAG_DATA_FILE)) {
-		// send requested page
+		SETFLAG(phsSocket,FLAG_SENDING);
 		return _mwStartSendFile(hp,phsSocket);
 	} else if (ISFLAGSET(phsSocket,FLAG_DATA_REDIRECT)) {
 		_mwRedirect(phsSocket, phsSocket->pucData);
-		return 1;
+		return 0;
 	}
 	SYSLOG(LOG_INFO,"Invalid data flag specified\n");
 	return -1;
@@ -1162,8 +1129,7 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 ////////////////////////////////////////////////////////////////////////////
 int _mwProcessWriteSocket(HttpParam *hp, HttpSocket* phsSocket)
 {
-	if (phsSocket->dataLength<=0 && !ISFLAGSET(phsSocket,FLAG_DATA_STREAM)) {
-		DBG("[%d] Data sending completed (%d/%d)\n",phsSocket->socket,phsSocket->response.sentBytes,phsSocket->response.contentLength);
+	if (phsSocket->contentLength<=0 && !ISFLAGSET(phsSocket,FLAG_DATA_STREAM)) {
 		return 1;
 	}
 	//SYSLOG(LOG_INFO,"[%d] sending data\n",phsSocket->socket);
@@ -1187,6 +1153,7 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 	if (phsSocket->fp) {
 		fclose(phsSocket->fp);
 		phsSocket->fp = 0;		
+		hp->stats.openedFileCount--;	
 	}
 	if (phsSocket->request.pucPayload) {
 		free(phsSocket->request.pucPayload);
@@ -1212,19 +1179,33 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 		free(phsSocket->request.pucPath);
 		phsSocket->request.pucPath = 0;
 	}
-	if (!ISFLAGSET(phsSocket,FLAG_CONN_CLOSE)) {
+	if (!ISFLAGSET(phsSocket,FLAG_CONN_CLOSE) && phsSocket->reqCount < HTTP_KEEPALIVE_MAX) {
 		_mwInitSocketData(phsSocket);
 		//reset flag bits
 		phsSocket->tmExpirationTime=time(NULL)+HTTP_KEEPALIVE_TIME;
 		return;
 	}
-	DBG("[%d] socket closed after %d requests\n",phsSocket->socket,phsSocket->iRequestCount);
 	closesocket(phsSocket->socket);
-	phsSocket->socket = 0;
+	phsSocket->reqCount = 0;
 	hp->stats.clientCount--;
-	phsSocket->iRequestCount=0;
-	DBG("Connected clients: %d\n",hp->stats.clientCount);
+	SYSLOG(LOG_INFO,"[%d] Socket closed, %u connections\n",phsSocket->socket, hp->stats.clientCount);
+	phsSocket->socket = 0;
+	phsSocket->reqCount=0;
 } // end of _mwCloseSocket
+
+void _mwSetSocketOpts(SOCKET socket)
+{
+#ifndef WIN32
+	// set to non-blocking to stop sends from locking up thread
+	int iSockFlags;
+	iSockFlags = fcntl(socket, F_GETFL, 0);
+	iSockFlags |= O_NONBLOCK;
+	fcntl(socket, F_SETFL, iSockFlags);
+#else
+	u_long iMode = 1; // non-blocking mode
+	ioctlsocket(socket, FIONBIO, &iMode);
+#endif
+}
 
 int _mwStrCopy(char *dest, const char *src)
 {
@@ -1247,73 +1228,6 @@ int _mwStrHeadMatch(char** pbuf1, const char* buf2) {
 	return i;
 }
 
-int _mwListDirectory(HttpSocket* phsSocket, char* dir)
-{
-	char cFileName[128];
-	char cFilePath[MAX_PATH];
-	char *p=phsSocket->pucData;
-	int ret;
-	char *pagebuf=phsSocket->pucData;
-	size_t bufsize=phsSocket->bufferSize;
-
-	p+=snprintf(p, 256, "<html><head><title>/%s</title></head><body><table border=0 cellpadding=0 cellspacing=0 width=100%%><h2>Directory of /%s</h2><hr>",
-		phsSocket->request.pucPath,phsSocket->request.pucPath);
-	if (!*dir) strcpy(dir, ".");
-	DBG("Listing directory: %s\n",dir);
-	for (ret=ReadDir(dir,cFileName); !ret; ret=ReadDir(NULL,cFileName)) {
-		struct stat st;
-		char *s;
-		size_t bytes;
-		if (!strcmp(cFileName, ".")) continue;
-		DBG("Checking %s ...\n",cFileName);
-		bytes=(int)(p-pagebuf);
-		if (bytes+384>bufsize) {
-			//need to expand buffer
-			bufsize+=2048;
-			if (!ISFLAGSET(phsSocket,FLAG_TO_FREE)) {
-				//first time expanding
-				SETFLAG(phsSocket,FLAG_TO_FREE);
-				pagebuf=malloc(bufsize);
-				memcpy(pagebuf,phsSocket->pucData,bytes);
-			} else {
-				pagebuf=realloc(pagebuf,bufsize);
-			}
-			p=pagebuf+bytes;
-			DBG("Buffer expanded to %d bytes\n",bufsize);
-		}
-		snprintf(cFilePath, sizeof(cFilePath), "%s/%s",dir,cFileName);
-		if (stat(cFilePath,&st)) continue;
-		if (st.st_mode & S_IFDIR) {
-		//if (S_ISDIR(st.st_mode)) {
-			p+=snprintf(p, 256, "<tr><td width=35%%><a href='%s/'>%s</a></td><td width=15%%>&lt;dir&gt;</td><td width=15%%>",
-				cFileName,cFileName);
-		} else {
-			p+=snprintf(p, 256, "<tr><td width=35%%><a href='%s'>%s</a></td><td width=15%%>%u KB</td><td width=15%%>",
-				cFileName,cFileName,(unsigned int)(st.st_size >> 10));
-			s=strrchr(cFileName,'.');
-			if (s) {
-				int filetype=mwGetContentType(++s);
-				if (filetype!=HTTPFILETYPE_OCTET)
-					p+=_mwStrCopy(p,contentTypeTable[filetype]);
-				else
-					p+=snprintf(p, 256, "%s file",s);
-			}
-		}
-		p+=_mwStrCopy(p,"</td><td>");
-		p+=mwGetHttpDateTime(st.st_mtime, p, 512);
-		p+=_mwStrCopy(p,"</td></tr>");
-	}
-	p+=snprintf(p, 256, "</table><hr><i>Directory content generated by %s</i></body></html>", HTTP_SERVER_NAME);
-	ReadDir(NULL,NULL);
-	phsSocket->response.contentLength=(phsSocket->dataLength=(int)(p-pagebuf));
-	phsSocket->response.fileType=HTTPFILETYPE_HTML;
-	if (ISFLAGSET(phsSocket,FLAG_TO_FREE)) {
-		phsSocket->pucData=pagebuf;
-		phsSocket->ptr=pagebuf;
-	}
-	return 0;
-}
-
 void _mwSendErrorPage(SOCKET socket, const char* header, const char* body)
 {
 	char hdr[128];
@@ -1333,25 +1247,26 @@ void _mwSendErrorPage(SOCKET socket, const char* header, const char* body)
 // _mwStartSendFile
 // Setup for sending of a file
 ////////////////////////////////////////////////////////////////////////////
-int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath, const char* filePath)
+int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* filePath)
 {
 	struct stat st = { 0 };
 	HttpFilePath hfp;
 	BOOL isDirPath = FALSE;
 
-	if (rootPath == NULL || filePath == NULL)
+	if (filePath == NULL)
 		return -1;
 
-	hfp.pchRootPath=rootPath; //hp->pchWebPath;
+	hfp.pchRootPath = hp->pchWebPath;
 	// check type of file requested
-	hfp.pchHttpPath=filePath; //phsSocket->request.pucPath;
+	hfp.pchHttpPath = filePath; //phsSocket->request.pucPath;
 	mwGetLocalFileName(&hfp);
 	if (stat(hfp.cFilePath, &st) == 0) {
-		isDirPath = (st.st_mode & S_IFDIR);
+		isDirPath = S_ISDIR(st.st_mode);
 	}
 	if (!*filePath) isDirPath = TRUE;
 
 	// open file
+	DWORD fileSize = st.st_size;
 	if (!isDirPath) {
 		phsSocket->fp = fopen(hfp.cFilePath, "rb");
 	}
@@ -1364,7 +1279,6 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 			return -1;
 		}
 
-		DBG("Process Directory...\n");
 		//requesting for directory, first try opening default pages
 		for (p = hfp.cFilePath; *p; p++);
 		*(p++)=SLASH;
@@ -1391,16 +1305,17 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 					}
 				}
 				_mwRedirect(phsSocket,p);
-			} else {
-				*(p-1)=0;
-				_mwListDirectory(phsSocket,hfp.cFilePath);
+				return _mwStartSendRawData(hp, phsSocket);
 			}
-			return _mwStartSendRawData(hp, phsSocket);
 		}
 	}
 
 	if (phsSocket->fp) {
-		DWORD fileSize = st.st_size;
+		hp->stats.openedFileCount++;
+		if (fileSize == 0) {
+			fseek(phsSocket->fp, 0, SEEK_END);
+			fileSize = ftell(phsSocket->fp);
+		}
 		phsSocket->response.contentLength = fileSize - phsSocket->request.startByte;
 		if (phsSocket->response.contentLength <= 0) {
 			phsSocket->request.startByte = 0;
@@ -1409,6 +1324,8 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 		if (phsSocket->request.startByte) {
 			fseek(phsSocket->fp, (long)phsSocket->request.startByte, SEEK_SET);
 			phsSocket->response.statusCode = 206;
+		} else {
+			fseek(phsSocket->fp, 0, SEEK_SET);
 		}
 		if (!phsSocket->response.fileType && hfp.pchExt) {
 			phsSocket->response.fileType=mwGetContentType(hfp.pchExt);
@@ -1420,13 +1337,13 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 	//SYSLOG(LOG_INFO,"File/requested size: %d/%d\n",st.st_size,phsSocket->response.contentLength);
 
 	// build http header
-	phsSocket->dataLength=_mwBuildHttpHeader(
+	phsSocket->contentLength=_mwBuildHttpHeader(
 		hp,
 		phsSocket,
 		st.st_mtime,
 		phsSocket->pucData);
 
-	phsSocket->response.headerBytes = phsSocket->dataLength;
+	phsSocket->response.headerBytes = phsSocket->contentLength;
 	phsSocket->response.sentBytes = 0;
 	return 0;
 } // end of _mwStartSendFile2
@@ -1437,8 +1354,11 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 ////////////////////////////////////////////////////////////////////////////
 int _mwStartSendFile(HttpParam* hp, HttpSocket* phsSocket)
 {
-	int ret = -1;
-	ret = _mwStartSendFile2(hp, phsSocket, hp->pchWebPath, phsSocket->request.pucPath);
+	int ret;
+#if MAX_OPEN_FILES
+	if (hp->stats.openedFileCount >= MAX_OPEN_FILES) return 0;
+#endif
+	ret = _mwStartSendFile2(hp, phsSocket, phsSocket->request.pucPath);
 	if (ret != 0) {
 		SYSLOG(LOG_INFO,"[%d] Not found - %s\n",phsSocket->socket, phsSocket->request.pucPath);
 		_mwSendErrorPage(phsSocket->socket, HTTP404_HEADER, HTTP404_BODY);
@@ -1455,28 +1375,19 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 	int iBytesWritten;
 	int iBytesRead;
 
-	if (hp->maxDownloadSpeed) {
-		int speed = (unsigned int)(phsSocket->response.sentBytes / (((time(NULL) - phsSocket->tmAcceptTime) << 10) + 1));
-		if (speed && speed > hp->maxDownloadSpeed) {
-			DBG("[%d] speed limit applied\n", phsSocket->socket);
-			// set resume time, before that, this socket will not be processed
-			phsSocket->dwResumeTick = GetTickCount() + 1000;
-			return 0;
-		}
-	}
-	if (phsSocket->dataLength > 0) {
+	if (phsSocket->contentLength > 0) {
 		if ((phsSocket->flags & FLAG_CHUNK) && ISFLAGSET(phsSocket, FLAG_HEADER_SENT)) {
 			char buf[16];
-			iBytesRead = snprintf(buf, sizeof(buf), "%X\r\n", phsSocket->dataLength);
+			iBytesRead = snprintf(buf, sizeof(buf), "%X\r\n", phsSocket->contentLength);
 			iBytesWritten = send(phsSocket->socket, buf, iBytesRead, 0);
 		}
 		// send a chunk of data
-		iBytesWritten=send(phsSocket->socket, phsSocket->pucData,(int)phsSocket->dataLength, 0);
+		iBytesWritten=send(phsSocket->socket, phsSocket->pucData,(int)phsSocket->contentLength, 0);
 		if (iBytesWritten<=0) {
 			// close connection
-			DBG("[%d] error sending data\n", phsSocket->socket);
 			SETFLAG(phsSocket,FLAG_CONN_CLOSE);
 			fclose(phsSocket->fp);
+			hp->stats.openedFileCount--;
 			phsSocket->fp = 0;
 			return -1;
 		}
@@ -1484,11 +1395,9 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 		hp->stats.totalSentBytes+=iBytesWritten;
 		phsSocket->response.sentBytes+=iBytesWritten;
 		phsSocket->pucData+=iBytesWritten;
-		phsSocket->dataLength-=iBytesWritten;
-		DBG("[%d] %d bytes sent (%u KB/s)\n", phsSocket->socket, phsSocket->response.sentBytes,
-			(unsigned int)(phsSocket->response.sentBytes / (((time(NULL) - phsSocket->tmAcceptTime) << 10) + 1)));
+		phsSocket->contentLength-=iBytesWritten;
 		// if only partial data sent just return wait the remaining data to be sent next time
-		if (phsSocket->dataLength>0) return 0;
+		if (phsSocket->contentLength>0) return 0;
 	}
 
 	// used all buffered data - load next chunk of file
@@ -1499,26 +1408,24 @@ int _mwSendFileChunk(HttpParam *hp, HttpSocket* phsSocket)
 	if (iBytesRead<=0) {
 		// finished with a file
 		int remainBytes = (int)(phsSocket->response.contentLength + phsSocket->response.headerBytes - phsSocket->response.sentBytes);
-		DBG("[%d] EOF reached\n",phsSocket->socket);
 		if (remainBytes > 0) {
 			if (remainBytes>HTTP_BUFFER_SIZE) remainBytes=HTTP_BUFFER_SIZE;
-			DBG("Sending %d padding bytes\n",remainBytes);
 			memset(phsSocket->buffer,0,remainBytes);
-			phsSocket->dataLength=remainBytes;
+			phsSocket->contentLength=remainBytes;
 			return 0;
 		} else {
 			if (phsSocket->flags & FLAG_CHUNK) {
 				send(phsSocket->socket, "0\r\n\r\n", 5, 0);
 			}
 			if (phsSocket->fp) {
-				DBG("Closing file\n");
 				fclose(phsSocket->fp);
 				phsSocket->fp = 0;
+				hp->stats.openedFileCount--;
 			}
 			return 1;
 		}
 	}
-	phsSocket->dataLength=iBytesRead;
+	phsSocket->contentLength=iBytesRead;
 	return 0;
 } // end of _mwSendFileChunk
 
@@ -1533,7 +1440,7 @@ int _mwStartSendRawData(HttpParam *hp, HttpSocket* phsSocket)
 	} else {
 		char header[HTTP200_HDR_EST_SIZE];
 		int offset=0,hdrsize,bytes;
-		hdrsize=_mwBuildHttpHeader(hp, phsSocket,time(NULL),header);
+		hdrsize=_mwBuildHttpHeader(hp, phsSocket, 0, header);
 		// send http header
 		do {
 			bytes=send(phsSocket->socket, header+offset,hdrsize-offset,0);
@@ -1560,23 +1467,22 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 
 	if (phsSocket->flags & FLAG_CHUNK) {
 		char buf[16];
-		int bytes = snprintf(buf, sizeof(buf), "%x\r\n", phsSocket->dataLength);
+		int bytes = snprintf(buf, sizeof(buf), "%x\r\n", phsSocket->contentLength);
 		iBytesWritten = send(phsSocket->socket, buf, bytes, 0);
 		if (iBytesWritten<=0) return -1;
 		hp->stats.totalSentBytes+=iBytesWritten;
 	}
     // send a chunk of data
-	if (phsSocket->dataLength > 0) {
-		iBytesWritten=(int)send(phsSocket->socket, phsSocket->pucData, phsSocket->dataLength, 0);
+	if (phsSocket->contentLength > 0) {
+		iBytesWritten=(int)send(phsSocket->socket, phsSocket->pucData, phsSocket->contentLength, 0);
 		if (iBytesWritten<=0) {
 			// failure - close connection
 			return -1;
 		} else {
-			DBG("[%d] sent %d bytes of raw data\n",phsSocket->socket,iBytesWritten);
 			hp->stats.totalSentBytes+=iBytesWritten;
 			phsSocket->response.sentBytes+=iBytesWritten;
 			phsSocket->pucData+=iBytesWritten;
-			phsSocket->dataLength-=iBytesWritten;
+			phsSocket->contentLength-=iBytesWritten;
 		}
 	} else {
 		if (ISFLAGSET(phsSocket,FLAG_DATA_STREAM) && phsSocket->handler) {
@@ -1595,10 +1501,9 @@ int _mwSendRawDataChunk(HttpParam *hp, HttpSocket* phsSocket)
 				}
 				hp->stats.totalSentBytes+=iBytesWritten;
 				SETFLAG(phsSocket, FLAG_CONN_CLOSE);
-				DBG("[%d] End of stream", phsSocket->socket);
 				return 1;	// EOF
 			}
-			phsSocket->dataLength = up.contentLength;
+			phsSocket->contentLength = up.contentLength;
 			phsSocket->pucData = up.pucBuffer;
 		} else {
 			if (phsSocket->flags & FLAG_CHUNK) {
@@ -1633,10 +1538,9 @@ void _mwRedirect(HttpSocket* phsSocket, char* pchPath)
 	if (path != pchPath) free(path);
 	*/
 	char* url = strdup(pchPath);
-	int n = snprintf(phsSocket->pucData, phsSocket->dataLength, HTTP301_HEADER, HTTP_SERVER_NAME, url);
+	int n = snprintf(phsSocket->pucData, phsSocket->contentLength, HTTP301_HEADER, HTTP_SERVER_NAME, url);
 	free(url);
 	send(phsSocket->socket, phsSocket->pucData, n, 0);
-	SETFLAG(phsSocket, FLAG_CONN_CLOSE);
 } // end of _mwRedirect
 
 ////////////////////////////////////////////////////////////////////////////
@@ -1857,7 +1761,6 @@ int _mwParseHttpHeader(HttpSocket* phsSocket)
 				phsSocket->ipAddr.caddr[i] = atoi(p);
 				while (*p && *p != '\r' && *(p++) != '.');
 			}
-			DBG("[%d] Forwarded-For: %d.%d.%d.%d\n", phsSocket->socket, phsSocket->ipAddr.caddr[3], phsSocket->ipAddr.caddr[2], phsSocket->ipAddr.caddr[1], phsSocket->ipAddr.caddr[0]);
 		}
 	}
 	return 0;					//end of header

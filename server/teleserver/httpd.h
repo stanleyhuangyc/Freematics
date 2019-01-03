@@ -97,8 +97,8 @@ typedef enum {
 #define FLAG_CUSTOM_HEADER	0x200000
 #define FLAG_MULTIPART		0x400000
 
-#define FLAG_RECEIVING		0x80000000
-#define FLAG_SENDING		0x40000000
+#define FLAG_RECEIVING		0x40000000
+#define FLAG_SENDING		0x80000000
 
 #define SETFLAG(hs,bit) (hs->flags|=(bit));
 #define CLRFLAG(hs,bit) (hs->flags&=~(bit));
@@ -137,25 +137,23 @@ typedef struct {
 	char *value;
 } HttpVariables;
 
-// Callback function protos
-typedef int (*PFN_UDP_CALLBACK)(void* hp);
-
 typedef struct {
-	int clientCount;
-	int clientCountMax;
-	size_t reqCount;
+	uint32_t reqCount;
 	size_t totalSentBytes;
-	int authFailCount;
+	uint32_t authFailCount;
+	uint16_t clientCount;
+	uint16_t clientCountMax;
+	uint16_t openedFileCount;
 } HttpStats;
 
 #ifndef ARDUINO
-#define HTTP_BUFFER_SIZE (128*1024 /*bytes*/)
-#define MAX_POST_PAYLOAD_SIZE (256*1024 /*bytes*/)
-#define HTTP_MAX_CLIENTS_DEFAULT 32
+#define HTTP_BUFFER_SIZE (1024*1024 /*bytes*/)
+#define MAX_POST_PAYLOAD_SIZE (1024*1024 /*bytes*/)
+#define HTTP_MAX_CLIENTS_DEFAULT 128
 #else
 #define HTTP_BUFFER_SIZE (16*1024 /*bytes*/)
 #define MAX_POST_PAYLOAD_SIZE (16*1024 /*bytes*/)
-#define HTTP_MAX_CLIENTS_DEFAULT 8
+#define HTTP_MAX_CLIENTS_DEFAULT 16
 #endif
 
 // per connection/socket structure
@@ -165,18 +163,16 @@ typedef struct _HttpSocket{
 	HttpRequest request;
 	HttpResponse response;
 	char *pucData;
-	unsigned int bufferSize;			// the size of buffer pucData pointing to
-	unsigned int dataLength;
+	uint32_t bufferSize;			// the size of buffer pucData pointing to
+	uint32_t contentLength;
 	FILE* fp;
-	unsigned int flags;
+	uint32_t flags;
 	void* handler;				// http handler function address
 	void* ptr;
-	time_t tmAcceptTime;
 	time_t tmExpirationTime;
-	DWORD dwResumeTick;
-	int iRequestCount;
 	char* mimeType;
 	char* buffer;
+	uint16_t reqCount;
 } HttpSocket;
 
 typedef enum {
@@ -195,7 +191,7 @@ typedef struct {
 	void* hp;
 	HttpSocket* hs;
 	const char *pucRequest;
-  HttpVariables* pxVars;
+	HttpVariables* pxVars;
 	int iVarCount;
 	char *pucHeader;
 	char *pucBuffer;
@@ -203,12 +199,14 @@ typedef struct {
 	char *pucPayload;
 	unsigned int payloadSize;
 	unsigned int contentLength;
-	HttpFileType fileType;
+	HttpFileType contentType;
 	NameValuePair* json;
 	int jsonPairCount;
 } UrlHandlerParam;
 
+// Callback function protos
 typedef int (*PFNURLCALLBACK)(UrlHandlerParam*);
+typedef int (*PFN_UDP_CALLBACK)(void* hp);
 
 typedef struct {
 	const char* pchUrlPrefix;
@@ -233,30 +231,33 @@ typedef struct {
 #define FLAG_DIR_LISTING 1
 #define FLAG_DISABLE_RANGE 2
 
+#define PROXY_DATA_REQUESTED 0
+#define PROXY_DATA_RECEIVED 1
+
+#define PROXY_RX_BUF_SIZE 1024
+#define PROXY_TX_BUF_SIZE 1024
+
 typedef struct _httpParam {
 	HttpSocket* hsSocketQueue;				/* socket queue*/
-	int maxClients;
-	int maxClientsPerIP;
-	int bKillWebserver;
-	int bWebserverRunning;
+	uint16_t maxClients;
+	uint16_t maxClientsPerIP;
 	unsigned int flags;
 	SOCKET listenSocket;
 	SOCKET udpSocket;
-	int httpPort;
-	int udpPort;
-	int socketRcvBufSize;	/* socket receive buffer size in KB */
-	char pchWebPath[256];
+	uint16_t httpPort;
+	uint16_t udpPort;
+	const char* pchWebPath;
 	UrlHandler *pxUrlHandler;		/* pointer to URL handler array */
 	AuthHandler *pxAuthHandler;     /* pointer to authorization handler array */
 	// incoming udp callback
 	PFN_UDP_CALLBACK pfnIncomingUDP;
 	// misc
-	DWORD dwAuthenticatedNode;
+	uint32_t dwAuthenticatedNode;
 	time_t tmAuthExpireTime;
-	time_t tmSocketExpireTime;
-	int maxDownloadSpeed; /* maximum download speed in KB/s */
 	HttpStats stats;
 	DWORD hlBindIP;
+	BOOL bKillWebserver;
+	BOOL bWebserverRunning;
 } HttpParam;
 
 typedef struct {
@@ -289,7 +290,7 @@ typedef struct {
 ///////////////////////////////////////////////////////////////////////
 // mwInitParam. Init the context structure with default values
 ///////////////////////////////////////////////////////////////////////
-void mwInitParam(HttpParam* hp, int port, const char* pchWebPath);
+void mwInitParam(HttpParam* hp, int port, const char* webPath, unsigned int flags);
 
 ///////////////////////////////////////////////////////////////////////
 // mwServerStart. Startup the webserver
@@ -300,7 +301,7 @@ void mwServerExit(HttpParam* hp);
 ///////////////////////////////////////////////////////////////////////
 // mwHttpLoop. Enter webserver loop
 ///////////////////////////////////////////////////////////////////////
-int mwHttpLoop(HttpParam *hp, uint32_t timeout);
+void mwHttpLoop(HttpParam *hp, uint32_t timeout);
 
 ///////////////////////////////////////////////////////////////////////
 // mwServerShutdown. Shutdown the webserver (closes connections and
@@ -321,6 +322,8 @@ int mwGetLocalFileName(HttpFilePath* hfp);
 char* mwGetVarValue(HttpVariables* vars, const char *varname, const char *defval);
 int mwGetVarValueInt(HttpVariables* vars, const char *varname, int defval);
 unsigned int mwGetVarValueHex(HttpVariables* vars, const char *varname, unsigned int defval);
+int64_t mwGetVarValueInt64(HttpVariables* vars, const char *varname);
+float mwGetVarValueFloat(HttpVariables* vars, const char *varname);
 int mwParseQueryString(UrlHandlerParam* up);
 int mwGetContentType(const char *pchExtname);
 void mwDecodeString(char* s);

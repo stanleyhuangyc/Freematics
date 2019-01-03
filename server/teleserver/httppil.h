@@ -51,6 +51,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/select.h>
+#include <sys/stat.h>
 #include <netdb.h>
 
 #if !defined(O_BINARY)
@@ -118,7 +119,10 @@ int ReadDir(const char* pchDir, char* pchFileNameBuf);
 int IsFileExist(const char* filename);
 int IsDir(const char* pchName);
 
-#ifndef WIN32
+#ifdef WIN32
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#else
 #ifdef ARDUINO
 #define GetTickCount millis
 #else
