@@ -14,14 +14,13 @@
 #ifndef HTTP_SERVER_NAME
 #define HTTP_SERVER_NAME "MiniWeb"
 #endif
-#define HTTP200_HEADER "%s %d %s\r\nServer: %s\r\nCache-control: no-cache\r\nPragma: no-cache\r\nConnection: %s\r\n"
+#define HTTP200_HEADER "%s %d %s\r\nServer: %s\r\nCache-control: no-cache\r\nConnection: %s\r\n"
 #define HTTP200_HDR_EST_SIZE ((sizeof(HTTP200_HEADER)+256)&(-4))
-#define HTTP403_HEADER "HTTP/1.1 403 Forbidden\r\nServer: %s\r\nContent-length: %d\r\nContent-Type: text/html\r\n\r\n"
-#define HTTP404_HEADER "HTTP/1.1 404 Not Found\r\nServer: %s\r\nContent-length: %d\r\nContent-Type: text/html\r\n\r\n"
-#define HTTP403_BODY "<html><head><title>403 Forbidden</title></head><body><h1>Forbidden</h1></body></html>"
+#define HTTP403_HEADER "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"
+#define HTTP404_HEADER "HTTP/1.1 404 Not Found\r\nServer: %s\r\nContent-Length: %d\r\nContent-Type: text/html\r\n\r\n"
 #define HTTP404_BODY "<html><head><title>404 Not Found</title></head><body><h1>Not Found</h1><p>The requested URL has no content.</p></body></html>"
 #define HTTPBODY_REDIRECT "<html><head><meta http-equiv=\"refresh\" content=\"0; URL=%s\"></head><body></body></html>"
-#define HTTP301_HEADER "HTTP/1.1 301 Moved Permanently\r\nServer: %s\r\nLocation: %s\r\n\r\n"
+#define HTTP301_HEADER "HTTP/1.1 301 Moved Permanently\r\nServer: %s\r\nLocation: %s\r\nContent-Length: 0\r\n\r\n"
 #define HTTP401_HEADER "HTTP/1.1 401 Authorization Required\r\nWWW-Authenticate: Basic realm=\"%s\"\r\nContent-Length: %d\r\nContent-Type: text/html\r\n\r\n"
 //#define HTTP401_BODY "<html><head><title>401 Authorization Required</title></head><body><h1>Authorization Required</h1><p>This server could not verify that you are authorized to access the resource requested</p></body></html>"
 #define HTTP_CONTENTLENGTH "Content-Length:"
@@ -63,11 +62,14 @@
 #ifndef ARDUINO
 #define HTTP_EXPIRATION_TIME (120/*secs*/)
 #define HTTP_KEEPALIVE_TIME (15/*secs*/)
+#define HTTP_KEEPALIVE_MAX (1000 /*requests*/)
 #define MAX_REQUEST_PATH_LEN (512/*bytes*/)
 #else
-#define HTTP_EXPIRATION_TIME (10/*secs*/)
-#define HTTP_KEEPALIVE_TIME (5/*secs*/)
+#define HTTP_EXPIRATION_TIME (30/*secs*/)
+#define HTTP_KEEPALIVE_TIME (15/*secs*/)
+#define HTTP_KEEPALIVE_MAX (100 /*requests*/)
 #define MAX_REQUEST_PATH_LEN (128/*bytes*/)
+#define MAX_OPEN_FILES 16
 #endif
 #define MAX_RECV_RETRIES (3/*times*/)
 #define HTTPAUTHTIMEOUT   (60/*secs*/)
@@ -109,7 +111,7 @@ SOCKET _mwStartListening(HttpParam* hp);
 int _mwParseHttpHeader(HttpSocket* phsSocket);
 int _mwStrCopy(char *dest, const char *src);
 int _mwStrHeadMatch(char** pbuf1, const char* buf2);
-int _mwRemoveSocket(HttpParam* hp, HttpSocket* hs);
+void _mwSetSocketOpts(SOCKET socket);
 void _mwSendErrorPage(SOCKET socket, const char* header, const char* body);
 void _mwCloseAllConnections(HttpParam* hp);
 void _mwFreeJSONPairs(UrlHandlerParam* up);

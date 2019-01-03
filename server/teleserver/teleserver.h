@@ -14,14 +14,18 @@
 ******************************************************************************/
 
 #ifndef MAX_CHANNELS
-#define MAX_CHANNELS 4
+#define MAX_CHANNELS 16
 #endif
 #define MAX_CHANNEL_AGE (60* 60 * 1000 * 72)
 #define MAX_PENDING_COMMANDS 4
 #define MAX_COMMAND_MSG_LEN 128
 #define SYNC_INTERVAL 15 /* seconds*/
 #define CHANNEL_TIMEOUT 180 /* seconds */
-#define FLAG_RUNNING 1
+#define SESSION_GAP (15 * 60 * 1000)
+
+#define FLAG_RUNNING 0x1
+#define FLAG_SLEEPING 0x2
+#define FLAG_PINGED 0x4
 
 #define PID_GPS_LATITUDE 0xA
 #define PID_GPS_LONGITUDE 0xB
@@ -31,6 +35,7 @@
 #define PID_GPS_SAT_COUNT 0xF
 #define PID_GPS_TIME 0x10
 #define PID_GPS_DATE 0x11
+#define PID_GPS_HDOP 0x12
 
 #define PID_ACC 0x20
 #define PID_GYRO 0x21
@@ -41,12 +46,12 @@
 #define PID_CSQ 0x81
 #define PID_DEVICE_TEMP 0x82
 
-#define NEW_TRIP_INTERVAL 300 /* secs */
 #define PID_MODES 2
 #define CACHE_INIT_SIZE (1024 * 1024)
 #define CACHE_MAX_SIZE (10 * 1024 * 1024)
 #define MAX_PID_DATA_LEN 24
 #define MIN_LOGIN_INTERVAL 30000
+#define PROXY_MAX_TIME_BEHIND 1000
 
 #define EVENT_LOGIN 1
 #define EVENT_LOGOUT 2
@@ -54,6 +59,7 @@
 #define EVENT_RECONNECT 4
 #define EVENT_COMMAND 5
 #define EVENT_ACK 6
+#define EVENT_PING 7
 
 typedef enum {
 	DEVICE_VEHICLE = 0,
@@ -88,9 +94,11 @@ typedef struct {
 
 typedef struct {
 	uint32_t id; /* device ID */
-	uint64_t serverTick;
+	uint64_t serverDataTick;
+	uint64_t serverPingTick;
+	uint64_t serverSyncTick;
+	uint64_t sessionStartTick;
 	uint32_t deviceTick;
-	uint32_t syncTick; /* versus device tick */
 	uint32_t flags;
 	// instant data
 	PID_DATA mode[PID_MODES][256];
@@ -102,8 +110,9 @@ typedef struct {
 	// command
 	COMMAND_BLOCK cmd[MAX_PENDING_COMMANDS];
 	uint32_t cmdCount;
+	// proxy
+	uint32_t proxyTick;
 	// stats
-	uint64_t startServerTick;
 	uint32_t recvCount;
 	uint32_t dataInterval;
 	uint32_t dataReceived; /* bytes */
@@ -112,10 +121,9 @@ typedef struct {
 	uint8_t topSpeed; /* km/h */
 	uint8_t deviceTemp;
 	uint32_t distance;
-	uint16_t dataRate;
-	uint8_t dtcCount;
-	uint8_t deviceType;
-	char vin[32];
+	float sampleRate;
+	char vin[20];
+	char devid[32];
 	IPADDR ip;
 	// authorized UDP source address
 	struct sockaddr_in udpPeer;
@@ -123,10 +131,9 @@ typedef struct {
 	FILE* fp;
 } CHANNEL_DATA;
 
-CHANNEL_DATA* findChannelByID(uint32_t id);
 CHANNEL_DATA* findEmptyChannel();
 CHANNEL_DATA* findChannelByID(uint32_t id);
-CHANNEL_DATA* findChannelByVin(const char* vin);
+CHANNEL_DATA* findChannelByDeviceID(const char* devid);
 void SaveChannels();
 FILE* getLogFile();
 uint8_t hex2uint8(const char *p);
