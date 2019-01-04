@@ -99,6 +99,7 @@ bool COBD::readPID(byte pid, int& result)
 	char* data = 0;
 	sprintf(buffer, "%02X%02X\r", dataMode, pid);
 	write(buffer);
+	delay(5);
 	uint32_t t = millis();
 	int ret = receive(buffer, sizeof(buffer), pidWaitTime);
 	pidWaitTime = millis() - t + (pidWaitTime >> 1);
@@ -596,7 +597,10 @@ byte COBDSPI::begin(unsigned long freq)
 	SPI.begin();
 	SPI.setFrequency(freq);
 	//delay(50);
+	//sendCommand("ATI\r");
+	SPI.beginTransaction(settings);
 	byte ver = getVersion();
+	SPI.endTransaction();
 	return ver;
 }
 
@@ -701,9 +705,8 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 	uint32_t t = millis();
 	int n;
 	do {
-		SPI.beginTransaction(settings);
 		write(cmd);
-		SPI.endTransaction();
+		delay(5);
 		n = receive(buf, bufsize, timeout);
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
 			// data not ready
