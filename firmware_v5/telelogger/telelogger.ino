@@ -68,7 +68,7 @@ GPS_DATA* gd = 0;
 uint32_t lastGPStime = 0;
 #endif
 
-char devid[18] = {0};
+char devid[12] = {0};
 char isoTime[26] = {0};
 
 // stats data
@@ -905,7 +905,7 @@ void process()
     // purge cache
     cache.purge();
 #if SERVER_PROTOCOL == PROTOCOL_UDP
-    cache.header(teleClient.feedid);
+    cache.header(devid);
 #endif
     if (ledMode == 0) digitalWrite(PIN_LED, LOW);
   }
@@ -979,7 +979,7 @@ void standby()
     shutDownNet();
     cache.purge();
 #if SERVER_PROTOCOL == PROTOCOL_UDP
-    cache.header(teleClient.feedid);
+    cache.header(devid);
 #endif
     if (waitMotion(1000L * PING_BACK_INTERVAL)) {
       // to wake up

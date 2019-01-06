@@ -44,7 +44,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
   char buf[48];
   CStorageRAM netbuf;
   netbuf.init(128);
-  netbuf.header(feedid);
+  netbuf.header(devid);
   byte len = sprintf(buf, "EV=%X", (unsigned int)event);
   netbuf.dispatch(buf, len);
   len = sprintf(buf, "TS=%lu", millis());
@@ -201,9 +201,17 @@ void TeleClientUDP::inbound()
       processCommand(data);
       break;
     case EVENT_SYNC:
-      lastSyncTime = millis();
-      break;
+        {
+          uint16_t id = hex2uint16(data);
+          if (id && id != feedid) {
+            feedid = id;
+            Serial.print("FEED ID:");
+            Serial.println(feedid);
+          }
+        }
+        break;
     }
+    lastSyncTime = millis();
   } while(0);
 }
 
