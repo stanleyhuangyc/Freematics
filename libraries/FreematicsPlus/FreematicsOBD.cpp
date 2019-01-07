@@ -721,7 +721,7 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 COBD* createOBD()
 {
     COBD* obd = new COBD;
-    if (!obd->begin(115200, 32, 33)) {
+    if (!obd->begin()) {
         delete obd;    
         obd = new COBDSPI;
         obd->begin();
