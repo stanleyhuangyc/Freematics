@@ -415,6 +415,9 @@ bool initialize(bool wait = false)
     if (obd->init()) {
       Serial.println("OK");
       state.set(STATE_OBD_READY | STATE_OBD_FOUND);
+#if ENABLE_OLED
+      oled.println("OBD OK");
+#endif
     } else {
       Serial.println("NO");
     }
@@ -456,7 +459,11 @@ bool initialize(bool wait = false)
 #endif
 #if ENABLE_OLED
       oled.print(teleClient.net.deviceName());
-      oled.print(" OK\r");
+      oled.println(" OK\r");
+#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+      oled.print("IMEI:");
+      oled.println(teleClient.net.IMEI);
+#endif
 #endif
       state.set(STATE_NET_READY);
     } else {
@@ -538,6 +545,9 @@ bool initialize(bool wait = false)
       state.set(STATE_NET_CONNECTED);
     } else {
       Serial.println("NO");
+#if ENABLE_OLED
+      oled.println("No Service");
+#endif
     }
     timeoutsNet = 0;
   }
@@ -965,8 +975,10 @@ void standby()
   }
 #endif
   state.set(STATE_STANDBY);
-  //Serial.println("Standby");
+  Serial.println("STANDBY");
 #if ENABLE_OLED
+  oled.print("STANDBY");
+  delay(1000);
   oled.clear();
 #endif
 #if MEMS_MODE
@@ -1021,9 +1033,7 @@ void standby()
   obd->begin();
   do {
     delay(5000);
-    v = obd->getVoltage();
-    batteryVoltage = v * 100;    
-  } while (v < JUMPSTART_VOLTAGE);
+  } while (obd->getVoltage() < JUMPSTART_VOLTAGE);
 #else
   delay(5000);
 #endif
@@ -1115,9 +1125,7 @@ void setup()
 #if ENABLE_OLED
     oled.begin();
     oled.setFontSize(FONT_SIZE_MEDIUM);
-    oled.println("  FREEMATICS");
     oled.setFontSize(FONT_SIZE_SMALL);
-    oled.println();
 #endif
 
     delay(1000);
@@ -1141,6 +1149,10 @@ void setup()
     genDeviceID(devid);
     Serial.print("DEVICE ID: ");
     Serial.println(devid);
+#if ENABLE_OLED
+    oled.print("DEVICE ID: ");
+    oled.println(devid);
+#endif
 
 #if ENABLE_HTTPD
     IPAddress ip;
