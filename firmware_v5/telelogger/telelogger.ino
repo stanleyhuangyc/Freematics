@@ -1101,9 +1101,9 @@ void showSysInfo()
 #if ENABLE_OLED
   oled.clear();
   oled.print("CPU:");
-  oled.print(freq);
+  oled.print(ESP.getCpuFreqMHz());
   oled.print(" Mhz ");
-  oled.print(flashSize);
+  oled.print(getFlashSize() >> 10);
   oled.println("MB Flash");
 #endif
 }

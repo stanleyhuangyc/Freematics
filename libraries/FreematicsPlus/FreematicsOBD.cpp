@@ -384,7 +384,7 @@ bool COBD::isValidPID(byte pid)
 	return (pidmap[i] & b) != 0;
 }
 
-byte COBD::begin(unsigned long baudrate)
+byte COBD::begin(unsigned long baudrate, int rxPin, int txPin)
 {
     uart_config_t uart_config = {
         .baud_rate = OBD_UART_BAUDRATE,
@@ -397,7 +397,7 @@ byte COBD::begin(unsigned long baudrate)
     //Configure UART parameters
     uart_param_config(OBD_UART_NUM, &uart_config);
     //Set UART pins
-    uart_set_pin(OBD_UART_NUM, PIN_OBD_UART_TX, PIN_OBD_UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_set_pin(OBD_UART_NUM, txPin, rxPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     //Install UART driver
     if (uart_driver_install(OBD_UART_NUM, OBD_UART_BUF_SIZE, 0, 0, NULL, 0) != ESP_OK)
 		return 0;
@@ -721,7 +721,7 @@ int COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int t
 COBD* createOBD()
 {
     COBD* obd = new COBD;
-    if (!obd->begin()) {
+    if (!obd->begin(115200, 32, 33)) {
         delete obd;    
         obd = new COBDSPI;
         obd->begin();
