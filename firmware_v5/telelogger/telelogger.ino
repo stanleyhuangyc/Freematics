@@ -417,10 +417,6 @@ bool initialize(bool wait = false)
       state.set(STATE_OBD_READY | STATE_OBD_FOUND);
     } else {
       Serial.println("NO");
-      if (state.check(STATE_OBD_FOUND)) {
-        // if OBD was ever connected, require connection
-        return false;
-      }
     }
   }
 #endif
