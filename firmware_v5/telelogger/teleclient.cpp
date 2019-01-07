@@ -145,11 +145,6 @@ bool TeleClientUDP::connect()
     Serial.println(feedid);
 
     startTime = lastSyncTime = millis();
-
-#if ENABLE_OLED
-    oled.print("FEED ID:");
-    oled.println(feedid);
-#endif
     return true;
   }
   return false;
