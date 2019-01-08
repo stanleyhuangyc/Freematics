@@ -20,6 +20,9 @@
 #include "config.h"
 #include "telelogger.h"
 #include "teleclient.h"
+#ifdef BOARD_HAS_PSRAM
+#include "esp_himem.h"
+#endif
 #if ENABLE_OLED
 #include "FreematicsOLED.h"
 #endif
@@ -1095,15 +1098,16 @@ void showSysInfo()
   Serial.print(ESP.getCpuFreqMHz());
   Serial.print("MHz Flash:");
   Serial.print(getFlashSize() >> 10);
-  Serial.println("MB");
+  Serial.print("MB");
 #ifdef BOARD_HAS_PSRAM
-  Serial.print("IRAM:");
+  Serial.print(" IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
   Serial.print("KB");
   if (psramInit()) {
     Serial.print(" PSRAM:");
-    Serial.print(ESP.getPsramSize() >> 10);
+    Serial.print((ESP.getPsramSize() + esp_himem_get_phys_size()) >> 10);
     Serial.print("KB");
+    
   }
   Serial.println();
 #endif
