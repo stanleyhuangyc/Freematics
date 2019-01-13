@@ -29,7 +29,6 @@
 #define STATE_NET_READY 0x10
 #define STATE_SERVER_CONNECTED 0x20
 #define STATE_WORKING 0x40
-#define STATE_OBD_FOUND 0x80
 
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
@@ -186,6 +185,7 @@ bool login()
       delay(3000);
       continue;
     }
+    Serial.println("OK");
     return true;
   }
   return false;
@@ -522,7 +522,7 @@ bool initialize()
   txCount = 0;
 
   if (!state.check(STATE_OBD_READY) && obd.init()) {
-    state.set(STATE_OBD_READY | STATE_OBD_FOUND);
+    state.set(STATE_OBD_READY);
   }
 
   login();
@@ -547,7 +547,7 @@ bool waitMotion(long timeout)
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
     unsigned long t = millis();
-    while ((timeout != 0 || millis() - t < timeout)) {
+    while (millis() - t < timeout) {
       delay(100);
       // calculate relative movement
       float motion = 0;
@@ -656,8 +656,19 @@ void process()
 {
   uint32_t startTime = millis();
 
+  idleTasks(0);
+
   cache.header(devid);
   cache.timestamp(startTime);
+
+  // process GPS data if connected
+  if (state.check(STATE_GPS_READY)) {
+#if ENABLE_GPS
+    processGPS();
+#endif
+  } else {
+    processLocation();
+  }
 
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
@@ -682,20 +693,13 @@ void process()
   }
   // when battery voltage goes too low, enter standby mode
 #if STANDBY_LOW_VOLTAGE
-  if (volts < STANDBY_LOW_VOLTAGE) {
-    println(PSTR("LOW BATTERY"));
+  if (volts >= 6 && volts < STANDBY_LOW_VOLTAGE) {
+    print(PSTR("BATTERY:"));
+    Serial.println(volts, 1);
     state.clear(STATE_WORKING);
   }
 #endif
 
-  // process GPS data if connected
-  if (state.check(STATE_GPS_READY)) {
-#if ENABLE_GPS
-    processGPS();
-#endif
-  } else {
-    processLocation();
-  }
   cache.tailer();
 
 #if 0
@@ -717,26 +721,20 @@ void process()
   }
 
   // motion controlled data sending interval
-  for (;;) {
-    unsigned int motionless = (millis() - lastMotionTime) / 1000;
-    bool gosleep = true;
-    for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
-      if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
-        sendingInterval = 1000L * sendingIntervals[i];
-        gosleep = false;
-        break;
-      }
-    }
-    if (gosleep) {
-      state.clear(STATE_WORKING);
+  unsigned int motionless = (millis() - lastMotionTime) / 1000;
+  bool gosleep = true;
+  for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
+    if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
+      sendingInterval = 1000L * sendingIntervals[i];
+      gosleep = false;
       break;
     }
-    long till = startTime + (sendingInterval > 10000 ? sendingInterval : DATA_INTERVAL);
-    long n = till - millis();
-    idleTasks(n < 0 ? 0 : min(n, 100));
-    n = till - millis();
-    if (n < 0) break;
-    waitMotion(min(n, 3000));
+  }
+  if (gosleep) {
+    state.clear(STATE_WORKING);
+  } else {
+    long n = startTime + sendingInterval - millis();
+    if (n > 0) waitMotion(n);
   }
 }
 
