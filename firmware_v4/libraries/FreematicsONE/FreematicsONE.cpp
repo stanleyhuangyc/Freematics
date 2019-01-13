@@ -373,6 +373,7 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 		DEBUG.print("Stage:");
 		DEBUG.println(stage);
 #endif
+		reset();
 		return false;
 	}
 }
