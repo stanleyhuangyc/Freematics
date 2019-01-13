@@ -38,7 +38,6 @@ float acc[3] = {0};
 char devid[8] = DEFAULT_DEVID;
 uint8_t deviceTemp = 0; // device temperature
 
-uint16_t feedid = 0;
 uint32_t txCount = 0;
 uint8_t connErrors = 0;
 uint16_t UTC = 0;
@@ -116,8 +115,6 @@ bool notify(byte event, const char* extra = 0)
   char buf[32];
   byte len = snprintf_P(buf, sizeof(buf), PSTR("EV=%X"), (unsigned int)event);
   cache.dispatch(buf, len);
-  len = snprintf_P(buf, sizeof(buf), PSTR("ID=%s"), devid);
-  cache.dispatch(buf, len);
   len = snprintf_P(buf, sizeof(buf), PSTR("TS=%lu"), millis());
   cache.dispatch(buf, len);
   if (extra && *extra) {
@@ -153,10 +150,6 @@ bool notify(byte event, const char* extra = 0)
       continue;
     }
     lastSyncTime = millis();
-    if (event == EVENT_LOGIN) {
-      // extract info from server response
-      feedid = hex2uint16(data);
-    }
     connErrors = 0;
     // success
     return true;
@@ -175,7 +168,6 @@ bool login()
       Serial.println(buf);
     }
   }
-  feedid = 0;
   // connect to telematics server
   for (byte attempts = 0; attempts < 3; attempts++) {
     print(PSTR("LOGIN("));
@@ -193,9 +185,6 @@ bool login()
       println(PSTR("NO ACK"));
       delay(3000);
       continue;
-    } else {
-      print(PSTR("FEED#"));
-      Serial.println(feedid);
     }
     return true;
   }
@@ -452,7 +441,7 @@ bool initialize()
   devid[7] = 0;
 #endif
 
-  Serial.print("Device ID:");
+  print(PSTR("DEVID:"));
   Serial.println(devid);
 
   // initialize OBD communication
@@ -553,12 +542,12 @@ void shutDownNet()
   state.clear(STATE_NET_READY | STATE_SERVER_CONNECTED);
 }
 
-bool waitMotion(unsigned long timeout)
+bool waitMotion(long timeout)
 {
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
-    unsigned long  t = millis();
-    while ((!timeout || millis() - t < timeout)) {
+    unsigned long t = millis();
+    while ((timeout != 0 || millis() - t < timeout)) {
       delay(100);
       // calculate relative movement
       float motion = 0;
@@ -709,9 +698,11 @@ void process()
   }
   cache.tailer();
 
+#if 0
   Serial.print('{');
   Serial.print(cache.buffer()); 
   Serial.println('}');
+#endif
 
 #if SERVER_SYNC_INTERVAL
   // check server sync signal interval
@@ -754,6 +745,7 @@ void process()
 *******************************************************************************/
 void standby()
 {
+  unsigned long t = millis();
 #if ENABLE_GPS
   if (state.check(STATE_GPS_READY)) {
     println(PSTR("GPS OFF"));
@@ -767,15 +759,17 @@ void standby()
   for (;;) {
     shutDownNet();
     println(PSTR("STANDBY"));
-    if (waitMotion(1000L * PING_BACK_INTERVAL)) {
+    if (waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t))) {
       // to wake up
       break;
     }
+    t = millis();
     cache.header(devid);
     cache.timestamp(millis());
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
     cache.log(PID_DEVICE_TEMP, deviceTemp);
     cache.log(PID_BATTERY_VOLTAGE, (uint16_t)(obd.getVoltage() * 100));
+    cache.tailer();
     // start ping
     print(PSTR("Ping..."));
 #if NET_DEVICE == NET_WIFI
@@ -792,7 +786,6 @@ void standby()
     if (ping()) {
       state.set(STATE_SERVER_CONNECTED);
       // ping back data
-      cache.tailer();
       transmit();
     }
   }
@@ -801,7 +794,6 @@ void standby()
     delay(5000);
   } while (obd.getVoltage() < JUMPSTART_VOLTAGE);
 #endif
-  println(PSTR("WAKE UP"));
 #if RESET_AFTER_WAKEUP
   delay(100);
   void(* resetFunc) (void) = 0;
