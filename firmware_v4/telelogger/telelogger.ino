@@ -18,6 +18,11 @@
 #include <FreematicsONE.h>
 #include <FreematicsNetwork.h>
 #include <avr/pgmspace.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/common.h>
+#include <avr/wdt.h>
+#include <avr/sleep.h>
 #include "telelogger.h"
 #include "config.h"
 
@@ -674,7 +679,7 @@ void process()
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
     processOBD();
-    if (obd.errors > MAX_OBD_ERRORS) {
+    if (obd.errors >= MAX_OBD_ERRORS) {
       state.clear(STATE_WORKING);
       return;
     }
@@ -721,15 +726,15 @@ void process()
 
   // motion controlled data sending interval
   unsigned int motionless = (millis() - lastMotionTime) / 1000;
-  bool gosleep = true;
+  bool stop = true;
   for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
     if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
       sendingInterval = 1000L * sendingIntervals[i];
-      gosleep = false;
+      stop = false;
       break;
     }
   }
-  if (gosleep) {
+  if (stop) {
     state.clear(STATE_WORKING);
   } else {
     unsigned int n = startTime + sendingInterval - millis();
@@ -740,6 +745,17 @@ void process()
 /*******************************************************************************
   Implementing stand-by mode
 *******************************************************************************/
+void sleep(uint8_t period)
+{
+  wdt_enable(period);
+  wdt_reset();
+  WDTCSR |= _BV(WDIE);
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  sleep_mode();
+  wdt_disable();
+  WDTCSR &= ~_BV(WDIE);
+}
+
 void standby()
 {
   unsigned long t = millis();
@@ -766,6 +782,8 @@ void standby()
     if (volts >= 6 && volts < BATTERY_LOW_VOLTAGE) {
       print(PSTR("LOW BATT:"));
       Serial.println(volts, 1);
+      // sleep 120 seconds
+      for (byte n = 0; n < 15; n++) sleep(WDTO_8S);
       continue;
     }
     cache.header(devid);
@@ -829,6 +847,13 @@ void recvTasks(int timeout)
 
 void setup()
 {
+  // Disable the ADC
+  ADCSRA = ADCSRA & B01111111;
+  // Disable the analog comparator
+  ACSR = B10000000;
+  // Disable digital input buffers on all analog input pins
+  DIDR0 = DIDR0 | B00111111;
+
   Serial.begin(115200);
   obd.begin();
   // initializing components
