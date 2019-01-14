@@ -17,11 +17,10 @@
 
 #define PIN_LED 4
 
-COBDSPI obd;
+FreematicsESP32 sys;
+COBD obd;
 bool connected = false;
 unsigned long count = 0;
-
-#define CONNECT_OBD 1
 
 void setup() {
   // put your setup code here, to run once:
@@ -30,16 +29,18 @@ void setup() {
   delay(1000);
   digitalWrite(PIN_LED, LOW);
   Serial.begin(115200);
-  byte ver = obd.begin();
-  Serial.print("OBD Firmware Version ");
-  Serial.println(ver);
+
+  // initializations
+  while (!sys.begin());
+  Serial.print("Firmware: V");
+  Serial.println(sys.link->version);
+  obd.begin(sys.link);
 }
 
 void loop() {
   uint32_t ts = millis();
   digitalWrite(PIN_LED, HIGH);
   // put your main code here, to run repeatedly:
-#if CONNECT_OBD
   if (!connected) {
     digitalWrite(PIN_LED, HIGH);
     Serial.print("Connecting to OBD...");
@@ -52,13 +53,12 @@ void loop() {
     digitalWrite(PIN_LED, LOW);
     return;
   }
-#endif
+
   int value;
   Serial.print('[');
   Serial.print(millis());
   Serial.print("] #");
   Serial.print(count++);
-#if CONNECT_OBD
   if (obd.readPID(PID_RPM, value)) {
     Serial.print(" RPM:");
     Serial.print(value);
@@ -67,15 +67,13 @@ void loop() {
     Serial.print(" SPEED:");
     Serial.print(value);
   }
-#endif
+
   Serial.print(" BATTERY:");
   Serial.print(obd.getVoltage());
   Serial.print('V');
-#ifdef ESP32
-  int temp = (int)readChipTemperature() * 165 / 255 - 40;
+
   Serial.print(" CPU TEMP:");
-  Serial.print(temp);
-#endif
+  Serial.print(readChipTemperature());
   Serial.println();
   if (obd.errors > 2) {
     Serial.println("OBD disconnected");

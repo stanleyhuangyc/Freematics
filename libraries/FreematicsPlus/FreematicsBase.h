@@ -57,6 +57,24 @@ typedef struct {
 	uint16_t errors;
 } GPS_DATA;
 
+class CLink
+{
+public:
+	virtual ~CLink() {}
+	virtual bool begin() { return true; }
+	virtual void end() {}
+	// send command and receive response
+	virtual int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout) { return 0; }
+	// receive data from SPI
+	virtual int receive(char* buffer, int bufsize, unsigned int timeout) { return 0; }
+	// write data to SPI
+	virtual void send(const char* str) {}
+	// get co-processor version
+	virtual byte getVersion() { return 0; }
+	// version number
+	byte version = 0;
+};
+
 class CFreematics
 {
 public:
@@ -75,6 +93,10 @@ public:
 	virtual void xbPurge() = 0;
 	// toggle xBee module power
 	virtual void xbTogglePower() = 0;
+	// get co-processor version
+	byte getVersion() { return link ? link->version : 0; }
+	// co-processor link
+	CLink *link = 0;
 };
 
 #endif

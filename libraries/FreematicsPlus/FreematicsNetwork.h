@@ -98,6 +98,7 @@ public:
     String getIP();
     int getSignal();
     String getOperatorName();
+    bool checkSIM();
     bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
     const char* deviceName() { return "SIM800"; }
@@ -140,6 +141,7 @@ public:
     String getIP();
     int getSignal();
     String getOperatorName();
+    bool checkSIM();
     String queryIP(const char* host);
     bool getLocation(GPS_DATA** pgd)
     {

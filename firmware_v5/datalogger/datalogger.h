@@ -19,7 +19,6 @@ class NullLogger {
 public:
     virtual int begin()
     {
-        m_dataCount = 0;
         return 1;
     }
     virtual void log(uint16_t pid, int value)
@@ -63,7 +62,11 @@ public:
         byte len = sprintf(buf, "0,%u", m_dataTime = ts);
         write(buf, len);
     }
-    virtual uint32_t open() { return 0; }
+    virtual uint32_t open()
+    {
+        m_dataCount = 0;
+        return 0;
+    }
     void write(const char* buf, byte len)
     {
         if (m_next) m_next->write(buf, len);
@@ -135,6 +138,7 @@ public:
         sprintf(path, "/DATA/%u.CSV", m_id);
         Serial.print("File: ");
         Serial.println(path);
+        m_dataCount = 0;
         m_file = SD.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
@@ -186,6 +190,7 @@ public:
         sprintf(path, "/DATA/%u.CSV", m_id);
         Serial.print("File: ");
         Serial.println(path);
+        m_dataCount = 0;
         m_file = SPIFFS.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
