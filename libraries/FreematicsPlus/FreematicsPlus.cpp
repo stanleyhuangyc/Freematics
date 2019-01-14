@@ -6,6 +6,7 @@
 *************************************************************************/
 
 #include <Arduino.h>
+#include <SPI.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -31,6 +32,7 @@ static int nmeaBytes = 0;
 Mutex nmeaBufferMutex;
 static Task taskGPS;
 static GPS_DATA* gpsData = 0;
+static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 static uint32_t inline getCycleCount()
 {
@@ -207,7 +209,264 @@ void Mutex::unlock()
   xSemaphoreGive(xSemaphore);
 }
 
-void FreematicsESP32::begin(int cpuMHz)
+bool CLink_UART::begin(unsigned int baudrate, int rxPin, int txPin)
+{
+    uart_config_t uart_config = {
+        .baud_rate = (int)baudrate,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 122,
+    };
+    //Configure UART parameters
+    uart_param_config(LINK_UART_NUM, &uart_config);
+    //Set UART pins
+    uart_set_pin(LINK_UART_NUM, txPin, rxPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    //Install UART driver
+    if (uart_driver_install(LINK_UART_NUM, LINK_UART_BUF_SIZE, 0, 0, NULL, 0) != ESP_OK)
+		return 0;
+	version = getVersion();
+	if (version == 0) {
+        end();
+        return false;
+    }
+	return true;
+}
+
+void CLink_UART::end()
+{
+	uart_driver_delete(LINK_UART_NUM);
+}
+
+int CLink_UART::receive(char* buffer, int bufsize, unsigned int timeout)
+{
+	unsigned char n = 0;
+	unsigned long startTime = millis();
+	unsigned long elapsed;
+	for (;;) {
+		elapsed = millis() - startTime;
+		if (elapsed > timeout) break;
+		if (n >= bufsize - 1) break;
+		int len = uart_read_bytes(LINK_UART_NUM, (uint8_t*)buffer + n, bufsize - n - 1, 1);
+		if (len < 0) break;
+		if (len == 0) continue;
+		buffer[n + len] = 0;
+		if (strchr(buffer + n, '>')) {
+			n += len;
+			break;
+		}
+		n += len;
+		if (strstr(buffer, "...")) {
+			buffer[0] = 0;
+			n = 0;
+			timeout += OBD_TIMEOUT_LONG;
+		}
+	}
+#ifdef DEBUG
+	DEBUG.print(">>>");
+	DEBUG.println(buffer);
+#endif
+	return n;
+}
+
+void CLink_UART::send(const char* str)
+{
+#ifdef DEBUG
+	DEBUG.print("<<<");
+	DEBUG.println(str);
+#endif
+	uart_write_bytes(LINK_UART_NUM, str, strlen(str));
+}
+
+int CLink_UART::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
+{
+	send(cmd);
+	return receive(buf, bufsize, timeout);
+}
+
+byte CLink_UART::getVersion()
+{
+	byte version = 0;
+	for (byte n = 0; n < 3; n++) {
+		char buffer[32];
+		if (sendCommand("ATI\r", buffer, sizeof(buffer), 200)) {
+			char *p = strchr(buffer, ' ');
+			if (p) {
+				p += 2;
+				version = (*p - '0') * 10 + (*(p + 2) - '0');
+				break;
+			}
+		}
+		delay(100);
+	}
+	return version;
+}
+
+bool CLink_UART::changeBaudRate(unsigned int baudrate)
+{
+	char buf[32];
+	sprintf(buf, "ATBR1 %u\r", baudrate);
+	sendCommand(buf, buf, sizeof(buf), 1000);
+	delay(50);
+	end();
+	return begin(baudrate);
+}
+
+bool CLink_SPI::begin(unsigned long freq)
+{
+	pinMode(PIN_LINK_SPI_READY, INPUT);
+	pinMode(PIN_LINK_SPI_CS, OUTPUT);
+	digitalWrite(PIN_LINK_SPI_CS, HIGH);
+	SPI.begin();
+	SPI.setFrequency(freq);
+    for (byte n = 0; n < 5; n++) {
+	    SPI.beginTransaction(settings);
+	    version = getVersion();
+	    SPI.endTransaction();
+        if (version) break;
+        delay(100);
+    }
+    if (!version) {
+        end();
+        return false;
+    }
+	return true;
+}
+
+void CLink_SPI::end()
+{
+	SPI.end();
+}
+
+int CLink_SPI::receive(char* buffer, int bufsize, unsigned int timeout)
+{
+	int n = 0;
+	bool eos = false;
+	bool matched = false;
+	portMUX_TYPE m = portMUX_INITIALIZER_UNLOCKED;
+	uint32_t t = millis();
+	do {
+		while (digitalRead(PIN_LINK_SPI_READY) == HIGH) {
+			delay(1);
+			if (millis() - t > timeout) {
+#ifdef DEBUG
+				debugOutput("NO READY SIGNAL");
+#endif
+				break;
+			}
+		}
+		portENTER_CRITICAL(&m);
+		digitalWrite(PIN_LINK_SPI_CS, LOW);
+		while (digitalRead(PIN_LINK_SPI_READY) == LOW && millis() - t < timeout) {
+			char c = SPI.transfer(' ');
+			if (c == 0 && c == 0xff) continue;
+			if (!eos) eos = (c == 0x9);
+			if (eos) continue;
+			if (!matched) {
+				// match header
+				if (n == 0 && c != header[0]) continue;
+				if (n == bufsize - 1) continue;
+				buffer[n++] = c;
+				if (n == sizeof(header)) {
+					matched = memcmp(buffer, header, sizeof(header)) == 0;
+					if (matched) {
+						n = 0;
+					} else {
+						memmove(buffer, buffer + 1, --n);
+					}
+				}
+				continue;
+			}
+			if (n > 3 && c == '.' && buffer[n - 1] == '.' && buffer[n - 2] == '.') {
+				// SEARCHING...
+				n = 0;
+				timeout += OBD_TIMEOUT_LONG;
+			} else {
+				if (n == bufsize - 1) {
+					int bytesDumped = dumpLine(buffer, n);
+					n -= bytesDumped;
+#ifdef DEBUG
+					debugOutput("BUFFER FULL");
+#endif
+				}
+				buffer[n++] = c;
+			}
+		}
+		digitalWrite(PIN_LINK_SPI_CS, HIGH);
+		portEXIT_CRITICAL(&m);
+	} while (!eos && millis() - t < timeout);
+#ifdef DEBUG
+	if (!eos && millis() - t >= timeout) {
+		// timed out
+		debugOutput("RECV TIMEOUT");
+	}
+#endif
+	buffer[n] = 0;
+#ifdef DEBUG
+	debugOutput(buffer);
+#endif
+	// wait for READY pin to restore high level so SPI bus is released
+	while (digitalRead(PIN_LINK_SPI_READY) == LOW) delay(1);
+	return n;
+}
+
+void CLink_SPI::send(const char* str)
+{
+	portMUX_TYPE m = portMUX_INITIALIZER_UNLOCKED;
+#ifdef DEBUG
+	debugOutput(s);
+#endif
+	int len = strlen(str);
+	uint8_t tail = 0x1B;
+	portENTER_CRITICAL(&m);
+	digitalWrite(PIN_LINK_SPI_CS, LOW);
+	delay(1);
+	SPI.writeBytes((uint8_t*)header, sizeof(header));
+	SPI.writeBytes((uint8_t*)str, len);
+	SPI.writeBytes((uint8_t*)&tail, 1);
+	delay(1);
+	digitalWrite(PIN_LINK_SPI_CS, HIGH);
+	portEXIT_CRITICAL(&m);
+}
+
+int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
+{
+	uint32_t t = millis();
+	int n;
+	do {
+		send(cmd);
+		delay(5);
+		n = receive(buf, bufsize, timeout);
+		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
+			// data not ready
+			delay(50);
+		} else {
+	  		break;
+		}
+	} while (millis() - t < timeout);
+	return n;
+}
+
+byte CLink_SPI::getVersion()
+{
+	byte version = 0;
+	for (byte n = 0; n < 3; n++) {
+		char buffer[32];
+		if (sendCommand("ATI\r", buffer, sizeof(buffer), 200)) {
+			char *p = strchr(buffer, ' ');
+			if (p) {
+				p += 2;
+				version = (*p - '0') * 10 + (*(p + 2) - '0');
+				break;
+			}
+		}
+		delay(100);
+	}
+	return version;
+}
+
+bool FreematicsESP32::begin(int cpuMHz)
 {
 #if 0
     if (cpuMHz) {
@@ -224,30 +483,52 @@ void FreematicsESP32::begin(int cpuMHz)
 
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);
+
+    if (link) return false;
+
+    CLink_UART *linkUART = new CLink_UART;
+    if (!linkUART->begin()) {
+        delete linkUART;
+        linkUART = 0;
+        CLink_SPI *linkSPI = new CLink_SPI;
+        if (!linkSPI->begin()) {
+            delete linkSPI;
+            linkSPI = 0;
+        } else {
+            m_flags |= GNSS_USE_HW_UART;
+            link = linkSPI;
+        }
+    } else {
+        if (linkUART->version >= 13) m_flags |= GNSS_USE_LINK;
+        link = linkUART;
+    }
+	return link != 0;
 }
 
 void FreematicsESP32::gpsEnd()
 {
     // uninitialize
     taskGPS.destroy();
-    if (!(gpsFlags & GF_SOFT_SERIAL)) uart_driver_delete(GPS_UART_NUM);
-    if (nmeaBuffer) {
-        nmeaBufferMutex.lock();
-        delete nmeaBuffer;
-        nmeaBuffer = 0;
-        nmeaBufferMutex.unlock();
+    if (!(m_flags & GNSS_USE_LINK)) {
+        if (!(m_flags & GNSS_SOFT_SERIAL)) uart_driver_delete(GPS_UART_NUM);
+        if (nmeaBuffer) {
+            nmeaBufferMutex.lock();
+            delete nmeaBuffer;
+            nmeaBuffer = 0;
+            nmeaBufferMutex.unlock();
+        }
     }
 	//turn off GPS power
     digitalWrite(PIN_GPS_POWER, LOW);
-    gpsFlags = 0;
+    m_flags &= ~(GNSS_SOFT_SERIAL | GNSS_BUFFERED);
 }
 
-bool FreematicsESP32::gpsBegin(int baudrate, bool buffered, bool softserial)
+bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
 {
     pinMode(PIN_GPS_POWER, OUTPUT);
     digitalWrite(PIN_GPS_POWER, LOW);
 
-    if (!softserial) {
+    if (!link || (m_flags & GNSS_USE_HW_UART)) {
         uart_config_t uart_config = {
             .baud_rate = baudrate,
             .data_bits = UART_DATA_8_BITS,
@@ -267,7 +548,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered, bool softserial)
         delay(100);
         // start decoding task
         taskGPS.create(gps_decode_task, "GPS", 1);
-    } else {
+    } else if (!(m_flags & GNSS_USE_LINK)) {
         pinMode(PIN_GPS_UART_RXD, INPUT);
         pinMode(PIN_GPS_UART_TXD, OUTPUT);
         setTxPinHigh();
@@ -285,82 +566,143 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered, bool softserial)
 
         // start GPS decoding task (soft serial)
         taskGPS.create(gps_soft_decode_task, "GPS", 1);
-        gpsFlags |= GF_SOFT_SERIAL;
+        m_flags |= GNSS_SOFT_SERIAL;
+    } else {
+        digitalWrite(PIN_GPS_POWER, HIGH);
     }
 
-    // test run for a while to see if there is data decoded
-    uint16_t s1 = 0, s2 = 0;
-    gps.stats(&s1, 0);
-    for (int i = 0; i < 20; i++) {
+    if (!(m_flags & GNSS_USE_LINK)) {
+        // test run for a while to see if there is data decoded
+        uint16_t s1 = 0, s2 = 0;
+        gps.stats(&s1, 0);
+        for (int i = 0; i < 20; i++) {
+            delay(100);
+            gps.stats(&s2, 0);
+            if (s1 != s2) {
+                // data is coming in
+                if (!gpsData) gpsData = new GPS_DATA;
+                memset(gpsData, 0, sizeof(GPS_DATA));
+                if (buffered) {
+                    if (!nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
+                    m_flags |= GNSS_BUFFERED;
+                } 
+                nmeaBytes = 0;
+                return true;
+            }
+        }
+
+        // when no data coming in
+        gpsEnd();
+        return false;
+    } else {
         delay(100);
-        gps.stats(&s2, 0);
-        if (s1 != s2) {
-            // data is coming in
-            if (!gpsData) gpsData = new GPS_DATA;
+        uint32_t t = millis();
+        char buf[128];
+        bool success = false;
+        do {
+            if (gpsGetNMEA(buf, sizeof(buf)) > 0 && strstr(buf, ("$G"))) {
+                success = true;
+                break;
+            }
+        } while (millis() - t < 2000);
+        if (!gpsData && success) {
+            gpsData = new GPS_DATA;
             memset(gpsData, 0, sizeof(GPS_DATA));
-            if (buffered) {
-                if (!nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
-                gpsFlags |= GF_BUFFERED;
-            } 
-            nmeaBytes = 0;
             return true;
         }
+        return false;
     }
-
-    // when no data coming in
-    gpsEnd();
-    return false;
 }
 
 bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
     if (!gpsData) return false;
-    gps.stats(&gpsData->sentences, &gpsData->errors);
-    if (!gpsPendingData) return false;
-    if (pgd) *pgd = gpsData;
-    long lat, lng;
-    gps.get_position(&lat, &lng, 0);
-    if (gpsData->lat || gpsData->lng) {
-        // filter out invalid coordinates
-        if (abs(lat - gpsData->lat * 1000000) >= 100000) lat = 0;
-        if (abs(lng - gpsData->lng * 1000000) >= 100000) lng = 0;
+    if (m_flags & GNSS_USE_LINK) {
+        char buf[160];
+        if (link->sendCommand("ATGPS\r", buf, sizeof(buf), 100) == 0) {
+            return false;
+        }
+        char *s = strstr(buf, "$GNIFO,");
+        if (!s) return false;
+        s += 7;
+        float lat = 0;
+        float lng = 0;
+        do {
+            gpsData->date = atoi(s);
+            if (!(s = strchr(s, ','))) break;
+            gpsData->time = atoi(++s);
+            if (!(s = strchr(s, ','))) break;
+            lat = (float)atoi(++s) / 1000000;
+            if (!(s = strchr(s, ','))) break;
+            lng = (float)atoi(++s) / 1000000;
+            if (!(s = strchr(s, ','))) break;
+            gpsData->alt = (float)atoi(++s) / 100;
+            if (!(s = strchr(s, ','))) break;
+            gpsData->speed = (float)atoi(++s) / 100;
+            if (!(s = strchr(s, ','))) break;
+            gpsData->heading = atoi(++s) / 100;
+            if (!(s = strchr(s, ','))) break;
+            gpsData->sat = atoi(++s);
+            if (!(s = strchr(s, ','))) break;
+            gpsData->hdop = atoi(++s);
+        } while(0);
+        if (lat == 0 || lng == 0) return false;
+        gpsData->lat = lat;
+        gpsData->lng = lng;
+        if (pgd) *pgd = gpsData;
+        return true;
+    } else {
+        gps.stats(&gpsData->sentences, &gpsData->errors);
+        if (!gpsPendingData) return false;
+        long lat, lng;
+        gps.get_position(&lat, &lng, 0);
+        if (gpsData->lat || gpsData->lng) {
+            // filter out invalid coordinates
+            if (abs(lat - gpsData->lat * 1000000) >= 100000) lat = 0;
+            if (abs(lng - gpsData->lng * 1000000) >= 100000) lng = 0;
+        }
+        if (lat == 0 || lng == 0) return false;
+        gpsData->ts = millis();
+        gpsData->lat = (float)lat / 1000000;
+        gpsData->lng = (float)lng / 1000000;
+        gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
+        long alt = gps.altitude();
+        if (alt != TinyGPS::GPS_INVALID_ALTITUDE) gpsData->alt = (float)alt / 100;
+        unsigned long knot = gps.speed();
+        if (knot != TinyGPS::GPS_INVALID_SPEED) gpsData->speed = (float)knot / 100;
+        unsigned long course = gps.course();
+        if (course < 36000) gpsData->heading = course / 100;
+        unsigned short sat = gps.satellites();
+        if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData->sat = sat;
+        unsigned long hdop = gps.hdop();
+        gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
+        gpsPendingData = 0;
+        if (pgd) *pgd = gpsData;
+        return true;
     }
-    if (lat == 0 || lng == 0) return false;
-    gpsData->ts = millis();
-    gpsData->lat = (float)lat / 1000000;
-    gpsData->lng = (float)lng / 1000000;
-    gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
-    long alt = gps.altitude();
-    if (alt != TinyGPS::GPS_INVALID_ALTITUDE) gpsData->alt = (float)alt / 100;
-    unsigned long knot = gps.speed();
-    if (knot != TinyGPS::GPS_INVALID_SPEED) gpsData->speed = (float)knot / 100;
-    unsigned long course = gps.course();
-    if (course < 36000) gpsData->heading = course / 100;
-    unsigned short sat = gps.satellites();
-    if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData->sat = sat;
-    unsigned long hdop = gps.hdop();
-    gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
-    gpsPendingData = 0;
-    return true;
 }
 
 int FreematicsESP32::gpsGetNMEA(char* buffer, int bufsize)
 {
-    int bytes = 0;
-    if (nmeaBytes > 0) {
-        if (bufsize < nmeaBytes) {
-            nmeaBufferMutex.lock();
-            memcpy(buffer, nmeaBuffer, bytes = bufsize);
-            memmove(nmeaBuffer, nmeaBuffer + bufsize, nmeaBytes -= bufsize);
-            nmeaBufferMutex.unlock();
-        } else {
-            nmeaBufferMutex.lock();
-            memcpy(buffer, nmeaBuffer, bytes = nmeaBytes);
-            nmeaBytes = 0;
-            nmeaBufferMutex.unlock();
+    if (m_flags & GNSS_USE_LINK) {
+        return link->sendCommand("ATGRR\r", buffer, bufsize, 200);
+    } else {
+        int bytes = 0;
+        if (nmeaBytes > 0) {
+            if (bufsize < nmeaBytes) {
+                nmeaBufferMutex.lock();
+                memcpy(buffer, nmeaBuffer, bytes = bufsize);
+                memmove(nmeaBuffer, nmeaBuffer + bufsize, nmeaBytes -= bufsize);
+                nmeaBufferMutex.unlock();
+            } else {
+                nmeaBufferMutex.lock();
+                memcpy(buffer, nmeaBuffer, bytes = nmeaBytes);
+                nmeaBytes = 0;
+                nmeaBufferMutex.unlock();
+            }
         }
+        return bytes;
     }
-    return bytes;
 }
 
 void FreematicsESP32::gpsSendCommand(const char* string, int len)
@@ -381,10 +723,16 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
     };
+    int pinRx = PIN_BEE_UART_RXD;
+    int pinTx = PIN_BEE_UART_TXD;
+    if (link && link->version >= 13) {
+        pinRx = PIN_BEE_UART_RXD2;
+        pinTx = PIN_BEE_UART_TXD2;
+    }
     //Configure UART parameters
     uart_param_config(BEE_UART_NUM, &uart_config);
     //Set UART pins
-    uart_set_pin(BEE_UART_NUM, PIN_BEE_UART_TXD, PIN_BEE_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_set_pin(BEE_UART_NUM, pinTx, pinRx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     //Install UART driver
     uart_driver_install(BEE_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
 

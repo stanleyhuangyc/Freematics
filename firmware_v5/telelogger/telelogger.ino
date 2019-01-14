@@ -112,7 +112,7 @@ private:
 };
 
 FreematicsESP32 sys;
-State state;
+COBD obd;
 
 #if MEMS_MODE == MEMS_ACC
 MPU9250_ACC mems;
@@ -135,11 +135,11 @@ TeleClientUDP teleClient;
 TeleClientHTTP teleClient;
 #endif
 
-COBD* obd = 0;
-
 #if ENABLE_OLED
 OLED_SH1106 oled;
 #endif
+
+State state;
 
 void printTimeoutStats()
 {
@@ -235,9 +235,9 @@ void processOBD()
         }
     }
     byte pid = obdData[i].pid;
-    if (!obd->isValidPID(pid)) continue;
+    if (!obd.isValidPID(pid)) continue;
     int value;
-    if (obd->readPID(pid, value)) {
+    if (obd.readPID(pid, value)) {
         obdData[i].ts = millis();
         obdData[i].value = value;
         cache.log((uint16_t)pid | 0x100, value);
@@ -412,10 +412,7 @@ bool initialize(bool wait = false)
   if (!state.check(STATE_OBD_READY)) {
     timeoutsOBD = 0;
     Serial.print("OBD...");
-    if (state.check(STATE_OBD_FOUND)) {
-      obd->begin();
-    }
-    if (obd->init()) {
+    if (obd.init()) {
       Serial.println("OK");
       state.set(STATE_OBD_READY | STATE_OBD_FOUND);
 #if ENABLE_OLED
@@ -431,7 +428,7 @@ bool initialize(bool wait = false)
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     Serial.print("GPS...");
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false, obd && obd->getType() == 0)) {
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false)) {
       state.set(STATE_GPS_READY);
       Serial.println("OK");
 #if ENABLE_OLED
@@ -446,6 +443,21 @@ bool initialize(bool wait = false)
       }
     } else {
       Serial.println("NO");
+    }
+  }
+#endif
+
+#if STORAGE != STORAGE_NONE
+  if (!state.check(STATE_STORAGE_READY)) {
+    // init storage
+    if (store.init()) {
+      state.set(STATE_STORAGE_READY);
+    }
+  }
+  if (state.check(STATE_STORAGE_READY)) {
+    fileid = store.begin();
+    if (fileid) {
+      cache.setForward(&store);
     }
   }
 #endif
@@ -468,11 +480,15 @@ bool initialize(bool wait = false)
       oled.println(teleClient.net.IMEI);
 #endif
 #endif
-      state.set(STATE_NET_READY);
+      if (teleClient.net.checkSIM()) {
+        state.set(STATE_NET_READY);
+      } else {
+        Serial.println("No SIM Card");
+      }
     } else {
       Serial.println("NO");
 #if ENABLE_OLED
-      oled.println("No cell module");
+      oled.println("No Cell Module");
 #endif
     }
 #endif
@@ -506,7 +522,7 @@ bool initialize(bool wait = false)
     }
   }
 #else
-  if (!state.check(STATE_NET_CONNECTED)) {
+  if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
     Serial.print("NET...");
     if (teleClient.net.setup(CELL_APN, !state.check(STATE_GPS_READY))) {
       String op = teleClient.net.getOperatorName();
@@ -561,17 +577,17 @@ bool initialize(bool wait = false)
 
   // re-try OBD if connection not established
 #if ENABLE_OBD
-  if (!state.check(STATE_OBD_READY) && obd->init()) {
+  if (!state.check(STATE_OBD_READY) && obd.init()) {
     state.set(STATE_OBD_READY | STATE_OBD_FOUND);
   }
   if (state.check(STATE_OBD_READY)) {
     char buf[128];
-    if (obd->getVIN(buf, sizeof(buf))) {
+    if (obd.getVIN(buf, sizeof(buf))) {
       strncpy(vin, buf, sizeof(vin) - 1);
       Serial.print("VIN:");
       Serial.println(vin);
     }
-    int dtcCount = obd->readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
+    int dtcCount = obd.readDTC(dtc, sizeof(dtc) / sizeof(dtc[0]));
     if (dtcCount > 0) {
       Serial.print("DTC:");
       Serial.println(dtcCount);
@@ -584,9 +600,7 @@ bool initialize(bool wait = false)
   }
 #endif
 
-  if (!teleClient.connect()) {
-    return false;
-  }
+  teleClient.connect();
   connErrors = 0;
 
   // check system time
@@ -608,21 +622,6 @@ bool initialize(bool wait = false)
     oled.setFontSize(FONT_SIZE_MEDIUM);
 #endif
   }
-
-#if STORAGE != STORAGE_NONE
-  if (!state.check(STATE_STORAGE_READY)) {
-    // init storage
-    if (store.init()) {
-      state.set(STATE_STORAGE_READY);
-    }
-  }
-  if (state.check(STATE_STORAGE_READY)) {
-    fileid = store.begin();
-    if (fileid) {
-      cache.setForward(&store);
-    }
-  }
-#endif
 
   lastMotionTime = millis();
   state.set(STATE_WORKING);
@@ -685,7 +684,7 @@ String executeCommand(const char* cmd)
     // send OBD command
     char buf[256];
     sprintf(buf, "%s\r", cmd + 4);
-    if (obd->sendCommand(buf, buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
+    if (obd.link && obd.link->sendCommand(buf, buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
       Serial.println(buf);
       for (int n = 0; buf[n]; n++) {
         switch (buf[n]) {
@@ -800,7 +799,7 @@ bool waitMotion(unsigned long timeout)
   } else {
     do {
       serverProcess(10000);
-      if (obd->init()) return true;
+      if (obd.init()) return true;
     } while (millis() - t < timeout);
   }
   return false;
@@ -818,8 +817,8 @@ void process()
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
     processOBD();
-    if (obd->errors >= MAX_OBD_ERRORS) {
-      if (!obd->init()) {
+    if (obd.errors >= MAX_OBD_ERRORS) {
+      if (!obd.init()) {
         Serial.print("Logout(ECU)...");
         if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
         Serial.println();
@@ -844,14 +843,19 @@ void process()
   deviceTemp = readChipTemperature();
 #endif
 
+  if (sys.getVersion() >= 13) {
+      batteryVoltage = (float)(analogRead(A0) * 11 * 370) / 4095;
+      cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+  } else {
 #if ENABLE_OBD
-  // read and log car battery voltage, data in 0.01v
-  float volts = obd->getVoltage();
-  if (volts) {
-    batteryVoltage = volts * 100;
-    cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
-  }
+    // read and log car battery voltage, data in 0.01v
+    float volts = obd.getVoltage();
+    if (volts) {
+      batteryVoltage = volts * 100;
+      cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+    }
 #endif
+  }
 
 #if ENABLE_GPS
   // process GPS data if connected
@@ -895,21 +899,6 @@ void process()
       connErrors++;
       timeoutsNet++;
       printTimeoutStats();
-      if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-        if (teleClient.connect()) {
-          connErrors = 0;
-        } else {
-          // unable to reconnect
-          Serial.println("Re-init network");
-          digitalWrite(PIN_LED, HIGH);
-          shutDownNet();
-          initialize();
-          digitalWrite(PIN_LED, LOW);
-          return;
-        }
-      } else {
-        delay(1000L * connErrors);
-      }
     }
     // purge cache
     cache.purge();
@@ -919,6 +908,24 @@ void process()
     if (ledMode == 0) digitalWrite(PIN_LED, LOW);
   }
 
+  if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
+    if (teleClient.connect()) {
+      Serial.println("Reconnected");
+      connErrors = 0;
+    } else {
+      // unable to reconnect
+      Serial.println("Re-init network");
+      digitalWrite(PIN_LED, HIGH);
+      shutDownNet();
+      initialize();
+      digitalWrite(PIN_LED, LOW);
+      return;
+    }
+  } else {
+    delay(1000L * connErrors);
+  }
+
+#if ENABLE_OBD || ENABLE_GPS || MEMS_MODE
   // motion adaptive data interval control
   for (;;) {
     unsigned int motionless = (millis() - lastMotionTime) / 1000;
@@ -944,6 +951,11 @@ void process()
     if (n < 0) break;
     waitMotion(min(n, 3000));
   }
+#else
+  do {
+    idleTasks();
+  } while (millis() - startTime < dataIntervals[0])
+#endif
 
   if (deviceTemp >= COOLING_DOWN_TEMP) {
     // device too hot, cool down
@@ -973,7 +985,7 @@ void standby()
 #endif
 #if ENABLE_OBD
   if (state.check(STATE_OBD_FOUND)) {
-    obd->end();
+    obd.uninit();
     state.clear(STATE_OBD_READY);
   }
 #endif
@@ -1033,10 +1045,10 @@ void standby()
   }
 #elif ENABLE_OBD
   float v;
-  obd->begin();
+  obd.begin();
   do {
     delay(5000);
-  } while (obd->getVoltage() < JUMPSTART_VOLTAGE);
+  } while (obd.getVoltage() < JUMPSTART_VOLTAGE);
 #else
   delay(5000);
 #endif
@@ -1107,7 +1119,41 @@ void showSysInfo()
     Serial.print(" PSRAM:");
     Serial.print((ESP.getPsramSize() + esp_himem_get_phys_size()) >> 10);
     Serial.print("KB");
-    
+#if 0
+    Serial.println();
+    Serial.print("Writing PSRAM...");
+    int size = ESP.getPsramSize();
+    uint32_t *ptr = (uint32_t*)ps_malloc(size);
+    if (!ptr) {
+      Serial.print("unable to allocate ");
+      Serial.print(size);
+      Serial.println(" bytes");
+    } else {
+      uint32_t t = millis();
+      for (int i = 0; i < size / 4; i++) {
+        ptr[i] = 0xa5a5a5a5;
+      }
+      Serial.print("OK @");
+      Serial.print(size  / (millis() - t));
+      Serial.println("KB/s");
+    }
+    Serial.print("Verifying PSRAM...");
+    int errors = 0;
+    uint32_t t = millis();
+    for (int i = 0; i < size / 4; i++) {
+      if (ptr[i] != 0xa5a5a5a5) {
+        Serial.print("mismatch @ 0x");
+        Serial.println(i * 4, 16);
+        errors++;
+      }
+    }
+    if (errors == 0) {
+      Serial.print("OK @");
+      Serial.print(size  / (millis() - t));
+      Serial.println("KB/s");
+    }
+    free(ptr);
+#endif
   }
   Serial.println();
 #endif
@@ -1124,8 +1170,6 @@ void showSysInfo()
 
 void setup()
 {
-    sys.begin();
-
 #if ENABLE_OLED
     oled.begin();
     oled.setFontSize(FONT_SIZE_MEDIUM);
@@ -1149,6 +1193,13 @@ void setup()
     // show system information
     showSysInfo();
 
+#if ENABLE_OBD
+    while (!sys.begin());
+    Serial.print("Firmware: V");
+    Serial.println(sys.link->version);
+    obd.begin(sys.link);
+#endif
+
     // generate a unique ID in case VIN is inaccessible
     genDeviceID(devid);
     Serial.print("DEVICE ID: ");
@@ -1169,15 +1220,6 @@ void setup()
 #endif
     } else {
       Serial.println("NO");
-    }
-#endif
-
-#if ENABLE_OBD
-    while (!(obd = createOBD()));
-    int ver = obd->getVersion();
-    if (ver) {
-      Serial.print("OBD Firmware: v");
-      Serial.println(ver);
     }
 #endif
 

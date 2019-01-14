@@ -20,9 +20,21 @@
 #define PIN_LED 4
 #define PIN_SD_CS 5
 
+#define PIN_LINK_SPI_CS 2
+#define PIN_LINK_SPI_READY 13
+#define SPI_FREQ 1000000
+
+#define LINK_UART_BAUDRATE 115200
+#define LINK_UART_NUM UART_NUM_2
+#define LINK_UART_BUF_SIZE 256
+#define PIN_LINK_UART_RX 13
+#define PIN_LINK_UART_TX 14
+
 #define PIN_BEE_PWR 27
 #define PIN_BEE_UART_RXD 16
 #define PIN_BEE_UART_TXD 17
+#define PIN_BEE_UART_RXD2 32
+#define PIN_BEE_UART_TXD2 33
 #define BEE_UART_NUM UART_NUM_1
 #define BEE_BAUDRATE 115200L
 
@@ -35,8 +47,10 @@
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
 
-#define GF_BUFFERED 0x1
-#define GF_SOFT_SERIAL 0x2
+#define GNSS_BUFFERED 0x1
+#define GNSS_SOFT_SERIAL 0x2
+#define GNSS_USE_LINK 0x4
+#define GNSS_USE_HW_UART 0x8
 
 int readChipTemperature();
 int readChipHallSensor();
@@ -65,12 +79,44 @@ private:
   void* xSemaphore;
 };
 
+class CLink_UART : public CLink {
+public:
+	bool begin(unsigned int baudrate = LINK_UART_BAUDRATE, int rxPin = PIN_LINK_UART_RX, int txPin = PIN_LINK_UART_TX);
+	void end();
+	// send command and receive response
+	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout);
+	// receive data from SPI
+	int receive(char* buffer, int bufsize, unsigned int timeout);
+	// write data to SPI
+	void send(const char* str);
+  // get co-processor version
+  byte getVersion();
+  // change serial baudrate
+  bool changeBaudRate(unsigned int baudrate);
+};
+
+class CLink_SPI : public CLink {
+public:
+	bool begin(unsigned long freq = SPI_FREQ);
+	void end();
+	// send command and receive response
+	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout);
+	// receive data from SPI
+	int receive(char* buffer, int bufsize, unsigned int timeout);
+  // get co-processor version
+  byte getVersion();
+	// write data to SPI
+	void send(const char* str);
+private:
+	const uint8_t header[4] = {0x24, 0x4f, 0x42, 0x44};
+};
+
 class FreematicsESP32 : public CFreematics
 {
 public:
-  void begin(int cpuMHz = 0);
+  bool begin(int cpuMHz = 0);
   // start GPS
-  bool gpsBegin(int baudrate = 115200, bool buffered = false, bool softserial = true);
+  bool gpsBegin(int baudrate = 115200, bool buffered = false);
   // turn off GPS
   void gpsEnd();
   // get parsed GPS data (returns the number of data parsed since last invoke)
@@ -94,5 +140,5 @@ public:
   // toggle xBee module power
   void xbTogglePower();
 private:
-  byte gpsFlags = 0;
+  byte m_flags = 0;
 };

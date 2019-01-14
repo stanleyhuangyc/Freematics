@@ -72,14 +72,13 @@ ORIENTATION ori = {0};
 
 #if USE_GPS
 GPS_DATA* gd = 0;
-uint32_t lastGPSts = 0;
+uint32_t lastGPStime = 0;
 #endif
 
 char command[16] = {0};
 
-COBD* obd = 0;
-
 FreematicsESP32 sys;
+COBD obd;
 
 #if ENABLE_NMEA_SERVER
 WiFiServer nmeaServer(NMEA_TCP_PORT);
@@ -233,13 +232,13 @@ public:
     {
 #if USE_OBD
         Serial.print("OBD...");
-        if (obd->init()) {
+        if (obd.init()) {
             Serial.println("OK");
             pidErrors = 0;
             // retrieve VIN
             Serial.print("VIN...");
             char buffer[128];
-            if (obd->getVIN(buffer, sizeof(buffer))) {
+            if (obd.getVIN(buffer, sizeof(buffer))) {
                 Serial.println(buffer);
                 strncpy(vin, buffer, sizeof(vin) - 1);
             } else {
@@ -256,7 +255,7 @@ public:
 #if USE_GPS
         if (!checkState(STATE_GPS_FOUND)) {
             Serial.print("GPS...");
-            if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false, obd && obd->getType() == 0)) {
+            if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
                 setState(STATE_GPS_FOUND);
                 Serial.println("OK");
                 //waitGPS();
@@ -273,7 +272,7 @@ public:
     void logGPSData()
     {
         // issue the command to get parsed GPS data
-        if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd) && lastGPSts != gd->ts) {
+        if (checkState(STATE_GPS_FOUND) && sys.gpsGetData(&gd) && lastGPStime != gd->time) {
             store.setTimestamp(millis());
             store.log(PID_GPS_DATE, gd->date);
             store.log(PID_GPS_TIME, gd->time);
@@ -306,7 +305,7 @@ public:
             }
             Serial.println();
 
-            lastGPSts = gd->ts;
+            lastGPStime = gd->time;
         }
     }
     void waitGPS()
@@ -341,7 +340,7 @@ public:
 #endif
 #if USE_OBD
         if (checkState(STATE_OBD_READY)) {
-            obd->reset();
+            obd.reset();
         }
 #endif
         clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
@@ -377,10 +376,10 @@ public:
         }
         }
 #else
-        while (!obd->init()) Serial.print('.');
+        while (!obd.init()) Serial.print('.');
 #endif
         Serial.println("Wakeup");
-        ESP.restart();
+        //ESP.restart();
     }
     bool checkState(byte flags) { return (m_state & flags) == flags; }
     void setState(byte flags) { m_state |= flags; }
@@ -438,9 +437,11 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
 
-    sys.begin();
 #if USE_OBD
-    while (!(obd = createOBD()));
+    while (!sys.begin());
+    Serial.print("Firmware: V");
+    Serial.println(sys.link->version);
+    obd.begin(sys.link);
 #endif
 
 #if MEMS_MODE
@@ -549,19 +550,22 @@ void loop()
             }
         }
         byte pid = obdData[i].pid;
-        if (!obd->isValidPID(pid)) continue;
+        if (!obd.isValidPID(pid)) continue;
         int value;
-        if (obd->readPID(pid, value)) {
+        if (obd.readPID(pid, value)) {
             obdData[i].ts = millis();
             store.log((uint16_t)pid | 0x100, value);
         } else {
             pidErrors++;
             Serial.print("PID errors: ");
             Serial.println(pidErrors);
-            if (obd->errors >= 5) {
-                logger.standby();
-                logger.init();
-                return;
+            if (obd.errors > 0) {
+                delay(500);
+                if (obd.errors >= 5) {
+                    logger.standby();
+                    logger.init();
+                    return;
+                }
             }
         }
 #if USE_GPS
@@ -605,7 +609,7 @@ void loop()
 
 #if USE_OBD
     // log battery voltage (from voltmeter), data in 0.01v
-    batteryVoltage = obd->getVoltage() * 100;
+    batteryVoltage = obd.getVoltage() * 100;
     store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
 #endif
 
