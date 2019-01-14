@@ -12,7 +12,7 @@
 * OBD-II configurations
 **************************************/
 // maximum consecutive OBD-II access errors before disconnecting
-#define MAX_OBD_ERRORS 10
+#define MAX_OBD_ERRORS 5
 
 /**************************************
 * Networking configurations
@@ -33,7 +33,7 @@
 #define DEFAULT_DEVID "DEFAULT"
 
 // maximum consecutive communication errors before entering standby
-#define MAX_CONN_ERRORS 20
+#define MAX_CONN_ERRORS 10
 // maximum consecutive communication errors before reconnecting
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
@@ -44,12 +44,14 @@
 #define DATA_INTERVAL 1000 /* ms */
 #define STATIONARY_TIME_TABLE {30, 180} /* seconds */
 #define SENDING_INTERVAL_TABLE {1, 5} /* seconds */
-#define PING_BACK_INTERVAL 900 /* seconds */
+#define PING_BACK_INTERVAL 600 /* seconds */
 
 /**************************************
 * MEMS motion sensors
 **************************************/
+#ifndef MEMS_MODE
 #define MEMS_MODE 1 /* 0 to disable */
+#endif
 #define MOTION_THRESHOLD 0.25f /* in unit of G */
 
 /**************************************
@@ -64,8 +66,8 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define JUMPSTART_VOLTAGE 14 /* V */
-#define STANDBY_LOW_VOLTAGE 0 /* V */
+#define CHARGING_VOLTAGE 13.4f /* V */
+#define BATTERY_LOW_VOLTAGE 11.5f /* V */
 #define RESET_AFTER_WAKEUP 0
 
 #endif // CONFIG_H_INCLUDED
