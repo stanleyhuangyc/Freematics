@@ -41,14 +41,14 @@ uint32_t txCount = 0;
 uint8_t connErrors = 0;
 uint16_t UTC = 0;
 uint32_t lastSyncTime = 0;
-uint32_t lastSentTime = 0;
 uint32_t lastCmdToken = 0;
 uint32_t lastMotionTime = 0;
+uint32_t sessionStartTime = 0;
 uint16_t stationaryTime[] = STATIONARY_TIME_TABLE;
 uint16_t sendingIntervals[] = SENDING_INTERVAL_TABLE;
 uint16_t sendingInterval = 0;
 
-void idleTasks(int timeout);
+void recvTasks(int timeout = 0);
 
 class State {
 public:
@@ -185,7 +185,7 @@ bool login()
       delay(3000);
       continue;
     }
-    Serial.println("OK");
+    println(PSTR("OK"));
     return true;
   }
   return false;
@@ -194,10 +194,10 @@ bool login()
 bool transmit()
 {
   bool success = false;
-  long sec = millis() / 1000;
-  Serial.print(sec / 60);
+  unsigned long elapsed = (millis() - sessionStartTime) / 1000;
+  Serial.print(elapsed / 60);
   Serial.print(':');
-  Serial.print(sec % 60);
+  Serial.print(elapsed % 60);
   Serial.print(' ');
   // transmit data
   if (net.send(cache.buffer(), cache.length())) {
@@ -209,12 +209,12 @@ bool transmit()
     Serial.print(' ');
     Serial.print(cache.length());
     println(PSTR(" bytes sent"));
-    lastSentTime = millis();
     success = true;
   } else {
     connErrors++;
   }
   if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
+    println(PSTR("Reconnect"));
     net.close();
     net.open(SERVER_HOST, SERVER_PORT);
   }
@@ -237,12 +237,12 @@ bool ping()
 int logOBDPID(byte pid)
 {
   int value;
-  if (obd.readPID(pid, value)) {
+  if (obd.isValidPID(pid) && obd.readPID(pid, value)) {
     cache.log((uint16_t)0x100 | pid, (int16_t)value);
+    return value;
   } else {
-    value = -1;
+    return -1;
   }
-  return value;
 }
 
 void processOBD()
@@ -260,9 +260,7 @@ void processOBD()
   const byte pidTier2[] = {PID_INTAKE_TEMP, PID_COOLANT_TEMP, PID_BAROMETRIC, PID_AMBIENT_TEMP};
   static byte idx = 0;
   byte pid = pidTier2[idx];
-  if (obd.isValidPID(pid)) {
-    logOBDPID(pid);
-  }
+  logOBDPID(pid);
   if (++idx >= sizeof(pidTier2)) idx = 0;
 }
 
@@ -527,8 +525,7 @@ bool initialize()
 
   login();
 
-  lastMotionTime = millis();
-
+  sessionStartTime = lastMotionTime = millis();
   state.set(STATE_SERVER_CONNECTED | STATE_WORKING);
   return true;
 }
@@ -542,12 +539,12 @@ void shutDownNet()
   state.clear(STATE_NET_READY | STATE_SERVER_CONNECTED);
 }
 
-bool waitMotion(long timeout)
+bool waitMotion(unsigned int timeout)
 {
+  unsigned long t = millis();
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
-    unsigned long t = millis();
-    while (millis() - t < timeout) {
+    while ((long)(millis() - t) < timeout) {
       delay(100);
       // calculate relative movement
       float motion = 0;
@@ -568,7 +565,11 @@ bool waitMotion(long timeout)
     return false;
   }
 #endif
-  delay(timeout);
+  do {
+    unsigned int elapsed = millis() - t;
+    if (elapsed >= timeout) break;
+    delay(min(5000, timeout - elapsed));
+  } while (obd.getVoltage() < CHARGING_VOLTAGE);
   return true;
 }
 
@@ -656,10 +657,10 @@ void process()
 {
   uint32_t startTime = millis();
 
-  idleTasks(0);
-
   cache.header(devid);
   cache.timestamp(startTime);
+
+  recvTasks();
 
   // process GPS data if connected
   if (state.check(STATE_GPS_READY)) {
@@ -691,14 +692,12 @@ void process()
   if (volts) {
     cache.log(PID_BATTERY_VOLTAGE, (unsigned int)(volts * 100)); /* in 0.01V */
   }
-  // when battery voltage goes too low, enter standby mode
-#if STANDBY_LOW_VOLTAGE
-  if (volts >= 6 && volts < STANDBY_LOW_VOLTAGE) {
-    print(PSTR("BATTERY:"));
+  // when battery voltage gets low, enter standby mode
+  if (volts >= 6 && volts < BATTERY_LOW_VOLTAGE) {
+    print(PSTR("LOW BATT:"));
     Serial.println(volts, 1);
     state.clear(STATE_WORKING);
   }
-#endif
 
   cache.tailer();
 
@@ -716,7 +715,7 @@ void process()
   }
 #endif
 
-  if (millis() - lastSentTime >= sendingInterval && cache.samples() > 0) {
+  if (cache.samples() > 0) {
     transmit();
   }
 
@@ -733,7 +732,7 @@ void process()
   if (gosleep) {
     state.clear(STATE_WORKING);
   } else {
-    long n = startTime + sendingInterval - millis();
+    unsigned int n = startTime + sendingInterval - millis();
     if (n > 0) waitMotion(n);
   }
 }
@@ -752,21 +751,27 @@ void standby()
 #endif
   UTC = 0;
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_SERVER_CONNECTED);
-#if MEMS_MODE
-  calibrateMEMS();
   for (;;) {
     shutDownNet();
+#if MEMS_MODE
+    calibrateMEMS();
+#endif
     println(PSTR("STANDBY"));
     if (waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t))) {
       // to wake up
       break;
     }
     t = millis();
+    float volts = obd.getVoltage();
+    if (volts >= 6 && volts < BATTERY_LOW_VOLTAGE) {
+      print(PSTR("LOW BATT:"));
+      Serial.println(volts, 1);
+      continue;
+    }
     cache.header(devid);
     cache.timestamp(millis());
-    cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
     cache.log(PID_DEVICE_TEMP, deviceTemp);
-    cache.log(PID_BATTERY_VOLTAGE, (uint16_t)(obd.getVoltage() * 100));
+    cache.log(PID_BATTERY_VOLTAGE, (uint16_t)(volts * 100));
     cache.tailer();
     // start ping
     print(PSTR("Ping..."));
@@ -787,11 +792,6 @@ void standby()
       transmit();
     }
   }
-#else
-  do {
-    delay(5000);
-  } while (obd.getVoltage() < JUMPSTART_VOLTAGE);
-#endif
 #if RESET_AFTER_WAKEUP
   delay(100);
   void(* resetFunc) (void) = 0;
@@ -802,10 +802,10 @@ void standby()
 /*******************************************************************************
   Tasks to perform in idle/waiting time
 *******************************************************************************/
-void idleTasks(int timeout)
+void recvTasks(int timeout)
 {
-  // check incoming datagram
-  do {
+  if (state.check(STATE_NET_READY)) do {
+     // check incoming datagram
     int len = 0;
     char *data = net.receive(&len, timeout);
     if (data) {
