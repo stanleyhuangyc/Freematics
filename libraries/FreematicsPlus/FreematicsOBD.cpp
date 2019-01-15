@@ -304,7 +304,7 @@ char* COBD::getResultValue(char* buf)
 float COBD::getVoltage()
 {
     char buf[32];
-	if (link->sendCommand("ATRV\r", buf, sizeof(buf), 100) > 0) {
+	if (link->sendCommand("ATRV\r", buf, sizeof(buf), 500) > 0) {
 		char* p = getResultValue(buf);
 		if (p) return (float)atof(p);
     }
