@@ -66,7 +66,7 @@ SIGNAL(WDT_vect) {
   WDTCSR &= ~_BV(WDIE);
 }
 
-void deepSleep(uint8_t wdt_period) {
+void sleep(uint8_t wdt_period) {
 	wdt_enable(wdt_period);
 	wdt_reset();
 	WDTCSR |= _BV(WDIE);
@@ -91,11 +91,10 @@ public:
       Serial.print("OBD ");
       if (init()) {
         Serial.println("OK");
+        state |= STATE_OBD_READY;
       } else {
         Serial.println("NO");
       }
-      state |= STATE_OBD_READY;
-
 #if USE_GPS
       Serial.print("GPS ");
       if (gpsInit(GPS_SERIAL_BAUDRATE)) {
@@ -234,7 +233,7 @@ public:
         }
 #else
         for (;;) {
-          deepSleep(WDTO_4S);
+          sleep(WDTO_4S);
           float v = getVoltage();
           Serial.println(v);
           if (v >= JUMPSTART_VOLTAGE) break;
@@ -256,6 +255,13 @@ ONE one;
 
 void setup()
 {
+    // Disable the ADC
+    ADCSRA = ADCSRA & B01111111;
+    // Disable the analog comparator
+    ACSR = B10000000;
+    // Disable digital input buffers on all analog input pins
+    DIDR0 = DIDR0 | B00111111;
+
     Serial.begin(115200);
     Serial.println("Freematics ONE");
     delay(1000);
@@ -327,7 +333,7 @@ void loop()
             one.reconnect();
         }
     } else {
-      if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000) {
+      if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000L) {
         if (one.init()) {
             one.state |= STATE_OBD_READY;
         }
@@ -337,6 +343,9 @@ void loop()
     // log battery voltage (from voltmeter), data in 0.01v
     int v = one.getVoltage() * 100;
     one.log(PID_BATTERY_VOLTAGE, v);
+    Serial.print("Voltage:");
+    Serial.println(v);
+    delay(10);
     
 #if USE_GPS
     if (one.state & STATE_GPS_FOUND) {
@@ -346,6 +355,8 @@ void loop()
 
 #if !ENABLE_DATA_OUT
     uint32_t t = millis();
+    Serial.print(t);
+    Serial.print(' ');
     Serial.print(one.dataCount);
     Serial.print(" samples ");
     Serial.print((float)one.dataCount * 1000 / t, 1);
@@ -356,8 +367,8 @@ void loop()
       one.flushData(fileSize);
       Serial.print(fileSize);
       Serial.print(" bytes");
-#endif
     }
+#endif
     Serial.println();
 #endif
 }
