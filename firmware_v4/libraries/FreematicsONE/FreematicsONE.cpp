@@ -373,7 +373,6 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 		DEBUG.print("Stage:");
 		DEBUG.println(stage);
 #endif
-		reset();
 		return false;
 	}
 }
@@ -430,8 +429,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
 			if (millis() - t > timeout) {
-				Serial.println("NO SPI DATA");
-				return 0;
+				return -1;
 			}
 		}
 		SPI.beginTransaction(settings);
@@ -464,7 +462,6 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		delay(1);
 		digitalWrite(SPI_PIN_CS, HIGH);
 		SPI.endTransaction();
-		delay(1);
 	} while (!eos && millis() - t < timeout);
 #ifdef DEBUG
 	if (!eos && millis() - t >= timeout) {
@@ -525,18 +522,24 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
 {
 	uint32_t t = millis();  
-	byte n;
-	do {
+	int n = 0;
+	for (byte i = 0; i < 30 && millis() - t < timeout; i++) {
 		write(cmd);
 		//delay(1);
 		n = receive(buf, bufsize, timeout);
+		if (n == -1) {
+			t = millis();
+			Serial.print('_');
+			continue;
+		}
 		if (n == 0 || (buf[1] != 'O' && !memcmp_P(buf + 5, PSTR("NO DATA"), 7))) {
 			// data not ready
 			sleep(50);
+			i = 0;
 		} else {
 	  		break;
 		}
-	} while (millis() - t < timeout);
+	}
 	return n;
 }
 

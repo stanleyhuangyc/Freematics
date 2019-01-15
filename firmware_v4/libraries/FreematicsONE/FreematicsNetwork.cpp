@@ -387,7 +387,8 @@ bool UDPClientSIM5360::begin(CFreematics* device)
     device->xbBegin(XBEE_BAUDRATE);
     m_stage = 1;
   }
-  for (byte n = 0; n < 5; n++) {
+  unsigned long t = millis();
+  do {
     // try turning on module
     device->xbTogglePower();
     delay(2000);
@@ -402,7 +403,7 @@ bool UDPClientSIM5360::begin(CFreematics* device)
         return true;
       }
     }
-  }
+  } while (millis() - t < 60000);
   return false;
 }
 
