@@ -480,11 +480,6 @@ bool initialize(bool wait = false)
       oled.println(teleClient.net.IMEI);
 #endif
 #endif
-      if (teleClient.net.checkSIM()) {
-        state.set(STATE_NET_READY);
-      } else {
-        Serial.println("No SIM Card");
-      }
     } else {
       Serial.println("NO");
 #if ENABLE_OLED
