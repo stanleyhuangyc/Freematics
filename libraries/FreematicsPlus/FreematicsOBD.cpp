@@ -420,7 +420,7 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		DEBUG.print("Stage:");
 		DEBUG.println(stage);
 #endif
-		reset();
+		//reset();
 		return false;
 	}
 }

@@ -120,6 +120,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
 bool TeleClientUDP::connect()
 {
   byte event = login ? EVENT_RECONNECT : EVENT_LOGIN;
+  bool success = false;
   // connect to telematics server
   for (byte attempts = 0; attempts < 5; attempts++) {
     Serial.print(event == EVENT_LOGIN ? "LOGIN(" : "RECONNECT(");
@@ -135,19 +136,19 @@ bool TeleClientUDP::connect()
     // log in or reconnect to Freematics Hub
     if (!notify(event)) {
       net.close();
-      Serial.println("Server timeout");
+      Serial.println("server timeout");
       delay(1000);
       continue;
     }
     Serial.println("OK");
-
-    Serial.print("FEED ID:");
-    Serial.println(feedid);
-
-    startTime = lastSyncTime = millis();
-    return true;
+    success = true;
+    break;
   }
-  return false;
+  startTime = millis();
+  if (success) {
+    lastSyncTime = startTime;
+  }
+  return success;
 }
 
 bool TeleClientUDP::ping()
