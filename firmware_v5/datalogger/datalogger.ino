@@ -244,12 +244,10 @@ public:
             } else {
                 Serial.println("NO");
             }
+            setState(STATE_OBD_READY);
         } else {
             Serial.println("NO");
-            standby();
-            return;
         }
-        setState(STATE_OBD_READY);
 #endif
 
 #if USE_GPS
@@ -440,7 +438,7 @@ void setup()
 #if USE_OBD
     while (!sys.begin());
     Serial.print("Firmware: V");
-    Serial.println(sys.link->version);
+    Serial.println(sys.version);
     obd.begin(sys.link);
 #endif
 
@@ -532,49 +530,53 @@ void loop()
     // poll and log OBD data
     store.setTimestamp(ts);
 #if USE_OBD
-    static int idx[2] = {0, 0};
-    int tier = 1;
-    for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
-        if (obdData[i].tier > tier) {
-            // reset previous tier index
-            idx[tier - 2] = 0;
-            // keep new tier number
-            tier = obdData[i].tier;
-            // move up current tier index
-            i += idx[tier - 2]++;
-            // check if into next tier
-            if (obdData[i].tier != tier) {
-                idx[tier - 2]= 0;
-                i--;
-                continue;
-            }
-        }
-        byte pid = obdData[i].pid;
-        if (!obd.isValidPID(pid)) continue;
-        int value;
-        if (obd.readPID(pid, value)) {
-            obdData[i].ts = millis();
-            store.log((uint16_t)pid | 0x100, value);
-        } else {
-            pidErrors++;
-            Serial.print("PID errors: ");
-            Serial.println(pidErrors);
-            if (obd.errors > 0) {
-                delay(500);
-                if (obd.errors >= 5) {
-                    logger.standby();
-                    logger.init();
-                    return;
+    if (logger.checkState(STATE_OBD_READY)) {
+        static int idx[2] = {0, 0};
+        int tier = 1;
+        for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
+            if (obdData[i].tier > tier) {
+                // reset previous tier index
+                idx[tier - 2] = 0;
+                // keep new tier number
+                tier = obdData[i].tier;
+                // move up current tier index
+                i += idx[tier - 2]++;
+                // check if into next tier
+                if (obdData[i].tier != tier) {
+                    idx[tier - 2]= 0;
+                    i--;
+                    continue;
                 }
             }
+            byte pid = obdData[i].pid;
+            if (!obd.isValidPID(pid)) continue;
+            int value;
+            if (obd.readPID(pid, value)) {
+                obdData[i].ts = millis();
+                store.log((uint16_t)pid | 0x100, value);
+            } else {
+                pidErrors++;
+                Serial.print("PID errors: ");
+                Serial.println(pidErrors);
+                if (obd.errors > 0) {
+                    delay(500);
+                    if (obd.errors >= 5) {
+                        logger.standby();
+                        logger.init();
+                        return;
+                    }
+                }
+            }
+#if USE_GPS
+            logger.logGPSData();
+#endif
+            if (tier > 1) break;
         }
+    } else {
 #if USE_GPS
         logger.logGPSData();
 #endif
-        if (tier > 1) break;
-#if ENABLE_HTTPD
-        serverProcess(0);
-#endif
+        delay(50);
     }
 #else
 #if USE_GPS
@@ -615,6 +617,10 @@ void loop()
 
 #if !ENABLE_SERIAL_OUT
     showStats();
+#endif
+
+#if ENABLE_HTTPD
+    serverProcess(0);
 #endif
 
     executeCommand();

@@ -472,6 +472,7 @@ bool initialize(bool wait = false)
       Serial.print("IMEI:");
       Serial.println(teleClient.net.IMEI);
 #endif
+      state.set(STATE_NET_READY);
 #if ENABLE_OLED
       oled.print(teleClient.net.deviceName());
       oled.println(" OK\r");
@@ -1105,9 +1106,9 @@ void showSysInfo()
   Serial.print(ESP.getCpuFreqMHz());
   Serial.print("MHz Flash:");
   Serial.print(getFlashSize() >> 10);
-  Serial.print("MB");
+  Serial.println("MB");
 #ifdef BOARD_HAS_PSRAM
-  Serial.print(" IRAM:");
+  Serial.print("IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
   Serial.print("KB");
   if (psramInit()) {
@@ -1191,7 +1192,7 @@ void setup()
 #if ENABLE_OBD
     while (!sys.begin());
     Serial.print("Firmware: V");
-    Serial.println(sys.link->version);
+    Serial.println(sys.version);
     obd.begin(sys.link);
 #endif
 
