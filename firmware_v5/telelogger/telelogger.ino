@@ -318,7 +318,7 @@ bool waitMotionGPS(int timeout)
   unsigned long t = millis();
   lastMotionTime = 0;
   do {
-    delay(100);
+    delay(200);
     cache.purge();
     if (!processGPS()) continue;
     if (lastMotionTime) return true;
@@ -984,6 +984,7 @@ void standby()
     obd.uninit();
     state.clear(STATE_OBD_READY);
   }
+  obd.enterLowPowerMode();
 #endif
   state.set(STATE_STANDBY);
   Serial.println("STANDBY");
@@ -1002,6 +1003,9 @@ void standby()
 #endif
     if (waitMotion(1000L * PING_BACK_INTERVAL)) {
       // to wake up
+#if ENABLE_OBD
+      obd.leaveLowPowerMode();
+#endif
       state.clear(STATE_STANDBY);
       break;
     }
