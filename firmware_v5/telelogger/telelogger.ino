@@ -277,7 +277,7 @@ bool processGPS()
   cache.logFloat(PID_GPS_LONGITUDE, gd->lng);
   cache.log(PID_GPS_ALTITUDE, gd->alt); /* m */
   float kph = gd->speed * 1.852f;
-  if (kph >= 1) lastMotionTime = millis();
+  if (kph >= 2) lastMotionTime = millis();
   cache.log(PID_GPS_SPEED, kph);
   cache.log(PID_GPS_HEADING, gd->heading);
   cache.log(PID_GPS_SAT_COUNT, gd->sat);
