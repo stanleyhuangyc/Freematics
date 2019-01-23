@@ -409,12 +409,10 @@ bool UDPClientSIM5360::begin(CFreematics* device)
 
 void UDPClientSIM5360::end()
 {
-  bool success = sendCommand("AT+CRESET\r");
+  sendCommand("AT+CRESET\r");
   sendCommand("AT+GPS=0\r");
-  if (m_stage == 2 || success) {
-    m_device->xbTogglePower();
-    m_stage = 1;
-  }
+  sendCommand("AT+CPOF\r");
+  m_stage = 1;
   if (m_gps) {
     delete m_gps;
     m_gps = 0;
