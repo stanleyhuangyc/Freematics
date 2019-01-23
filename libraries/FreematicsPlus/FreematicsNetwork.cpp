@@ -497,6 +497,7 @@ void ClientSIM5360::end()
 {
   sendCommand("AT+CRESET\r");
   sendCommand("AT+GPS=0\r");
+  delay(1000);
   sendCommand("AT+CPOF\r");
   m_stage = 1;
   if (m_gps) {
