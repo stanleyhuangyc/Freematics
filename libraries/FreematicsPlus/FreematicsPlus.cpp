@@ -450,9 +450,6 @@ void FreematicsESP32::gpsEnd()
 
 bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
 {
-    pinMode(PIN_GPS_POWER, OUTPUT);
-    digitalWrite(PIN_GPS_POWER, LOW);
-
     if (!link || (m_flags & GNSS_USE_HW_UART)) {
         uart_config_t uart_config = {
             .baud_rate = baudrate,
@@ -494,7 +491,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         m_flags |= GNSS_SOFT_SERIAL;
     } else {
         digitalWrite(PIN_GPS_POWER, HIGH);
-        delay(200);
+        delay(100);
     }
 
     if (!(m_flags & GNSS_USE_LINK)) {
@@ -531,7 +528,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
             }
             Serial.print(buf);
         } while (millis() - t < 2000);
-        if (!gpsData && success) {
+        if (success) {
             gpsData = new GPS_DATA;
             memset(gpsData, 0, sizeof(GPS_DATA));
             return true;
@@ -795,6 +792,9 @@ bool FreematicsESP32::begin(int cpuMHz)
 
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);
+
+    pinMode(PIN_GPS_POWER, OUTPUT);
+    digitalWrite(PIN_GPS_POWER, LOW);
 
     if (link) return false;
 
