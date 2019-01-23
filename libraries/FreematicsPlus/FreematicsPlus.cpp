@@ -526,7 +526,6 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
                 success = true;
                 break;
             }
-            Serial.print(buf);
         } while (millis() - t < 2000);
         if (success) {
             gpsData = new GPS_DATA;
