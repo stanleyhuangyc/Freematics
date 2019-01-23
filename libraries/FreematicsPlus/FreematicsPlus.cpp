@@ -433,8 +433,8 @@ int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int
 void FreematicsESP32::gpsEnd()
 {
     // uninitialize
-    taskGPS.destroy();
     if (!(m_flags & GNSS_USE_LINK)) {
+        taskGPS.destroy();
         if (!(m_flags & GNSS_SOFT_SERIAL)) uart_driver_delete(GPS_UART_NUM);
         if (nmeaBuffer) {
             nmeaBufferMutex.lock();
