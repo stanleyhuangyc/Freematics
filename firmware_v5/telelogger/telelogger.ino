@@ -343,15 +343,6 @@ void processMEMS()
 #endif
     deviceTemp /= 10;
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
-    // calculate instant motion
-    float motion = 0;
-    for (byte i = 0; i < 3; i++) {
-      float m = (acc[i] - accBias[i]);
-      motion += m * m;
-    }
-    if (motion > MOTION_THRESHOLD * MOTION_THRESHOLD) {
-      lastMotionTime = millis();
-    }
 }
 
 void calibrateMEMS()
@@ -390,6 +381,22 @@ bool initialize(bool wait = false)
 {
   state.clear(STATE_WORKING);
 
+#if ENABLE_GPS
+  // start serial communication with GPS receiver
+  if (!state.check(STATE_GPS_READY)) {
+    Serial.print("GPS...");
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false)) {
+      state.set(STATE_GPS_READY);
+      Serial.println("OK");
+#if ENABLE_OLED
+      oled.println("GPS OK");
+#endif
+    } else {
+      Serial.println("NO");
+    }
+  }
+#endif
+
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
     Serial.print("MEMS...");
@@ -425,24 +432,11 @@ bool initialize(bool wait = false)
 #endif
 
 #if ENABLE_GPS
-  // start serial communication with GPS receiver
-  if (!state.check(STATE_GPS_READY)) {
-    Serial.print("GPS...");
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false)) {
-      state.set(STATE_GPS_READY);
-      Serial.println("OK");
-#if ENABLE_OLED
-      oled.println("GPS OK");
-#endif
-      // wait for movement from GPS when OBD not connected
-      if (wait && !state.check(STATE_OBD_READY)) {
-        Serial.println("Waiting...");
-        if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
-          return false;
-        }
-      }
-    } else {
-      Serial.println("NO");
+  if (wait && !state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
+    // wait for movement from GPS when OBD not connected
+    Serial.println("Waiting...");
+    if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
+      return false;
     }
   }
 #endif
@@ -547,7 +541,7 @@ bool initialize(bool wait = false)
         Serial.println("NO");
       }
       int csq = teleClient.net.getSignal();
-      if (csq > 0) {
+      if (csq > 0 && csq < 99) {
         Serial.print("CSQ:");
         Serial.print((float)csq / 10, 1);
         Serial.println("dB");
@@ -783,7 +777,7 @@ bool waitMotion(unsigned long timeout)
       }
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
-        lastMotionTime = millis();
+        //lastMotionTime = millis();
         return true;
       }
     } while (millis() - t < timeout);
@@ -980,7 +974,7 @@ void standby()
   gd = 0;
 #endif
 #if ENABLE_OBD
-  if (state.check(STATE_OBD_FOUND)) {
+  if (state.check(STATE_OBD_READY)) {
     obd.uninit();
     state.clear(STATE_OBD_READY);
   }
