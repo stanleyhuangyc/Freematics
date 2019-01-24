@@ -802,10 +802,7 @@ bool FreematicsESP32::begin(int cpuMHz)
         link = linkUART;
         for (byte n = 0; n < 5 && !(version = getVersion()); n++);
         if (version) {
-            if (version >= 13)
-                m_flags |= GNSS_USE_LINK;
-            else
-                m_flags |= GNSS_USE_HW_UART;            
+            if (version >= 13) m_flags |= GNSS_USE_LINK;
             return true;
         }
         link = 0;
@@ -818,6 +815,7 @@ bool FreematicsESP32::begin(int cpuMHz)
         link = linkSPI;
         for (byte n = 0; n < 5 && !(version = getVersion()); n++);
         if (version) {
+            m_flags |= GNSS_USE_HW_UART;            
             return true;
         }
         link = 0;
