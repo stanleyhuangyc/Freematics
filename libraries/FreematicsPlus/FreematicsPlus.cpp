@@ -450,7 +450,11 @@ void FreematicsESP32::gpsEnd()
 
 bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
 {
-    if (!link || (m_flags & GNSS_USE_HW_UART)) {
+    if (!link) m_flags &= ~GNSS_USE_LINK;
+    if (m_flags & GNSS_USE_LINK) {
+        digitalWrite(PIN_GPS_POWER, HIGH);
+        delay(100);
+    } else if (!(m_flags & GNSS_SOFT_SERIAL)) {
         uart_config_t uart_config = {
             .baud_rate = baudrate,
             .data_bits = UART_DATA_8_BITS,
@@ -470,7 +474,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         delay(100);
         // start decoding task
         taskGPS.create(gps_decode_task, "GPS", 1);
-    } else if (!(m_flags & GNSS_USE_LINK)) {
+    } else {
         pinMode(PIN_GPS_UART_RXD, INPUT);
         pinMode(PIN_GPS_UART_TXD, OUTPUT);
         setTxPinHigh();
@@ -485,13 +489,8 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         for (int i = 0; i < sizeof(packet1); i++) softSerialTx(baudrate, packet1[i]);
         delay(10);
         for (int i = 0; i < sizeof(packet2); i++) softSerialTx(baudrate, packet2[i]);
-
         // start GPS decoding task (soft serial)
         taskGPS.create(gps_soft_decode_task, "GPS", 1);
-        m_flags |= GNSS_SOFT_SERIAL;
-    } else {
-        digitalWrite(PIN_GPS_POWER, HIGH);
-        delay(100);
     }
 
     if (!(m_flags & GNSS_USE_LINK)) {
@@ -802,7 +801,10 @@ bool FreematicsESP32::begin(int cpuMHz)
         link = linkUART;
         for (byte n = 0; n < 5 && !(version = getVersion()); n++);
         if (version) {
-            if (version >= 13) m_flags |= GNSS_USE_LINK;
+            if (version >= 13)
+                m_flags |= GNSS_USE_LINK;
+            else
+                m_flags |= GNSS_SOFT_SERIAL;
             return true;
         }
         link = 0;
@@ -815,7 +817,6 @@ bool FreematicsESP32::begin(int cpuMHz)
         link = linkSPI;
         for (byte n = 0; n < 5 && !(version = getVersion()); n++);
         if (version) {
-            m_flags |= GNSS_USE_HW_UART;            
             return true;
         }
         link = 0;
