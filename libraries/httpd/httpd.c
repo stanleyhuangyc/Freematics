@@ -548,8 +548,8 @@ void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		if (!socket) continue;
 
 		// get read/write status for socket
-		bRead = FD_ISSET(socket, &fdsSelectRead);
-		bWrite = FD_ISSET(socket, &fdsSelectWrite);
+		bRead = FD_ISSET_BOOL(socket, &fdsSelectRead);
+		bWrite = FD_ISSET_BOOL(socket, &fdsSelectWrite);
 
 		if (bRead || bWrite) {
 			iRc = -1;
@@ -1112,7 +1112,7 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 
 	if (!hp->pxUrlHandler || !_mwCheckUrlHandlers(hp,phsSocket))
 		SETFLAG(phsSocket,FLAG_DATA_FILE);
-		
+
 	// set state to SENDING (actual sending will occur on next select)
 	CLRFLAG(phsSocket,FLAG_RECEIVING)
 	if (phsSocket->request.iHttpVer == 0) {
@@ -1162,7 +1162,7 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 	if (phsSocket->fp) {
 		fclose(phsSocket->fp);
 		phsSocket->fp = 0;
-		hp->stats.openedFileCount--;	
+		hp->stats.openedFileCount--;
 	}
 	if (phsSocket->request.pucPayload) {
 		free(phsSocket->request.pucPayload);
