@@ -50,7 +50,6 @@
 #define GNSS_BUFFERED 0x1
 #define GNSS_SOFT_SERIAL 0x2
 #define GNSS_USE_LINK 0x4
-#define GNSS_USE_HW_UART 0x8
 
 int readChipTemperature();
 int readChipHallSensor();
