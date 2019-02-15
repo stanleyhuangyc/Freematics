@@ -12,6 +12,9 @@
 #include <time.h>
 #include "httppil.h"
 
+
+#define	FD_ISSET_BOOL(n, p)	((FD_ISSET(n,p)) >> ((n) % NFDBITS))
+
 #ifndef min
 #define min(x,y) (x>y?y:x)
 #endif
