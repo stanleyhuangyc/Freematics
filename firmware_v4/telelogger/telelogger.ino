@@ -217,11 +217,8 @@ bool transmit()
     success = true;
   } else {
     connErrors++;
-  }
-  if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-    println(PSTR("Reconnect"));
-    net.close();
-    net.open(SERVER_HOST, SERVER_PORT);
+    print(PSTR("NET ERR:"));
+    Serial.println(connErrors);
   }
   return success;
 }
@@ -410,8 +407,7 @@ bool initialize()
 
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
-    Serial.print(net.deviceName());
-    print(PSTR("..."));
+    print(PSTR("NET..."));
     if (net.begin(&sys)) {
       println(PSTR("OK"));
       state.set(STATE_NET_READY);
@@ -422,10 +418,18 @@ bool initialize()
   }
 
 #if NET_DEVICE == NET_SIM5360
-  print(PSTR("IMEI:"));
-  Serial.println(net.IMEI);
+  // retrieve cell module info
+  char *info = net.getBuffer();
+  char IMEI[16] = {0};
+  char *p = strstr_P(info, PSTR("IMEI:"));
+  if (p) {
+    char *q = strchr(p, '\r');
+    if (q) *q = 0;
+    strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
+  }
+  Serial.println(strstr_P(info, PSTR("Rev")));
   // generate device ID  
-  uint32_t seed = atol(net.IMEI + 5);
+  uint32_t seed = atol(IMEI + 5);
   for (byte i = 0; i < 7; i++, seed >>= 5) {
     byte x = (byte)seed & 0x1f;
     if (x >= 10) {
@@ -537,14 +541,15 @@ bool initialize()
 
 void shutDownNet()
 {
-  Serial.print(net.deviceName());
+  //obd.checkConn();
+  print(PSTR("NET..."));
   net.close();
   net.end();
-  println(PSTR(" OFF"));
+  println(PSTR("OFF"));
   state.clear(STATE_NET_READY | STATE_SERVER_CONNECTED);
 }
 
-bool waitMotion(unsigned int timeout)
+bool waitMotion(long timeout)
 {
   unsigned long t = millis();
 #if MEMS_MODE
@@ -563,6 +568,7 @@ bool waitMotion(unsigned int timeout)
       }
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
+        Serial.println(motion);
         lastMotionTime = millis();
         return true;
       }
@@ -571,7 +577,7 @@ bool waitMotion(unsigned int timeout)
   }
 #endif
   do {
-    unsigned int elapsed = millis() - t;
+    long elapsed = millis() - t;
     if (elapsed >= timeout) break;
     delay(min(5000, timeout - elapsed));
   } while (obd.getVoltage() < CHARGING_VOLTAGE);
@@ -737,7 +743,7 @@ void process()
   if (stop) {
     state.clear(STATE_WORKING);
   } else {
-    unsigned int n = startTime + sendingInterval - millis();
+    long n = startTime + sendingInterval - millis();
     if (n > 0) waitMotion(n);
   }
 }
@@ -778,6 +784,12 @@ void standby()
       break;
     }
     t = millis();
+    // start ping
+    print(PSTR("Ping..."));
+    for (byte n = 0; n < 10; n++) {
+      if (obd.getVersion()) break;
+      delay(3000);
+    }
     float volts = obd.getVoltage();
     if (volts >= 6 && volts < BATTERY_LOW_VOLTAGE) {
       print(PSTR("LOW BATT:"));
@@ -791,8 +803,6 @@ void standby()
     cache.log(PID_DEVICE_TEMP, deviceTemp);
     cache.log(PID_BATTERY_VOLTAGE, (uint16_t)(volts * 100));
     cache.tailer();
-    // start ping
-    print(PSTR("Ping..."));
 #if NET_DEVICE == NET_WIFI
     if (!net.setup(WIFI_SSID, WIFI_PASSWORD))
 #else

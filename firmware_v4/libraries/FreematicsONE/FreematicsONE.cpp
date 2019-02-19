@@ -428,9 +428,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	uint32_t t = millis();
 	do {
 		while (digitalRead(SPI_PIN_READY) == HIGH) {
-			if (millis() - t > timeout) {
-				return -1;
-			}
+			if (millis() - t > timeout) return -1;
 		}
 		SPI.beginTransaction(settings);
 		digitalWrite(SPI_PIN_CS, LOW);
@@ -525,7 +523,6 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int 
 	int n = 0;
 	for (byte i = 0; i < 30 && millis() - t < timeout; i++) {
 		write(cmd);
-		//delay(1);
 		n = receive(buf, bufsize, timeout);
 		if (n == -1) {
 			t = millis();
