@@ -94,13 +94,14 @@ int incomingUDPCallback(void* _hp)
 	data = strchr(buf, '#');
 	if (!data) {
 		// invalid header
-		fprintf(stderr, "Invalid data received\n");
+		fprintf(stderr, "Invalid data received - %s\n", buf);
 		return -1;
 	}
 
 	// parse feed ID or device ID
 	*data = 0;
 	if ((int)(data - buf) > 4) {
+		devid = buf;
 		pld = findChannelByDeviceID(buf);
 		if (pld) {
 			devid = buf;
@@ -135,11 +136,11 @@ int incomingUDPCallback(void* _hp)
 			else if (!strncmp(s, "MSG=", 4)) {
 				msg = s + 4;
 			}
-			else if (!strncmp(s, "VIN=", 4)) {
-				vin = s + 4;
-			}
 			else if (!strncmp(s, "ID=", 3)) {
 				devid = s + 3;
+			}
+			else if (!strncmp(s, "VIN=", 4)) {
+				vin = s + 4;
 			}
 			else if (!strncmp(s, "SK=", 3)) {
 				key = s + 3;
@@ -182,32 +183,31 @@ int incomingUDPCallback(void* _hp)
 			if (!(pld->flags & FLAG_RUNNING) || serverTick - pld->serverDataTick > SESSION_GAP) {
 				pld->flags |= FLAG_RUNNING;
 				pld->flags &= ~FLAG_SLEEPING;
-				pld->deviceTick = deviceTick;
 				pld->proxyTick = 0;
 				pld->serverDataTick = serverTick;
-				// clear cache
-				pld->cacheReadPos = 0;
-				pld->cacheWritePos = 0;
-				// clear instance data cache
-				memset(pld->mode, 0, sizeof(pld->mode));
+				pld->sessionStartTick = serverTick;
 				// clear stats
 				pld->dataReceived = 0;
 				pld->recvCount = 0;
 				pld->elapsedTime = 0;
-				pld->topSpeed = 0;
 				printf("DEVICE LOGIN, ID:%s\n", pld->devid);
 				SaveChannels();
-				pld->sessionStartTick = serverTick;
 				id = pld->id;
 				createDataFile(pld);
 			}
 			else {
 				printf("DEVICE RE-LOGIN, ID:%s\n", pld->devid);
 			}
+			pld->deviceTick = deviceTick;
+			// clear cache
+			pld->cacheReadPos = 0;
+			pld->cacheWritePos = 0;
+			// clear instance data cache
+			memset(pld->mode, 0, sizeof(pld->mode));
 		}
 	}
 	if (!pld) {
-		fprintf(stderr, "INVALID CHANNEL\n");
+		fprintf(stderr, "INVALID CHANNEL - %s\n", buf);
 		return -1;
 	}
 
@@ -272,6 +272,10 @@ int incomingUDPCallback(void* _hp)
 		// device is going offline
 		pld->flags &= ~FLAG_RUNNING;
 		fprintf(stderr, "DEVICE LOGOUT, ID:%s\r\n", pld->devid);
+		if (pld->fp) {
+			fclose(pld->fp);
+			pld->fp = 0;
+		}
 		break;
 	case EVENT_PING:
 		fprintf(stderr, "Ping received\n");
