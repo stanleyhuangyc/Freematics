@@ -467,7 +467,7 @@ bool ClientSIM5360::begin(CFreematics* device)
   for (byte n = 0; n < 10; n++) {
     // try turning on module
     device->xbTogglePower();
-    delay(2000);
+    delay(3000);
     // discard any stale data
     device->xbPurge();
     for (byte m = 0; m < 5; m++) {
