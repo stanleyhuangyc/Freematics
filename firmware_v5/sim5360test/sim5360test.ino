@@ -16,12 +16,9 @@
 
 #include <FreematicsPlus.h>
 
-#define APN "connect"
 #define HTTP_SERVER_URL "hub.freematics.com"
 #define HTTP_SERVER_PORT 80
-#define UDP_SERVER_IP "47.74.68.134"
-#define UDP_SERVER_PORT 8081
-#define MAX_CONN_TIME 5000
+#define CONN_TIMEOUT 5000
 #define XBEE_BAUDRATE 115200
 
 typedef enum {
@@ -30,11 +27,6 @@ typedef enum {
     NET_HTTP_ERROR,
 } NET_STATES;
 
-typedef enum {
-  HTTP_GET = 0,
-  HTTP_POST,
-} HTTP_METHOD;
-
 FreematicsESP32 sys;
 
 class SIM5360 {
@@ -42,39 +34,39 @@ public:
     SIM5360() { buffer[0] = 0; }
     bool init()
     {
-      if (sendCommand("ATI\r", 50, "SIM5360")) {
-        return true;
-      }
       for (byte n = 0; n < 10; n++) {
         // try turning on module
         sys.xbTogglePower();
-        delay(2000);
+        delay(3000);
         // discard any stale data
         sys.xbPurge();
         for (byte m = 0; m < 3; m++) {
-          if (sendCommand("ATI\r", 500, "SIM5360"))
+          if (sendCommand("ATI\r", 500)) {
             return true;
+          }
         }
       }
       return false;
     }
-    bool setup(const char* apn, bool only3G = false, bool roaming = false)
+    bool setup(bool roaming = false)
     {
       uint32_t t = millis();
       bool success = false;
       sendCommand("ATE0\r");
-      if (only3G) sendCommand("AT+CNMP=14\r"); // use WCDMA only
+      //sendCommand("AT+CNMP=13\r"); // GSM only
+      //sendCommand("AT+CNMP=14\r"); // WCDMA only
+      //sendCommand("AT+CNMP=38\r"); // LTE only
       do {
         do {
-          Serial.print('.');
-          delay(500);
           success = sendCommand("AT+CPSI?\r", 1000, "Online");
+          if (strstr(buffer, "Off")) {
+            success = false;
+            break;
+          }
           if (success) {
-            if (!strstr_P(buffer, PSTR("NO SERVICE")))
+            if (!strstr(buffer, "NO SERVICE"))
               break;
             success = false;
-          } else {
-            if (strstr_P(buffer, PSTR("Off"))) break;
           }
         } while (millis() - t < 60000);
         if (!success) break;
@@ -90,20 +82,10 @@ public:
         } while (!success && millis() - t < 30000);
         if (!success) break;
 
-        do {
-          sprintf_P(buffer, PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), apn);
-          success = sendCommand(buffer);
-        } while (!success && millis() - t < 30000);
-        if (!success) break;
-
+        //sendCommand("AT+CGSOCKCONT=1,\"IP\",\"APN\"\r");
         //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
-
-        success = sendCommand("AT+CSOCKSETPN=1\r");
-        if (!success) break;
-
-        success = sendCommand("AT+CIPMODE=0\r");
-        if (!success) break;
-
+        sendCommand("AT+CSOCKSETPN=1\r");
+        sendCommand("AT+CIPMODE=0\r");
         sendCommand("AT+NETOPEN\r");
       } while(0);
       if (!success) Serial.println(buffer);
@@ -176,36 +158,6 @@ public:
         }
         return false;
     }
-    bool udpInit()
-    {
-      return sendCommand("AT+CIPOPEN=0,\"UDP\",,,8000\r", 3000);
-    }
-    bool udpSend(const char* ip, uint16_t port, const char* data, unsigned int len)
-    {
-      sprintf_P(buffer, PSTR("AT+CIPSEND=0,%u,\"%s\",%u\r"), len, ip, port);
-      if (sendCommand(buffer, 100, ">")) {
-        sys.xbWrite(data, len);
-        return sendCommand(0, 1000);
-      } else {
-        Serial.println(buffer);
-      }
-      return false;
-    }
-    char* udpReceive(int* pbytes = 0)
-    {
-      if (sendCommand(0, 3000, "+IPD")) {
-        char *p = strstr(buffer, "+IPD");
-        if (!p) return 0;
-        int len = atoi(p + 4);
-        if (pbytes) *pbytes = len;
-        p = strchr(p, '\n');
-        if (p) {
-          *(++p + len) = 0;
-          return p;
-        }
-      }
-      return 0;
-    }
     bool httpOpen()
     {
         return sendCommand("AT+CHTTPSSTART\r", 3000);
@@ -214,29 +166,29 @@ public:
     {
       sendCommand("AT+CHTTPSCLSE\r");
     }
-    bool httpConnect()
+    bool httpConnect(const char* host, unsigned int port)
     {
-        sprintf_P(buffer, PSTR("AT+CHTTPSOPSE=\"%s\",%u,1\r"), HTTP_SERVER_URL, HTTP_SERVER_PORT);
+        sprintf(buffer, "AT+CHTTPSOPSE=\"%s\",%u,1\r", host, port);
         //Serial.println(buffer);
-	      return sendCommand(buffer, MAX_CONN_TIME);
+	      return sendCommand(buffer, CONN_TIMEOUT);
     }
     unsigned int genHttpHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
     {
         // generate HTTP header
         char *p = buffer;
-        p += sprintf_P(p, PSTR("%s %s HTTP/1.1\r\nUser-Agent: ONE\r\nHost: %s\r\nConnection: %s\r\n"),
+        p += sprintf(p, "%s %s HTTP/1.1\r\nUser-Agent: ONE\r\nHost: %s\r\nConnection: %s\r\n",
           method == HTTP_GET ? "GET" : "POST", path, HTTP_SERVER_URL, keepAlive ? "keep-alive" : "close");
         if (method == HTTP_POST) {
-          p += sprintf_P(p, PSTR("Content-length: %u\r\n"), payloadSize);
+          p += sprintf(p, "Content-length: %u\r\n", payloadSize);
         }
-        p += sprintf_P(p, PSTR("\r\n\r"));
+        p += sprintf(p, "\r\n\r");
         return (unsigned int)(p - buffer);
     }
     bool httpSend(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0)
     {
       unsigned int headerSize = genHttpHeader(method, path, keepAlive, payload, payloadSize);
       // issue HTTP send command
-      sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), headerSize + payloadSize);
+      sprintf(buffer, "AT+CHTTPSSEND=%u\r", headerSize + payloadSize);
       if (!sendCommand(buffer, 100, ">")) {
         Serial.println(buffer);
         Serial.println("Connection closed");
@@ -259,13 +211,13 @@ public:
     {
         int received = 0;
         // wait for RECV EVENT
-        checkbuffer("RECV EVENT", MAX_CONN_TIME);
+        checkbuffer("RECV EVENT", CONN_TIMEOUT);
         /*
           +CHTTPSRECV:XX\r\n
           [XX bytes from server]\r\n
           \r\n+CHTTPSRECV: 0\r\n
         */
-        if (sendCommand("AT+CHTTPSRECV=384\r", MAX_CONN_TIME, "\r\n+CHTTPSRECV: 0", true)) {
+        if (sendCommand("AT+CHTTPSRECV=384\r", CONN_TIMEOUT, "\r\n+CHTTPSRECV: 0", true)) {
           char *p = strstr(buffer, "+CHTTPSRECV:");
           if (p) {
             p = strchr(p, ',');
@@ -325,7 +277,7 @@ void setup()
 {
     Serial.begin(115200);
     delay(500);
-    // this will init SPI communication
+    while (!sys.begin());
 
     // initialize SIM5360 xBee module (if present)
     Serial.print("Init SIM5360...");
@@ -338,8 +290,8 @@ void setup()
     }
     Serial.println(net.buffer);
 
-    Serial.print("Connecting network");
-    if (net.setup(APN, true)) {
+    Serial.print("Connecting network...");
+    if (net.setup()) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
@@ -366,9 +318,6 @@ void setup()
       Serial.println("dB");
     }
 
-    Serial.print("Init UDP...");
-    Serial.println(net.udpInit() ? "OK" : "NO");
-
     Serial.print("Init HTTP...");
     if (net.httpOpen()) {
       Serial.println("OK");
@@ -383,36 +332,16 @@ void loop()
     net.httpClose();
     netState = NET_DISCONNECTED;
     if (errors > 3) {
-      // re-initialize 3G module
+      // re-initialize cellular module
       setup();
       errors = 0;
     }
   }
 
-  // send and receive UDP datagram
-  Serial.print("Sending UDP datagram...");
-  uint32_t t = millis();
-  char buf[16];
-  int len = sprintf(buf, "%lu", t);
-  if (net.udpSend(UDP_SERVER_IP, UDP_SERVER_PORT, buf, len))
-    Serial.println("OK");
-  else
-    Serial.println("failed");
-  char *data = net.udpReceive(&len);
-  if (data) {
-    Serial.print(len);
-    Serial.print(" bytes UDP datagram received [");
-    Serial.print(data);
-    Serial.print("] in ");
-    Serial.print(millis() - t);
-    Serial.println("ms");
-  }
-
   // connect to HTTP server
   if (netState != NET_CONNECTED) {
     Serial.println("Connecting...");
-    sys.xbPurge();
-    if (!net.httpConnect()) {
+    if (!net.httpConnect(HTTP_SERVER_URL, HTTP_SERVER_PORT)) {
       Serial.println("Error connecting");
       Serial.println(net.buffer);
       errors++;
@@ -422,7 +351,7 @@ void loop()
 
   // send HTTP request
   Serial.print("Sending HTTP request...");
-  if (!net.httpSend(HTTP_GET, "/test", true)) {
+  if (!net.httpSend(HTTP_GET, "/hub/api/test", true)) {
     Serial.println("failed");
     net.httpClose();
     errors++;
@@ -433,11 +362,11 @@ void loop()
   }
 
   Serial.print("Receiving...");
-  char *payload;
-  if (net.httpReceive(&payload)) {
+  char *response;
+  if (net.httpReceive(&response)) {
     Serial.println("OK");
     Serial.println("-----HTTP RESPONSE-----");
-    Serial.println(payload);
+    Serial.println(response);
     Serial.println("-----------------------");
     netState = NET_CONNECTED;
     errors = 0;
