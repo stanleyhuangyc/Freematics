@@ -1,9 +1,7 @@
 /******************************************************************************
-* Sample testing sketch for SIM5360 (WCDMA/GSM) module in Freematics ONE+
-* Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
-* Distributed under BSD license
-* Visit http://freematics.com/products/freematics-one for hardware information
-* To obtain your Freematics Hub server key, contact support@freematics.com.au
+* Simple testing sketch for SIM7600 module in Freematics ONE+
+* https://freematics.com/products/freematics-one-plus/
+* Developed by Stanley Huang, distributed under BSD license
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -41,7 +39,7 @@ public:
         // discard any stale data
         sys.xbPurge();
         for (byte m = 0; m < 3; m++) {
-          if (sendCommand("ATI\r", 500)) {
+          if (sendCommand("ATE0\r") && sendCommand("ATI\r", 500)) {
             return true;
           }
         }
@@ -52,7 +50,6 @@ public:
     {
       uint32_t t = millis();
       bool success = false;
-      sendCommand("ATE0\r");
       //sendCommand("AT+CNMP=13\r"); // GSM only
       //sendCommand("AT+CNMP=14\r"); // WCDMA only
       //sendCommand("AT+CNMP=38\r"); // LTE only
