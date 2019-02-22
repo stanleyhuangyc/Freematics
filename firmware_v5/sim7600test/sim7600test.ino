@@ -21,9 +21,8 @@
 
 FreematicsESP32 sys;
 
-class SIM5360 {
+class SIM7600 {
 public:
-    SIM5360() { buffer[0] = 0; }
     bool init()
     {
       for (byte n = 0; n < 10; n++) {
@@ -207,10 +206,10 @@ public:
         return false;
       }
     }
-    char buffer[512];
+    char buffer[512] = {0};
 };
 
-SIM5360 net;
+SIM7600 net;
 int errors = 0;
 
 void setup()
@@ -271,22 +270,14 @@ void loop()
     }
   }
 
-  // connect to HTTP server
-    if (!net.httpConnect(HTTP_SERVER_URL, HTTP_SERVER_PORT)) {
-      Serial.println("Error connecting");
-      Serial.println(net.buffer);
-      errors++;
-      return;
-    }
-
   // send HTTP request
   Serial.print("Sending HTTP request...");
-  if (!net.httpSend(HTTP_GET, "/hub/api/test", true)) {
+  if (net.httpConnect(HTTP_SERVER_URL, HTTP_SERVER_PORT) && net.httpSend(HTTP_GET, "/hub/api/test", true)) {
+    Serial.println("OK");
+  } else {
     Serial.println("failed");
     errors++;
     return;
-  } else {
-    Serial.println("OK");
   }
 
   Serial.print("Receiving...");
