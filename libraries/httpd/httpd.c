@@ -415,7 +415,6 @@ void _mwInitSocketData(HttpSocket *phsSocket)
 	phsSocket->bufferSize = HTTP_BUFFER_SIZE;
 	phsSocket->handler = NULL;
 	phsSocket->mimeType = NULL;
-	phsSocket->reqCount = 0;
 }
 
 static int _mwGetConnFromIP(HttpParam* hp, IPADDR ip)
@@ -706,12 +705,14 @@ int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateT
 	if (phsSocket->request.iCSeq) {
 		p += snprintf(p, end - p, "CSeq: %d\r\n", phsSocket->request.iCSeq);
 	}
-	p+=snprintf(p, end - p, "Content-Type: %s\r\n", phsSocket->mimeType ? phsSocket->mimeType : contentTypeTable[phsSocket->response.fileType]);
-	if (phsSocket->request.startByte) {
-		p+=snprintf(p, end - p,"Content-Range: bytes %u-%u/*\r\n",
-		phsSocket->request.startByte, phsSocket->response.contentLength);
+	if (phsSocket->response.contentLength > 0) {
+		p += snprintf(p, end - p, "Content-Type: %s\r\n", phsSocket->mimeType ? phsSocket->mimeType : contentTypeTable[phsSocket->response.fileType]);
+		if (phsSocket->request.startByte) {
+			p += snprintf(p, end - p, "Content-Range: bytes %u-%u/*\r\n",
+				phsSocket->request.startByte, phsSocket->response.contentLength);
+		}
 	}
-	if (!ISFLAGSET(phsSocket, FLAG_CHUNK | FLAG_DATA_STREAM)) {
+	if (!(phsSocket->flags & FLAG_CHUNK)) {
 		p+=snprintf(p, end - p,"Content-Length: %u\r\n", phsSocket->response.contentLength);
 	} else {
 		p += sprintf(p, "Transfer-Encoding: chunked\r\n");
@@ -959,7 +960,7 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 					phsSocket->ptr=up.pucBuffer;	//keep the pointer which will be used to free memory later
 				}
 			} else if (ret & FLAG_DATA_STREAM) {
-				SETFLAG(phsSocket, FLAG_DATA_STREAM | FLAG_CONN_CLOSE);
+				SETFLAG(phsSocket, FLAG_DATA_STREAM);
 				phsSocket->pucData = up.pucBuffer;
 				phsSocket->contentLength = up.contentLength;
 				phsSocket->response.contentLength = 0;
@@ -1093,6 +1094,7 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 	}
 
 	hp->stats.reqCount++;
+	phsSocket->reqCount++;
 
 	if (hp->pxAuthHandler != NULL) {
 		int ret = _mwBasicAuthorizationHandlers(hp, phsSocket);
@@ -1107,8 +1109,6 @@ int _mwProcessReadSocket(HttpParam* hp, HttpSocket* phsSocket)
 			return 0;
 		}
 	}
-
-	phsSocket->reqCount++;
 
 	if (!hp->pxUrlHandler || !_mwCheckUrlHandlers(hp,phsSocket))
 		SETFLAG(phsSocket,FLAG_DATA_FILE);
@@ -1195,6 +1195,7 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
 		return;
 	}
 	closesocket(phsSocket->socket);
+	phsSocket->reqCount = 0;
 	hp->stats.clientCount--;
 	SYSLOG(LOG_INFO,"[%d] Socket closed, %u connections\n",phsSocket->socket, hp->stats.clientCount);
 	phsSocket->socket = 0;
