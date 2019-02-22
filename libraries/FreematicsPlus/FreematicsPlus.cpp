@@ -445,12 +445,11 @@ void FreematicsESP32::gpsEnd()
     }
 	//turn off GPS power
     digitalWrite(PIN_GPS_POWER, LOW);
-    m_flags &= ~(GNSS_SOFT_SERIAL | GNSS_BUFFERED);
 }
 
 bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
 {
-    if (!link) m_flags &= ~GNSS_USE_LINK;
+    if (!link && (m_flags & GNSS_USE_LINK)) return false;
     if (m_flags & GNSS_USE_LINK) {
         digitalWrite(PIN_GPS_POWER, HIGH);
         delay(100);
@@ -506,7 +505,6 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
                 memset(gpsData, 0, sizeof(GPS_DATA));
                 if (buffered) {
                     if (!nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
-                    m_flags |= GNSS_BUFFERED;
                 } 
                 nmeaBytes = 0;
                 return true;

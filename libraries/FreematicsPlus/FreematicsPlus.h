@@ -47,9 +47,8 @@
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
 
-#define GNSS_BUFFERED 0x1
-#define GNSS_SOFT_SERIAL 0x2
-#define GNSS_USE_LINK 0x4
+#define GNSS_SOFT_SERIAL 0x1
+#define GNSS_USE_LINK 0x2
 
 int readChipTemperature();
 int readChipHallSensor();
