@@ -591,6 +591,7 @@ bool initialize(bool wait = false)
 #endif
 
   teleClient.connect();
+  teleClient.startTime = millis();
   connErrors = 0;
 
   // check system time
@@ -974,11 +975,11 @@ void standby()
   gd = 0;
 #endif
 #if ENABLE_OBD
-  if (state.check(STATE_OBD_READY)) {
-    obd.uninit();
+if (state.check(STATE_OBD_READY)) {
+    obd.reset();
+    obd.enterLowPowerMode();
     state.clear(STATE_OBD_READY);
   }
-  obd.enterLowPowerMode();
 #endif
   state.set(STATE_STANDBY);
   Serial.println("STANDBY");
