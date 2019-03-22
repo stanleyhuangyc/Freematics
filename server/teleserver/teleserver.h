@@ -118,9 +118,8 @@ typedef struct {
 	uint32_t dataReceived; /* bytes */
 	uint32_t elapsedTime; /* seconds */
 	uint16_t csq;
-	uint8_t topSpeed; /* km/h */
+	uint8_t unused;
 	uint8_t deviceTemp;
-	uint32_t distance;
 	float sampleRate;
 	char vin[20];
 	char devid[32];

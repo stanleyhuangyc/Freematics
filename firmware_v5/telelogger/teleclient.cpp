@@ -120,6 +120,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
 bool TeleClientUDP::connect()
 {
   byte event = login ? EVENT_RECONNECT : EVENT_LOGIN;
+  bool success = false;
   // connect to telematics server
   for (byte attempts = 0; attempts < 5; attempts++) {
     Serial.print(event == EVENT_LOGIN ? "LOGIN(" : "RECONNECT(");
@@ -135,19 +136,19 @@ bool TeleClientUDP::connect()
     // log in or reconnect to Freematics Hub
     if (!notify(event)) {
       net.close();
-      Serial.println("Server timeout");
+      Serial.println("server timeout");
       delay(1000);
       continue;
     }
     Serial.println("OK");
-
-    Serial.print("FEED ID:");
-    Serial.println(feedid);
-
-    startTime = lastSyncTime = millis();
-    return true;
+    success = true;
+    break;
   }
-  return false;
+  startTime = millis();
+  if (success) {
+    lastSyncTime = startTime;
+  }
+  return success;
 }
 
 bool TeleClientUDP::ping()
@@ -217,7 +218,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
     int bytes = 0;
     char* resp = net.receive(&bytes, 3000);
     if (resp) {
-      if (strstr(resp, "200 OK")) {
+      if (strstr(resp, " 200 ")) {
         // successful
         lastSyncTime = millis();
         rxBytes += bytes;
@@ -235,7 +236,6 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   if (net.state() != HTTP_CONNECTED) {
     // reconnect if disconnected
     if (!connect()) {
-      Serial.println("Error connecting to HTTP server");
       return false;
     }
   }
@@ -271,18 +271,12 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 
 bool TeleClientHTTP::connect()
 {
-  Serial.print("Connecting ");
-  Serial.print(SERVER_HOST);
-  Serial.print(':');
-  Serial.print(SERVER_PORT);
-  Serial.print("...");
   // connect to HTTP server
   if (!net.open(SERVER_HOST, SERVER_PORT)) {
-    Serial.println("NO");
+    Serial.println("Error connecting to server");
     return false;
   }
-  Serial.println("OK");
-  startTime = lastSyncTime = millis();
+  lastSyncTime = millis();
   return true;
 }
 

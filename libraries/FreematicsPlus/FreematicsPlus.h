@@ -47,10 +47,8 @@
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
 
-#define GNSS_BUFFERED 0x1
-#define GNSS_SOFT_SERIAL 0x2
-#define GNSS_USE_LINK 0x4
-#define GNSS_USE_HW_UART 0x8
+#define GNSS_SOFT_SERIAL 0x1
+#define GNSS_USE_LINK 0x2
 
 int readChipTemperature();
 int readChipHallSensor();
@@ -89,8 +87,6 @@ public:
 	int receive(char* buffer, int bufsize, unsigned int timeout);
 	// write data to SPI
 	void send(const char* str);
-  // get co-processor version
-  byte getVersion();
   // change serial baudrate
   bool changeBaudRate(unsigned int baudrate);
 };
@@ -103,8 +99,6 @@ public:
 	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout);
 	// receive data from SPI
 	int receive(char* buffer, int bufsize, unsigned int timeout);
-  // get co-processor version
-  byte getVersion();
 	// write data to SPI
 	void send(const char* str);
 private:
@@ -139,6 +133,12 @@ public:
   void xbPurge();
   // toggle xBee module power
   void xbTogglePower();
+	// get co-processor version
+	byte getVersion();
+	// co-processor firmware version number
+	byte version = 0;
+	// co-processor link
+	CLink *link = 0;
 private:
   byte m_flags = 0;
 };

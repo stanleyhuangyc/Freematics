@@ -391,15 +391,13 @@ bool UDPClientSIM5360::begin(CFreematics* device)
   do {
     // try turning on module
     device->xbTogglePower();
-    delay(2000);
+    delay(3000);
     // discard any stale data
-    //device->xbPurge();
-    for (byte m = 0; m < 5; m++) {
-      if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
+    device->xbPurge();
+    sendCommand("AT\r");
+    for (byte m = 0; m < 3; m++) {
+      if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         m_stage = 2;
-        // retrieve module info
-        char *p = strstr_P(m_buffer, PSTR("IMEI:"));
-        if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
         return true;
       }
     }
@@ -409,12 +407,10 @@ bool UDPClientSIM5360::begin(CFreematics* device)
 
 void UDPClientSIM5360::end()
 {
-  bool success = sendCommand("AT+CRESET\r");
+  sendCommand("AT+CRESET\r");
   sendCommand("AT+GPS=0\r");
-  if (m_stage == 2 || success) {
-    m_device->xbTogglePower();
-    m_stage = 1;
-  }
+  sendCommand("AT+CPOF\r");
+  m_stage = 1;
   if (m_gps) {
     delete m_gps;
     m_gps = 0;

@@ -42,9 +42,9 @@
 #define SERVER_SYNC_INTERVAL 180 /* seconds, 0 to disable */
 // data interval configurations
 #define DATA_INTERVAL 1000 /* ms */
-#define STATIONARY_TIME_TABLE {30, 180} /* seconds */
-#define SENDING_INTERVAL_TABLE {1, 5} /* seconds */
-#define PING_BACK_INTERVAL 600 /* seconds */
+#define STATIONARY_TIME_TABLE {10, 30, 180} /* seconds */
+#define SENDING_INTERVAL_TABLE {2, 5, 10} /* seconds */
+#define PING_BACK_INTERVAL 900 /* seconds */
 
 /**************************************
 * MEMS motion sensors
@@ -66,7 +66,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define CHARGING_VOLTAGE 13.4f /* V */
+#define CHARGING_VOLTAGE 14.0f /* V */
 #define BATTERY_LOW_VOLTAGE 11.5f /* V */
 #define RESET_AFTER_WAKEUP 0
 

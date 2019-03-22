@@ -467,7 +467,7 @@ bool ClientSIM5360::begin(CFreematics* device)
   for (byte n = 0; n < 10; n++) {
     // try turning on module
     device->xbTogglePower();
-    delay(2000);
+    delay(3000);
     // discard any stale data
     device->xbPurge();
     for (byte m = 0; m < 5; m++) {
@@ -495,12 +495,11 @@ bool ClientSIM5360::begin(CFreematics* device)
 
 void ClientSIM5360::end()
 {
-  bool success = sendCommand("AT+CRESET\r");
+  sendCommand("AT+CRESET\r");
   sendCommand("AT+GPS=0\r");
-  if (m_stage == 2 || success) {
-    m_device->xbTogglePower();
-    m_stage = 1;
-  }
+  delay(1000);
+  sendCommand("AT+CPOF\r");
+  m_stage = 1;
   if (m_gps) {
     delete m_gps;
     m_gps = 0;
@@ -843,6 +842,69 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
     return 0;
   } else {
     m_state = HTTP_CONNECTED;
+    if (pbytes) *pbytes = received;
+    return payload;
+  }
+}
+
+bool HTTPClientSIM7600::open(const char* host, uint16_t port)
+{
+  sprintf(m_buffer, "AT+CHTTPACT=\"%s\",%u\r", host, port);
+  if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT, "+CHTTPACT: REQUEST")) {
+    m_state = HTTP_CONNECTED;
+    return true;
+  } else {
+    m_state = HTTP_ERROR;
+    return false;
+  }
+}
+
+void HTTPClientSIM7600::close()
+{
+  m_state = HTTP_DISCONNECTED;
+}
+
+int HTTPClientSIM7600::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+{
+  // send HTTP header
+  int headerSize = genHeader(m_buffer, method, path, keepAlive, payload, payloadSize);
+  m_device->xbWrite(m_buffer);
+  // send POST payload if any
+  if (payload) m_device->xbWrite(payload);
+  m_buffer[0] = 0;
+  if (sendCommand("\x1A")) {
+    m_state = HTTP_SENT;
+    return headerSize + payloadSize;
+  } else {
+    Serial.println(m_buffer);
+    m_state = HTTP_ERROR;
+    return -1;
+  }
+}
+
+char* HTTPClientSIM7600::receive(int* pbytes, unsigned int timeout)
+{
+  int received = 0;
+  char* payload = 0;
+  bool success = sendCommand(0, HTTP_CONN_TIMEOUT, "\r\n+CHTTPACT: 0");
+  checkGPS();
+  if (success) {
+    char *p = strstr(m_buffer, "\r\n+CHTTPACT: DATA,");
+    if (p) {
+      p += 18;
+      received = atoi(p);
+      char *q = strchr(p, '\n');
+      payload = q ? (q + 1) : p;
+      if (m_buffer + sizeof(m_buffer) - payload > received) {
+        payload[received] = 0;
+      }
+    }
+  }
+  if (received == 0) {
+    m_state = HTTP_ERROR;
+    return 0;
+  } else {
+    m_state = HTTP_DISCONNECTED;
     if (pbytes) *pbytes = received;
     return payload;
   }

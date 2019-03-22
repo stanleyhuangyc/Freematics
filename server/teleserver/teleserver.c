@@ -252,6 +252,8 @@ FILE* createDataFile(CHANNEL_DATA* pld)
 		mkdir(filename, 0755);
 		n += snprintf(filename + n, sizeof(filename) - n, "/%02u", btm->tm_mon + 1);
 		mkdir(filename, 0755);
+		n += snprintf(filename + n, sizeof(filename) - n, "/%02u", btm->tm_mday);
+		mkdir(filename, 0755);
 		n += snprintf(filename + n, sizeof(filename) - n, "/%04u%02u%02u%02u%02u%02u.txt",
 			btm->tm_year + 1900,
 			btm->tm_mon + 1,
@@ -269,19 +271,19 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 {
 	uint64_t tick = GetTickCount64();
 	uint32_t interval = (uint32_t)(tick - pld->serverDataTick);
+	if (!pld->fp && (pld->flags & FLAG_RUNNING)) {
+		createDataFile(pld);
+	}
 	// save data to log file
 	if (pld->fp) {
+		/*
 		if (interval > SESSION_GAP) {
 			fprintf(stderr, "Trip timed out. Create a new trip file.\n");
 			createDataFile(pld);
 		}
+		*/
 		fprintf(pld->fp, "%s\n", payload);
 	}
-	else {
-		createDataFile(pld);
-	}
-
-	//fprintf(stderr, "%s\n", payload);
 
 	char *p = payload;
 	uint32_t ts = 0;
@@ -317,15 +319,7 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 			pld->mode[m][index].ts = ts;
 			memcpy(pld->mode[m][index].data, value, len + 1);
 			// collect some stats
-			int ival;
 			switch (pid) {
-			case 0x10D: /* SPEED */
-				ival = atoi(value);
-				if (ival > pld->topSpeed) pld->topSpeed = ival;
-				break;
-			case PID_TRIP_DISTANCE:
-				pld->distance = atoi(value);
-				break;
 			case PID_CSQ: /* signal strength */
 				pld->csq = atoi(value);
 				break;
@@ -358,10 +352,15 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 
 	pld->recvCount++;
 	if (pld->flags & FLAG_RUNNING) {
-		if (interval) pld->sampleRate = (float)count * 60000 / interval;
+		if (interval > 10) pld->sampleRate = (float)count * 60000 / interval;
 		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
 		pld->serverDataTick = tick;
 	} else if (!(pld->flags & FLAG_SLEEPING)) {
+		if (interval < 60000) {
+			// this happens when login event not received
+			pld->flags |= FLAG_RUNNING;
+			pld->sessionStartTick = pld->serverDataTick;
+		}
 		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
 		pld->serverDataTick = tick;		
 	}
@@ -526,7 +525,7 @@ CHANNEL_DATA* locateChannel(UrlHandlerParam* param)
 
 int uhChannelsXML(UrlHandlerParam* param)
 {
-	int stats = mwGetVarValueInt(param->pxVars, "stats", 0);
+	int extend = mwGetVarValueInt(param->pxVars, "extend", 0);
 	uint64_t tick = GetTickCount64();
 	/*
 	fprintf(getLogFile(), "%u.%u.%u.%u request channels XML\n",
@@ -538,20 +537,20 @@ int uhChannelsXML(UrlHandlerParam* param)
 	for (int n = 0; n < MAX_CHANNELS; n++) {
 		CHANNEL_DATA* pld = ld + n;
 		if (pld->id) {
-			p += sprintf(p, "<channel id=\"%u\" devid=\"%s\" recv=\"%u\" rate=\"%u\" tick=\"%u\" elapsed=\"%u\" distance=\"%u\" age=\"%u\" parked=\"%u\" csq=\"%d\"",
-				pld->id, pld->devid, pld->dataReceived, (unsigned int)pld->sampleRate, pld->deviceTick, pld->elapsedTime, pld->distance,
+			p += sprintf(p, "<channel id=\"%u\" devid=\"%s\" recv=\"%u\" rate=\"%u\" tick=\"%u\" elapsed=\"%u\" age=\"%u\" parked=\"%u\" csq=\"%d\"",
+				pld->id, pld->devid, pld->dataReceived, (unsigned int)pld->sampleRate, pld->deviceTick, pld->elapsedTime, 
 				(int)(tick - pld->serverDataTick), (pld->flags & FLAG_RUNNING) ? 0 : 1, pld->csq);
 
-			if (pld->ip.laddr) {
-				p += sprintf(p, " ip=\"%u.%u.%u.%u\"", pld->ip.caddr[3], pld->ip.caddr[2], pld->ip.caddr[1], pld->ip.caddr[0]);
-			}
-			else {
-				p += sprintf(p, " ip=\"%s\"", inet_ntoa(pld->udpPeer.sin_addr));
-			}
-
-			if (stats) {
-				p += sprintf(p, "><cache size=\"%u\" read=\"%u\" write=\"%u\"/>\n</channel>\n",
+			if (extend) {
+				if (*pld->vin) p += sprintf(p, "<vin>%s</vin>", pld->vin);
+				p += sprintf(p, "><cache size=\"%u\" read=\"%u\" write=\"%u\"/></channel>\n",
 					pld->cacheSize, pld->cacheReadPos, pld->cacheWritePos);
+				if (pld->ip.laddr) {
+					p += sprintf(p, "<ip>%u.%u.%u.%u</ip>", pld->ip.caddr[3], pld->ip.caddr[2], pld->ip.caddr[1], pld->ip.caddr[0]);
+				}
+				else {
+					p += sprintf(p, "<ip>%s</ip>", inet_ntoa(pld->udpPeer.sin_addr));
+				}
 			}
 			else {
 				p += sprintf(p, "/>\n");
@@ -577,6 +576,7 @@ int uhChannels(UrlHandlerParam* param)
 	int n = 0;
 	const char *cmd = mwGetVarValue(param->pxVars, "cmd", 0);
 	int data = mwGetVarValueInt(param->pxVars, "data", 0);
+	int extend = mwGetVarValueInt(param->pxVars, "extend", 0);
 	int id = mwGetVarValueInt(param->pxVars, "id", 0);
 	unsigned int refresh = mwGetVarValueInt(param->pxVars, "refresh", MAX_CHANNEL_AGE);
 	const char *devid = mwGetVarValue(param->pxVars, "devid", 0);
@@ -617,15 +617,21 @@ int uhChannels(UrlHandlerParam* param)
 				removeChannel(pld);
 				continue;
 			}
-			l += snprintf(buf + l, bs - l, "\n{\"id\":\"%u\",\"devid\":\"%s\",\"recv\":%u,\"rate\":%u,\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"parked\":%u,\"sleeping\":%u,\"csq\":%d",
+			l += snprintf(buf + l, bs - l, "\n{\"id\":\"%u\",\"devid\":\"%s\",\"recv\":%u,\"rate\":%u,\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"parked\":%u,\"sleeping\":%u",
 				pld->id, pld->devid, pld->dataReceived, (unsigned int)pld->sampleRate, pld->serverDataTick, pld->deviceTick, pld->elapsedTime,
-				age, pingage, (pld->flags & FLAG_RUNNING) ? 0 : 1, (pld->flags & FLAG_SLEEPING) ? 0 : 1, pld->csq);
+				age, pingage, (pld->flags & FLAG_RUNNING) ? 0 : 1, (pld->flags & FLAG_SLEEPING) ? 0 : 1);
 
-			if (pld->ip.laddr) {
-				l += snprintf(buf + l, bs - l, ",\"ip\":\"%u.%u.%u.%u\"", pld->ip.caddr[3], pld->ip.caddr[2], pld->ip.caddr[1], pld->ip.caddr[0]);
-			}
-			else {
-				l += snprintf(buf + l, bs - l, ",\"ip\":\"%s\"", inet_ntoa(pld->udpPeer.sin_addr));
+			if (extend) {
+				if (*pld->vin) {
+					l += snprintf(buf + l, bs - l, ",\"vin\":\"%s\"", pld->vin);
+				}
+				if (pld->ip.laddr) {
+					l += snprintf(buf + l, bs - l, ",\"ip\":\"%u.%u.%u.%u\"", pld->ip.caddr[3], pld->ip.caddr[2], pld->ip.caddr[1], pld->ip.caddr[0]);
+				}
+				else {
+					l += snprintf(buf + l, bs - l, ",\"ip\":\"%s\"", inet_ntoa(pld->udpPeer.sin_addr));
+				}
+				l += snprintf(buf + l, bs - l, ",\"csq\":\"%d\"", pld->csq);
 			}
 
 			if (data) {
@@ -688,7 +694,6 @@ CHANNEL_DATA* assignChannel(const char* devid)
 	pld->dataReceived = 0;
 	pld->elapsedTime = 0;
 	//pld->deviceTick = GetTickCount64();
-	pld->topSpeed = 0;
 	pld->serverDataTick = GetTickCount64();
 	if (!(pld->flags & FLAG_RUNNING) || pld->serverDataTick - pld->serverDataTick > SESSION_GAP) {
 		pld->flags |= FLAG_RUNNING;
@@ -797,8 +802,15 @@ int uhPull(UrlHandlerParam* param)
 	uint32_t readPos = pld->cacheReadPos;
 	uint64_t begin = 0;
 	uint64_t end = 0;
+	int bytesMargin = bytes;
+	uint32_t lastts = 0;
 	for (; readPos != pld->cacheWritePos; readPos = (readPos + 1) % pld->cacheSize) {
 		CACHE_DATA *d = pld->cache + readPos;
+		if (d->ts < lastts) {
+			// timestamp looping or device reset detected, wipe out all previous data
+			bytes = bytesMargin;
+		}
+		lastts = d->ts;
 		if (d->ts >= startts) {
 			if (endts && d->ts >= endts) break;
 			if (bytes + d->len + 64 > bufsize) {

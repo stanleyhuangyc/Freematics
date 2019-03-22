@@ -192,6 +192,11 @@ class UDPClientSIM7600 : public UDPClientSIM5360
 {
 };
 
-class HTTPClientSIM7600 : public HTTPClientSIM5360
+class HTTPClientSIM7600 : public HTTPClient, public ClientSIM5360
 {
+public:
+    bool open(const char* host, uint16_t port);
+    void close();
+    int send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };

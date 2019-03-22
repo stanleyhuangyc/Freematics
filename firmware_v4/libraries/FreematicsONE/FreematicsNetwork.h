@@ -38,7 +38,6 @@ public:
     virtual bool send(const char* data, unsigned int len) = 0;
     virtual char* receive(int* pbytes, unsigned int timeout) = 0;
     virtual bool getLocation(NET_LOCATION* loc) { return false; }
-    virtual const char* deviceName() = 0;
 };
 
 class UDPClientESP8266AT
@@ -54,7 +53,6 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     char* getBuffer() { return buffer; }
-    const char* deviceName() { return "ESP8266-AT"; }
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "OK");
     char* rxBuf = 0;
@@ -79,7 +77,6 @@ public:
     bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
     char* getBuffer() { return m_buffer; }
-    const char* deviceName() { return "SIM800"; }
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
     char* checkIncoming(int* pbytes);
@@ -102,16 +99,14 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     char* getBuffer() { return m_buffer; }
-    const char* deviceName() { return "SIM5360"; }
     GPS_LOCATION* getLocation() { return m_gps; }
-    char IMEI[16] = {0};
 private:
     // send command and check for expected response 
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
     char* checkIncoming(char* ipd, int* pbytes);
     long parseDegree(const char* s);
     void checkGPS();
-    char m_buffer[128] = {0};
+    char m_buffer[160] = {0};
     byte udpIP[4] = {0};
     uint16_t udpPort = 0;
     uint8_t m_stage = 0;

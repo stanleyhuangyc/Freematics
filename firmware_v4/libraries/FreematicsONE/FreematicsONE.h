@@ -155,10 +155,10 @@ public:
 	float getVoltage();
 	// get VIN as a string, buffer length should be >= OBD_RECV_BUF_SIZE
 	bool getVIN(char* buffer, int bufsize);
-	// send query for specified PID
-	void sendQuery(byte pid);
 	// determine if the PID is supported
 	bool isValidPID(byte pid);
+	// enter low power mode
+	void lowPowerMode();
 	// get firmware version
 	byte getVersion();
 	// set current PID mode
