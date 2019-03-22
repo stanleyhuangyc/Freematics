@@ -33,12 +33,11 @@ void setup() {
   // initializations
   while (!sys.begin());
   Serial.print("Firmware: V");
-  Serial.println(sys.link->version);
+  Serial.println(sys.version);
   obd.begin(sys.link);
 }
 
 void loop() {
-  uint32_t ts = millis();
   digitalWrite(PIN_LED, HIGH);
   // put your main code here, to run repeatedly:
   if (!connected) {

@@ -277,7 +277,7 @@ bool processGPS()
   cache.logFloat(PID_GPS_LONGITUDE, gd->lng);
   cache.log(PID_GPS_ALTITUDE, gd->alt); /* m */
   float kph = gd->speed * 1.852f;
-  if (kph >= 1) lastMotionTime = millis();
+  if (kph >= 2) lastMotionTime = millis();
   cache.log(PID_GPS_SPEED, kph);
   cache.log(PID_GPS_HEADING, gd->heading);
   cache.log(PID_GPS_SAT_COUNT, gd->sat);
@@ -318,7 +318,7 @@ bool waitMotionGPS(int timeout)
   unsigned long t = millis();
   lastMotionTime = 0;
   do {
-    delay(100);
+    delay(200);
     cache.purge();
     if (!processGPS()) continue;
     if (lastMotionTime) return true;
@@ -343,15 +343,6 @@ void processMEMS()
 #endif
     deviceTemp /= 10;
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
-    // calculate instant motion
-    float motion = 0;
-    for (byte i = 0; i < 3; i++) {
-      float m = (acc[i] - accBias[i]);
-      motion += m * m;
-    }
-    if (motion > MOTION_THRESHOLD * MOTION_THRESHOLD) {
-      lastMotionTime = millis();
-    }
 }
 
 void calibrateMEMS()
@@ -390,6 +381,22 @@ bool initialize(bool wait = false)
 {
   state.clear(STATE_WORKING);
 
+#if ENABLE_GPS
+  // start serial communication with GPS receiver
+  if (!state.check(STATE_GPS_READY)) {
+    Serial.print("GPS...");
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false)) {
+      state.set(STATE_GPS_READY);
+      Serial.println("OK");
+#if ENABLE_OLED
+      oled.println("GPS OK");
+#endif
+    } else {
+      Serial.println("NO");
+    }
+  }
+#endif
+
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
     Serial.print("MEMS...");
@@ -425,24 +432,11 @@ bool initialize(bool wait = false)
 #endif
 
 #if ENABLE_GPS
-  // start serial communication with GPS receiver
-  if (!state.check(STATE_GPS_READY)) {
-    Serial.print("GPS...");
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false)) {
-      state.set(STATE_GPS_READY);
-      Serial.println("OK");
-#if ENABLE_OLED
-      oled.println("GPS OK");
-#endif
-      // wait for movement from GPS when OBD not connected
-      if (wait && !state.check(STATE_OBD_READY)) {
-        Serial.println("Waiting...");
-        if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
-          return false;
-        }
-      }
-    } else {
-      Serial.println("NO");
+  if (wait && !state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
+    // wait for movement from GPS when OBD not connected
+    Serial.println("Waiting...");
+    if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
+      return false;
     }
   }
 #endif
@@ -472,6 +466,7 @@ bool initialize(bool wait = false)
       Serial.print("IMEI:");
       Serial.println(teleClient.net.IMEI);
 #endif
+      state.set(STATE_NET_READY);
 #if ENABLE_OLED
       oled.print(teleClient.net.deviceName());
       oled.println(" OK\r");
@@ -546,7 +541,7 @@ bool initialize(bool wait = false)
         Serial.println("NO");
       }
       int csq = teleClient.net.getSignal();
-      if (csq > 0) {
+      if (csq > 0 && csq < 99) {
         Serial.print("CSQ:");
         Serial.print((float)csq / 10, 1);
         Serial.println("dB");
@@ -596,6 +591,7 @@ bool initialize(bool wait = false)
 #endif
 
   teleClient.connect();
+  teleClient.startTime = millis();
   connErrors = 0;
 
   // check system time
@@ -782,7 +778,7 @@ bool waitMotion(unsigned long timeout)
       }
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
-        lastMotionTime = millis();
+        //lastMotionTime = millis();
         return true;
       }
     } while (millis() - t < timeout);
@@ -979,8 +975,9 @@ void standby()
   gd = 0;
 #endif
 #if ENABLE_OBD
-  if (state.check(STATE_OBD_FOUND)) {
-    obd.uninit();
+if (state.check(STATE_OBD_READY)) {
+    obd.reset();
+    obd.enterLowPowerMode();
     state.clear(STATE_OBD_READY);
   }
 #endif
@@ -1001,6 +998,9 @@ void standby()
 #endif
     if (waitMotion(1000L * PING_BACK_INTERVAL)) {
       // to wake up
+#if ENABLE_OBD
+      obd.leaveLowPowerMode();
+#endif
       state.clear(STATE_STANDBY);
       break;
     }
@@ -1105,9 +1105,9 @@ void showSysInfo()
   Serial.print(ESP.getCpuFreqMHz());
   Serial.print("MHz Flash:");
   Serial.print(getFlashSize() >> 10);
-  Serial.print("MB");
+  Serial.println("MB");
 #ifdef BOARD_HAS_PSRAM
-  Serial.print(" IRAM:");
+  Serial.print("IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
   Serial.print("KB");
   if (psramInit()) {
@@ -1191,7 +1191,7 @@ void setup()
 #if ENABLE_OBD
     while (!sys.begin());
     Serial.print("Firmware: V");
-    Serial.println(sys.link->version);
+    Serial.println(sys.version);
     obd.begin(sys.link);
 #endif
 
