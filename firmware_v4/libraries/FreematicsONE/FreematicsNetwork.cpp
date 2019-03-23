@@ -194,8 +194,10 @@ bool UDPClientSIM800::setup(const char* apn, unsigned int timeout, const char* p
     }
   }
   do {
-    success = sendCommand("AT+CREG?\r", 3000, "+CREG: 0,1") != 0;
+    sendCommand("AT+CREG?\r");
+    success = strstr_P(m_buffer, PSTR("+CREG: 0,1")) || strstr_P(m_buffer, PSTR("+CREG: 0,5"));
     Serial.print('.');
+    if(!success) delay(500);
   } while (!success && millis() - t < timeout);
   if (!success) return false;
   do {
