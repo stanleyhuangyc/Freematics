@@ -493,7 +493,7 @@ bool initialize()
   }
 #else
   print(PSTR("CELL..."));
-  if (net.setup(CELL_APN, state.check(STATE_GPS_READY) ? false : true, SIM_PIN)) {
+  if (net.setup(CELL_APN, 60000, SIM_PIN)) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
@@ -806,7 +806,7 @@ void standby()
 #if NET_DEVICE == NET_WIFI
     if (!net.setup(WIFI_SSID, WIFI_PASSWORD))
 #else
-    if (!net.begin(&sys) || !net.setup(CELL_APN))
+    if (!net.begin(&sys) || !net.setup(CELL_APN, 60000, SIM_PIN))
 #endif
     {
       println(PSTR("NO"));
