@@ -25,6 +25,8 @@
 #define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network (if required)
 #define CELL_APN ""
+// SIM PIN code (if required)
+#define SIM_PIN ""
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 8081

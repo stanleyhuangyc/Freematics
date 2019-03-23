@@ -493,7 +493,7 @@ bool initialize()
   }
 #else
   print(PSTR("CELL..."));
-  if (net.setup(CELL_APN, state.check(STATE_GPS_READY) ? false : true)) {
+  if (net.setup(CELL_APN, state.check(STATE_GPS_READY) ? false : true, SIM_PIN)) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
