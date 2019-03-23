@@ -180,11 +180,15 @@ void UDPClientSIM800::end()
   m_stage = 1;
 }
 
-bool UDPClientSIM800::setup(const char* apn, unsigned int timeout)
+bool UDPClientSIM800::setup(const char* apn, unsigned int timeout, const char* pin)
 {
   uint32_t t = millis();
   bool success = false;
   if (!sendCommand("ATE0\r") && !sendCommand("ATE0\r")) return false;
+  if (*pin && strlen(pin) > 0) {
+    sprintf_P(m_buffer, PSTR("AT+CPIN=\"%s\"\r"), pin);
+    sendCommand(m_buffer);
+  }
   do {
     success = sendCommand("AT+CREG?\r", 3000, "+CREG: 0,1") != 0;
     Serial.print('.');
