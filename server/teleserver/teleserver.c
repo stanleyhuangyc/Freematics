@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <ctype.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include "httpd.h"
 #include "teleserver.h"
@@ -238,6 +239,12 @@ FILE* createDataFile(CHANNEL_DATA* pld)
 {
 	if (pld) {
 		if (pld->fp) fclose(pld->fp);
+
+		// Create data directory if it doesn't exist yet, print error message on failure
+		if (!IsDir(dataDir) && mkdir(dataDir, 0755) < 0) {
+			char *errstr = strerror(errno);
+			fprintf(getLogFile(), "Can't create data directory '%s': %s\n", dataDir, errstr);
+		}
 
 		time_t t = time(NULL);
 		struct tm *btm = gmtime(&t);
