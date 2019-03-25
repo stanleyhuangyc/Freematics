@@ -66,7 +66,7 @@ class UDPClientSIM800 : virtual NullClient
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, unsigned int timeout = 60000);
+    bool setup(const char* apn, unsigned int timeout = 60000, const char* pin = "");
     String getIP();
     int getSignal();
     String getOperatorName();
