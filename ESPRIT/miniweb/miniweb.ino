@@ -45,7 +45,6 @@ uint8_t temprature_sens_read();
 uint32_t hall_sens_read();
 }
 
-HardwareSerial Serial1(1);
 #endif
 
 HttpParam httpParam;
