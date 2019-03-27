@@ -119,19 +119,19 @@ void COBDSPI::clearDTC()
 	receive(buffer, sizeof(buffer));
 }
 
-void COBDSPI::sendQuery(byte pid)
+void COBDSPI::lowPowerMode()
 {
-	char cmd[8];
-	sprintf_P(cmd, PSTR("%02X%02X\r"), dataMode, pid);
-	write(cmd);
+	char buf[16];
+	sendCommand("ATLP\r", buf, sizeof(buf));
 }
 
 bool COBDSPI::readPID(byte pid, int& result)
 {
+	char buffer[32];
 	// send a single query command
-	sendQuery(pid);
+	sprintf_P(buffer, PSTR("%02X%02X\r"), dataMode, pid);
+	write(buffer);
 	// receive and parse the response
-	char buffer[64];
 	char* data = 0;
 	idleTasks();
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
