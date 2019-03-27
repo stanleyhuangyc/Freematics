@@ -69,6 +69,7 @@ public:
 	virtual int receive(char* buffer, int bufsize, unsigned int timeout) { return 0; }
 	// write data to SPI
 	virtual void send(const char* str) {}
+	virtual int read() { return -1; }
 };
 
 class CFreematics

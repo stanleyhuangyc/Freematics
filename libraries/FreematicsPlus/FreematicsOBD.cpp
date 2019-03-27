@@ -461,3 +461,50 @@ int16_t COBD::getTemperatureValue(char* data)
 {
   return (int)hex2uint8(data) - 40;
 }
+
+void COBD::setHeaderID(uint32_t num)
+{
+	char buf[32];
+	sprintf(buf, "ATSH %X\r", num & 0xffffff);
+	link->sendCommand(buf, buf, sizeof(buf), 1000);
+	sprintf(buf, "ATCP %X\r", num & 0x1f);
+	link->sendCommand(buf, buf, sizeof(buf), 1000);
+}
+
+void COBD::sniff(bool enabled)
+{
+	char buf[32];
+	link->sendCommand(enabled ? "ATM1\r" : "ATM0\r", buf, sizeof(buf), 1000);
+}
+
+void COBD::setHeaderFilter(uint32_t num)
+{
+	char buf[32];
+	sprintf(buf, "ATCF %X\r", num);
+	link->sendCommand(buf, buf, sizeof(buf), 1000);
+}
+	
+void COBD::setHeaderMask(uint32_t bitmask)
+{
+	char buf[32];
+	sprintf(buf, "ATCM %X\r", bitmask);
+	link->sendCommand(buf, buf, sizeof(buf), 1000);
+}
+
+int COBD::receiveCAN(byte* buf, int len)
+{
+	int n = 0;
+	for (n = 0; n < len; ) {
+		int c = link->read();
+		if (c == -1 || c == '\r') break;
+		buf[n++] = c;
+	}
+	len = n;
+	int m = 0;
+	for (n = 0; n < len; m++) {
+		buf[m] = hex2uint8((const char*)buf + n);
+		n += 2;
+		if (buf[n++] != ' ') break;
+	}
+	return m;
+}

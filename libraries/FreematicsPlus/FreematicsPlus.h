@@ -39,6 +39,7 @@
 #define BEE_BAUDRATE 115200L
 
 #define PIN_GPS_POWER 15
+#define PIN_GPS_POWER2 12
 #define PIN_GPS_UART_RXD 32
 #define PIN_GPS_UART_TXD 33
 #define GPS_UART_NUM UART_NUM_2
@@ -83,10 +84,12 @@ public:
 	void end();
 	// send command and receive response
 	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout);
-	// receive data from SPI
+	// receive data from  UART
 	int receive(char* buffer, int bufsize, unsigned int timeout);
-	// write data to SPI
+	// write data to UART
 	void send(const char* str);
+  // read one byte from UART
+  int read();
   // change serial baudrate
   bool changeBaudRate(unsigned int baudrate);
 };
@@ -141,4 +144,5 @@ public:
 	CLink *link = 0;
 private:
   byte m_flags = 0;
+  byte m_pinGPSPower = PIN_GPS_POWER;
 };
