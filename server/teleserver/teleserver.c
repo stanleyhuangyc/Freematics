@@ -160,7 +160,6 @@ CHANNEL_DATA* findChannelByDeviceID(const char* devid)
 		int i;
 		for (i = 0; i < MAX_CHANNELS; i++) {
 			if (ld[i].id && !strcmp(ld[i].devid, devid)) {
-				printf("Channel found by device ID (%s).\n", devid);
 				return ld + i;
 			}
 		}
@@ -261,7 +260,7 @@ FILE* createDataFile(CHANNEL_DATA* pld)
 		mkdir(filename, 0755);
 		n += snprintf(filename + n, sizeof(filename) - n, "/%02u", btm->tm_mday);
 		mkdir(filename, 0755);
-		n += snprintf(filename + n, sizeof(filename) - n, "/%04u%02u%02u%02u%02u%02u.txt",
+		n += snprintf(filename + n, sizeof(filename) - n, "/%04u%02u%02u-%02u%02u%02u.txt",
 			btm->tm_year + 1900,
 			btm->tm_mon + 1,
 			btm->tm_mday,
@@ -362,12 +361,11 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 		if (interval > 10) pld->sampleRate = (float)count * 60000 / interval;
 		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
 		pld->serverDataTick = tick;
-	} else if (!(pld->flags & FLAG_SLEEPING)) {
-		if (interval < 60000) {
-			// this happens when login event not received
-			pld->flags |= FLAG_RUNNING;
-			pld->sessionStartTick = pld->serverDataTick;
-		}
+	} else if (interval <= 3000) {
+		// this happens when login event not received
+		pld->flags |= FLAG_RUNNING;
+		pld->flags &= FLAG_SLEEPING;
+		pld->sessionStartTick = pld->serverDataTick;
 		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
 		pld->serverDataTick = tick;		
 	}
@@ -620,7 +618,7 @@ int uhChannels(UrlHandlerParam* param)
 		if (id == 0 || pld->id == id) {
 			unsigned int age = (unsigned int)(tick - pld->serverDataTick);
 			unsigned int pingage = (unsigned int)(tick - pld->serverPingTick);
-			if (refresh && age > refresh) {
+			if (refresh && (age > refresh && pingage > refresh)) {
 				removeChannel(pld);
 				continue;
 			}
