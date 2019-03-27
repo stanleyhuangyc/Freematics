@@ -289,6 +289,15 @@ int CLink_UART::sendCommand(const char* cmd, char* buf, int bufsize, unsigned in
 	return receive(buf, bufsize, timeout);
 }
 
+int CLink_UART::read()
+{
+    uint8_t c;
+    if (uart_read_bytes(LINK_UART_NUM, &c, 1, 1) == 1)
+        return c;
+    else
+        return -1;
+}
+
 bool CLink_UART::changeBaudRate(unsigned int baudrate)
 {
 	char buf[32];
@@ -444,14 +453,16 @@ void FreematicsESP32::gpsEnd()
         }
     }
 	//turn off GPS power
-    digitalWrite(PIN_GPS_POWER, LOW);
+    digitalWrite(m_pinGPSPower, LOW);
 }
 
 bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
 {
     if (!link && (m_flags & GNSS_USE_LINK)) return false;
+    m_pinGPSPower = version >= 13 ? PIN_GPS_POWER2 : PIN_GPS_POWER;
+    pinMode(m_pinGPSPower, OUTPUT);
     if (m_flags & GNSS_USE_LINK) {
-        digitalWrite(PIN_GPS_POWER, HIGH);
+        digitalWrite(m_pinGPSPower, HIGH);
         delay(100);
     } else if (!(m_flags & GNSS_SOFT_SERIAL)) {
         uart_config_t uart_config = {
@@ -469,7 +480,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         // install UART driver
         uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
         // turn on GPS power
-        digitalWrite(PIN_GPS_POWER, HIGH);
+        digitalWrite(m_pinGPSPower, HIGH);
         delay(100);
         // start decoding task
         taskGPS.create(gps_decode_task, "GPS", 1);
@@ -479,7 +490,8 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         setTxPinHigh();
 
         // turn on GPS power
-        digitalWrite(PIN_GPS_POWER, HIGH);
+        delay(10);
+        digitalWrite(m_pinGPSPower, HIGH);
         delay(200);
 
         // switch M8030 GNSS to 38400bps
@@ -648,6 +660,7 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate)
         pinRx = PIN_BEE_UART_RXD2;
         pinTx = PIN_BEE_UART_TXD2;
     }
+
     //Configure UART parameters
     uart_param_config(BEE_UART_NUM, &uart_config);
     //Set UART pins
@@ -788,9 +801,6 @@ bool FreematicsESP32::begin(int cpuMHz)
 
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);
-
-    pinMode(PIN_GPS_POWER, OUTPUT);
-    digitalWrite(PIN_GPS_POWER, LOW);
 
     if (link) return false;
 

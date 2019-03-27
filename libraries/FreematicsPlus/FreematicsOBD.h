@@ -46,8 +46,16 @@ public:
 	bool getVIN(char* buffer, byte bufsize);
 	// determine if the PID is supported
 	bool isValidPID(byte pid);
-	// get interface type
-	byte getType() { return 0; }
+	// specify custom CAN header ID
+	void setHeaderID(uint32_t num);
+	// toggle CAN sniffing mode, call setHeaderFilter and setHeaderMask before start sniffing
+	void sniff(bool enabled = true);
+	// set CAN bus header filter
+	void setHeaderFilter(uint32_t num);
+	// set CAN bus header filter bitmask
+	void setHeaderMask(uint32_t bitmask);
+	// receive sniffed CAN data
+	int receiveCAN(byte* buf, int len);
 	// set current PID mode
 	byte dataMode = 1;
 	// occurrence of errors
