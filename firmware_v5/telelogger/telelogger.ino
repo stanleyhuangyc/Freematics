@@ -66,10 +66,8 @@ int16_t deviceTemp = 0;
 char vin[18] = {0};
 uint16_t dtc[6] = {0};
 int16_t batteryVoltage = 0;
-#if ENABLE_GPS
 GPS_DATA* gd = 0;
 uint32_t lastGPStime = 0;
-#endif
 
 char devid[12] = {0};
 char isoTime[26] = {0};
@@ -187,12 +185,10 @@ int handlerLiveData(UrlHandlerParam* param)
         (int)((acc[0] - accBias[0]) * 100), (int)((acc[1] - accBias[1]) * 100), (int)((acc[2] - accBias[2]) * 100),
         (unsigned int)(millis() - lastMotionTime));
 #endif
-#if ENABLE_GPS
     if (gd && gd->ts) {
       n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"utc\":\"%s\",\"lat\":%f,\"lng\":%f,\"alt\":%f,\"speed\":%f,\"sat\":%d,\"age\":%u}",
           isoTime, gd->lat, gd->lng, gd->alt, gd->speed, (int)gd->sat, (unsigned int)(millis() - gd->ts));
     }
-#endif
     buf[n++] = '}';
     param->contentLength = n;
     param->contentType=HTTPFILETYPE_JSON;
@@ -253,7 +249,6 @@ void processOBD()
 }
 #endif
 
-#if ENABLE_GPS
 bool processGPS()
 {
   if (state.check(STATE_GPS_READY)) {
@@ -325,7 +320,6 @@ bool waitMotionGPS(int timeout)
   } while (millis() - t < timeout);
   return false;
 }
-#endif
 
 #if MEMS_MODE
 void processMEMS()
@@ -480,6 +474,12 @@ bool initialize(bool wait = false)
 #if ENABLE_OLED
       oled.println("No Cell Module");
 #endif
+    }
+    Serial.print("SIM CARD:");
+    if (teleClient.net.checkSIM()) {
+      Serial.println("OK");
+    } else {
+      Serial.println("NO");
     }
 #endif
   }
@@ -848,10 +848,8 @@ void process()
 #endif
   }
 
-#if ENABLE_GPS
   // process GPS data if connected
   processGPS();
-#endif
 
 #if LOG_EXT_SENSORS
   processExtInputs();
@@ -1188,10 +1186,10 @@ void setup()
     // show system information
     showSysInfo();
 
-#if ENABLE_OBD
     while (!sys.begin());
     Serial.print("Firmware: V");
     Serial.println(sys.version);
+#if ENABLE_OBD
     obd.begin(sys.link);
 #endif
 
