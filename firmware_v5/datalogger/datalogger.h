@@ -94,7 +94,7 @@ public:
 protected:
     int getFileID(File& root)
     {
-        int id = 0;
+        int id = 1;
         m_dataCount = 0;
         if (root) {
             File file;
