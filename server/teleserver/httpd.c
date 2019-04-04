@@ -214,7 +214,7 @@ int mwGetHttpDateTime(time_t timer, char *buf, int bufsize)
 		btm->tm_sec);
 }
 
-void mwInitParam(HttpParam* hp, int port, const char* webPath, unsigned int flags)
+void mwInitParam(HttpParam* hp, int port, const char* webPath, unsigned int flags, const char* proxyHost, int proxyPort)
 {
 #ifdef WIN32
 	WSADATA wsaData;
@@ -230,6 +230,18 @@ void mwInitParam(HttpParam* hp, int port, const char* webPath, unsigned int flag
 	hp->pchWebPath = webPath;
 	hp->flags = flags;
 
+	if (proxyHost) {
+		struct hostent *target_host = gethostbyname(proxyHost);
+		if (target_host) {
+			memset(&hp->proxy_addr, 0, sizeof(hp->proxy_addr));
+			hp->proxy_addr.sin_family = AF_INET;
+			memcpy(&hp->proxy_addr.sin_addr.s_addr, (void*)target_host->h_addr, target_host->h_length);
+			hp->proxy_addr.sin_port = htons(proxyPort);
+			hp->flags |= FLAG_ENABLE_PROXY;
+			hp->proxyBuffer = malloc(PROXY_TX_BUF_SIZE);
+			SYSLOG(LOG_INFO, "Proxy server: %s:%u\n", proxyHost, proxyPort);
+		}
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -246,6 +258,7 @@ int mwServerStart(HttpParam* hp)
 		SYSLOG(LOG_INFO,"Maximum clients not set\n");
 		return -1;
 	}
+
 	if (!(hp->listenSocket=_mwStartListening(hp))) {
 		return -1;
 	}
@@ -381,6 +394,20 @@ SOCKET _mwStartListening(HttpParam* hp)
 		bind(hp->udpSocket, (struct sockaddr*)&sinAddress, sizeof(struct sockaddr_in));
 	}
 
+	if (hp->flags & FLAG_ENABLE_PROXY) {
+		hp->proxySocket = socket(AF_INET, SOCK_STREAM, 0);
+		if (connect(hp->proxySocket, (struct sockaddr*)&hp->proxy_addr, sizeof(hp->proxy_addr)) < 0) {
+			SYSLOG(LOG_INFO, "Unable to connect to proxy server. Disable proxying.\n");
+			closesocket(hp->proxySocket);
+			hp->proxySocket = 0;
+			hp->flags &= ~FLAG_ENABLE_PROXY;
+		}
+		else {
+			SYSLOG(LOG_INFO, "[%d] Proxy server connected\n", hp->proxySocket);
+			_mwSetSocketOpts(hp->proxySocket);
+			hp->flags |= FLAG_PROXY_CONNECTED;
+		}
+	}
 	return listenSocket;
 }
 
@@ -433,6 +460,10 @@ void _mwCloseAllConnections(HttpParam* hp)
 		closesocket(hp->udpSocket);
 		hp->udpSocket = 0;
 	}
+	if (hp->proxySocket) {
+		closesocket(hp->proxySocket);
+		hp->proxySocket = 0;
+	}
 	for (i = 0; i < hp->maxClients; i++) {
 		if (hp->hsSocketQueue[i].socket) {
 			closesocket(hp->hsSocketQueue[i].socket);
@@ -467,6 +498,39 @@ void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 	if (hp->udpSocket) {
 		FD_SET(hp->udpSocket, &fdsSelectRead);
 		if (hp->udpSocket > iSelectMaxFds) iSelectMaxFds = hp->udpSocket;
+	}
+	if (hp->flags & FLAG_ENABLE_PROXY) {
+		int iError = 0;
+		socklen_t iOptSize = sizeof(int);
+		if (getsockopt(hp->proxySocket, SOL_SOCKET, SO_ERROR, (char*)&iError, &iOptSize)) {
+			// if a socket contains a error, close it
+			SYSLOG(LOG_INFO, "[%d] Proxy socket no longer vaild.\n", hp->proxySocket);
+			hp->flags &= ~FLAG_PROXY_CONNECTED;
+		}
+		// proxy enabled
+		if (!(hp->flags & FLAG_PROXY_CONNECTED)) {
+			closesocket(hp->proxySocket);
+			hp->proxySocket = socket(AF_INET, SOCK_STREAM, 0);
+			if (connect(hp->proxySocket, (struct sockaddr*)&hp->proxy_addr, sizeof(hp->proxy_addr)) >= 0) {
+				hp->flags |= FLAG_PROXY_CONNECTED;
+				SYSLOG(LOG_INFO, "[%d] Proxy server reconnected\n", hp->proxySocket);
+			}
+		}
+		if (hp->flags & FLAG_PROXY_CONNECTED) {
+			if (hp->proxyBufferBytes <= 0) {
+				hp->proxyBufferBytes = (*hp->pfnProxyData)(hp, PROXY_DATA_REQUESTED, hp->proxyBuffer, PROXY_TX_BUF_SIZE);
+				if (hp->proxyBufferBytes < 0) {
+					hp->flags &= ~FLAG_PROXY_CONNECTED;
+				}
+			}
+			if (hp->proxyBufferBytes > 0) {
+				FD_SET(hp->proxySocket, &fdsSelectWrite);
+			}
+			else {
+				FD_SET(hp->proxySocket, &fdsSelectRead);
+			}
+			if (hp->proxySocket > iSelectMaxFds) iSelectMaxFds = hp->proxySocket;
+		}
 	}
 
 	// get current time
@@ -528,6 +592,29 @@ void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 	// check if any udp socket to read
 	if (hp->udpSocket && FD_ISSET(hp->udpSocket, &fdsSelectRead)) {
 		hp->pfnIncomingUDP(hp);
+	}
+
+	// check proxy server
+	if ((hp->flags & FLAG_ENABLE_PROXY) && hp->pfnProxyData) {
+		if (FD_ISSET(hp->proxySocket, &fdsSelectRead)) {
+			char data[PROXY_RX_BUF_SIZE];
+			int len = recv(hp->proxySocket, data, sizeof(data) - 1, 0);
+			if (len > 0) {
+				data[len] = 0;
+				(*hp->pfnProxyData)(hp, PROXY_DATA_RECEIVED, data, len);
+			}
+		}
+		if (FD_ISSET(hp->proxySocket, &fdsSelectWrite)) {
+			if (hp->proxyBufferBytes > 0) {
+				if (send(hp->proxySocket, hp->proxyBuffer, hp->proxyBufferBytes, 0) == hp->proxyBufferBytes) {
+					// sent
+					SYSLOG(LOG_INFO, "[%d] %d bytes sent to proxy server\n", hp->proxySocket, hp->proxyBufferBytes);
+					hp->proxyBufferBytes = 0;
+				} else {
+					hp->flags &= ~FLAG_PROXY_CONNECTED;
+				}
+			}
+		}
 	}
 
 	// check which sockets are read/write able
@@ -630,6 +717,10 @@ void mwServerExit(HttpParam* hp)
 		free(hp->hsSocketQueue);
 		hp->hsSocketQueue = 0;
 	}
+	if (hp->proxyBuffer) {
+		free(hp->proxyBuffer);
+		hp->proxyBuffer = 0;
+	}
 
 	// clear state vars
 	hp->bKillWebserver = FALSE;
@@ -638,6 +729,7 @@ void mwServerExit(HttpParam* hp)
 	WSACleanup();
 #endif
 }
+
 ////////////////////////////////////////////////////////////////////////////
 // _mwAcceptSocket
 // Accept an incoming connection
@@ -649,7 +741,7 @@ SOCKET _mwAcceptSocket(HttpParam* hp, struct sockaddr_in *sinaddr)
 	_mwSetSocketOpts(socket);
 
 	return socket;
-} // end of _mwDenySocket
+} // end of _mwAcceptSocket
 
 int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateTime, char* buffer)
 {
@@ -670,7 +762,7 @@ int _mwBuildHttpHeader(HttpParam* hp, HttpSocket *phsSocket, time_t contentDateT
 		status = "";
 	}
 
-	p+=snprintf(p, end - p, HTTP200_HEADER,
+	p += snprintf(p, end - p, HTTP200_HEADER,
 #ifdef ENABLE_RTSP
 		(phsSocket->flags & (FLAG_REQUEST_DESCRIBE | FLAG_REQUEST_SETUP)) ? "RTSP/1.0" : "HTTP/1.1",
 #else
@@ -956,7 +1048,7 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 				phsSocket->contentLength = up.contentLength;
 				phsSocket->response.contentLength = 0;
 			} else if (ret & FLAG_DATA_FILE) {
-				SETFLAG(phsSocket, FLAG_DATA_FILE);
+				SETFLAG(phsSocket, ret & (FLAG_DATA_FILE | FLAG_ABSOLUTE_PATH));
 				if (up.pucBuffer[0]) {
 					free(phsSocket->request.pucPath);
 					phsSocket->request.pucPath=strdup(up.pucBuffer);
@@ -1152,7 +1244,7 @@ void _mwCloseSocket(HttpParam* hp, HttpSocket* phsSocket)
   if (phsSocket->socket == 0) return;
 	if (phsSocket->fp) {
 		fclose(phsSocket->fp);
-		phsSocket->fp = 0;		
+		phsSocket->fp = 0;
 		hp->stats.openedFileCount--;	
 	}
 	if (phsSocket->request.pucPayload) {
@@ -1256,17 +1348,21 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* filePath
 	if (filePath == NULL)
 		return -1;
 
-	hfp.pchRootPath = hp->pchWebPath;
-	// check type of file requested
-	hfp.pchHttpPath = filePath; //phsSocket->request.pucPath;
-	mwGetLocalFileName(&hfp);
+	if (!ISFLAGSET(phsSocket, FLAG_ABSOLUTE_PATH)) {
+		hfp.pchRootPath = hp->pchWebPath;
+		hfp.pchHttpPath = filePath;
+		mwGetLocalFileName(&hfp);
+	}
+	else {
+		strncpy(hfp.cFilePath, filePath, sizeof(hfp.cFilePath));
+	}
+
 	if (stat(hfp.cFilePath, &st) == 0) {
 		isDirPath = S_ISDIR(st.st_mode);
 	}
 	if (!*filePath) isDirPath = TRUE;
 
 	// open file
-	DWORD fileSize = st.st_size;
 	if (!isDirPath) {
 		phsSocket->fp = fopen(hfp.cFilePath, "rb");
 	}
@@ -1312,10 +1408,9 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* filePath
 
 	if (phsSocket->fp) {
 		hp->stats.openedFileCount++;
-		if (fileSize == 0) {
-			fseek(phsSocket->fp, 0, SEEK_END);
-			fileSize = ftell(phsSocket->fp);
-		}
+		fseek(phsSocket->fp, 0, SEEK_END);
+		long fileSize = ftell(phsSocket->fp);
+		fseek(phsSocket->fp, 0, SEEK_SET);
 		phsSocket->response.contentLength = fileSize - phsSocket->request.startByte;
 		if (phsSocket->response.contentLength <= 0) {
 			phsSocket->request.startByte = 0;
@@ -1324,8 +1419,6 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* filePath
 		if (phsSocket->request.startByte) {
 			fseek(phsSocket->fp, (long)phsSocket->request.startByte, SEEK_SET);
 			phsSocket->response.statusCode = 206;
-		} else {
-			fseek(phsSocket->fp, 0, SEEK_SET);
 		}
 		if (!phsSocket->response.fileType && hfp.pchExt) {
 			phsSocket->response.fileType=mwGetContentType(hfp.pchExt);
@@ -1443,7 +1536,7 @@ int _mwStartSendRawData(HttpParam *hp, HttpSocket* phsSocket)
 		hdrsize=_mwBuildHttpHeader(hp, phsSocket, 0, header);
 		// send http header
 		do {
-			bytes=send(phsSocket->socket, header+offset,hdrsize-offset,0);
+			bytes=send(phsSocket->socket, header+offset, hdrsize-offset, 0);
 			if (bytes<=0) break;
 			offset+=bytes;
 			hp->stats.totalSentBytes+=bytes;
@@ -1533,8 +1626,8 @@ void _mwRedirect(HttpSocket* phsSocket, char* pchPath)
 	// build redirect message
 	SYSLOG(LOG_INFO,"[%d] Http redirection to %s\n",phsSocket->socket,pchPath);
 	path = (pchPath == (char*)phsSocket->pucData) ? strdup(pchPath) : (char*)pchPath;
-	phsSocket->dataLength=snprintf(phsSocket->pucData, 512, HTTPBODY_REDIRECT,path);
-	phsSocket->response.contentLength=phsSocket->dataLength;
+	phsSocket->contentLength=snprintf(phsSocket->pucData, 512, HTTPBODY_REDIRECT,path);
+	phsSocket->response.contentLength=phsSocket->contentLength;
 	if (path != pchPath) free(path);
 	*/
 	char* url = strdup(pchPath);

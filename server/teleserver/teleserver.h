@@ -141,3 +141,5 @@ int checkVIN(const char* vin);
 int processPayload(char* payload, CHANNEL_DATA* pld);
 uint32_t issueCommand(HttpParam* hp, CHANNEL_DATA *pld, const char* cmd, uint32_t token);
 int incomingUDPCallback(void* _hp);
+void deviceLogin(CHANNEL_DATA* pld);
+void deviceLogout(CHANNEL_DATA* pld);

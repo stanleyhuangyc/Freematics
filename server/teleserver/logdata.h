@@ -15,34 +15,6 @@
 #define PID_RUNTIME 0x11F
 #define PID_DISTANCE 0x131
 
-#define PID_STAT_0_60 0xF100
-#define PID_STAT_0_100 0xF101
-#define PID_STAT_0_160 0xF102
-#define PID_STAT_0_400 0xF103
-#define PID_STAT_CUR_LAP 0xF110
-#define PID_STAT_LAST_LAP 0xF111
-#define PID_STAT_BEST_LAP 0xF112
-#define PID_STAT_LAP_PROGRESS 0xF113
-
-#define PID_COMMAND 0xFFFE
-#define PID_SYNC 0xFFFF
-
-enum {
-	PID_STAT_DISTANCE = 0xF200,
-	PID_STAT_TRIP_TIME,
-	PID_STAT_WAIT_TIME,
-	PID_STAT_SPEED_MAX,
-	PID_STAT_SPEED_AVG,
-	PID_STAT_RPM_MAX,
-	PID_STAT_RPM_MIN,
-	PID_STAT_RPM_AVG,
-	PID_STAT_INTAKE_MAX,
-	PID_STAT_INTAKE_MIN,
-	PID_STAT_INTAKE_SUM,
-	PID_STAT_ACC_FORWARD,
-	PID_STAT_ACC_BACKWARD,
-};
-
 #define PID_GPS_LATITUDE 0xA
 #define PID_GPS_LONGITUDE 0xB
 #define PID_GPS_ALTITUDE 0xC
@@ -51,35 +23,14 @@ enum {
 #define PID_GPS_SAT_COUNT 0xF
 #define PID_GPS_TIME 0x10
 #define PID_GPS_DATE 0x11
+#define PID_GPS_HDOP 0x12
 
 #define PID_ACC 0x20
 #define PID_GYRO 0x21
 #define PID_COMPASS 0x22
 #define PID_MEMS_TEMP 0x23
 #define PID_BATTERY_VOLTAGE 0x24
+#define PID_TRIP_DISTANCE 0x30
+#define PID_CSQ 0x81
+#define PID_DEVICE_TEMP 0x82
 
-typedef struct {
-	uint32_t time;
-	uint16_t pid;
-	uint16_t flags;
-	uint32_t value;
-} LOG_DATA;
-
-typedef struct {
-	uint32_t id; //4
-	uint32_t dataOffset; //4
-	uint8_t ver; //1
-	uint8_t ununsed; //1
-	uint16_t flags; //2
-	uint32_t date;
-	uint32_t time;
-	uint32_t startTick;
-	uint32_t unused[2];
-	uint64_t devid; //8
-	uint8_t ununsed2[20];
-	uint8_t vin[32]; //32
-	int32_t videoOffset; //4
-	uint8_t stats[84]; //84
-	uint8_t reserved[72]; //72
-	uint32_t tail; //4
-} HEADER; //256

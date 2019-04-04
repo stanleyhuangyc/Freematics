@@ -85,7 +85,6 @@ int incomingUDPCallback(void* _hp)
 
 	int success = 0;
 	CHANNEL_DATA* pld = 0;
-	int id;
 	char *msg = 0;
 	char *data;
 	char* devid = 0;
@@ -105,11 +104,10 @@ int incomingUDPCallback(void* _hp)
 		pld = findChannelByDeviceID(buf);
 		if (pld) {
 			devid = buf;
-			id = pld->id;
 		}
 	}
 	else {
-		id = hex2uint16(buf);
+		int id = hex2uint16(buf);
 		if (id) pld = findChannelByID(id);
 	}
 	data++; // now points to the start of data chunks
@@ -151,8 +149,8 @@ int incomingUDPCallback(void* _hp)
 		//fprintf(stderr, "Channel ID:%u Event ID:%u\n", id, eventID);
 		if (eventID == EVENT_LOGIN) {
 			if (!devid) devid = vin;
-			if (!devid) {
-				fprintf(getLogFile(), "No device ID");
+			if (!devid || strlen(devid) < 4) {
+				fprintf(getLogFile(), "Invalid ID");
 				return 0;
 			}
 			// filter strings
@@ -181,19 +179,9 @@ int incomingUDPCallback(void* _hp)
 				memcpy(&pld->udpPeer, &cliaddr, sizeof(cliaddr));
 			}
 			if (!(pld->flags & FLAG_RUNNING) || serverTick - pld->serverDataTick > SESSION_GAP) {
-				pld->flags |= FLAG_RUNNING;
-				pld->flags &= ~FLAG_SLEEPING;
-				pld->proxyTick = 0;
+				deviceLogin(pld);
 				pld->serverDataTick = serverTick;
 				pld->sessionStartTick = serverTick;
-				// clear stats
-				pld->dataReceived = 0;
-				pld->recvCount = 0;
-				pld->elapsedTime = 0;
-				printf("DEVICE LOGIN, ID:%s\n", pld->devid);
-				SaveChannels();
-				id = pld->id;
-				createDataFile(pld);
 			}
 			else {
 				printf("DEVICE RE-LOGIN, ID:%s\n", pld->devid);
@@ -212,7 +200,6 @@ int incomingUDPCallback(void* _hp)
 	}
 
 	pld->dataReceived += recv;
-	pld->serverPingTick = serverTick;
 
 	// check if authorized peer
 #if 0
@@ -269,13 +256,7 @@ int incomingUDPCallback(void* _hp)
 	int len = sprintf(buf, "%X#EV=%u,RX=%u,TM=%lu", pld->id, eventID, pld->recvCount, (unsigned long)time(0));
 	switch (eventID) {
 	case EVENT_LOGOUT:
-		// device is going offline
-		pld->flags &= ~FLAG_RUNNING;
-		fprintf(stderr, "DEVICE LOGOUT, ID:%s\r\n", pld->devid);
-		if (pld->fp) {
-			fclose(pld->fp);
-			pld->fp = 0;
-		}
+		deviceLogout(pld);
 		break;
 	case EVENT_PING:
 		fprintf(stderr, "Ping received\n");

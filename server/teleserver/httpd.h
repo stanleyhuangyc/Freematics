@@ -83,7 +83,7 @@ typedef enum {
 #define FLAG_REQUEST_POST		0x2
 #define FLAG_HEADER_SENT		0x80
 #define FLAG_CONN_CLOSE			0x100
-#define FLAG_SUBST				0x200
+#define FLAG_ABSOLUTE_PATH		0x200
 #define FLAG_AUTHENTICATION		0x400
 #define FLAG_MORE_CONTENT		0x800
 #define FLAG_TO_FREE			0x1000
@@ -207,6 +207,7 @@ typedef struct {
 // Callback function protos
 typedef int (*PFNURLCALLBACK)(UrlHandlerParam*);
 typedef int (*PFN_UDP_CALLBACK)(void* hp);
+typedef int (*PFN_PROXY_CALLBACK)(void* hp, int op, char* buf, int len);
 
 typedef struct {
 	const char* pchUrlPrefix;
@@ -230,6 +231,8 @@ typedef struct {
 
 #define FLAG_DIR_LISTING 1
 #define FLAG_DISABLE_RANGE 2
+#define FLAG_ENABLE_PROXY 4
+#define FLAG_PROXY_CONNECTED 8
 
 #define PROXY_DATA_REQUESTED 0
 #define PROXY_DATA_RECEIVED 1
@@ -251,6 +254,13 @@ typedef struct _httpParam {
 	AuthHandler *pxAuthHandler;     /* pointer to authorization handler array */
 	// incoming udp callback
 	PFN_UDP_CALLBACK pfnIncomingUDP;
+	// proxy
+	struct sockaddr_in proxy_addr;
+	SOCKET proxySocket;
+	const char* pchProxyUrl;
+	PFN_PROXY_CALLBACK pfnProxyData;
+	char* proxyBuffer;
+	int proxyBufferBytes;
 	// misc
 	uint32_t dwAuthenticatedNode;
 	time_t tmAuthExpireTime;
@@ -290,7 +300,7 @@ typedef struct {
 ///////////////////////////////////////////////////////////////////////
 // mwInitParam. Init the context structure with default values
 ///////////////////////////////////////////////////////////////////////
-void mwInitParam(HttpParam* hp, int port, const char* webPath, unsigned int flags);
+void mwInitParam(HttpParam* hp, int port, const char* webPath, unsigned int flags, const char* proxyHost, int proxyPort);
 
 ///////////////////////////////////////////////////////////////////////
 // mwServerStart. Startup the webserver
