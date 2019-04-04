@@ -7,17 +7,14 @@ var FEED = {
     xhr: new XMLHttpRequest(),
     id: null,
     payload: "",
-    login: function(vin, ts)
+    login: function(devid, ts)
     {
-        var url = serverURL + "notify?EV=" + EVENT_LOGIN + "&VIN=" + vin + "&TS=" + ts;
+        var url = serverURL + "notify/" + devid + "?EV=" + EVENT_LOGIN + "&TS=" + ts;
         this.xhr.open("GET", url, false);
         this.xhr.send(null);
         if (this.xhr.status == 200) {
-            var answer = JSON.parse(this.xhr.responseText);
-            if (answer && answer.result == "done") {
-                this.id = answer.id;
-                return true;
-            }
+			this.id = devid;
+			return true;
         }
         return false;
     },
@@ -27,11 +24,8 @@ var FEED = {
         this.xhr.open("GET", url, false);
         this.xhr.send(null);
         if (this.xhr.status == 200) {
-            var answer = JSON.parse(this.xhr.responseText);
-            if (answer && answer.result == "done") {
-                this.id = null;
-                return true;
-            }
+			this.id = null;
+			return true;
         }
         return false;
     },
@@ -40,13 +34,7 @@ var FEED = {
         var url = serverURL + "post/" + this.id;
         this.xhr.open("POST", url, false);
         this.xhr.send(this.payload);
-        if (this.xhr.status == 200) {
-            var answer = JSON.parse(this.xhr.responseText);
-            if (answer) {
-                return true;
-            }
-        }
-        return false;
+        return this.xhr.status == 200;
     },
     purge: function()
     {
@@ -56,7 +44,7 @@ var FEED = {
     {
         if (value != null && value != "") {
             if (this.payload != "") this.payload += ",";
-            this.payload += pid.toString(16) + "=" + value;
+            this.payload += pid.toString(16) + ":" + value;
         }
     },
     connected: function()

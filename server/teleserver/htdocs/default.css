@@ -28,7 +28,10 @@ input, button, textarea, :focus {
 }
 .small_text
 {
-    font-size:xx-small;
+    font-size:smaller;
+}
+.smaller_text {
+    font-size: xx-small;
 }
 .highlight_text
 {
@@ -79,3 +82,7 @@ div.clear { clear:both; height:9px }
 }
 .list { width:100%; overflow:hidden; }
 .container { width:100%; }
+.link {
+    cursor:pointer
+}
+.logo { margin-left:10px; margin-top:10px}

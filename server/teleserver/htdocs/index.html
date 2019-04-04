@@ -1,84 +1,87 @@
 ﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title>Freematics Dashboard</title>
-<meta name="viewport" content="width=720" />
-<script type='text/javascript' src='jquery-1.9.1.js'></script>
-<script src="https://code.highcharts.com/highcharts.js"></script>
-<script src="https://code.highcharts.com/modules/exporting.js"></script>
-<script src="https://code.highcharts.com/highcharts-more.js"></script>
-<script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
-<style>
-</style>
-<link rel="stylesheet" href="default.css"/>
-<link rel="stylesheet" href="leaflet/leaflet.css"/>
-<script src="leaflet/leaflet.js"></script>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Freematics Dashboard</title>
+    <meta name="viewport" content="width=700, minimal-ui" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <script type='text/javascript' src='jquery-1.9.1.js'></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/series-label.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    <style>
+    </style>
+    <link rel="stylesheet" href="default.css" />
+    <link rel="stylesheet" href="leaflet/leaflet.css" />
+    <script src="leaflet/leaflet.js"></script>
 </head>
 <body onresize="onResize()">
-<div id="container" class="container">
-    <div id="sidebar" class="sidebar">
-        <div id="info" class="sidebarcontent small_text"></div>
-        <div id="grid" class="sidebarcontent"></div>
-    </div>
-    <div id="map" class="map banner"></div>
-    <div id="chart" class="map"></div>
-</div>
-<div id="list" class="list">
-<div class="clear"></div>
-<div class="grid">
-    <div class="block">
-        <div class="block_generic">
-        	<div class="block_number" id="data_elapsed"></div>
-            <div class="subline" id="data_state"></div>
+    <div id="container" class="container">
+        <div id="sidebar" class="sidebar">
+            <a href="/"><img class="logo" src="logo.png" /></a>
+            <div id="info" class="sidebarcontent small_text">Loading...</div>
+            <div id="grid" class="sidebarcontent"></div>
         </div>
+        <div id="map" class="map banner"></div>
+        <div id="chart" class="map"></div>
     </div>
-    <div class="block">
-        <div class="block_generic">
-        	<div class="block_number" id="data_recv">-</div>
-            <div class="subline">KB received</div>
-        </div>
-    </div>
-    <div class="block">
-        <div class="block_generic">
-          <div class="block_number" id="data_rate">-</div>
-          <div class="subline">samples/min</div>
-        </div>
-    </div>
-    <div class="block">
-        <div class="block_generic">
-          <div class="block_number" id="data_delay">-</div>
-          <div class="subline">ms delay</div>
-        </div>
-    </div>
-    <div class="vbar">
-      <div class="vbar_info">
-        <div>80°C<br/><br/>40°C<br/><br/>0°C<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;DEVICE TEMP</div>
-            <div style="width:33px; height:31px; position:relative; left:26px; top: -42px; overflow:hidden;">
-            <!-- w:34px*45 h:31px -->
-                <img src="dashboard/meter_bar.png" style="margin-left:0px" id="data_temp"/>
+    <div id="list" class="list">
+        <div class="clear"></div>
+        <div class="grid">
+            <div class="block">
+                <div class="block_generic">
+                    <div class="block_number" id="data_elapsed"></div>
+                    <div class="subline" id="data_state"></div>
+                </div>
+            </div>
+            <div class="block">
+                <div class="block_generic">
+                    <div class="block_number" id="data_recv">-</div>
+                    <div class="subline">KB received</div>
+                </div>
+            </div>
+            <div class="block">
+                <div class="block_generic">
+                    <div class="block_number" id="data_rate">-</div>
+                    <div class="subline">samples/min</div>
+                </div>
+            </div>
+            <div class="block">
+                <div class="block_generic">
+                    <div class="block_number" id="data_delay">-</div>
+                    <div class="subline">ms delay</div>
+                </div>
+            </div>
+            <div class="vbar">
+                <div class="vbar_info">
+                    <div>80°C<br /><br />40°C<br /><br />0°C<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;DEVICE TEMP</div>
+                    <div style="width:33px; height:31px; position:relative; left:26px; top: -42px; overflow:hidden;">
+                        <!-- w:34px*45 h:31px -->
+                        <img src="dashboard/meter_bar.png" style="margin-left:0px" id="data_temp" />
+                    </div>
+                </div>
+            </div>
+            <div class="block2x" title="Click to switch">
+                <div class="block2x_generic" onclick="DASH.togglePID(0)">
+                    <div class="block_number" id="data_pid_value0"> </div>
+                    <div class="subline" id="data_pid_name0"> </div>
+                </div>
+            </div>
+            <div class="block2x" title="Click to switch">
+                <div class="block2x_generic" onclick="DASH.togglePID(1)">
+                    <div class="block_number" id="data_pid_value1"> </div>
+                    <div class="subline" id="data_pid_name1"> </div>
+                </div>
             </div>
         </div>
     </div>
-    <div class="block2x" title="Click to switch">
-      <div class="block2x_generic" onclick="DASH.togglePID(0)">
-        <div class="block_number" id="data_pid_value0"> </div>
-        <div class="subline" id="data_pid_name0"> </div>
-      </div>
-    </div>
-    <div class="block2x" title="Click to switch">
-      <div class="block2x_generic" onclick="DASH.togglePID(1)">
-        <div class="block_number" id="data_pid_value1"> </div>
-        <div class="subline" id="data_pid_name1"> </div>
-      </div>
-    </div>
-</div>
-</div>
-<script language="javascript" src="config.js"></script>
-<script language="javascript" src="common.js"></script>
-<script language="javascript" src="defines.js"></script>
-<script language="javascript" src="map.js"></script>
-<script language="javascript" src="https://hub.freematics.com/dash/gadgets.js"></script>
-<script language="javascript" src="dashboard.js"></script>
+    <script language="javascript" src="config.js"></script>
+    <script language="javascript" src="common.js"></script>
+    <script language="javascript" src="defines.js"></script>
+    <script language="javascript" src="map.js"></script>
+    <script language="javascript" src="gadgets.js"></script>
+    <script language="javascript" src="users.js"></script>
+    <script language="javascript" src="dashboard.js"></script>
 </body>
 </html>
