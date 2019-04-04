@@ -76,9 +76,9 @@ var SIM = {
     },
     login: function()
     {
-        var vin = document.getElementById("vin").value;
+        var devid = document.getElementById("devid").value;
         var ts = document.getElementById("ts").value;
-        if (FEED.login(vin, ts)) {
+        if (FEED.login(devid, ts)) {
             this.print("Login successfully. Feed ID: " + FEED.id);
         } else {
             this.print("Login failed.");
