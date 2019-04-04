@@ -1242,26 +1242,30 @@ void _mwSendErrorPage(SOCKET socket, const char* header, const char* body)
 // _mwStartSendFile
 // Setup for sending of a file
 ////////////////////////////////////////////////////////////////////////////
-int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath, const char* filePath)
+int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* filePath)
 {
 	struct stat st = { 0 };
 	HttpFilePath hfp;
 	BOOL isDirPath = FALSE;
 
-	if (rootPath == NULL || filePath == NULL)
+	if (filePath == NULL)
 		return -1;
 
-	hfp.pchRootPath=rootPath; //hp->pchWebPath;
-	// check type of file requested
-	hfp.pchHttpPath=filePath; //phsSocket->request.pucPath;
-	mwGetLocalFileName(&hfp);
+	if (!ISFLAGSET(phsSocket, FLAG_ABSOLUTE_PATH)) {
+		hfp.pchRootPath = hp->pchWebPath;
+		hfp.pchHttpPath = filePath;
+		mwGetLocalFileName(&hfp);
+	}
+	else {
+		strncpy(hfp.cFilePath, filePath, sizeof(hfp.cFilePath));
+	}
+
 	if (stat(hfp.cFilePath, &st) == 0) {
 		isDirPath = (st.st_mode & S_IFDIR);
 	}
 	if (!*filePath) isDirPath = TRUE;
 
 	// open file
-	DWORD fileSize = st.st_size;
 	if (!isDirPath) {
 		phsSocket->fp = fopen(hfp.cFilePath, "rb");
 	}
@@ -1307,10 +1311,8 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* rootPath
 
 	if (phsSocket->fp) {
 		hp->stats.openedFileCount++;
-		if (fileSize == 0) {
-			fseek(phsSocket->fp, 0, SEEK_END);
-			fileSize = ftell(phsSocket->fp);
-		}
+		fseek(phsSocket->fp, 0, SEEK_END);
+		long fileSize = ftell(phsSocket->fp);
 		phsSocket->response.contentLength = fileSize - phsSocket->request.startByte;
 		if (phsSocket->response.contentLength <= 0) {
 			phsSocket->request.startByte = 0;
@@ -1353,7 +1355,7 @@ int _mwStartSendFile(HttpParam* hp, HttpSocket* phsSocket)
 #if MAX_OPEN_FILES
 	if (hp->stats.openedFileCount >= MAX_OPEN_FILES) return 0;
 #endif
-	ret = _mwStartSendFile2(hp, phsSocket, hp->pchWebPath, phsSocket->request.pucPath);
+	ret = _mwStartSendFile2(hp, phsSocket, phsSocket->request.pucPath);
 	if (ret != 0) {
 		SYSLOG(LOG_INFO,"[%d] Not found - %s\n",phsSocket->socket, phsSocket->request.pucPath);
 		_mwSendErrorPage(phsSocket->socket, HTTP404_HEADER, HTTP404_BODY);

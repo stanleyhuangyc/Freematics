@@ -111,7 +111,7 @@ SOCKET _mwStartListening(HttpParam* hp);
 int _mwParseHttpHeader(HttpSocket* phsSocket);
 int _mwStrCopy(char *dest, const char *src);
 int _mwStrHeadMatch(char** pbuf1, const char* buf2);
-int _mwRemoveSocket(HttpParam* hp, HttpSocket* hs);
+void _mwSetSocketOpts(SOCKET socket);
 void _mwSendErrorPage(SOCKET socket, const char* header, const char* body);
 void _mwCloseAllConnections(HttpParam* hp);
 void _mwFreeJSONPairs(UrlHandlerParam* up);

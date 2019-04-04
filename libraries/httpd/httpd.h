@@ -85,7 +85,7 @@ typedef enum {
 #define FLAG_REQUEST_POST		0x2
 #define FLAG_HEADER_SENT		0x80
 #define FLAG_CONN_CLOSE			0x100
-#define FLAG_SUBST				0x200
+#define FLAG_ABSOLUTE_PATH		0x200
 #define FLAG_AUTHENTICATION		0x400
 #define FLAG_MORE_CONTENT		0x800
 #define FLAG_TO_FREE			0x1000
@@ -196,7 +196,7 @@ typedef struct {
 	void* hp;
 	HttpSocket* hs;
 	const char *pucRequest;
-  HttpVariables* pxVars;
+	HttpVariables* pxVars;
 	int iVarCount;
 	char *pucHeader;
 	char *pucBuffer;

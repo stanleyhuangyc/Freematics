@@ -21,25 +21,6 @@
 #endif
 #endif
 
-int InitSocket()
-{
-#ifdef WIN32
-	WSADATA wsaData;
-	if (WSAStartup(MAKEWORD(2, 1), &wsaData) &&
-		WSAStartup(MAKEWORD(1, 1), &wsaData )) {
-		return 0;
-	}
-#endif
-	return 1;
-}
-
-void UninitSocket()
-{
-#ifdef WIN32
-	WSACleanup();
-#endif
-}
-
 char *GetTimeString()
 {
 	static char buf[16];
@@ -112,7 +93,7 @@ int ReadDir(const char* pchDir, char* pchFileNameBuf)
 			return -1;
 		}
 		strcpy(pchFileNameBuf,finddata.cFileName);
-		return 0;
+		return finddata.nFileSizeLow;
 	}
 	if (!hFind) return -1;
 	if (!FindNextFile(hFind,&finddata)) {
