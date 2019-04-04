@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include "httpd.h"
 #include "teleserver.h"
+#include "logdata.h"
 #include "revision.h"
 
 int uhPush(UrlHandlerParam* param);
@@ -31,11 +32,7 @@ int uhChannels(UrlHandlerParam* param);
 int uhChannelsXML(UrlHandlerParam* param);
 int uhNotify(UrlHandlerParam* param);
 int uhCommand(UrlHandlerParam* param);
-
-int uhCreateKMZ(UrlHandlerParam* param);
-int uhViewChart(UrlHandlerParam* param);
-int uhChartData(UrlHandlerParam* param);
-int uhTripData(UrlHandlerParam* param);
+int uhTest(UrlHandlerParam* param);
 
 UrlHandler urlHandlerList[]={
 	{"api/post", uhPost},
@@ -45,6 +42,7 @@ UrlHandler urlHandlerList[]={
 	{"api/command", uhCommand },
 	{"api/channels.xml", uhChannelsXML },
 	{"api/channels", uhChannels},
+	{"api/test", uhTest},
 	{NULL},
 };
 
@@ -62,7 +60,7 @@ char dataDir[256] = "data";
 char logDir[256] = "log";
 char serverKey[256] = { 0 };
 
-static CHANNEL_DATA ld[MAX_CHANNELS];
+CHANNEL_DATA ld[MAX_CHANNELS];
 
 uint8_t hex2uint8(const char *p)
 {
@@ -273,6 +271,32 @@ FILE* createDataFile(CHANNEL_DATA* pld)
 	return NULL;
 }
 
+void deviceLogin(CHANNEL_DATA* pld)
+{
+	pld->flags |= FLAG_RUNNING;
+	pld->flags &= ~FLAG_SLEEPING;
+	pld->proxyTick = 0;
+	// clear stats
+	pld->dataReceived = 0;
+	pld->recvCount = 0;
+	pld->elapsedTime = 0;
+	SaveChannels();
+	createDataFile(pld);
+	fprintf(getLogFile(), " LOGIN:%s\n", pld->devid);
+}
+
+void deviceLogout(CHANNEL_DATA* pld)
+{
+	uint64_t serverTick = GetTickCount64();
+	pld->flags &= ~FLAG_RUNNING;
+	pld->serverPingTick = serverTick;
+	if (pld->fp) {
+		fclose(pld->fp);
+		pld->fp = 0;
+	}
+	fprintf(getLogFile(), " LOGOUT:%s\n", pld->devid);
+}
+
 int processPayload(char* payload, CHANNEL_DATA* pld)
 {
 	uint64_t tick = GetTickCount64();
@@ -355,21 +379,27 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 			pld->cacheReadPos = (pld->cacheReadPos + 1) % pld->cacheSize;
 		}
 	} while (p && *p);
+	if (ts) pld->deviceTick = ts;
+
+	if (pld->flags & FLAG_SLEEPING) {
+		pld->serverPingTick = tick;
+	}
+	else {
+		if (pld->flags & FLAG_RUNNING) {
+			// normal
+			if (interval > 100) pld->sampleRate = (float)count * 60000 / interval;
+			pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
+		}
+		else if (interval <= 60000) {
+			// this happens when login packet not received
+			deviceLogin(pld);
+			pld->sessionStartTick = pld->serverDataTick;
+			pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
+		}
+		pld->serverDataTick = tick;
+	}
 
 	pld->recvCount++;
-	if (pld->flags & FLAG_RUNNING) {
-		if (interval > 10) pld->sampleRate = (float)count * 60000 / interval;
-		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
-		pld->serverDataTick = tick;
-	} else if (interval <= 3000) {
-		// this happens when login event not received
-		pld->flags |= FLAG_RUNNING;
-		pld->flags &= FLAG_SLEEPING;
-		pld->sessionStartTick = pld->serverDataTick;
-		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
-		pld->serverDataTick = tick;		
-	}
-	if (ts) pld->deviceTick = ts;
 
 	printf("[%u] #%u %u bytes | Samples:%u | Device Tick:%u\n", pld->id, pld->recvCount, pld->dataReceived, count, pld->deviceTick);
 	return count;
@@ -500,8 +530,6 @@ static int copyData(char* d, const char* s)
 
 CHANNEL_DATA* locateChannel(UrlHandlerParam* param)
 {
-	param->contentType = HTTPFILETYPE_JSON;
-	int id = 0;
 	const char* sid;
 	if (param->pucRequest[0] == '/') {
 		sid = param->pucRequest + 1;
@@ -511,19 +539,8 @@ CHANNEL_DATA* locateChannel(UrlHandlerParam* param)
 	}
 
 	CHANNEL_DATA *pld = 0;
-	if (!*sid) {
-	} else if (isnum(sid)) {
-		pld = findChannelByID(atoi(sid));
-	}
-	else {
+	if (*sid) {
 		pld = findChannelByDeviceID(sid);
-	}
-	if (!pld) {
-		param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"failed\",\"error\":\"Invalid ID\"}");
-		param->hs->response.statusCode = 400;
-		fprintf(getLogFile(), "%u.%u.%u.%u [%u] Invalid ID\n",
-			param->hs->ipAddr.caddr[3], param->hs->ipAddr.caddr[2], param->hs->ipAddr.caddr[1], param->hs->ipAddr.caddr[0], id);
-		return 0;
 	}
 	return pld;
 }
@@ -712,21 +729,10 @@ CHANNEL_DATA* assignChannel(const char* devid)
 int uhPost(UrlHandlerParam* param)
 {
 	param->contentLength = 0;
-
-	const char* sid = param->pucRequest[0] == '/' ? (param->pucRequest + 1) : mwGetVarValue(param->pxVars, "id", 0);
-	if (!sid) {
-		param->hs->response.statusCode = 400;
-		return FLAG_DATA_RAW;
-	}
-	CHANNEL_DATA *pld;
-	if (isnum(sid)) {
-		pld = findChannelByID(atoi(sid));
-	}
-	else {
-		pld = assignChannel(sid);
-	}
+	CHANNEL_DATA* pld = locateChannel(param);
 	if (!pld) {
 		param->hs->response.statusCode = 403;
+		param->contentLength = 0;
 		return FLAG_DATA_RAW;
 	}
 
@@ -757,6 +763,8 @@ int uhPost(UrlHandlerParam* param)
 	pld->dataReceived += param->payloadSize;
 	pld->ip = param->hs->ipAddr;
 
+	param->contentLength = sprintf(param->pucBuffer, "OK");
+	param->contentType = HTTPFILETYPE_TEXT;
 	return FLAG_DATA_RAW;
 }
 
@@ -765,7 +773,11 @@ int uhPull(UrlHandlerParam* param)
 	param->contentType = HTTPFILETYPE_JSON;
 	param->contentLength = 0;
 	CHANNEL_DATA *pld = locateChannel(param);
-	if (!pld) return FLAG_DATA_RAW;
+	if (!pld) {
+		param->hs->response.statusCode = 403;
+		param->contentLength = 0;
+		return FLAG_DATA_RAW;
+	}
 
 	uint64_t startts = mwGetVarValueInt64(param->pxVars, "ts");
 	uint64_t endts = mwGetVarValueInt64(param->pxVars, "endts");
@@ -860,11 +872,16 @@ int isNum(const char* s)
 int uhCommand(UrlHandlerParam* param)
 {
 	CHANNEL_DATA *pld = locateChannel(param);
+	if (!pld) {
+		param->hs->response.statusCode = 403;
+		param->contentLength = 0;
+		return FLAG_DATA_RAW;
+	}
+
 	char* cmd = mwGetVarValue(param->pxVars, "cmd", "");
 	uint32_t token = mwGetVarValueInt(param->pxVars, "token", 0);
 	param->contentType = HTTPFILETYPE_JSON;
 
-	if (!pld) return FLAG_DATA_RAW;
 	if (!*cmd && !token) {
 		param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"failed\",\"error\":\"Invalid request\"}");
 		return FLAG_DATA_RAW;
@@ -906,23 +923,40 @@ int uhCommand(UrlHandlerParam* param)
 
 int uhNotify(UrlHandlerParam* param)
 {
-	param->contentType = HTTPFILETYPE_JSON;
-
-	CHANNEL_DATA *pld = 0;
-	char *vin = mwGetVarValue(param->pxVars, "VIN", 0);
-	char *devid = mwGetVarValue(param->pxVars, "DEVID", 0);
+	char* vin = mwGetVarValue(param->pxVars, "VIN", 0);
 	int event = mwGetVarValueInt(param->pxVars, "EV", 0);
 	uint64_t ts = mwGetVarValueInt64(param->pxVars, "TS");
-	uint64_t tick = GetTickCount64();
-	if (event == EVENT_LOGIN && devid && *devid) {
-		fprintf(getLogFile(), "%u.%u.%u.%u Login (DEVID=%s)\n",
-			param->hs->ipAddr.caddr[3], param->hs->ipAddr.caddr[2], param->hs->ipAddr.caddr[1], param->hs->ipAddr.caddr[0], vin);
+	const char* sid;
+	if (param->pucRequest[0] == '/') {
+		sid = param->pucRequest + 1;
+	}
+	else {
+		sid = mwGetVarValue(param->pxVars, "id", "");
+	}
+	if (!sid || strlen(sid) < 4) {
+		param->hs->response.statusCode = 403;
+		param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"failed\",\"error\":\"Invalid ID\"}");
+		return FLAG_DATA_RAW;
+	}
+	param->contentType = HTTPFILETYPE_JSON;
+	param->contentLength = 0;
+	CHANNEL_DATA* pld = locateChannel(param);
+	if (!pld && event != EVENT_LOGIN) {
+		param->hs->response.statusCode = 403;
+		param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"failed\",\"error\":\"Invalid channel\"}");
+		return FLAG_DATA_RAW;
+	}
 
-		pld = assignChannel(devid);
+	uint64_t tick = GetTickCount64();
+	if (event == EVENT_LOGIN) {
 		if (!pld) {
-			param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"failed\",\"error\":\"No more channel\"}");
-			return FLAG_DATA_RAW;
+			pld = assignChannel(sid);
+			if (!pld) {
+				param->hs->response.statusCode = 403;
+				return FLAG_DATA_RAW;
+			}
 		}
+
 		if (checkVIN(vin)) {
 			strncpy(pld->vin, vin, sizeof(pld->vin) - 1);
 		}
@@ -930,28 +964,22 @@ int uhNotify(UrlHandlerParam* param)
 		pld->proxyTick = 0;
 		pld->serverDataTick = tick;
 		pld->ip = param->hs->ipAddr;
-		pld->flags |= FLAG_RUNNING;
-		pld->flags &= ~FLAG_SLEEPING;
+		deviceLogin(pld);
 		param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"id\":%u,\"result\":\"done\"}", pld->id);
 		return FLAG_DATA_RAW;
 	} else if (event == EVENT_LOGOUT) {
-		CHANNEL_DATA *pld = locateChannel(param);
-		if (pld) {
-			param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"done\"}");
-			if (pld->fp) {
-				fclose(pld->fp);
-				pld->fp = 0;
-			}
-			pld->flags &= ~FLAG_RUNNING;
-			SaveChannels();
+		param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"done\"}");
+		if (pld->fp) {
+			fclose(pld->fp);
+			pld->fp = 0;
 		}
+		pld->flags &= ~FLAG_RUNNING;
+		deviceLogout(pld);
+		SaveChannels();
 		return FLAG_DATA_RAW;
 	}
 	else if (event == EVENT_SYNC) {
-		CHANNEL_DATA *pld = locateChannel(param);
-		if (pld) {
-			param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"done\"}");
-		}
+		param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":\"done\"}");
 		return FLAG_DATA_RAW;
 	}
 
@@ -960,12 +988,15 @@ int uhNotify(UrlHandlerParam* param)
 	return FLAG_DATA_RAW;
 }
 
-
 int uhPush(UrlHandlerParam* param)
 {
 	//mwParseQueryString(param);
 	CHANNEL_DATA *pld = locateChannel(param);
-	if (!pld) return FLAG_DATA_RAW;
+	if (!pld) {
+		param->hs->response.statusCode = 403;
+		param->contentLength = 0;
+		return FLAG_DATA_RAW;
+	}
 
 	int n;
 	char *s;
@@ -991,6 +1022,21 @@ int uhPush(UrlHandlerParam* param)
 	param->contentType = HTTPFILETYPE_JSON;
 	param->contentLength = snprintf(param->pucBuffer, param->bufSize, "{\"result\":%u}", count);
 	return FLAG_DATA_RAW;
+}
+
+int uhTest(UrlHandlerParam* param)
+{
+	char content[64];
+	time_t t = time(NULL);
+	struct tm* btm = gmtime(&t);
+	uint32_t date = (btm->tm_year + 1900) * 10000 + (btm->tm_mon + 1) * 100 + btm->tm_mday;
+
+	int len = snprintf(content, sizeof(content), "{\"date\":%02u%02u%02u,\"time\":%u%02u%02u,\"tick\":%u}",
+		btm->tm_year - 100, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec, GetTickCount());
+	param->contentLength = snprintf(param->pucBuffer, param->bufSize, "HTTP/1.1 200 OK\r\nServer:TeleServer\r\nContent-Length:%d\r\n\r\n%s",
+		len, content);
+	param->contentType = HTTPFILETYPE_TEXT;
+	return FLAG_DATA_RAW | FLAG_CUSTOM_HEADER;
 }
 
 char* GetLocalAddrString()
@@ -1044,7 +1090,7 @@ int main(int argc,char* argv[])
 	//fill in default settings
 	char path[256];
 	GetFullPath(path, argv[0], "htdocs");
-	mwInitParam(&httpParam, 0, path, FLAG_DISABLE_RANGE);
+	mwInitParam(&httpParam, 0, path, FLAG_DISABLE_RANGE, 0, 0);
 	httpParam.maxClients = 256;
 	httpParam.maxClientsPerIP = 16;
 	httpParam.httpPort = 8080;
@@ -1072,8 +1118,8 @@ int main(int argc,char* argv[])
 						"	-w	: specifiy HTTP authentication password for remote access\n"
 						"	-g	: do not launch GUI\n\n");
 					fflush(stderr);
-                                        exit(1);
-
+					exit(1);
+					break;
 				case 'p':
 					if ((++i)<argc) httpParam.httpPort=atoi(argv[i]);
 					break;
