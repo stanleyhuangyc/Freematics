@@ -8,5 +8,4 @@ const TRIP_END_TIMEOUT = 180000;
 const DEVICE_OFFLINE_TIMEOUT = 900000;
 const MAP_CENTERING_INTERVAL = 5000;
 
-const serverURL = window.require ? "http://localhost:8080/api/" : "/hub/api/";
-//const serverURL = window.require ? "http://localhost:8080/api/" : "/api/";
+const serverURL = window.require ? "http://localhost:8080/api/" : "/api/";

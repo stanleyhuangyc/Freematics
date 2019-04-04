@@ -14,17 +14,12 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-var devid = getUrlArg("devid");
-var username = getUrlArg("user");
-if (!username)
-    username = getCookie("user");
-
 onResize();
 
 $(function () {
     $(document).ready(function () {
-        self.setTimeout("DASH.load()", 0);
-		
+		USER.load("DASH.load()");
+
         self.setInterval(function () {
             if (DASH.curLocation && OSMAP.map) OSMAP.setCenter(DASH.curLocation);
         }, MAP_CENTERING_INTERVAL);
@@ -67,7 +62,6 @@ function onResize()
 var DASH = {
 	xhr: new XMLHttpRequest(),
 	dataSlideIndex: [0, 1],
-    channelID: null,
     deviceID: null,
     curLocation: null,
     data: null,
@@ -129,9 +123,26 @@ var DASH = {
 			this.setText("pid_name" + num.toString(), PID.getNameUnit(pid));
 		}
     },
-    updateInfo: function ()
+    updateUserInfo: function (info, devid)
     {
-        var s = "<select><option>" + this.deviceID + "</option></select>";
+		if (!USER.info) {
+			document.getElementById("info").innerHTML = devid ? ("DEVICE: " + devid) : "";
+			return;
+		}
+        var s = "<select onchange='USER.goDash(this.value)'>";
+		var found = false;
+        for (var i = 0; i < info.devid.length; i++) {
+            s += "<option value=\"" + info.devid[i] + "\"";
+            if (info.devid[i] == devid) {
+                s += " selected";
+                found = true;
+            }
+            s += ">" + info.devid[i] + "</option>";
+        }
+		if (!found) {
+			s += "<option value=\"" + devid + "\" selected>" + devid + "</option>";
+		}
+        s += "</select><input type='button' onclick='USER.goNextDash(previousSibling.value)' value='Switch'></input>";
         document.getElementById("info").innerHTML = s;
     },
     pickNewestData: function (data) {
@@ -192,13 +203,13 @@ var DASH = {
         this.updatePID(1);
 
         // update data grid
-        var s = "<span class='small_text'>Timestamp: </span>" + ch.stats.devtick;
+        var s = "<span class='smaller_text'>Timestamp </span>" + ch.stats.devtick;
         for (var n = 0; n < this.data.length; n++) {
             var pid = this.data[n][0];
             var value = this.data[n][1];
             var selected = (pid == this.selectedPID);
             if (selected) s += "<span class='highlight_text'>";
-            s += "<br/><a onclick='DASH.selectPID(" + pid + ")'><span class='small_text'>" + PID.getName(pid) + ": </span>" + PID.normalize(pid, value);
+            s += "<br/><a onclick='DASH.selectPID(" + pid + ")'><span class='smaller_text'>" + PID.getName(pid) + " </span>" + PID.normalize(pid, value);
             var unit = PID.getUnit(pid);
             if (unit) s += "<span class='small_text'> " + unit + "</span></a>";
             if (selected) s += "</span>";
@@ -220,30 +231,8 @@ var DASH = {
 	},
 	load: function()
     {
-        while (!devid) {
-            var tosave = false;
-            if (!username) {
-                username = window.prompt("Enter your email, device name or device ID");
-                if (!username) return;
-                if (username.indexOf("@") <= 0 && username.indexOf("#") <= 0) {
-                    devid = username;
-                    break;
-                } else {
-                    username = btoa(username);
-                    tosave = true;
-                }
-            }
-            var result = transport.getJSON(serverURL + "query?user=" + username);
-            if (result) devid = result.devid;
-            if (!devid) {
-                alert("No activated device for user " + atob(username));
-                username = null;
-                continue;
-            }
-            if (tosave) {
-                setCookie("user", username, 365);
-            }
-        }
+		this.updateUserInfo(USER.info, USER.devid);
+		// load channel data
 		this.xhr.onreadystatechange = function() {
 			if (this.readyState != 4) return;
 			if (this.status != 200) {
@@ -254,15 +243,13 @@ var DASH = {
 			}
             var chdata = JSON.parse(this.responseText);
             if (chdata && chdata.id) {
-                DASH.channelID = chdata.id;
                 DASH.deviceID = chdata.devid;
-                DASH.updateInfo();
                 self.setTimeout("DASH.showChart()", 0);
             } else {
                 alert("Not an active device. Please check if your device is working or the device ID is correct.");
             }
 		};
-        var url = serverURL + "channels/" + devid;
+        var url = serverURL + "channels/" + USER.devid;
 		this.xhr.open('GET', url, true);    
 		this.xhr.send(null);
     },
@@ -310,7 +297,7 @@ var DASH = {
 
         this.chart = null;
         document.getElementById("chart").innerHTML = "";
-        this.xhr.open('GET', serverURL + "pull/" + this.channelID + "?pid=" + pid + "&rollback=" + ROLLBACK_TIME, true);
+        this.xhr.open('GET', serverURL + "pull/" + this.deviceID + "?pid=" + pid + "&rollback=" + ROLLBACK_TIME, true);
         this.xhr.send(null);
     },
     updateData: function()
@@ -347,7 +334,7 @@ var DASH = {
             return;
         }
         if (!this.chartPID || !this.chart) return;
-        var url = serverURL + "pull/" + this.channelID + "?pid=" + DASH.chartPID + "&ts=" + (this.chartDataTick + 1);
+        var url = serverURL + "pull/" + this.deviceID + "?pid=" + DASH.chartPID + "&ts=" + (this.chartDataTick + 1);
         this.xhr.open('GET', url, true);    
         this.xhr.send(null);
     },
