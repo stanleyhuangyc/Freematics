@@ -44,10 +44,10 @@ Commands can be sent to Freematics ONE+ to execute with results responded, throu
 * STATS - returning some stats
 * OBD [PID] - querying and returning specified OBD-II PID value (raw data)
 
-Viewing Live Data
+Viewing Trip Data
 -----------------
 
-Once the sketch is running and data is being submitted to hub.freematics.com, you can open https://hub.freematics.com/dash from any of your devices and enter your device ID (displayed in serial output) to view the live data instantly.
+Once the sketch is running and data is being submitted to hub.freematics.com, you can open https://hub.freematics.com from any of your devices and enter your device ID (displayed in serial output) to view real-time data and history trip data.
 
 ![Freematics Hub Dashboard](https://freematics.com/pages/wp-content/uploads/2019/01/freematics_hub_dash-1024x576.png)
 
