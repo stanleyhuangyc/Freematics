@@ -381,21 +381,21 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 	} while (p && *p);
 	if (ts) pld->deviceTick = ts;
 
+	if (pld->flags & FLAG_RUNNING) {
+		// normal
+		if (interval > 100) pld->sampleRate = (float)count * 60000 / interval;
+		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
+	}
+	else if (interval <= 60000) {
+		// this happens when login packet not received
+		deviceLogin(pld);
+		pld->sessionStartTick = pld->serverDataTick;
+		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
+	}
 	if (pld->flags & FLAG_SLEEPING) {
 		pld->serverPingTick = tick;
 	}
 	else {
-		if (pld->flags & FLAG_RUNNING) {
-			// normal
-			if (interval > 100) pld->sampleRate = (float)count * 60000 / interval;
-			pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
-		}
-		else if (interval <= 60000) {
-			// this happens when login packet not received
-			deviceLogin(pld);
-			pld->sessionStartTick = pld->serverDataTick;
-			pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
-		}
 		pld->serverDataTick = tick;
 	}
 
@@ -696,6 +696,13 @@ char* findNextToken(char* s)
 
 CHANNEL_DATA* assignChannel(const char* devid)
 {
+	if (!devid || strlen(devid) < 4) {
+		fprintf(getLogFile(), "Invalid ID");
+		return 0;
+	}
+	// filter devid string
+	for (char* p = devid; *p; p++) if (!isalpha(*p) && !isdigit(*p)) * p = '_';
+
 	CHANNEL_DATA *pld = findChannelByDeviceID(devid);
 	if (pld) {
 		return pld;
