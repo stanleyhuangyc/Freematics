@@ -149,12 +149,6 @@ int incomingUDPCallback(void* _hp)
 		//fprintf(stderr, "Channel ID:%u Event ID:%u\n", id, eventID);
 		if (eventID == EVENT_LOGIN) {
 			if (!devid) devid = vin;
-			if (!devid || strlen(devid) < 4) {
-				fprintf(getLogFile(), "Invalid ID");
-				return 0;
-			}
-			// filter strings
-			for (char* p = devid; *p; p++) if (!isalpha(*p) && !isdigit(*p)) *p = '_';
 			pld = assignChannel(devid);
 			if (!pld) {
 				fprintf(getLogFile(), "No more channel");

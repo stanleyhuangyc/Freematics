@@ -23,30 +23,12 @@
 #define CHANNEL_TIMEOUT 180 /* seconds */
 #define SESSION_GAP (15 * 60 * 1000)
 
+#define PID_MODES 2
+
 #define FLAG_RUNNING 0x1
 #define FLAG_SLEEPING 0x2
 #define FLAG_PINGED 0x4
 
-#define PID_GPS_LATITUDE 0xA
-#define PID_GPS_LONGITUDE 0xB
-#define PID_GPS_ALTITUDE 0xC
-#define PID_GPS_SPEED 0xD
-#define PID_GPS_HEADING 0xE
-#define PID_GPS_SAT_COUNT 0xF
-#define PID_GPS_TIME 0x10
-#define PID_GPS_DATE 0x11
-#define PID_GPS_HDOP 0x12
-
-#define PID_ACC 0x20
-#define PID_GYRO 0x21
-#define PID_COMPASS 0x22
-#define PID_MEMS_TEMP 0x23
-#define PID_BATTERY_VOLTAGE 0x24
-#define PID_TRIP_DISTANCE 0x30
-#define PID_CSQ 0x81
-#define PID_DEVICE_TEMP 0x82
-
-#define PID_MODES 2
 #define CACHE_INIT_SIZE (1024 * 1024)
 #define CACHE_MAX_SIZE (10 * 1024 * 1024)
 #define MAX_PID_DATA_LEN 24
