@@ -772,11 +772,13 @@ byte FreematicsESP32::getVersion()
 	for (byte n = 0; n < 3; n++) {
 		char buffer[32];
 		if (link->sendCommand("ATI\r", buffer, sizeof(buffer), 200)) {
-			char *p = strchr(buffer, ' ');
-			if (p) {
+            char *p = strstr(buffer, "OBD");
+			if (p && (p = strchr(p, ' '))) {
 				p += 2;
-				version = (*p - '0') * 10 + (*(p + 2) - '0');
-				break;
+                if (isdigit(*p) && *(p + 1) == '.' && isdigit(*(p + 2))) {
+				    version = (*p - '0') * 10 + (*(p + 2) - '0');
+				    break;
+                }
 			}
 		}
 		delay(100);
