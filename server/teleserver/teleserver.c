@@ -306,12 +306,6 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 	}
 	// save data to log file
 	if (pld->fp) {
-		/*
-		if (interval > SESSION_GAP) {
-			fprintf(stderr, "Trip timed out. Create a new trip file.\n");
-			createDataFile(pld);
-		}
-		*/
 		fprintf(pld->fp, "%s\n", payload);
 	}
 
@@ -379,6 +373,8 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 			pld->cacheReadPos = (pld->cacheReadPos + 1) % pld->cacheSize;
 		}
 	} while (p && *p);
+	if (ts == 0) ts = pld->deviceTick;
+	int interval = ts - pld->deviceTick;
 	if (ts) pld->deviceTick = ts;
 
 	if (pld->flags & FLAG_RUNNING) {
@@ -700,8 +696,8 @@ CHANNEL_DATA* assignChannel(const char* devid)
 		fprintf(getLogFile(), "Invalid ID");
 		return 0;
 	}
-	// filter devid string
-	for (char* p = devid; *p; p++) if (!isalpha(*p) && !isdigit(*p)) * p = '_';
+	// check invalid character in devid string
+	for (const char* p = devid; *p; p++) if (!isalpha(*p) && !isdigit(*p)) return 0;
 
 	CHANNEL_DATA *pld = findChannelByDeviceID(devid);
 	if (pld) {
@@ -722,12 +718,7 @@ CHANNEL_DATA* assignChannel(const char* devid)
 	// clear stats
 	pld->dataReceived = 0;
 	pld->elapsedTime = 0;
-	//pld->deviceTick = GetTickCount64();
 	pld->serverDataTick = GetTickCount64();
-	if (!(pld->flags & FLAG_RUNNING) || pld->serverDataTick - pld->serverDataTick > SESSION_GAP) {
-		pld->flags |= FLAG_RUNNING;
-		pld->sessionStartTick = pld->serverDataTick;
-	}
 	SaveChannels();
 	printf("DEVID:%s ID:%u\r\n", devid, pld->id);
 	return pld;
