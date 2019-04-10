@@ -85,18 +85,6 @@ CStorageRAM cache;
 COBDSPI obd;
 #define sys obd
 
-void print(const char* PROGMEM s)
-{
-  char c;
-  while ((c = pgm_read_byte(s++))) Serial.print(c);
-}
-
-void println(const char* PROGMEM s)
-{
-  print(s);
-  Serial.println();
-}
-
 /*******************************************************************************
   Freematics Hub client implementation
 *******************************************************************************/
@@ -128,7 +116,7 @@ bool notify(byte event, const char* extra = 0)
   //Serial.println(cache.buffer());
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.send(cache.buffer(), cache.length())) {
-      println(PSTR("Unsent"));
+      Serial.println(F("Unsent"));
       delay(1000);
       continue;
     }
@@ -168,17 +156,17 @@ bool login()
     char buf[128];
     if (obd.getVIN(buf, sizeof(buf))) {
       snprintf_P(extra, sizeof(extra), PSTR("VIN=%s"), buf);
-      print(PSTR("VIN:"));
+      Serial.print(F("VIN:"));
       Serial.println(buf);
     }
   }
   // connect to telematics server
   for (byte attempts = 0; attempts < 3; attempts++) {
-    print(PSTR("LOGIN("));
+    Serial.print(F("LOGIN("));
     Serial.print(SERVER_HOST);
-    print(PSTR(")..."));
+    Serial.print(F(")..."));
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      println(PSTR("NO"));
+      Serial.println(F("NO"));
       delay(1000);
       continue;
     }
@@ -186,11 +174,11 @@ bool login()
     // login Freematics Hub
     if (!notify(event, extra)) {
       net.close();
-      println(PSTR("NO ACK"));
+      Serial.println(F("NO ACK"));
       delay(3000);
       continue;
     }
-    println(PSTR("OK"));
+    Serial.println(F("OK"));
     return true;
   }
   return false;
@@ -213,11 +201,11 @@ bool transmit()
     Serial.print(txCount);
     Serial.print(' ');
     Serial.print(cache.length());
-    println(PSTR(" bytes sent"));
+    Serial.println(F(" bytes sent"));
     success = true;
   } else {
     connErrors++;
-    print(PSTR("NET ERR:"));
+    Serial.print(F("NET ERR:"));
     Serial.println(connErrors);
   }
   return success;
@@ -390,29 +378,27 @@ bool initialize()
     if ((ver = obd.getVersion())) break;
     delay(3000);
   }
-  print(PSTR("VER."));
-  Serial.println((int)ver);
-
+  
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
-    print(PSTR("MEMS..."));
+    Serial.print(F("MEMS..."));
     if (mems.begin()) {
       state.set(STATE_MEMS_READY);
-      println(PSTR("OK"));
+      Serial.println(F("OK"));
     } else {
-      println(PSTR("NO"));
+      Serial.println(F("NO"));
     }
   }
 #endif
 
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
-    print(PSTR("NET..."));
+    Serial.print(F("NET..."));
     if (net.begin(&sys)) {
-      println(PSTR("OK"));
+      Serial.println(F("OK"));
       state.set(STATE_NET_READY);
     } else {
-      println(PSTR("NO"));
+      Serial.println(F("NO"));
       return false;
     }
   }
@@ -448,16 +434,16 @@ bool initialize()
   devid[7] = 0;
 #endif
 
-  print(PSTR("DEVID:"));
+  Serial.print(F("DEVID:"));
   Serial.println(devid);
 
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
-    print(PSTR("OBD..."));
+    Serial.print(F("OBD..."));
     if (!obd.init()) {
-      println(PSTR("NO"));
+      Serial.println(F("NO"));
     } else {
-      println(PSTR("OK"));
+      Serial.println(F("OK"));
       state.set(STATE_OBD_READY);
     }
   }
@@ -465,43 +451,43 @@ bool initialize()
 #if ENABLE_GPS
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-    print(PSTR("GPS..."));
+    Serial.print(F("GPS..."));
     if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
       state.set(STATE_GPS_READY);
-      println(PSTR("OK"));
+      Serial.println(F("OK"));
     } else {
-      println(PSTR("NO"));
+      Serial.println(F("NO"));
     }
   }
 #endif
 
 #if NET_DEVICE == NET_WIFI
   for (byte attempts = 0; attempts < 3; attempts++) {
-    print(PSTR("WIFI(SSID:"));
+    Serial.print(F("WIFI(SSID:"));
     Serial.print(WIFI_SSID);
-    print(PSTR(")..."));
+    Serial.print(F(")..."));
     if (net.setup(WIFI_SSID, WIFI_PASSWORD)) {
-      println(PSTR("OK"));
+      Serial.println(F("OK"));
       state.set(STATE_NET_READY);
       break;
     } else {
-      println(PSTR("NO"));
+      Serial.println(F("NO"));
     }
   }
   if (!state.check(STATE_NET_READY)) {
     return false;
   }
 #else
-  print(PSTR("CELL..."));
-  if (net.setup(CELL_APN, 60000, SIM_PIN)) {
+  Serial.print(F("CELL..."));
+  if (net.setup(CELL_APN, 60000)) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
     } else {
-      println(PSTR("OK"));
+      Serial.println(F("OK"));
     }
   } else {
-    println(PSTR("NO"));
+    Serial.println(F("NO"));
     return false;
   }
 #endif
@@ -512,18 +498,18 @@ bool initialize()
   }
 #endif
 
-  print(PSTR("IP..."));
+  Serial.print(F("IP..."));
   String ip = net.getIP();
   if (ip.length()) {
     Serial.println(ip);
   } else {
-    println(PSTR("NO"));
+    Serial.println(F("NO"));
   }
   int csq = net.getSignal();
   if (csq > 0) {
-    print(PSTR("CSQ..."));
+    Serial.print(F("CSQ..."));
     Serial.print((float)csq / 10, 1);
-    println(PSTR("dB"));
+    Serial.println(F("dB"));
   }
 
   txCount = 0;
@@ -542,10 +528,10 @@ bool initialize()
 void shutDownNet()
 {
   //obd.checkConn();
-  print(PSTR("NET..."));
+  Serial.print(F("NET..."));
   net.close();
   net.end();
-  println(PSTR("OFF"));
+  Serial.println(F("OFF"));
   state.clear(STATE_NET_READY | STATE_SERVER_CONNECTED);
 }
 
@@ -705,7 +691,7 @@ void process()
   }
   // when battery voltage gets low, enter standby mode
   if (volts >= 6 && volts < BATTERY_LOW_VOLTAGE) {
-    print(PSTR("LOW BATT:"));
+    Serial.print(F("LOW BATT:"));
     Serial.println(volts, 1);
     state.clear(STATE_WORKING);
   }
@@ -721,7 +707,7 @@ void process()
 #if SERVER_SYNC_INTERVAL
   // check server sync signal interval
   if (millis() - lastSyncTime > 1000L * SERVER_SYNC_INTERVAL) {
-    println(PSTR("NO SYNC"));
+    Serial.println(F("NO SYNC"));
     connErrors++;
   }
 #endif
@@ -767,7 +753,7 @@ void standby()
   unsigned long t = millis();
 #if ENABLE_GPS
   if (state.check(STATE_GPS_READY)) {
-    println(PSTR("GPS OFF"));
+    Serial.println(F("GPS OFF"));
     sys.gpsInit(0); // turn off GPS power
   }
 #endif
@@ -778,21 +764,21 @@ void standby()
 #if MEMS_MODE
     calibrateMEMS();
 #endif
-    println(PSTR("STANDBY"));
+    Serial.println(F("STANDBY"));
     if (waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t))) {
       // to wake up
       break;
     }
     t = millis();
     // start ping
-    print(PSTR("Ping..."));
+    Serial.print(F("Ping..."));
     for (byte n = 0; n < 10; n++) {
       if (obd.getVersion()) break;
       delay(3000);
     }
     float volts = obd.getVoltage();
     if (volts >= 6 && volts < BATTERY_LOW_VOLTAGE) {
-      print(PSTR("LOW BATT:"));
+      Serial.print(F("LOW BATT:"));
       Serial.println(volts, 1);
       // sleep 120 seconds
       for (byte n = 0; n < 15; n++) sleep(WDTO_8S);
@@ -806,10 +792,10 @@ void standby()
 #if NET_DEVICE == NET_WIFI
     if (!net.setup(WIFI_SSID, WIFI_PASSWORD))
 #else
-    if (!net.begin(&sys) || !net.setup(CELL_APN, 60000, SIM_PIN))
+    if (!net.begin(&sys) || !net.setup(CELL_APN, 60000))
 #endif
     {
-      println(PSTR("NO"));
+      Serial.println(F("NO"));
       continue;
     }
     Serial.println(net.getIP());
@@ -875,9 +861,9 @@ void loop()
   // standby mode
   if (!state.check(STATE_WORKING)) {
     if (state.check(STATE_SERVER_CONNECTED)) {
-      print(PSTR("LOGOUT.."));
+      Serial.print(F("LOGOUT.."));
       if (notify(EVENT_LOGOUT))
-        print(PSTR("OK"));
+        Serial.print(F("OK"));
       Serial.println();
       state.clear(STATE_SERVER_CONNECTED);
       connErrors = 0;
@@ -888,7 +874,7 @@ void loop()
   }
   // deal with network errors
   if (connErrors >= MAX_CONN_ERRORS) {
-    println(PSTR("Network errors"));
+    Serial.println(F("Network errors"));
     state.clear(STATE_SERVER_CONNECTED);
     shutDownNet();
     initialize();
