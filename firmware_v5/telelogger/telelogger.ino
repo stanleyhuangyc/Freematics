@@ -4,7 +4,7 @@
 * Developed by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
-* Visit https://freematics.com/hub for information about Freematics Hub
+* Visit https://hub.freematics.com to view live and history telemetry data
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -425,7 +425,7 @@ bool initialize(bool wait = false)
   }
 #endif
 
-#if ENABLE_GPS
+#if 0
   if (wait && !state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
     // wait for movement from GPS when OBD not connected
     Serial.println("Waiting...");
