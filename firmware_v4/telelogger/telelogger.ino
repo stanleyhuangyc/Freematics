@@ -332,9 +332,11 @@ void processMEMS()
     // load and store accelerometer
     int16_t temp = 0;
     mems.read(acc, 0, 0, &temp);
-    deviceTemp = temp / 10;
+    temp /= 10;
     cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
-    cache.log(PID_DEVICE_TEMP, deviceTemp);
+    if (temp != deviceTemp) {
+      cache.log(PID_DEVICE_TEMP, deviceTemp = temp);
+    }
     // calculate instant motion
     float motion = 0;
     for (byte i = 0; i < 3; i++) {
@@ -414,7 +416,7 @@ bool initialize()
     strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
   }
   Serial.println(strstr_P(info, PSTR("Rev")));
-  // generate device ID  
+  // generate device ID from IMEI
   uint32_t seed = atol(IMEI + 5);
   for (byte i = 0; i < 7; i++, seed >>= 5) {
     byte x = (byte)seed & 0x1f;
@@ -479,7 +481,7 @@ bool initialize()
   }
 #else
   Serial.print(F("CELL..."));
-  if (net.setup(CELL_APN, 60000)) {
+  if (net.setup(CELL_APN, !state.check(STATE_GPS_READY))) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
