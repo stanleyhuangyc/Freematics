@@ -512,7 +512,6 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
   bool success = false;
   //sendCommand("AT+CNMP=13\r"); // GSM only
   //sendCommand("AT+CNMP=14\r"); // WCDMA only
-  //sendCommand("AT+CNMP=38\r"); // LTE only
   do {
     do {
       success = sendCommand("AT+CPSI?\r", 1000, "Online");
@@ -845,6 +844,125 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
     if (pbytes) *pbytes = received;
     return payload;
   }
+}
+
+bool ClientSIM7600::setup(const char* apn, bool gps, bool roaming, unsigned int timeout)
+{
+  uint32_t t = millis();
+  bool success = false;
+  //sendCommand("AT+CNMP=13\r"); // GSM only
+  //sendCommand("AT+CNMP=14\r"); // WCDMA only
+  //sendCommand("AT+CNMP=38\r"); // LTE only
+  do {
+    do {
+      success = sendCommand("AT+CPSI?\r", 1000, "Online");
+      if (strstr(m_buffer, "Off")) {
+        success = false;
+        break;
+      }
+      if (success) {
+        if (!strstr(m_buffer, "NO SERVICE"))
+          break;
+        success = false;
+      }
+    } while (millis() - t < timeout);
+    if (!success) break;
+
+    do {
+      success = sendCommand("AT+CREG?\r", 5000, roaming ? "+CREG: 0,5" : "+CREG: 0,1");
+    } while (!success && millis() - t < timeout);
+    if (!success) break;
+
+    do {
+      success = sendCommand("AT+CGREG?\r",1000, roaming ? "+CGREG: 0,5" : "+CGREG: 0,1");
+    } while (!success && millis() - t < timeout);
+    if (!success) break;
+
+    if (apn && *apn) {
+      sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
+      sendCommand(m_buffer);
+    }
+    if (!success) break;
+
+    //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
+
+    sendCommand("AT+CSOCKSETPN=1\r");
+    sendCommand("AT+CIPMODE=0\r");
+    sendCommand("AT+NETOPEN\r");
+  } while(0);
+  if (!success) Serial.println(m_buffer);
+  // enable internal GPS if required
+  if (gps) {
+    if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
+      if (!m_gps) {
+        m_gps = new GPS_DATA;
+        memset(m_gps, 0, sizeof(GPS_DATA));
+      }
+    }
+  }
+  sendCommand("AT+CVAUXV=3050\r");
+  sendCommand("AT+CVAUXS=1\r");
+  return success;
+}
+
+bool UDPClientSIM7600::open(const char* host, uint16_t port)
+{
+  if (host) {
+    udpIP = queryIP(host);
+    if (!udpIP.length()) {
+      udpIP = host;
+    }
+    udpPort = port;
+  }
+  sprintf(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP.c_str(), udpPort);
+  if (!sendCommand(m_buffer, 3000)) {
+    close();
+    Serial.println(m_buffer);
+    return false;
+  }
+  return true;
+}
+
+void UDPClientSIM7600::close()
+{
+  sendCommand("AT+CIPCLOSE=0\r");
+}
+
+bool UDPClientSIM7600::send(const char* data, unsigned int len)
+{
+  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP.c_str(), udpPort);
+  if (sendCommand(m_buffer, 100, ">")) {
+    m_device->xbWrite(data, len);
+    return sendCommand(0, 1000);
+  }
+  return false;
+}
+
+char* UDPClientSIM7600::receive(int* pbytes, unsigned int timeout)
+{
+	char *data = checkIncoming(pbytes);
+	if (data) return data;
+  if (sendCommand(0, timeout, "+IPD")) {
+		return checkIncoming(pbytes);
+  }
+  return 0;
+}
+
+char* UDPClientSIM7600::checkIncoming(int* pbytes)
+{
+  checkGPS();
+  char *p = strstr(m_buffer, "+IPD");
+	if (p) {
+    *p = '-'; // mark this datagram as checked
+    int len = atoi(p + 4);
+    if (pbytes) *pbytes = len;
+    p = strchr(p, '\n');
+    if (p) {
+      if (strlen(++p) > len) *(p + len) = 0;
+      return p;
+    }
+  }
+	return 0;
 }
 
 bool HTTPClientSIM7600::open(const char* host, uint16_t port)

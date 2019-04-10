@@ -135,9 +135,9 @@ protected:
 class ClientSIM5360
 {
 public:
-    bool begin(CFreematics* device);
-    void end();
-    bool setup(const char* apn, bool gps = false, bool roaming = false, unsigned int timeout = 30000);
+    virtual bool begin(CFreematics* device);
+    virtual void end();
+    virtual bool setup(const char* apn, bool gps = false, bool roaming = false, unsigned int timeout = 30000);
     String getIP();
     int getSignal();
     String getOperatorName();
@@ -187,12 +187,27 @@ public:
     int send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };
-  
-class UDPClientSIM7600 : public UDPClientSIM5360
+
+class ClientSIM7600 : public ClientSIM5360
 {
+public:
+    bool setup(const char* apn, bool gps = false, bool roaming = false, unsigned int timeout = 30000);
 };
 
-class HTTPClientSIM7600 : public HTTPClient, public ClientSIM5360
+class UDPClientSIM7600 : public ClientSIM7600
+{
+public:
+    bool open(const char* host, uint16_t port);
+    void close();
+    bool send(const char* data, unsigned int len);
+    char* receive(int* pbytes = 0, unsigned int timeout = 5000);
+protected:
+    char* checkIncoming(int* pbytes);
+    String udpIP;
+    uint16_t udpPort = 0;
+};
+
+class HTTPClientSIM7600 : public HTTPClient, public ClientSIM7600
 {
 public:
     bool open(const char* host, uint16_t port);
