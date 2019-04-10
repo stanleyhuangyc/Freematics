@@ -5,8 +5,8 @@
   <define name="Enable GPS" type="bool" const="ENABLE_GPS" default="true"/>
   <define name="Motion Sensor">
     <option name="Disabled" const="MEMS_MODE=MEMS_DISABLED"/>
-    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC" default="true"/>
-    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF"/>
+    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC"/>
+    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF" default="true"/>
     <option name="DMP" const="MEMS_MODE=MEMS_DMP"/>
   </define>
   <define name="Storage">
