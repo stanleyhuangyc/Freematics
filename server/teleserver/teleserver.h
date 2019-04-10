@@ -16,13 +16,17 @@
 #ifndef MAX_CHANNELS
 #define MAX_CHANNELS 16
 #endif
+
+#define META_REVISION 1
+
 #define MAX_CHANNEL_AGE (60* 60 * 1000 * 72)
 #define MAX_PENDING_COMMANDS 4
 #define MAX_COMMAND_MSG_LEN 128
 #define SYNC_INTERVAL 15 /* seconds*/
 #define CHANNEL_TIMEOUT 180 /* seconds */
 #define SESSION_GAP (15 * 60 * 1000)
-
+#define MIN_DEVID_LEN 6
+#define MAX_DEVID_LEN 64
 #define PID_MODES 2
 
 #define FLAG_RUNNING 0x1
