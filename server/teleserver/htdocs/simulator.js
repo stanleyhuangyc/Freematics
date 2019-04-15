@@ -14,7 +14,7 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-const interval = 500; /* ms */
+const interval = 1000; /* ms */
 
 var battery = navigator.battery || navigator.webkitBattery || navigator.mozBattery;
 
@@ -27,12 +27,11 @@ var SIM = {
     manual: false,
     init: function()
     {
-        var options = {
-            enableHighAccuracy: false,
+		var options = {
+            enableHighAccuracy: true,
             timeout: 10000,
             maximumAge: 10000,
         };
-
         navigator.geolocation.getCurrentPosition(function (pos) { SIM.loc = pos.coords; }, null, options);
 
         if (window.DeviceMotionEvent) {
@@ -45,7 +44,6 @@ var SIM = {
 		if (window.DeviceOrientationEvent) {
 		  window.addEventListener('deviceorientation', function(eventData) { SIM.orientation = eventData; });
 		}
-
         self.setInterval("SIM.refresh()", interval);
     },
     refresh: function()
@@ -54,8 +52,8 @@ var SIM = {
         document.getElementById("ts").value = tick;
         if (this.manual) return;
         if (this.loc) {
-            document.getElementById("lat").value = this.loc.latitude.toFixed(6);
-            document.getElementById("lng").value = this.loc.longitude.toFixed(6);
+            document.getElementById("lat").value = this.loc.latitude;
+            document.getElementById("lng").value = this.loc.longitude;
         }
         if (this.acc && this.acc.x) {
             document.getElementById("acc_x").value = Math.floor(this.acc.x * 10);
