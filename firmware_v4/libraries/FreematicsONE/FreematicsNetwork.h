@@ -4,6 +4,8 @@
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 *************************************************************************/
 
+#pragma once
+
 #include <Arduino.h>
 #include "FreematicsBase.h"
 
