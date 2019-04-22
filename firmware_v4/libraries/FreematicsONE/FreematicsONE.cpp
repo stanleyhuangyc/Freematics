@@ -467,6 +467,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		debugOutput("RECV TIMEOUT");
 	}
 #endif
+	n = max(n-2, 0); // for some reason the last two chars are always '>\t', remove those to not break transmissions...
 	buffer[n] = 0;
 #ifdef DEBUG
 	if (m_target == TARGET_OBD) {
