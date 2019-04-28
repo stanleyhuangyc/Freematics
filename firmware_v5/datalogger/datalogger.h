@@ -15,7 +15,7 @@
 * THE SOFTWARE.
 *************************************************************************/
 
-class NullLogger {
+class FileLogger {
 public:
     virtual int begin()
     {
@@ -70,16 +70,12 @@ public:
     void write(const char* buf, byte len)
     {
         if (m_next) m_next->write(buf, len);
-        if (m_file.write((uint8_t*)buf, len) == len) {
-            m_size += len;
-        }
-        if (m_file.write('\n') == 1) {
-            m_size++;
-        }
+        m_file.write((uint8_t*)buf, len);
+        m_file.write('\n');
     }
     virtual uint32_t size()
     {
-        return m_size;
+        return m_file.size();
     }
     virtual void close()
     {
@@ -111,15 +107,14 @@ protected:
     }
     uint32_t m_dataTime = 0;
     uint32_t m_dataCount = 0;
-    uint32_t m_size;
     uint32_t m_id = 0;
     File m_file;
-    NullLogger* m_next = 0;
+    FileLogger* m_next = 0;
 };
 
-class SDLogger : public NullLogger {
+class SDLogger : public FileLogger {
 public:
-    SDLogger(NullLogger* next = 0) { m_next = next; }
+    SDLogger(FileLogger* next = 0) { m_next = next; }
     int begin()
     {
         SPI.begin();
@@ -144,7 +139,6 @@ public:
             Serial.println("File error");
             m_id = 0;
         }
-        m_size = 0;
         return m_id;
     }
     void flush()
@@ -157,11 +151,23 @@ public:
             Serial.println("File error");
         }
     }
+    void write(const char* buf, byte len)
+    {
+        if (m_next) m_next->write(buf, len);
+        m_file.print(m_dataTime);
+        m_file.write(',');
+        m_file.write((uint8_t*)buf, len);
+        m_file.write('\n');
+    }
+    void setTimestamp(uint32_t ts)
+    {
+        m_dataTime = ts;
+    }
 };
 
-class SPIFFSLogger : public NullLogger {
+class SPIFFSLogger : public FileLogger {
 public:
-    SPIFFSLogger(NullLogger* next = 0) { m_next = next; }
+    SPIFFSLogger(FileLogger* next = 0) { m_next = next; }
     int begin()
     {
         if (SPIFFS.begin(true)) {
@@ -181,6 +187,7 @@ public:
             }
         }
         m_file.write('\n');
+        m_size += len + 1;
     }
     uint32_t open()
     {
@@ -191,12 +198,17 @@ public:
         Serial.print("File: ");
         Serial.println(path);
         m_dataCount = 0;
+        m_size = 0;
         m_file = SPIFFS.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
             m_id = 0;
         }
         return m_id;
+    }
+    uint32_t size()
+    {
+        return m_size;
     }
 private:
     void purge()
@@ -223,4 +235,5 @@ private:
             if (!m_file) m_id = 0;
         }
     }
+    uint32_t m_size;
 };

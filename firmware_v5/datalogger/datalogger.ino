@@ -85,7 +85,7 @@ WiFiServer nmeaServer(NMEA_TCP_PORT);
 WiFiClient nmeaClient;
 #endif
 
-class DataOutputter : public NullLogger
+class DataOutputter : public FileLogger
 {
     void write(const char* buf, byte len)
     {
