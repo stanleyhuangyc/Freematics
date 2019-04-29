@@ -75,7 +75,7 @@ public:
     }
     virtual uint32_t size()
     {
-        return m_file.size();
+        return m_file.position();
     }
     virtual void close()
     {
@@ -134,6 +134,7 @@ public:
         Serial.print("File: ");
         Serial.println(path);
         m_dataCount = 0;
+        m_size = 0;
         m_file = SD.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
@@ -163,6 +164,8 @@ public:
     {
         m_dataTime = ts;
     }
+private:
+    uint32_t m_size = 0;
 };
 
 class SPIFFSLogger : public FileLogger {
@@ -187,7 +190,6 @@ public:
             }
         }
         m_file.write('\n');
-        m_size += len + 1;
     }
     uint32_t open()
     {
@@ -198,17 +200,12 @@ public:
         Serial.print("File: ");
         Serial.println(path);
         m_dataCount = 0;
-        m_size = 0;
         m_file = SPIFFS.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
             m_id = 0;
         }
         return m_id;
-    }
-    uint32_t size()
-    {
-        return m_size;
     }
 private:
     void purge()
@@ -235,5 +232,4 @@ private:
             if (!m_file) m_id = 0;
         }
     }
-    uint32_t m_size;
 };
