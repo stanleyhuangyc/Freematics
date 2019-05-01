@@ -19,6 +19,7 @@
 * /api/control - issue a control command
 * /api/list - list of log files
 * /api/log/<file #> - raw CSV format log file
+* /api/delete/<file #> - delete file
 * /api/data/<file #>?pid=<PID in hex> - JSON array of PID data
 *************************************************************************/
 
@@ -276,6 +277,32 @@ int handlerLogList(UrlHandlerParam* param)
     return FLAG_DATA_RAW;
 }
 
+int handlerLogDelete(UrlHandlerParam* param)
+{
+    int id = 0;
+    if (param->pucRequest[0] == '/') {
+        id = atoi(param->pucRequest + 1);
+    }
+    sprintf(param->pucBuffer, "/DATA/%u.CSV", id);
+    if (id == fileid) {
+        strcat(param->pucBuffer, " still active");
+    } else {
+#if STORAGE == STORAGE_SPIFFS
+        bool removal = SPIFFS.remove(param->pucBuffer);
+#else
+        bool removal = SD.remove(param->pucBuffer);
+#endif
+        if (removal) {
+            strcat(param->pucBuffer, " deleted");
+        } else {
+            strcat(param->pucBuffer, " not found");
+        }
+    }
+    param->contentLength = strlen(param->pucBuffer);
+    param->contentType = HTTPFILETYPE_TEXT;
+    return FLAG_DATA_RAW;
+}
+
 #endif
 
 UrlHandler urlHandlerList[]={
@@ -286,6 +313,7 @@ UrlHandler urlHandlerList[]={
     {"api/list", handlerLogList},
     {"api/data", handlerLogData},
     {"api/log", handlerLogFile},
+    {"api/delete", handlerLogDelete},
 #endif
     {0}
 };
