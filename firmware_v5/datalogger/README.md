@@ -37,6 +37,7 @@ Implemented HTTP APIs:
 * /api/live - live data (OBD/GPS/MEMS)
 * /api/list - list of log files
 * /api/log/[file #] - content of CSV format log file
+* /api/delete/[file #] - delete file
 * /api/data/[file #]?pid=[PID # in HEX] - JSON array of PID data
 
 NMEA TCP Server
