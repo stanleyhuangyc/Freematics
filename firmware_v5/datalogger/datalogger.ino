@@ -439,10 +439,10 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
 
-#if USE_OBD
     while (!sys.begin());
     Serial.print("Firmware: V");
     Serial.println(sys.version);
+#if USE_OBD
     obd.begin(sys.link);
 #endif
 
