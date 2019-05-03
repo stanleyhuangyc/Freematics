@@ -22,7 +22,7 @@
 **************************************/
 #define ENABLE_HTTPD 1
 #define ENABLE_WIFI_AP 1
-#define ENABLE_WIFI_STATION 1
+#define ENABLE_WIFI_STATION 0
 #define WIFI_AP_SSID "GPSLOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
 #define WIFI_SSID "YOUR_SSID"
@@ -31,7 +31,7 @@
 /**************************************
 * Traccar client
 **************************************/
-#define ENABLE_TRACCAR_CLIENT 1
+#define ENABLE_TRACCAR_CLIENT 0
 #define TRACCAR_HOST "YOUR_TRACCAR_HOST"
 #define TRACCAR_DEV_ID "YOUR_TRACCAR_ID"
 
