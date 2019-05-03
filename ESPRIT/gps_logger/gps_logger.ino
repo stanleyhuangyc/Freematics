@@ -386,7 +386,7 @@ void updateDisplay(bool updated)
 
     lcd.setFontSize(FONT_SIZE_MEDIUM);
     lcd.setCursor(0, 3);
-    lcd.printInt(gd->alt / 100, 3);
+    lcd.printInt(gd->alt, 3);
     lcd.setFontSize(FONT_SIZE_SMALL);
     lcd.setCursor(0, 5);
     lcd.print("m Alt");
@@ -446,8 +446,6 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
-    sys.begin();
-
 #if STORAGE == STORAGE_SD
     Serial.print("SD...");
     int volsize = store.begin();
@@ -491,13 +489,15 @@ void setup()
     lcd.println(WiFi.localIP());
 #endif
 #endif
+
+#if ENABLE_NMEA_SERVER
     nmeaServer.begin();
+#endif
 
     Serial.print("GPS...");
     if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
         logger.setState(STATE_GPS_FOUND);
         Serial.println("OK");
-        //taskWifi.create(wifi_thread, "wifi_thread", 16 * 1024);
         logger.waitGPS();
     } else {
         Serial.println("NO");

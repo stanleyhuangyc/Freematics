@@ -320,11 +320,13 @@ bool serverCheckup(int wifiJoinPeriod)
 #elif ENABLE_WIFI_STATION
             WiFi.mode (WIFI_STA);
 #endif
+#if ENABLE_WIFI_STATION
             Serial.print("Connecting to hotspot (SSID:");
             Serial.print(WIFI_SSID);
             Serial.println(')');
             WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
             wifiStartTime = millis();
+#endif
         }
     } else {
         if (wifiStartTime) {
