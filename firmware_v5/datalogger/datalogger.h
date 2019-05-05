@@ -160,10 +160,6 @@ public:
         m_file.write((uint8_t*)buf, len);
         m_file.write('\n');
     }
-    void setTimestamp(uint32_t ts)
-    {
-        m_dataTime = ts;
-    }
 private:
     uint32_t m_size = 0;
 };
