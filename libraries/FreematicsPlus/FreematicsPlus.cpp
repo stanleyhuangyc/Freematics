@@ -453,17 +453,25 @@ void FreematicsESP32::gpsEnd()
         }
     }
 	//turn off GPS power
-    digitalWrite(m_pinGPSPower, LOW);
+    if (m_pinGPSPower) {
+        digitalWrite(m_pinGPSPower, LOW);
+    } else if (link) {
+        char buf[16];
+        link->sendCommand("ATGPSOFF", buf, sizeof(buf), 500);
+    }
 }
 
 bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
 {
-    if (!link && (m_flags & GNSS_USE_LINK)) return false;
-    m_pinGPSPower = version >= 13 ? PIN_GPS_POWER2 : PIN_GPS_POWER;
-    pinMode(m_pinGPSPower, OUTPUT);
+    if (m_pinGPSPower) pinMode(m_pinGPSPower, OUTPUT);
     if (m_flags & GNSS_USE_LINK) {
-        digitalWrite(m_pinGPSPower, HIGH);
-        delay(100);
+        if (m_pinGPSPower) {
+            digitalWrite(m_pinGPSPower, HIGH);
+            delay(100);
+        } else if (link) {
+            char buf[16];
+            link->sendCommand("ATGPSON", buf, sizeof(buf), 500);
+        } 
     } else if (!(m_flags & GNSS_SOFT_SERIAL)) {
         uart_config_t uart_config = {
             .baud_rate = baudrate,
@@ -480,7 +488,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         // install UART driver
         uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
         // turn on GPS power
-        digitalWrite(m_pinGPSPower, HIGH);
+        if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
         delay(100);
         // start decoding task
         taskGPS.create(gps_decode_task, "GPS", 1);
@@ -491,7 +499,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
 
         // turn on GPS power
         delay(10);
-        digitalWrite(m_pinGPSPower, HIGH);
+        if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
         delay(200);
 
         // switch M8030 GNSS to 38400bps
@@ -656,7 +664,10 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate)
     };
     int pinRx = PIN_BEE_UART_RXD;
     int pinTx = PIN_BEE_UART_TXD;
-    if (version >= 13) {
+    if (version >= 14) {
+        pinRx = PIN_BEE_UART_RXD3;
+        pinTx = PIN_BEE_UART_TXD3;
+    } else if (version == 13) {
         pinRx = PIN_BEE_UART_RXD2;
         pinTx = PIN_BEE_UART_TXD2;
     }
@@ -680,7 +691,7 @@ void FreematicsESP32::xbWrite(const char* cmd)
     uart_write_bytes(BEE_UART_NUM, cmd, strlen(cmd));
 #if VERBOSE_XBEE
 	Serial.print("[SENT]");
-	Serial.print(data);
+	Serial.print(cmd);
 	Serial.println("[/SENT]");
 #endif
 }
@@ -766,6 +777,18 @@ void FreematicsESP32::xbTogglePower()
 #endif
 }
 
+void FreematicsESP32::buzzer(int freq)
+{
+    if (version >= 14) {
+        if (freq) {
+            ledcWriteTone(0, 2000);
+            ledcWrite(0, 255);
+        } else {
+            ledcWrite(0, 0);
+        }
+    }
+}
+
 byte FreematicsESP32::getVersion()
 {
     if (!link) return 0;
@@ -801,20 +824,34 @@ bool FreematicsESP32::begin(int cpuMHz)
     }
 #endif
 
+    pinMode(PIN_LINK_RESET, OUTPUT);
+    digitalWrite(PIN_LINK_RESET, HIGH);
+
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);
 
     if (link) return false;
+
+    m_flags = 0;
+    m_pinGPSPower = 0;
 
     CLink_UART *linkUART = new CLink_UART;
     if (linkUART->begin()) {
         link = linkUART;
         for (byte n = 0; n < 5 && !(version = getVersion()); n++);
         if (version) {
-            if (version >= 13)
+            if (version >= 14) {
                 m_flags |= GNSS_USE_LINK;
-            else
+                // set up buzzer
+                ledcSetup(0, 2000, 8);
+                ledcAttachPin(PIN_BUZZER, 0);
+            } else if (version == 13) {
+                m_pinGPSPower = PIN_GPS_POWER2;
+                m_flags |= GNSS_USE_LINK;
+            } else {
+                m_pinGPSPower = PIN_GPS_POWER;
                 m_flags |= GNSS_SOFT_SERIAL;
+            }
             return true;
         }
         link = 0;
@@ -827,6 +864,7 @@ bool FreematicsESP32::begin(int cpuMHz)
         link = linkSPI;
         for (byte n = 0; n < 5 && !(version = getVersion()); n++);
         if (version) {
+            m_pinGPSPower = PIN_GPS_POWER;
             return true;
         }
         link = 0;

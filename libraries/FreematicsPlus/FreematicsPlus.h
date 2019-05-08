@@ -2,7 +2,7 @@
 * Arduino library for ESP32 based Freematics ONE+ and Freematics Esprit
 * Distributed under BSD license
 * Visit https://freematics.com for more information
-* (C)2017-2018 Developed by Stanley Huang <stanley@freematics.com.au>
+* (C)2017-2019 Developed by Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
@@ -29,12 +29,15 @@
 #define LINK_UART_BUF_SIZE 256
 #define PIN_LINK_UART_RX 13
 #define PIN_LINK_UART_TX 14
+#define PIN_LINK_RESET 15
 
 #define PIN_BEE_PWR 27
 #define PIN_BEE_UART_RXD 16
 #define PIN_BEE_UART_TXD 17
 #define PIN_BEE_UART_RXD2 32
 #define PIN_BEE_UART_TXD2 33
+#define PIN_BEE_UART_RXD3 35
+#define PIN_BEE_UART_TXD3 2
 #define BEE_UART_NUM UART_NUM_1
 #define BEE_BAUDRATE 115200L
 
@@ -44,6 +47,8 @@
 #define PIN_GPS_UART_TXD 33
 #define GPS_UART_NUM UART_NUM_2
 #define GPS_SOFT_BAUDRATE 38400L
+
+#define PIN_BUZZER 25
 
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
@@ -83,7 +88,7 @@ public:
 	bool begin(unsigned int baudrate = LINK_UART_BAUDRATE, int rxPin = PIN_LINK_UART_RX, int txPin = PIN_LINK_UART_TX);
 	void end();
 	// send command and receive response
-	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout);
+	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = 1000);
 	// receive data from  UART
 	int receive(char* buffer, int bufsize, unsigned int timeout);
 	// write data to UART
@@ -99,7 +104,7 @@ public:
 	bool begin(unsigned long freq = SPI_FREQ);
 	void end();
 	// send command and receive response
-	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout);
+	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = 1000);
 	// receive data from SPI
 	int receive(char* buffer, int bufsize, unsigned int timeout);
 	// write data to SPI
@@ -136,6 +141,8 @@ public:
   void xbPurge();
   // toggle xBee module power
   void xbTogglePower();
+  // control internal buzzer (if present)
+  void buzzer(int freq);
 	// get co-processor version
 	byte getVersion();
 	// co-processor firmware version number
@@ -144,5 +151,5 @@ public:
 	CLink *link = 0;
 private:
   byte m_flags = 0;
-  byte m_pinGPSPower = PIN_GPS_POWER;
+  byte m_pinGPSPower = 0;
 };
