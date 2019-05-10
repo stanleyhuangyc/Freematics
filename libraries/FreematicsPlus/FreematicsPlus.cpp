@@ -566,6 +566,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         s += 7;
         float lat = 0;
         float lng = 0;
+        bool good = false;
         do {
             gpsData->date = atoi(s);
             if (!(s = strchr(s, ','))) break;
@@ -575,6 +576,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             if (!(s = strchr(s, ','))) break;
             lng = (float)atoi(++s) / 1000000;
             if (!(s = strchr(s, ','))) break;
+            good = true;
             gpsData->alt = (float)atoi(++s) / 100;
             if (!(s = strchr(s, ','))) break;
             gpsData->speed = (float)atoi(++s) / 100;
@@ -585,7 +587,11 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             if (!(s = strchr(s, ','))) break;
             gpsData->hdop = atoi(++s);
         } while(0);
-        if (lat == 0 || lng == 0) return false;
+        if (good && (gpsData->lat || gpsData->lng)) {
+            // filter out invalid coordinates
+            good = (abs(lat - gpsData->lat * 1000000) < 100000 && abs(lng - gpsData->lng * 1000000) < 100000);
+        }
+        if (!good) return false;
         gpsData->lat = lat;
         gpsData->lng = lng;
         if (pgd) *pgd = gpsData;
@@ -594,13 +600,13 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         gps.stats(&gpsData->sentences, &gpsData->errors);
         if (!gpsPendingData) return false;
         long lat, lng;
+        bool good = true;
         gps.get_position(&lat, &lng, 0);
         if (gpsData->lat || gpsData->lng) {
             // filter out invalid coordinates
-            if (abs(lat - gpsData->lat * 1000000) >= 100000) lat = 0;
-            if (abs(lng - gpsData->lng * 1000000) >= 100000) lng = 0;
+            good = (abs(lat - gpsData->lat * 1000000) < 100000 && abs(lng - gpsData->lng * 1000000) < 100000);
         }
-        if (lat == 0 || lng == 0) return false;
+        if (!good) return false;
         gpsData->ts = millis();
         gpsData->lat = (float)lat / 1000000;
         gpsData->lng = (float)lng / 1000000;
@@ -807,6 +813,19 @@ byte FreematicsESP32::getVersion()
 		delay(100);
 	}
 	return version;
+}
+
+void FreematicsESP32::resetLink()
+{
+    if (version == 14) {
+        digitalWrite(PIN_LINK_RESET, LOW);
+        delay(50);
+        digitalWrite(PIN_LINK_RESET, HIGH);
+    } else {
+        char buf[16];
+        link->sendCommand("ATR\r", buf, sizeof(buf), 100);
+    }
+    delay(2000);
 }
 
 bool FreematicsESP32::begin(int cpuMHz)

@@ -143,6 +143,8 @@ public:
   void xbTogglePower();
   // control internal buzzer (if present)
   void buzzer(int freq);
+  // reset co-processor
+  void resetLink();
 	// get co-processor version
 	byte getVersion();
 	// co-processor firmware version number
