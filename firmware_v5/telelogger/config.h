@@ -37,7 +37,7 @@
 **************************************/
 #ifndef NET_DEVICE
 // change the following line to change network device
-#define NET_DEVICE NET_WIFI
+#define NET_DEVICE NET_SIM7600
 // WIFI settings
 #define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "PASSWORD"
@@ -110,7 +110,7 @@
 **************************************/
 #define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
-#define MOTION_THRESHOLD 0.25f /* moving vehicle motion threshold in G */
+#define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
@@ -119,6 +119,7 @@
 **************************************/
 #define ENABLE_HTTPD 0
 #define ENABLE_OLED 0
+#define CONFIG_MODE_TIMEOUT 1000
 
 #define PIN_SENSOR1 34
 #define PIN_SENSOR2 35

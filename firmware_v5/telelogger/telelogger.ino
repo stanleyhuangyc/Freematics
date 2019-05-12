@@ -58,7 +58,8 @@ PID_POLLING_INFO obdData[]= {
 
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
-float acc[3] = {0};
+float accSum[3] = {0};
+uint8_t accCount = 0;
 #endif
 int16_t deviceTemp = 0;
 
@@ -99,6 +100,7 @@ bool serverSetup(IPAddress& ip);
 void serverProcess(int timeout);
 String executeCommand(const char* cmd);
 bool processCommand(char* data);
+void processMEMS(bool process);
 
 class State {
 public:
@@ -110,7 +112,20 @@ private:
 };
 
 FreematicsESP32 sys;
-COBD obd;
+
+class OBD : public COBD
+{
+protected:
+  void idleTasks()
+  {
+    // do some quick tasks while waiting for OBD response
+#if MEMS_MODE
+    processMEMS(false);
+#endif
+  }
+};
+
+OBD obd;
 
 #if MEMS_MODE == MEMS_ACC
 MPU9250_ACC mems;
@@ -181,9 +196,11 @@ int handlerLiveData(UrlHandlerParam* param)
     n--;
     n += snprintf(buf + n, bufsize - n, "]}");
 #if MEMS_MODE
-    n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":[%d,%d,%d],\"stationary\":%u}",
-        (int)((acc[0] - accBias[0]) * 100), (int)((acc[1] - accBias[1]) * 100), (int)((acc[2] - accBias[2]) * 100),
-        (unsigned int)(millis() - lastMotionTime));
+    if (accCount) {
+      n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":[%d,%d,%d],\"stationary\":%u}",
+          (int)((accSum[0] / accCount - accBias[0]) * 100), (int)((accSum[1] / accCount - accBias[1]) * 100), (int)((accSum[2] / accCount - accBias[2]) * 100),
+          (unsigned int)(millis() - lastMotionTime));
+    }
 #endif
     if (gd && gd->ts) {
       n += snprintf(buf + n, bufsize - n, ",\"gps\":{\"utc\":\"%s\",\"lat\":%f,\"lng\":%f,\"alt\":%f,\"speed\":%f,\"sat\":%d,\"age\":%u}",
@@ -322,21 +339,54 @@ bool waitMotionGPS(int timeout)
 }
 
 #if MEMS_MODE
-void processMEMS()
+void processMEMS(bool process)
 {
-    // load and store accelerometer
-    
+  if (!state.check(STATE_MEMS_READY)) return;
+
+  // load and store accelerometer data
+  int16_t temp = 0;
+  float acc[3];
 #if ENABLE_ORIENTATION
-    ORIENTATION ori;
-    float gyr[3];
-    float mag[3];
-    mems.read(acc, gyr, mag, &deviceTemp, &ori);
-    cache.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
+  ORIENTATION ori;
+  float gyr[3];
+  float mag[3];
+  mems.read(acc, gyr, mag, &temp, &ori);
 #else
-    mems.read(acc, 0, 0, &deviceTemp);
+  if (!mems.read(acc, 0, 0, &temp)) return;
 #endif
-    deviceTemp /= 10;
-    cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+  accSum[0] += acc[0];
+  accSum[1] += acc[1];
+  accSum[2] += acc[2];
+  accCount++;
+
+  if (process) {
+    if (accCount) {
+      acc[0] = accSum[0] / accCount;
+      acc[1] = accSum[1] / accCount;
+      acc[2] = accSum[2] / accCount;
+      cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+#if ENABLE_ORIENTATION
+      cache.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
+#endif
+      temp /= 10;
+      if (temp != deviceTemp) {
+        cache.log(PID_DEVICE_TEMP, deviceTemp = temp);
+      }
+      // calculate instant motion
+      float motion = 0;
+      for (byte i = 0; i < 3; i++) {
+        float m = (acc[i] - accBias[i]);
+        motion += m * m;
+      }
+      if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
+        lastMotionTime = millis();
+      }
+    }
+    accSum[0] = 0;
+    accSum[1] = 0;
+    accSum[2] = 0;
+    accCount = 0;
+  }
 }
 
 void calibrateMEMS()
@@ -421,6 +471,7 @@ bool initialize(bool wait = false)
 #endif
     } else {
       Serial.println("NO");
+      if (state.check(STATE_OBD_FOUND)) return false;
     }
   }
 #endif
@@ -771,7 +822,18 @@ bool waitMotion(unsigned long timeout)
       serverProcess(100);
       // calculate relative movement
       float motion = 0;
+      float acc[3];
       mems.read(acc);
+      if (accCount == 10) {
+        accCount = 0;
+        accSum[0] = 0;
+        accSum[1] = 0;
+        accSum[2] = 0;
+      }
+      accSum[0] += acc[0];
+      accSum[1] += acc[1];
+      accSum[2] += acc[2];
+      accCount++;
       for (byte i = 0; i < 3; i++) {
         float m = (acc[i] - accBias[i]);
         motion += m * m;
@@ -823,17 +885,6 @@ void process()
   cache.log(PID_DEVICE_HALL, readChipHallSensor() / 200);
 #endif
 
-#if MEMS_MODE
-  // process MEMS data if available
-  if (state.check(STATE_MEMS_READY)) {
-    processMEMS();
-  } else {
-    deviceTemp = readChipTemperature();
-  }
-#else
-  deviceTemp = readChipTemperature();
-#endif
-
   if (sys.getVersion() >= 13) {
       batteryVoltage = (float)(analogRead(A0) * 11 * 370) / 4095;
       cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
@@ -855,8 +906,15 @@ void process()
   processExtInputs();
 #endif
 
-  if ((teleClient.txCount % 100) == 1) {
-    cache.log(PID_DEVICE_TEMP, deviceTemp);
+#if MEMS_MODE
+  processMEMS(true);
+#endif
+
+  if (!state.check(STATE_MEMS_READY)) {
+    int temp = readChipTemperature();
+    if (temp != deviceTemp) {
+      cache.log(PID_DEVICE_TEMP, deviceTemp = temp);
+    }
   }
 
 #if STORAGE != STORAGE_NONE
@@ -880,6 +938,7 @@ void process()
 #endif
     // start transmission
     if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+
     if (teleClient.transmit(cache.buffer(), cache.length())) {
       // successfully sent
       connErrors = 0;
@@ -1004,7 +1063,9 @@ if (state.check(STATE_OBD_READY)) {
     }
     cache.timestamp(millis());
     cache.log(PID_DEVICE_TEMP, readChipTemperature());
-    cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+    if (accCount) {
+      cache.log(PID_ACC, (int16_t)((accSum[0] / accCount - accBias[0]) * 100), (int16_t)((accSum[1] / accCount - accBias[1]) * 100), (int16_t)((accSum[2] / accCount - accBias[2]) * 100));
+    }
     if (!state.check(STATE_STANDBY)) {
       break;
     }
@@ -1159,6 +1220,41 @@ void showSysInfo()
   oled.print(getFlashSize() >> 10);
   oled.println("MB Flash");
 #endif
+
+    // generate a unique ID in case VIN is inaccessible
+    genDeviceID(devid);
+    Serial.print("DEVICE ID: ");
+    Serial.println(devid);
+#if ENABLE_OLED
+    oled.print("DEVICE ID: ");
+    oled.println(devid);
+#endif
+}
+
+void configMode()
+{
+  uint32_t t = millis();
+
+  do {
+    if (Serial.available()) {
+      // enter config mode
+      Serial.println("#CONFIG MODE#");
+      Serial1.begin(LINK_UART_BAUDRATE, SERIAL_8N1, PIN_LINK_UART_RX, PIN_LINK_UART_TX);
+      do {
+        if (Serial.available()) {
+          Serial1.write(Serial.read());
+          t = millis();
+        }
+        if (Serial1.available()) {
+          Serial.write(Serial1.read());
+          t = millis();
+        }
+      } while (millis() - t < CONFIG_MODE_TIMEOUT);
+      Serial.println("#RESET#");
+      delay(100);
+      ESP.restart();
+    }
+  } while (millis() - t < CONFIG_MODE_TIMEOUT);
 }
 
 void setup()
@@ -1168,38 +1264,31 @@ void setup()
     oled.setFontSize(FONT_SIZE_MEDIUM);
     oled.setFontSize(FONT_SIZE_SMALL);
 #endif
-
-    delay(1000);
+    // initialize USB serial
+    Serial.begin(115200);
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
+
+    configMode();
 
 #if LOG_EXT_SENSORS
     pinMode(PIN_SENSOR1, INPUT);
     pinMode(PIN_SENSOR2, INPUT);
 #endif
 
-    // initialize USB serial
-    Serial.begin(115200);
-
     // show system information
     showSysInfo();
 
     while (!sys.begin());
+
+    sys.buzzer(2000);
+
     Serial.print("Firmware: V");
     Serial.println(sys.version);
 #if ENABLE_OBD
     obd.begin(sys.link);
-#endif
-
-    // generate a unique ID in case VIN is inaccessible
-    genDeviceID(devid);
-    Serial.print("DEVICE ID: ");
-    Serial.println(devid);
-#if ENABLE_OLED
-    oled.print("DEVICE ID: ");
-    oled.println(devid);
 #endif
 
 #if ENABLE_HTTPD
@@ -1221,6 +1310,8 @@ void setup()
 
     // reset client stats
     teleClient.reset();
+
+    sys.buzzer(0);
 
     // initializing components
     initialize();

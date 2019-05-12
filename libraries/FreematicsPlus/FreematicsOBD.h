@@ -65,6 +65,7 @@ public:
 	// link object pointer
 	CLink* link = 0;
 protected:
+	virtual void idleTasks() { delay(5); }
 	char* getResponse(byte& pid, char* buffer, byte bufsize);
 	uint8_t getPercentageValue(char* data);
 	uint16_t getLargeValue(char* data);
