@@ -90,7 +90,7 @@ bool COBD::readPID(byte pid, int& result)
 	char* data = 0;
 	sprintf(buffer, "%02X%02X\r", dataMode, pid);
 	link->send(buffer);
-	delay(5);
+	idleTasks();
 	int ret = link->receive(buffer, sizeof(buffer), OBD_TIMEOUT_SHORT);
 	if (ret > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
