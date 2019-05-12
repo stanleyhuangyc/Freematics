@@ -165,7 +165,8 @@ bool UDPClientSIM800::begin(CFreematics* device)
     // discard any stale data
     device->xbPurge();
     for (byte m = 0; m < 3; m++) {
-      if (sendCommand("AT\r")) {
+      sendCommand("AT\r");
+      if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         m_stage = 2;
         return true;
       }
@@ -184,19 +185,17 @@ bool UDPClientSIM800::setup(const char* apn, unsigned int timeout, const char* p
 {
   uint32_t t = millis();
   bool success = false;
-  if (!sendCommand("ATE0\r") && !sendCommand("ATE0\r")) return false;
+  if (pin) {
+    sprintf_P(m_buffer, PSTR("AT+CPIN=\"%s\"\r"), pin);
+    sendCommand(m_buffer);
+  }
   do {
     sendCommand("AT+CREG?\r");
     success = strstr_P(m_buffer, PSTR("+CREG: 0,1")) || strstr_P(m_buffer, PSTR("+CREG: 0,5"));
-    bool pin_needed = strstr_P(m_buffer, PSTR("+CREG: 0,0")) || strstr_P(m_buffer, PSTR("+CREG: 0,4")) || strstr_P(m_buffer, PSTR("SIM PIN"));
-    if(pin_needed && *pin && strlen(pin) > 0)
-    {
-      sprintf_P(m_buffer, PSTR("AT+CPIN=\"%s\"\r"), pin);
-      sendCommand(m_buffer);
-    }
     Serial.print('.');
-    if(!success) delay(500);
-  } while (!success && millis() - t < timeout);
+    if (success) break;
+    delay(500);
+  } while (millis() - t < timeout);
   if (!success) return false;
   do {
     success = sendCommand("AT+CGATT?\r", 3000, "+CGATT: 1");
@@ -250,6 +249,11 @@ String UDPClientSIM800::getOperatorName()
         }
     }
     return "";
+}
+
+bool UDPClientSIM800::checkSIM()
+{
+  return sendCommand("AT+CPIN?\r", 500, ": READY");
 }
 
 bool UDPClientSIM800::open(const char* host, uint16_t port)
@@ -402,8 +406,8 @@ bool UDPClientSIM5360::begin(CFreematics* device)
     delay(3000);
     // discard any stale data
     device->xbPurge();
-    sendCommand("AT\r");
     for (byte m = 0; m < 3; m++) {
+      sendCommand("AT\r");
       if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         m_stage = 2;
         return true;
@@ -425,15 +429,19 @@ void UDPClientSIM5360::end()
   }
 }
 
-bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout)
+bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout, const char* pin)
 {
   uint32_t t = millis();
   bool success = false;
   //sendCommand("AT+CNMP=14\r"); // use WCDMA only
+  if (pin) {
+    sprintf_P(m_buffer, PSTR("AT+CPIN=\"%s\"\r"), pin);
+    sendCommand(m_buffer);
+  }
   do {
     do {
       Serial.print('.');
-      delay(1000);
+      delay(500);
       success = sendCommand("AT+CPSI?\r", 1000, "Online");
       if (success) {
         if (!strstr_P(m_buffer, PSTR("NO SERVICE")))
@@ -447,7 +455,7 @@ bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout)
     if (!success) break;
 
     do {
-      success = sendCommand("AT+CREG?\r", 5000, "+CREG: 0,1");
+      success = sendCommand("AT+CREG?\r", 1000, "+CREG: 0,1");
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
@@ -524,6 +532,13 @@ String UDPClientSIM5360::getOperatorName()
         }
     }
     return "";
+}
+
+bool UDPClientSIM5360::checkSIM()
+{
+  bool success;
+  for (byte n = 0; n < 4 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);
+  return success;  
 }
 
 bool UDPClientSIM5360::open(const char* host, uint16_t port)

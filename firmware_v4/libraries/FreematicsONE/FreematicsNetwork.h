@@ -66,10 +66,11 @@ class UDPClientSIM800 : virtual NullClient
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, unsigned int timeout = 60000, const char* pin = "");
+    bool setup(const char* apn, unsigned int timeout = 60000, const char* pin = 0);
     String getIP();
     int getSignal();
     String getOperatorName();
+    bool checkSIM();
     bool open(const char* host, uint16_t port);
     bool send(const char* data, unsigned int len);
     void close();
@@ -90,10 +91,11 @@ class UDPClientSIM5360 : virtual NullClient
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, bool gps = false, unsigned int timeout = 15000);
+    bool setup(const char* apn, bool gps = false, unsigned int timeout = 15000, const char* pin = 0);
     String getIP();
     int getSignal();
     String getOperatorName();
+    bool checkSIM();
     bool open(const char* host, uint16_t port);
     void close();
     bool send(const char* data, unsigned int len);
