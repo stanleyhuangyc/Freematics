@@ -382,7 +382,7 @@ int CLink_SPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		portEXIT_CRITICAL(&m);
 	} while (!eos && millis() - t < timeout);
 #if VERBOSE_LINK
-	if (!eos && millis() - t >= timeout) {
+	if (!eos) {
 		// timed out
 		Serial.println("[SPI RECV TIMEOUT]");
 	}
@@ -393,7 +393,7 @@ int CLink_SPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	Serial.println(buffer);
 #endif
 	// wait for READY pin to restore high level so SPI bus is released
-	while (digitalRead(PIN_LINK_SPI_READY) == LOW) delay(1);
+    if (eos) while (digitalRead(PIN_LINK_SPI_READY) == LOW) delay(1);
 	return n;
 }
 
@@ -798,21 +798,18 @@ void FreematicsESP32::buzzer(int freq)
 byte FreematicsESP32::getVersion()
 {
     if (!link) return 0;
-	for (byte n = 0; n < 3; n++) {
-		char buffer[32];
-		if (link->sendCommand("ATI\r", buffer, sizeof(buffer), 200)) {
-            char *p = strstr(buffer, "OBD");
-			if (p && (p = strchr(p, ' '))) {
-				p += 2;
-                if (isdigit(*p) && *(p + 1) == '.' && isdigit(*(p + 2))) {
-				    version = (*p - '0') * 10 + (*(p + 2) - '0');
-				    break;
-                }
-			}
-		}
-		delay(100);
-	}
-	return version;
+    char buffer[32];
+    if (link->sendCommand("ATI\r", buffer, sizeof(buffer), 200)) {
+        char *p = strstr(buffer, "OBD");
+        if (p && (p = strchr(p, ' '))) {
+            p += 2;
+            if (isdigit(*p) && *(p + 1) == '.' && isdigit(*(p + 2))) {
+                version = (*p - '0') * 10 + (*(p + 2) - '0');
+                return version;
+            }
+        }
+    }
+	return 0;
 }
 
 void FreematicsESP32::resetLink()
@@ -842,6 +839,7 @@ bool FreematicsESP32::begin(int cpuMHz)
         }
     }
 #endif
+    if (link) return false;
 
     pinMode(PIN_LINK_RESET, OUTPUT);
     digitalWrite(PIN_LINK_RESET, HIGH);
@@ -849,15 +847,13 @@ bool FreematicsESP32::begin(int cpuMHz)
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);
 
-    if (link) return false;
-
     m_flags = 0;
     m_pinGPSPower = 0;
 
     CLink_UART *linkUART = new CLink_UART;
     if (linkUART->begin()) {
         link = linkUART;
-        for (byte n = 0; n < 5 && !(version = getVersion()); n++);
+        for (byte n = 0; n < 5 && !(version = getVersion()); n++) delay(50);
         if (version) {
             if (version >= 14) {
                 m_flags |= GNSS_USE_LINK;
@@ -881,8 +877,8 @@ bool FreematicsESP32::begin(int cpuMHz)
     CLink_SPI *linkSPI = new CLink_SPI;
     if (linkSPI->begin()) {
         link = linkSPI;
-        for (byte n = 0; n < 5 && !(version = getVersion()); n++);
-        if (version) {
+        for (byte n = 0; n < 5 && !(version = getVersion()); n++) delay(50);
+        if (version >= 11) {
             m_pinGPSPower = PIN_GPS_POWER;
             return true;
         }
