@@ -583,7 +583,6 @@ bool initialize(bool wait = false)
       Serial.print("IP...");
       String ip = teleClient.net.getIP();
       if (ip.length()) {
-        Serial.print("IP:");
         Serial.println(ip);
 #if ENABLE_OLED
         oled.print("IP:");
