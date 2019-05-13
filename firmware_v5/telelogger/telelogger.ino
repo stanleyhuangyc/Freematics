@@ -528,6 +528,9 @@ bool initialize(bool wait = false)
     }
     Serial.print("SIM CARD:");
     if (teleClient.net.checkSIM()) {
+#if ENABLE_OLED
+      oled.print("SIM OK ");
+#endif
       Serial.println("OK");
     } else {
       Serial.println("NO");
@@ -551,7 +554,6 @@ bool initialize(bool wait = false)
         state.set(STATE_NET_CONNECTED);
         Serial.println(ip);
 #if ENABLE_OLED
-        oled.print("IP:");
         oled.println(ip);
 #endif
         break;
@@ -570,9 +572,7 @@ bool initialize(bool wait = false)
       if (op.length()) {
         Serial.println(op);
 #if ENABLE_OLED
-        oled.print(' ');
-        oled.print(op);
-        delay(1000);
+        oled.println(op);
 #endif
       } else {
 #if ENABLE_OLED
@@ -583,6 +583,7 @@ bool initialize(bool wait = false)
       Serial.print("IP...");
       String ip = teleClient.net.getIP();
       if (ip.length()) {
+        Serial.print("IP:");
         Serial.println(ip);
 #if ENABLE_OLED
         oled.print("IP:");
@@ -634,7 +635,6 @@ bool initialize(bool wait = false)
       Serial.println(dtcCount);
     }
 #if ENABLE_OLED
-    oled.clear();
     oled.print("VIN:");
     oled.println(vin);
 #endif
@@ -656,17 +656,22 @@ bool initialize(bool wait = false)
       1900 + btm->tm_year, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec);
     Serial.print("UTC:");
     Serial.println(buf);
-#if ENABLE_OLED
-    oled.setCursor(0, 7);
-    oled.print("Packets");
-    oled.setCursor(80, 7);
-    oled.print("KB Sent");
-    oled.setFontSize(FONT_SIZE_MEDIUM);
-#endif
   }
 
   lastMotionTime = millis();
   state.set(STATE_WORKING);
+
+#if ENABLE_OLED
+  delay(1000);
+  oled.clear();
+  oled.print("DEVICE ID: ");
+  oled.println(devid);
+  oled.setCursor(0, 7);
+  oled.print("Packets");
+  oled.setCursor(80, 7);
+  oled.print("KB Sent");
+  oled.setFontSize(FONT_SIZE_MEDIUM);
+#endif
   return true;
 }
 
@@ -806,6 +811,8 @@ void showStats()
 #endif
   Serial.println();
 #if ENABLE_OLED
+  oled.setCursor(0, 2);
+  oled.println(timestr);
   oled.setCursor(0, 5);
   oled.printInt(teleClient.txCount, 2);
   oled.setCursor(80, 5);
@@ -1002,7 +1009,7 @@ void process()
 #else
   do {
     idleTasks();
-  } while (millis() - startTime < dataIntervals[0])
+  } while (millis() - startTime < dataIntervals[0]);
 #endif
 
   if (deviceTemp >= COOLING_DOWN_TEMP) {
@@ -1216,7 +1223,7 @@ void showSysInfo()
   oled.clear();
   oled.print("CPU:");
   oled.print(ESP.getCpuFreqMHz());
-  oled.print(" Mhz ");
+  oled.print("Mhz ");
   oled.print(getFlashSize() >> 10);
   oled.println("MB Flash");
 #endif
@@ -1261,7 +1268,6 @@ void setup()
 {
 #if ENABLE_OLED
     oled.begin();
-    oled.setFontSize(FONT_SIZE_MEDIUM);
     oled.setFontSize(FONT_SIZE_SMALL);
 #endif
     // initialize USB serial
@@ -1281,12 +1287,14 @@ void setup()
     // show system information
     showSysInfo();
 
-    while (!sys.begin());
+    sys.begin();
 
     sys.buzzer(2000);
 
-    Serial.print("Firmware: V");
-    Serial.println(sys.version);
+    if (sys.version) {
+      Serial.print("Firmware: V");
+      Serial.println(sys.version);
+    }
 #if ENABLE_OBD
     obd.begin(sys.link);
 #endif
