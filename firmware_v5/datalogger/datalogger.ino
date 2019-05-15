@@ -78,7 +78,6 @@ uint32_t lastGPStime = 0;
 char command[16] = {0};
 
 FreematicsESP32 sys;
-COBD obd;
 
 #if ENABLE_NMEA_SERVER
 WiFiServer nmeaServer(NMEA_TCP_PORT);
@@ -94,6 +93,14 @@ class DataOutputter : public FileLogger
 #endif
     }
 };
+
+class OBD : public COBD
+{
+protected:
+    void idleTasks();
+};
+
+OBD obd;
 
 #if STORAGE == STORAGE_SD
 SDLogger store(new DataOutputter);
@@ -370,9 +377,9 @@ public:
             }
             // check movement
             if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
-            Serial.print("Motion:");
-            Serial.println(motion);
-            break;
+                Serial.print("Motion:");
+                Serial.println(motion);
+                break;
             }
             executeCommand();
         }
@@ -391,6 +398,13 @@ private:
 };
 
 DataLogger logger;
+
+void OBD::idleTasks()
+{
+#if USE_GPS
+    logger.logGPSData();
+#endif
+}
 
 void showStats()
 {
@@ -439,9 +453,10 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
 
-    while (!sys.begin());
-    Serial.print("Firmware: V");
-    Serial.println(sys.version);
+    if (sys.begin()) {
+        Serial.print("Firmware: V");
+        Serial.println(sys.version);
+    }
 #if USE_OBD
     obd.begin(sys.link);
 #endif
@@ -571,23 +586,14 @@ void loop()
                     }
                 }
             }
-#if USE_GPS
-            logger.logGPSData();
-#endif
             if (tier > 1) break;
         }
-    } else {
-#if USE_GPS
-        logger.logGPSData();
-#endif
-        delay(50);
     }
-#else
-#if USE_GPS
-    logger.logGPSData();
 #endif
-    delay(50);
-#endif
+
+    if (!logger.checkState(STATE_OBD_READY)) {
+        logger.logGPSData();
+    }
 
 #if MEMS_MODE
     if (logger.checkState(STATE_MEMS_READY)) {
