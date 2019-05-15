@@ -101,6 +101,7 @@ void serverProcess(int timeout);
 String executeCommand(const char* cmd);
 bool processCommand(char* data);
 void processMEMS(bool process);
+bool processGPS();
 
 class State {
 public:
@@ -122,6 +123,9 @@ protected:
 #if MEMS_MODE
     processMEMS(false);
 #endif
+    if (!processGPS()) {
+      delay(5);
+    }
   }
 };
 
@@ -425,6 +429,12 @@ bool initialize(bool wait = false)
 {
   state.clear(STATE_WORKING);
 
+#if MEMS_MODE
+  if (state.check(STATE_MEMS_READY)) {
+    calibrateMEMS();
+  }
+#endif
+
 #if ENABLE_GPS
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
@@ -438,23 +448,6 @@ bool initialize(bool wait = false)
     } else {
       Serial.println("NO");
     }
-  }
-#endif
-
-#if MEMS_MODE
-  if (!state.check(STATE_MEMS_READY)) {
-    Serial.print("MEMS...");
-    byte ret = mems.begin(ENABLE_ORIENTATION);
-    if (ret) {
-      state.set(STATE_MEMS_READY);
-      if (ret == 2) Serial.print("9-DOF ");
-      Serial.println("OK");
-    } else {
-      Serial.println("NO");
-    }
-  }
-  if (state.check(STATE_MEMS_READY)) {
-    calibrateMEMS();
   }
 #endif
 
@@ -891,22 +884,21 @@ void process()
   cache.log(PID_DEVICE_HALL, readChipHallSensor() / 200);
 #endif
 
+#if ENABLE_OBD
   if (sys.getVersion() >= 13) {
       batteryVoltage = (float)(analogRead(A0) * 11 * 370) / 4095;
       cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
   } else {
-#if ENABLE_OBD
     // read and log car battery voltage, data in 0.01v
     float volts = obd.getVoltage();
     if (volts) {
       batteryVoltage = volts * 100;
       cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
     }
-#endif
   }
-
-  // process GPS data if connected
+#else
   processGPS();
+#endif
 
 #if LOG_EXT_SENSORS
   processExtInputs();
@@ -917,10 +909,8 @@ void process()
 #endif
 
   if (!state.check(STATE_MEMS_READY)) {
-    int temp = readChipTemperature();
-    if (temp != deviceTemp) {
-      cache.log(PID_DEVICE_TEMP, deviceTemp = temp);
-    }
+    deviceTemp = readChipTemperature();
+    cache.log(PID_DEVICE_TEMP, deviceTemp);
   }
 
 #if STORAGE != STORAGE_NONE
@@ -1104,8 +1094,6 @@ if (state.check(STATE_OBD_READY)) {
     Serial.println();      
   }
 #elif ENABLE_OBD
-  float v;
-  obd.begin();
   do {
     delay(5000);
   } while (obd.getVoltage() < JUMPSTART_VOLTAGE);
@@ -1286,16 +1274,29 @@ void setup()
     // show system information
     showSysInfo();
 
-    sys.begin();
-
-    sys.buzzer(2000);
-
-    if (sys.version) {
+    if (sys.begin()) {
       Serial.print("Firmware: V");
       Serial.println(sys.version);
     }
+
 #if ENABLE_OBD
     obd.begin(sys.link);
+#endif
+
+    sys.buzzer(2000);
+
+#if MEMS_MODE
+  if (!state.check(STATE_MEMS_READY)) {
+    Serial.print("MEMS...");
+    byte ret = mems.begin(ENABLE_ORIENTATION);
+    if (ret) {
+      state.set(STATE_MEMS_READY);
+      if (ret == 2) Serial.print("9-DOF ");
+      Serial.println("OK");
+    } else {
+      Serial.println("NO");
+    }
+  }
 #endif
 
 #if ENABLE_HTTPD
