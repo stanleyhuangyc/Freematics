@@ -1,9 +1,8 @@
 /*************************************************************************
 * Freematics Hub Client implementations for various communication devices
-* including BLE, WIFI, 2G, 3G
 * Distributed under BSD license
-* Visit http://freematics.com/products/freematics-one for more information
-* (C)2017 Stanley Huang <support@freematics.com.au
+* Visit https://freematics.com for more information
+* (C)2012-2019 Developed by Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
