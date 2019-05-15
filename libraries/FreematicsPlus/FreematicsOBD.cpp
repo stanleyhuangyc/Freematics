@@ -1,25 +1,13 @@
 /*************************************************************************
-* Arduino Library for Freematics ONE/ONE+
+* Arduino Library for Freematics ONE+
 * Distributed under BSD license
-* Visit http://freematics.com/products/freematics-one for more information
-* (C)2012-2017 Stanley Huang <support@freematics.com.au
+* Visit https://freematics.com for more information
+* (C)2012-2019 Developed by Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
 #include "FreematicsBase.h"
 #include "FreematicsOBD.h"
-
-//#define DEBUG Serial
-
-#ifdef DEBUG
-void debugOutput(const char *s)
-{
-	DEBUG.print('[');
-	DEBUG.print(millis());
-	DEBUG.print(']');
-	DEBUG.println(s);
-}
-#endif
 
 int dumpLine(char* buffer, int len)
 {
@@ -412,11 +400,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		errors = 0;
 		return true;
 	} else {
-#ifdef DEBUG
-		DEBUG.print("Stage:");
-		DEBUG.println(stage);
-#endif
-		//reset();
 		return false;
 	}
 }

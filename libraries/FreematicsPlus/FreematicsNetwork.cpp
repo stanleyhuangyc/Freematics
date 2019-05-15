@@ -552,6 +552,8 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
   if (!success) Serial.println(m_buffer);
   // enable internal GPS if required
   if (gps) {
+    sendCommand("AT+CVAUXV=61\r");
+    sendCommand("AT+CVAUXS=1\r");
     if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
       if (!m_gps) {
         m_gps = new GPS_DATA;
@@ -559,8 +561,6 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
       }
     }
   }
-  sendCommand("AT+CVAUXV=61\r");
-  sendCommand("AT+CVAUXS=1\r");
   return success;
 }
 
