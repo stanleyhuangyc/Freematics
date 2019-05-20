@@ -1,0 +1,54 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>Freematics Dashboard</title>
+<meta name="viewport" content="width=720" />
+<script type='text/javascript' src='jquery-1.9.1.js'></script>
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/modules/series-label.js"></script>
+<script src="https://code.highcharts.com/modules/exporting.js"></script>
+<script src="https://code.highcharts.com/modules/export-data.js"></script>
+<style>
+</style>
+<link rel="stylesheet" href="default.css"/>
+<link rel="stylesheet" href="leaflet/leaflet.css"/>
+<script src="leaflet/leaflet.js"></script>
+</head>
+<body onresize="onResize()">
+    <div id="container" class="container">
+        <div id="sidebar" class="sidebar">
+            <a href="/"><img class="logo" src="logo.png" title="Click to return" /></a>
+            <div id="info" class="sidebarcontent small_text">Loading...</div>
+            <div id="options" class="sidebarcontent small_text">
+                <select id="opts_range" onchange="setRange(value);TRIPS.list();" style="display:none">
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="3days" selected>Last 3 Days</option>
+                    <option value="7days">Last 7 Days</option>
+                    <option value="30days">Last 30 Days</option>
+                    <option value="this_week">This Week</option>
+                    <option value="last_week">Last Week</option>
+                    <option value="this_month">This Month</option>
+                    <option value="custom">Custom Range</option>
+                </select>
+            </div>
+            <div id="range" class="sidebarcontent small_text" style="display:none">
+                <input id="begin" type="text" value="" size="7" />~<input id="end" type="text" value="" size="7" />
+                <input type="button" value="List" onclick="TRIPS.list()" />
+            </div>
+            <div id="trips" class="sidebarcontent small_text"></div>
+            <div id="toolbar" class="sidebarcontent small_text"></div>
+        </div>
+        <div id="map" class="map banner"></div>
+        <div id="chart" class="map"></div>
+    </div>
+    <script language="javascript" src="config.js"></script>
+    <script language="javascript" src="common.js"></script>
+    <script language="javascript" src="defines.js"></script>
+    <script language="javascript" src="map.js"></script>
+    <script language="javascript" src="users.js"></script>
+    <script language="javascript" src="trips.js"></script>
+    <script language="javascript" src="datachart.js"></script>
+</body>
+</html>

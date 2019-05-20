@@ -36,7 +36,7 @@ var PID = {
 	{
 		switch (pid) {
 		case this.SPEED:
-			return "Speed";
+			return "Vehicle Speed";
 		case this.RPM:
 			return "Engine RPM";
         case this.FUEL_PRESSURE:
@@ -76,7 +76,7 @@ var PID = {
 		case this.GPS.ALTITUDE:
 			return "Altitude";
 		case this.GPS.SPEED:
-			return "GPS Speed";
+			return "Speed";
 		case this.GPS.HEADING:
 			return "Course";
 		case this.GPS.SAT_COUNT:
@@ -215,5 +215,21 @@ var PID = {
 				return this.getXYZComposed(value);
 		}
 		return typeof value != "number" ? parseFloat(value) : value;
+	},
+	illustratable: function(pid)
+	{
+		switch (pid) {
+		case 0:
+		case PID.GYRO:
+		case PID.COMPASS:
+		case PID.ORIENTATION:
+		case PID.GPS.LATITUDE:
+		case PID.GPS.LONGITUDE:
+		case PID.GPS.HEADING:
+		case PID.GPS.TIME:
+		case PID.GPS.DATE:
+			return false;
+		}
+		return true;
 	}
 };

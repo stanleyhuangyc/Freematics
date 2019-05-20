@@ -1,0 +1,31 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Freematics Dashboard</title>
+    <meta name="viewport" content="width=700, minimal-ui" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <script type='text/javascript' src='jquery-1.9.1.js'></script>
+    <style>
+    </style>
+    <link rel="stylesheet" href="default.css" />
+    <link rel="stylesheet" href="leaflet/leaflet.css" />
+    <script src="leaflet/leaflet.js"></script>
+</head>
+<body onresize="onResize()">
+    <div id="container" class="container">
+        <div id="map" class="map banner"></div>
+        <div id="info" class="area" style="width:100%; text-align:center">
+            <div id="elapsed" style="font-size:128px"></div>
+            <div id="state" style="font-size:xx-large; margin-bottom:20px"></div>
+            <div id="userinfo"></div>
+        </div>
+    </div>
+    <script language="javascript" src="config.js"></script>
+    <script language="javascript" src="common.js"></script>
+    <script language="javascript" src="defines.js"></script>
+    <script language="javascript" src="map.js"></script>
+    <script language="javascript" src="users.js"></script>
+    <script language="javascript" src="parking.js"></script>
+</body>
+</html>

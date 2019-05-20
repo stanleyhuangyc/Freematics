@@ -22,7 +22,7 @@
 #define MAX_CHANNEL_AGE (60* 60 * 1000 * 72)
 #define MAX_PENDING_COMMANDS 4
 #define MAX_COMMAND_MSG_LEN 128
-#define SYNC_INTERVAL 15 /* seconds*/
+#define SYNC_INTERVAL 30 /* seconds*/
 #define CHANNEL_TIMEOUT 180 /* seconds */
 #define SESSION_GAP (15 * 60 * 1000)
 #define MIN_DEVID_LEN 6
@@ -100,7 +100,7 @@ typedef struct {
 	uint32_t proxyTick;
 	// stats
 	uint32_t recvCount;
-	uint32_t dataInterval;
+	uint32_t txCount;
 	uint32_t dataReceived; /* bytes */
 	uint32_t elapsedTime; /* seconds */
 	uint16_t csq;
