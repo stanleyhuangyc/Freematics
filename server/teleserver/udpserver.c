@@ -247,7 +247,7 @@ int incomingUDPCallback(void* _hp)
 		}
 	}
 	// generate response
-	int len = sprintf(buf, "%X#EV=%u,RX=%u,TM=%lu", pld->id, eventID, pld->recvCount, (unsigned long)time(0));
+	int len = sprintf(buf, "%X#EV=%u,RX=%u,TX=%u", pld->id, eventID, pld->recvCount, ++pld->txCount);
 	switch (eventID) {
 	case EVENT_LOGOUT:
 		deviceLogout(pld);

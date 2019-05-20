@@ -69,6 +69,7 @@ var DASH = {
     chartPID: null,
     chartDataTick: 0,
     selectedPID: 269,
+	lastDataCount: null,
     selectPID: function (pid)
     {
         this.selectedPID = pid;
@@ -203,18 +204,30 @@ var DASH = {
         this.updatePID(1);
 
         // update data grid
-        var s = "<span class='smaller_text'>Timestamp </span>" + ch.stats.devtick;
+        var s = "<hr/><span class='smaller_text'>Timestamp </span>" + ch.stats.devtick;
         for (var n = 0; n < this.data.length; n++) {
             var pid = this.data[n][0];
             var value = this.data[n][1];
-            var selected = (pid == this.selectedPID);
-            if (selected) s += "<span class='highlight_text'>";
-            s += "<br/><a onclick='DASH.selectPID(" + pid + ")'><span class='smaller_text'>" + PID.getName(pid) + " </span>" + PID.normalize(pid, value);
+            s += "<br/><span class='smaller_text'>" + PID.getName(pid) + " </span>" + PID.normalize(pid, value);
             var unit = PID.getUnit(pid);
-            if (unit) s += "<span class='small_text'> " + unit + "</span></a>";
-            if (selected) s += "</span>";
+            if (unit) s += "<span class='small_text'> " + unit + "</span>";
         }
         document.getElementById("grid").innerHTML = s;
+
+		if (this.lastDataCount != this.data.length) {
+			s = "<hr/>Chart Data<br/><select id='chartPIDselect' onchange='DASH.selectPID(parseInt(value))'>";
+			for (var n = 0; n < this.data.length; n++) {
+				var pid = this.data[n][0];
+				if (!PID.illustratable(pid)) continue;
+				s += "<option value='" + pid + "'";
+				if (pid == this.selectedPID) s += " selected";
+				s += ">" + PID.getName(pid) + "</option>";
+			}
+			s += "</select>";
+			document.getElementById("tools").innerHTML = s;
+			this.lastDataCount = this.data.length;
+			this.selectedPID = parseInt(document.getElementById("chartPIDselect").value);
+		}
 
 	    // update map
         var lat = this.getPIDValue(PID.GPS.LATITUDE);
@@ -232,6 +245,7 @@ var DASH = {
 	load: function()
     {
 		this.updateUserInfo(USER.info, USER.devid);
+		this.lastDataCount = null;
 		// load channel data
 		this.xhr.onreadystatechange = function() {
 			if (this.readyState != 4) return;

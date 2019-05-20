@@ -3,7 +3,7 @@
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>Freematics Dashboard</title>
-    <meta name="viewport" content="width=700, minimal-ui" />
+    <meta name="viewport" content="width=700, minimal-ui, user-scalable=no" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <script type='text/javascript' src='jquery-1.9.1.js'></script>
     <script src="https://code.highcharts.com/highcharts.js"></script>
@@ -19,9 +19,10 @@
 <body onresize="onResize()">
     <div id="container" class="container">
         <div id="sidebar" class="sidebar">
-            <a href="/"><img class="logo" src="logo.png" /></a>
+            <a href="/"><img class="logo" src="logo.png" title="Click to return" /></a>
             <div id="info" class="sidebarcontent small_text">Loading...</div>
             <div id="grid" class="sidebarcontent"></div>
+            <div id="tools" class="sidebarcontent"></div>
         </div>
         <div id="map" class="map banner"></div>
         <div id="chart" class="map"></div>

@@ -20,9 +20,11 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include "data2kml.h"
 #include "httpd.h"
 #include "teleserver.h"
 #include "logdata.h"
+#include "processpil.h"
 #include "revision.h"
 
 int uhPush(UrlHandlerParam* param);
@@ -34,6 +36,12 @@ int uhNotify(UrlHandlerParam* param);
 int uhCommand(UrlHandlerParam* param);
 int uhTest(UrlHandlerParam* param);
 
+int uhTrip(UrlHandlerParam* param);
+int uhHistory(UrlHandlerParam* param);
+int uhData(UrlHandlerParam* param);
+int uhQuery(UrlHandlerParam* param);
+int phData(void* _hp, int op, char* buf, int len);
+
 UrlHandler urlHandlerList[]={
 	{"api/post", uhPost},
 	{"api/push", uhPush},
@@ -42,9 +50,15 @@ UrlHandler urlHandlerList[]={
 	{"api/command", uhCommand },
 	{"api/channels.xml", uhChannelsXML },
 	{"api/channels", uhChannels},
+	{"api/query", uhQuery},
+	{"api/data", uhData},
+	{"api/trip", uhTrip },
+	{"api/history", uhHistory },
 	{"api/test", uhTest},
 	{NULL},
 };
+
+int loadConfig();
 
 char username[64] = "admin";
 char password[64] = { 0 };
@@ -59,6 +73,7 @@ HttpParam httpParam;
 char dataDir[256] = "data";
 char logDir[256] = "log";
 char serverKey[256] = { 0 };
+int noGUI = 0;
 
 CHANNEL_DATA ld[MAX_CHANNELS];
 
@@ -172,7 +187,9 @@ void initChannel(CHANNEL_DATA* pld, int cacheSize)
 	pld->cacheReadPos = 0;
 	pld->cacheWritePos = 0;
 	pld->recvCount = 0;
+	pld->txCount = 0;
 	pld->dataReceived = 0;
+	pld->proxyTick = 0;
 	memset(pld->cmd, 0, sizeof(pld->cmd));
 }
 
@@ -279,6 +296,7 @@ void deviceLogin(CHANNEL_DATA* pld)
 	// clear stats
 	pld->dataReceived = 0;
 	pld->recvCount = 0;
+	pld->txCount = 0;
 	pld->elapsedTime = 0;
 	SaveChannels();
 	createDataFile(pld);
@@ -300,7 +318,6 @@ void deviceLogout(CHANNEL_DATA* pld)
 int processPayload(char* payload, CHANNEL_DATA* pld)
 {
 	uint64_t tick = GetTickCount64();
-	uint32_t interval = (uint32_t)(tick - pld->serverDataTick);
 	if (!pld->fp && (pld->flags & FLAG_RUNNING)) {
 		createDataFile(pld);
 	}
@@ -1012,7 +1029,6 @@ int uhPush(UrlHandlerParam* param)
 			}
 		}
 	}
-	pld->dataInterval = (uint32_t)(tick - pld->serverDataTick);
 	pld->serverDataTick = tick;
 	pld->elapsedTime = (uint32_t)((pld->serverDataTick - pld->sessionStartTick) / 1000);
 	pld->recvCount++;
@@ -1075,7 +1091,7 @@ void GetFullPath(char* buffer, char* argv0, char* path)
 
 int main(int argc,char* argv[])
 {
-	fprintf(stderr,"TeleServer Version %s (built on %s)\n(C)2016-2019 Mediatronic Pty Ltd / Developed by Stanley Huang\nThis is free software and is distributed under GPL v3.0\n\n", REVISION, __DATE__);
+	fprintf(stderr, "Freematics Hub Version %s (built on %s)\n(C)2016-2018 Mediatronic Pty Ltd / Developed by Stanley Huang\nThis is free software and is distributed under GPL v3.0\n\n", REVISION, __DATE__);
 
 #ifdef WIN32
 	SetConsoleCtrlHandler( (PHANDLER_ROUTINE) ServerQuit, TRUE );
@@ -1087,8 +1103,12 @@ int main(int argc,char* argv[])
 
 	//fill in default settings
 	char path[256];
-	GetFullPath(path, argv[0], "htdocs");
+	GetFullPath(path, argv[0], "app/htdocs");
+#ifndef WIN32
+	mwInitParam(&httpParam, 0, path, FLAG_DISABLE_RANGE, "127.0.0.1", 5055);
+#else
 	mwInitParam(&httpParam, 0, path, FLAG_DISABLE_RANGE, 0, 0);
+#endif
 	httpParam.maxClients = 256;
 	httpParam.maxClientsPerIP = 16;
 	httpParam.httpPort = 8080;
@@ -1096,6 +1116,22 @@ int main(int argc,char* argv[])
 	httpParam.pxUrlHandler=urlHandlerList;
 	httpParam.hlBindIP = htonl(INADDR_ANY);
 	httpParam.pfnIncomingUDP = incomingUDPCallback;
+	httpParam.pfnProxyData = phData;
+
+#ifdef WIN32
+	char dir[240];
+	if (GetEnvironmentVariable("APPDATA", dir, sizeof(dir))) {
+		strcat(dir, "/FreematicsHub");
+		if (IsDir(dir)) {
+			if (!IsDir(dataDir))
+				snprintf(dataDir, sizeof(dataDir), "%s/Data", dir);
+			if (!IsDir(logDir))
+				snprintf(logDir, sizeof(logDir), "%s/Log", dir);
+		}
+	}
+#endif
+
+	loadConfig();
 
 	//parsing command line arguments
 	{
@@ -1126,6 +1162,9 @@ int main(int argc,char* argv[])
 					break;
 				case 'M':
 					if ((++i)<argc) httpParam.maxClientsPerIP=atoi(argv[i]);
+					break;
+				case 'g':
+					noGUI = 1;
 					break;
 				case 'l':
 					if ((++i)<argc) strncpy(logDir, argv[i], sizeof(logDir) - 1);
@@ -1174,10 +1213,30 @@ int main(int argc,char* argv[])
 		return -1;
 	}
 
-	do {
-		mwHttpLoop(&httpParam, 1000);
-		CheckChannels();
-	} while (!httpParam.bKillWebserver);
+	int ret = -1;
+	SHELL_PARAM proc = { 0 };
+#ifdef WIN32
+	if (!noGUI) {
+		proc.flags = SF_SHOW_WINDOW;
+		ret = ShellExec(&proc, "electron/electron app");
+	}
+#endif
+	if (ret == 0) {
+		do {
+			mwHttpLoop(&httpParam, 500);
+			CheckChannels();
+		} while (!httpParam.bKillWebserver && ShellWait(&proc, 0) == 0);
+	}
+	else if (ret == -1) {
+		do {
+			mwHttpLoop(&httpParam, 1000);
+			CheckChannels();
+		} while (!httpParam.bKillWebserver);
+	}
+	else if (ret == -2) {
+		// child process (execve failed)
+		return 0;
+	}
 
 	mwServerExit(&httpParam);
 	return 0;

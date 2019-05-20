@@ -42,11 +42,13 @@ var USER = {
 				self.setTimeout(callback, 0);
 			} else {
                 alert("No activated device for the specified user");
+				self.setTimeout(callback, 0);
                 return;
 			}
 		}
 
 		this.userb64 = this.user ? btoa(this.user) : getCookie("user");
+		if (!this.devid) this.devid = getCookie("devid");
 		if (!this.devid) {
 			var tosave = false;
 			if (!this.userb64) {
@@ -86,9 +88,7 @@ var USER = {
 				return;
 			}
 			USER.info = JSON.parse(this.responseText);
-			if (USER.info) {
-				if (callback) self.setTimeout(callback, 0);
-			}
+			if (callback) self.setTimeout(callback, 0);
 		}
 
 		this.userb64 = this.user ? btoa(this.user) : getCookie("user");
@@ -96,6 +96,8 @@ var USER = {
 			var url = serverURL + "query?user=" + this.userb64;
 			this.xhr.open('GET', url, true);    
 			this.xhr.send(null);
+		} else {
+			if (callback) self.setTimeout(callback, 0);
 		}
 	},
 	goDash : function(devid)
