@@ -33,12 +33,6 @@
 #define PID_DEVICE_TEMP 0x82
 #define PID_DEVICE_HALL 0x83
 
-typedef struct {
-  float pitch;
-  float yaw;
-  float roll;
-} ORIENTATION;
-
 class CFreematics
 {
 public:

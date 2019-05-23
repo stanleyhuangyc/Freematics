@@ -5,6 +5,8 @@
 * (C)2012-2018 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
+#pragma once
+
 #include "FreematicsBase.h"
 #include "FreematicsMEMS.h"
 
