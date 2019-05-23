@@ -6,7 +6,6 @@
 * Written by Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
-#include <Esprit.h>
 #include <Wire.h>
 #include <OBD2UART.h>
 #include <SH1106.h>
@@ -74,6 +73,8 @@ void initScreen()
 
 void setup()
 {
+  delay(500);
+  
   lcd.begin();
   lcd.setFontSize(FONT_SIZE_MEDIUM);
   lcd.println("OBD DISPLAY");
