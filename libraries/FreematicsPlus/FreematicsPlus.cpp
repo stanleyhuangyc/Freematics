@@ -2,7 +2,7 @@
 * Arduino library for ESP32 based Freematics ONE+ and Freematics Esprit
 * Distributed under BSD license
 * Visit https://freematics.com for more information
-* (C)2017-2018 Developed by Stanley Huang <support@freematics.com.au>
+* (C)2017-2019 Developed by Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
@@ -425,8 +425,8 @@ int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int
 		send(cmd);
 		n = receive(buf, bufsize, timeout);
 		if (n == -1) {
-			t = millis();
 			Serial.print('_');
+			n = 0;
 			continue;
 		}
 		if (n == 0 || (buf[1] != 'O' && !memcmp(buf + 5, "NO DATA", 7))) {
