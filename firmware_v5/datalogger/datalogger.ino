@@ -620,9 +620,11 @@ void loop()
 #endif
 
 #if USE_OBD
-    // log battery voltage (from voltmeter), data in 0.01v
-    batteryVoltage = obd.getVoltage() * 100;
-    store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+    if (logger.checkState(STATE_OBD_READY)) {
+        // log battery voltage (from voltmeter), data in 0.01v
+        batteryVoltage = obd.getVoltage() * 100;
+        store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+    }
 #endif
 
 #if !ENABLE_SERIAL_OUT
