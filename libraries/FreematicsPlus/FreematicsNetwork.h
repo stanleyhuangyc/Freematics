@@ -101,6 +101,7 @@ public:
     bool checkSIM();
     bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
+    char* getBuffer() { return m_buffer; }
     const char* deviceName() { return "SIM800"; }
 protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
@@ -152,6 +153,7 @@ public:
             return false;
         }
     }
+    char* getBuffer() { return m_buffer; }
     const char* deviceName() { return m_model; }
     char IMEI[16] = {0};
 protected:

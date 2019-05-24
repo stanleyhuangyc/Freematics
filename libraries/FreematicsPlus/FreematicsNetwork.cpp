@@ -889,7 +889,6 @@ bool ClientSIM7600::setup(const char* apn, bool gps, bool roaming, unsigned int 
     sendCommand("AT+CIPMODE=0\r");
     sendCommand("AT+NETOPEN\r");
   } while(0);
-  if (!success) Serial.println(m_buffer);
   // enable internal GPS if required
   if (gps) {
     if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
@@ -898,9 +897,9 @@ bool ClientSIM7600::setup(const char* apn, bool gps, bool roaming, unsigned int 
         memset(m_gps, 0, sizeof(GPS_DATA));
       }
     }
+    sendCommand("AT+CVAUXV=3050\r");
+    sendCommand("AT+CVAUXS=1\r");
   }
-  sendCommand("AT+CVAUXV=3050\r");
-  sendCommand("AT+CVAUXS=1\r");
   return success;
 }
 
