@@ -123,9 +123,6 @@ protected:
 #if MEMS_MODE
     processMEMS(false);
 #endif
-    if (!processGPS()) {
-      delay(5);
-    }
   }
 };
 
@@ -597,10 +594,17 @@ bool initialize(bool wait = false)
       }
       state.set(STATE_NET_CONNECTED);
     } else {
-      Serial.println("NO");
+      char *p = strstr(teleClient.net.getBuffer(), "+CPSI:");
+      if (p) {
+        char *q = strchr(p, '\r');
+        if (q) *q = 0;
+        Serial.println(p + 7);
 #if ENABLE_OLED
-      oled.println("No Service");
+        oled.println(p + 7);
 #endif
+      } else {
+        Serial.println("NO");
+      }
     }
     timeoutsNet = 0;
   }
@@ -896,8 +900,6 @@ void process()
       cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
     }
   }
-#else
-  processGPS();
 #endif
 
 #if LOG_EXT_SENSORS
@@ -907,6 +909,8 @@ void process()
 #if MEMS_MODE
   processMEMS(true);
 #endif
+
+  processGPS();
 
   if (!state.check(STATE_MEMS_READY)) {
     deviceTemp = readChipTemperature();
