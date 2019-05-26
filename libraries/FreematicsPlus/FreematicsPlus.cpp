@@ -500,14 +500,8 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         // turn on GPS power
         delay(10);
         if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
-        delay(200);
+        delay(100);
 
-        // switch M8030 GNSS to 38400bps
-        const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
-        const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
-        for (int i = 0; i < sizeof(packet1); i++) softSerialTx(baudrate, packet1[i]);
-        delay(10);
-        for (int i = 0; i < sizeof(packet2); i++) softSerialTx(baudrate, packet2[i]);
         // start GPS decoding task (soft serial)
         taskGPS.create(gps_soft_decode_task, "GPS", 1);
     }
@@ -516,8 +510,17 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         // test run for a while to see if there is data decoded
         uint16_t s1 = 0, s2 = 0;
         gps.stats(&s1, 0);
-        for (int i = 0; i < 20; i++) {
-            delay(100);
+        for (int i = 0; i < 10; i++) {
+            if (m_flags & GNSS_SOFT_SERIAL) {
+                // switch M8030 GNSS to 38400bps
+                const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
+                const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
+                for (int i = 0; i < sizeof(packet1); i++) softSerialTx(baudrate, packet1[i]);
+                delay(10);
+                for (int i = 0; i < sizeof(packet2); i++) softSerialTx(baudrate, packet2[i]);
+                delay(280);
+            }
+            delay(200);
             gps.stats(&s2, 0);
             if (s1 != s2) {
                 // data is coming in
