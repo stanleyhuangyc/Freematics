@@ -48,6 +48,8 @@
 #define log_e
 #endif
 
+int min(int a, int b);
+
 static inline int reg_int_cb(struct int_param_s *int_param)
 {
     return 0;
