@@ -498,6 +498,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         setTxPinHigh();
 
         // turn on GPS power
+        if (m_pinGPSPower) digitalWrite(m_pinGPSPower, LOW);
         delay(10);
         if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
         delay(100);
@@ -569,6 +570,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         s += 7;
         float lat = 0;
         float lng = 0;
+        float alt = 0;
         bool good = false;
         do {
             gpsData->date = atoi(s);
@@ -579,8 +581,8 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             if (!(s = strchr(s, ','))) break;
             lng = (float)atoi(++s) / 1000000;
             if (!(s = strchr(s, ','))) break;
+            alt = (float)atoi(++s) / 100;
             good = true;
-            gpsData->alt = (float)atoi(++s) / 100;
             if (!(s = strchr(s, ','))) break;
             gpsData->speed = (float)atoi(++s) / 100;
             if (!(s = strchr(s, ','))) break;
@@ -597,6 +599,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         if (!good) return false;
         gpsData->lat = lat;
         gpsData->lng = lng;
+        gpsData->alt = alt;
         if (pgd) *pgd = gpsData;
         return true;
     } else {
