@@ -286,15 +286,19 @@ bool processGPS()
 
   cache.log(PID_GPS_DATE, gd->date);
   cache.log(PID_GPS_TIME, gd->time);
-  cache.logFloat(PID_GPS_LATITUDE, gd->lat);
-  cache.logFloat(PID_GPS_LONGITUDE, gd->lng);
-  cache.log(PID_GPS_ALTITUDE, gd->alt); /* m */
+
   float kph = gd->speed * 1.852f;
   if (kph >= 2) lastMotionTime = millis();
-  cache.log(PID_GPS_SPEED, kph);
-  cache.log(PID_GPS_HEADING, gd->heading);
-  cache.log(PID_GPS_SAT_COUNT, gd->sat);
-  cache.log(PID_GPS_HDOP, gd->hdop);
+
+  if (gd->lat && gd->lng && gd->alt) {
+    cache.logFloat(PID_GPS_LATITUDE, gd->lat);
+    cache.logFloat(PID_GPS_LONGITUDE, gd->lng);
+    cache.log(PID_GPS_ALTITUDE, gd->alt); /* m */
+    cache.log(PID_GPS_SPEED, kph);
+    cache.log(PID_GPS_HEADING, gd->heading);
+    cache.log(PID_GPS_SAT_COUNT, gd->sat);
+    cache.log(PID_GPS_HDOP, gd->hdop);
+  }
   
   // generate ISO time string
   char *p = isoTime + sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u",
@@ -615,9 +619,6 @@ bool initialize(bool wait = false)
 
   // re-try OBD if connection not established
 #if ENABLE_OBD
-  if (!state.check(STATE_OBD_READY) && obd.init()) {
-    state.set(STATE_OBD_READY | STATE_OBD_FOUND);
-  }
   if (state.check(STATE_OBD_READY)) {
     char buf[128];
     if (obd.getVIN(buf, sizeof(buf))) {
@@ -1209,7 +1210,7 @@ void showSysInfo()
   }
   Serial.println();
 #endif
-  
+
 #if ENABLE_OLED
   oled.clear();
   oled.print("CPU:");
