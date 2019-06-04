@@ -29,6 +29,7 @@
 
 int uhPush(UrlHandlerParam* param);
 int uhPull(UrlHandlerParam* param);
+int uhGet(UrlHandlerParam* param);
 int uhPost(UrlHandlerParam* param);
 int uhChannels(UrlHandlerParam* param);
 int uhChannelsXML(UrlHandlerParam* param);
@@ -45,6 +46,7 @@ int phData(void* _hp, int op, char* buf, int len);
 UrlHandler urlHandlerList[]={
 	{"api/post", uhPost},
 	{"api/push", uhPush},
+	{"api/get", uhGet},
 	{"api/pull", uhPull},
 	{"api/notify", uhNotify },
 	{"api/command", uhCommand },
@@ -398,6 +400,7 @@ int processPayload(char* payload, CHANNEL_DATA* pld)
 		// normal
 		if (interval > 100) pld->sampleRate = (float)count * 60000 / interval;
 		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
+		pld->flags &= ~FLAG_SLEEPING;
 	}
 	else if (interval <= 60000) {
 		// this happens when login packet not received
@@ -652,9 +655,9 @@ int uhChannels(UrlHandlerParam* param)
 				removeChannel(pld);
 				continue;
 			}
-			l += snprintf(buf + l, bs - l, "\n{\"id\":\"%u\",\"devid\":\"%s\",\"recv\":%u,\"rate\":%u,\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"parked\":%u,\"sleeping\":%u",
+			l += snprintf(buf + l, bs - l, "\n{\"id\":\"%u\",\"devid\":\"%s\",\"recv\":%u,\"rate\":%u,\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"parked\":%u",
 				pld->id, pld->devid, pld->dataReceived, (unsigned int)pld->sampleRate, pld->serverDataTick, pld->deviceTick, pld->elapsedTime,
-				age, pingage, (pld->flags & FLAG_RUNNING) ? 0 : 1, (pld->flags & FLAG_SLEEPING) ? 0 : 1);
+				age, pingage, (pld->flags & FLAG_RUNNING) ? 0 : 1);
 
 			if (extend) {
 				if (*pld->vin) {
@@ -780,6 +783,44 @@ int uhPost(UrlHandlerParam* param)
 
 	param->contentLength = sprintf(param->pucBuffer, "OK");
 	param->contentType = HTTPFILETYPE_TEXT;
+	return FLAG_DATA_RAW;
+}
+
+int uhGet(UrlHandlerParam* param)
+{
+	CHANNEL_DATA* pld = locateChannel(param);
+	if (!pld) {
+		param->hs->response.statusCode = 403;
+		param->contentLength = 0;
+		return FLAG_DATA_RAW;
+	}
+
+	uint64_t tick = GetTickCount64();
+	int bs = param->bufSize;
+	char* buf = param->pucBuffer;
+	int l = 0;
+	unsigned int age = pld->serverDataTick ? (unsigned int)(tick - pld->serverDataTick) : 0;
+	unsigned int pingage = pld->serverPingTick ? (unsigned int)(tick - pld->serverPingTick) : 0;
+	l += snprintf(buf + l, bs - l, "{\"stats\":{\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"parked\":%u}",
+		pld->serverDataTick, pld->deviceTick, pld->elapsedTime,
+		age, pingage, (pld->flags & FLAG_RUNNING) ? 0 : 1);
+
+	l += snprintf(buf + l, bs - l, ",\"data\":[");
+	for (unsigned int m = 0; m < PID_MODES; m++) {
+		for (unsigned int i = 0; i < 256; i++) {
+			if (pld->mode[m][i].ts) {
+				l += snprintf(buf + l, bs - l, "[%u,", (m << 8) | i);
+				l += copyData(buf + l, pld->mode[m][i].data);
+				l += snprintf(buf + l, bs - l, ",%u],",
+					pld->deviceTick >= pld->mode[m][i].ts ? (age + pld->deviceTick - pld->mode[m][i].ts) : 0);
+			}
+		}
+	}
+	if (buf[l - 1] == ',') l--;
+	l += snprintf(buf + l, bs - l, "]}");
+
+	param->contentLength = l;
+	param->contentType = HTTPFILETYPE_JSON;
 	return FLAG_DATA_RAW;
 }
 
@@ -1209,7 +1250,6 @@ int main(int argc,char* argv[])
 
 	if (mwServerStart(&httpParam)) {
 		printf("Error starting HTTP server on port %u\nPress ENTER to exit\n", httpParam.httpPort);
-		getchar();
 		return -1;
 	}
 
