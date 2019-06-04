@@ -573,10 +573,13 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         float alt = 0;
         bool good = false;
         do {
-            gpsData->date = atoi(s);
+            uint32_t date = atoi(s);
             if (!(s = strchr(s, ','))) break;
-            gpsData->time = atoi(++s);
+            uint32_t time = atoi(++s);
             if (!(s = strchr(s, ','))) break;
+            if (date % 100 <= 19) break;
+            gpsData->date = date;
+            gpsData->time = time;
             lat = (float)atoi(++s) / 1000000;
             if (!(s = strchr(s, ','))) break;
             lng = (float)atoi(++s) / 1000000;
