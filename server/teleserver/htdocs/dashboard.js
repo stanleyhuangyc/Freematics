@@ -70,6 +70,7 @@ var DASH = {
     chartDataTick: 0,
     selectedPID: 269,
 	lastDataCount: null,
+    parked: null,
     selectPID: function (pid)
     {
         this.selectedPID = pid;
@@ -168,8 +169,8 @@ var DASH = {
     },
 	update: function (ch)
 	{
-        var parked = ch.stats.parked || ch.stats.age.data > TRIP_END_TIMEOUT;
-        if (parked) {
+        this.parked = ch.stats.parked || ch.stats.age.data > TRIP_END_TIMEOUT;
+        if (this.parked) {
             this.setText("elapsed", getHHMM(Math.floor(ch.stats.age.data / 1000)));
             var offline = ch.stats.age.ping > DEVICE_OFFLINE_TIMEOUT;
             if (offline) {
@@ -311,7 +312,8 @@ var DASH = {
 
         this.chart = null;
         document.getElementById("chart").innerHTML = "";
-        this.xhr.open('GET', serverURL + "pull/" + this.deviceID + "?pid=" + pid + "&rollback=" + ROLLBACK_TIME, true);
+		var rollback = this.parked ? ROLLBACK_TIME_PARKED : ROLLBACK_TIME;
+        this.xhr.open('GET', serverURL + "pull/" + this.deviceID + "?pid=" + pid + "&rollback=" + rollback, true);
         this.xhr.send(null);
     },
     updateData: function()

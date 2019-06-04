@@ -3,6 +3,8 @@ var OSMAP = {
     marker: new Array,
     popup: new Array,
     loc: null,
+	layerLine: null,
+	layerFeatures: null,
     setMarker: function (index, latlng) {
         if (!this.marker[index]) {
             this.marker[index] = L.marker(latlng)
@@ -12,11 +14,9 @@ var OSMAP = {
         }
     },
     popupMarker: function (index, text) {
-        if (!this.popup[index]) {
-            this.popup[index] = this.marker[index].bindPopup(text)
-				.openPopup();
-            this.popup[index].autoPan = true;
-        }
+        this.popup[index] = this.marker[index].bindPopup(text)
+			.openPopup();
+        this.popup[index].autoPan = true;
     },
     setTooltip: function (index, text) {
         if (this.marker[index]) {
@@ -43,5 +43,27 @@ var OSMAP = {
             maximumAge: 10000,
         };
         navigator.geolocation.getCurrentPosition(function (pos) { OSMAP.loc = pos.coords; }, null, options);
-    }
+    },
+    line: function (line, lineStyle, popup)
+    {
+        this.layerLine = L.geoJSON(line, {
+            style: lineStyle,
+            onEachFeature: function (f, l) {
+                l.bindPopup(popup);
+            }
+        }).addTo(this.map);
+    },
+    features: function (features, style) {
+        this.layerFeatures = L.geoJSON(features, {
+            style: style,
+            onEachFeature: function (f, l) {
+                l.bindPopup("<strong>" + f.properties.name + "</strong><br/>" + f.properties.info);
+            }
+        }).addTo(this.map);
+    },
+	clear: function()
+	{
+		if (this.layerLine) this.map.removeLayer(this.layerLine);
+		if (this.layerFeatures) this.map.removeLayer(this.layerFeatures);
+	}
 };
