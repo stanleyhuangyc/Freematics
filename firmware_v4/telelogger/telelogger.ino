@@ -289,14 +289,16 @@ void processGPS()
         cache.log(PID_GPS_DATE, gd.date);
         lastGPSDay = day;
       }
-      cache.logCoordinate(PID_GPS_LATITUDE, gd.lat);
-      cache.logCoordinate(PID_GPS_LONGITUDE, gd.lng);
-      cache.log(PID_GPS_ALTITUDE, gd.alt);
-      cache.log(PID_GPS_SAT_COUNT, gd.sat);
       unsigned int kph = gd.speed  * 1852 / 100000;
-      cache.log(PID_GPS_SPEED, kph);
       if (kph >= 2) lastMotionTime = millis();
-      cache.log(PID_GPS_HEADING, gd.heading);
+      if (gd.lat || gd.lng || gd.alt) {
+        cache.logCoordinate(PID_GPS_LATITUDE, gd.lat);
+        cache.logCoordinate(PID_GPS_LONGITUDE, gd.lng);
+        cache.log(PID_GPS_ALTITUDE, gd.alt);
+        cache.log(PID_GPS_SAT_COUNT, gd.sat);
+        cache.log(PID_GPS_SPEED, kph);
+        cache.log(PID_GPS_HEADING, gd.heading);
+      }
       Serial.print("[GPS] ");
       Serial.print(gd.lat);
       Serial.print(' ');
@@ -435,7 +437,7 @@ bool initialize()
 
   // initialize network module
   if (!state.check(STATE_NET_READY)) {
-    Serial.print(F("NET:"));
+    Serial.print(F("CELL:"));
     if (net.begin(&sys)) {
       Serial.println(F("OK"));
       state.set(STATE_NET_READY);
@@ -527,7 +529,7 @@ bool initialize()
     Serial.println("NO");
   }
 
-  Serial.print(F("CELL."));
+  Serial.print(F("NET."));
   if (net.setup(CELL_APN, !state.check(STATE_GPS_READY))) {
     String op = net.getOperatorName();
     if (op.length()) {
@@ -574,7 +576,7 @@ bool initialize()
 void shutDownNet()
 {
   //obd.checkConn();
-  Serial.print(F("NET:"));
+  Serial.print(F("CELL:"));
   net.close();
   net.end();
   Serial.println(F("OFF"));
