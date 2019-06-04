@@ -454,6 +454,7 @@ bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout, co
     } while (millis() - t < timeout);
     if (!success) break;
 
+    t = millis();
     do {
       success = sendCommand("AT+CREG?\r", 1000, "+CREG: 0,1");
     } while (!success && millis() - t < timeout);
@@ -537,7 +538,7 @@ String UDPClientSIM5360::getOperatorName()
 bool UDPClientSIM5360::checkSIM()
 {
   bool success;
-  for (byte n = 0; n < 4 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);
+  for (byte n = 0; n < 10 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);
   return success;  
 }
 
@@ -685,3 +686,4 @@ bool UDPClientSIM5360::sendCommand(const char* cmd, unsigned int timeout, const 
     return false;
   }
 }
+

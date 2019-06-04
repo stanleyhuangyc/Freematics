@@ -526,6 +526,7 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
     } while (millis() - t < timeout);
     if (!success) break;
 
+    t = millis();
     do {
       success = sendCommand("AT+CREG?\r", 5000, roaming ? "+CREG: 0,5" : "+CREG: 0,1");
     } while (!success && millis() - t < timeout);
@@ -867,6 +868,7 @@ bool ClientSIM7600::setup(const char* apn, bool gps, bool roaming, unsigned int 
     } while (millis() - t < timeout);
     if (!success) break;
 
+    t = millis();
     do {
       success = sendCommand("AT+CREG?\r", 5000, roaming ? "+CREG: 0,5" : "+CREG: 0,1");
     } while (!success && millis() - t < timeout);
