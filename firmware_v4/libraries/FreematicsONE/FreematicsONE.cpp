@@ -512,7 +512,7 @@ byte COBDSPI::readPID(const byte pid[], byte count, int result[])
 		if (readPID(pid[n], result[n])) {
 			results++;
 		}
-		sleep(10);
+		delay(10);
 	}
 	return results;
 }
@@ -531,20 +531,13 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int 
 		}
 		if (n == 0 || (buf[1] != 'O' && !memcmp_P(buf + 5, PSTR("NO DATA"), 7))) {
 			// data not ready
-			sleep(50);
+			delay(50);
 			i = 0;
 		} else {
 	  		break;
 		}
 	}
 	return n;
-}
-
-void COBDSPI::sleep(unsigned int ms)
-{
-	uint32_t t = millis();
-	if (ms >= 10) idleTasks();
-	while (millis() - t < ms);
 }
 
 bool COBDSPI::gpsInit(unsigned long baudrate)
@@ -608,7 +601,7 @@ bool COBDSPI::gpsGetData(GPS_DATA* gdata)
 				gdata->alt = value / 100;
 				break;
 			case 5:
-				gdata->speed = value;
+				gdata->speed = value * 100000 / 1852;
 				break;
 			case 6:
 				gdata->heading = value;
@@ -671,7 +664,7 @@ void COBDSPI::xbWrite(const char* cmd)
 int COBDSPI::xbRead(char* buffer, int bufsize)
 {
 	write("ATGRD\r");
-	sleep(10);
+	delay(10);
 	int bytes = receive(buffer, bufsize, 500);
 	if (bytes < 4 || memcmp(buffer, targets[TARGET_BEE], 4)) {
 		bytes = -1;
@@ -719,12 +712,12 @@ int COBDSPI::xbReceive(char* buffer, int bufsize, unsigned int timeout, const ch
 				// match expected string(s)
 				if (expected[i] && strstr(buffer, expected[i])) return i + 1;
 			}
-			sleep(50);
+			delay(50);
 		} if (n < 0) {
 			break;
 		} else {
 			if (millis() - t + 200 < timeout)
-				sleep(200);
+				delay(200);
 			else
 				break;
 		}

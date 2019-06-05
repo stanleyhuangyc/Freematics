@@ -343,9 +343,6 @@ void loop()
     // log battery voltage (from voltmeter), data in 0.01v
     int v = one.getVoltage() * 100;
     one.log(PID_BATTERY_VOLTAGE, v);
-    Serial.print("Voltage:");
-    Serial.println(v);
-    delay(10);
     
 #if USE_GPS
     if (one.state & STATE_GPS_FOUND) {
