@@ -147,8 +147,6 @@ public:
 	void xbTogglePower();
 	// get connection state
 	OBD_STATES getState() { return m_state; }
-	// delay specified number of ms
-	void sleep(unsigned int ms);
 	// read diagnostic trouble codes (return number of DTCs read)
 	byte readDTC(uint16_t codes[], byte maxCodes = 1);
 	// clear diagnostic trouble code

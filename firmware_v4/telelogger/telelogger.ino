@@ -289,7 +289,7 @@ void processGPS()
         cache.log(PID_GPS_DATE, gd.date);
         lastGPSDay = day;
       }
-      unsigned int kph = gd.speed  * 1852 / 100000;
+      unsigned int kph = (unsigned long)gd.speed  * 1852 / 100000;
       if (kph >= 2) lastMotionTime = millis();
       if (gd.lat || gd.lng || gd.alt) {
         cache.logCoordinate(PID_GPS_LATITUDE, gd.lat);
