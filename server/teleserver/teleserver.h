@@ -85,7 +85,8 @@ typedef struct {
 	uint64_t serverSyncTick;
 	uint64_t sessionStartTick;
 	uint32_t deviceTick;
-	uint32_t flags;
+	uint16_t flags;
+	uint16_t devflags;
 	// instant data
 	PID_DATA mode[PID_MODES][256];
 	// cache
@@ -124,7 +125,7 @@ FILE* getLogFile();
 uint8_t hex2uint8(const char *p);
 int hex2uint16(const char *p);
 int checkVIN(const char* vin);
-int processPayload(char* payload, CHANNEL_DATA* pld);
+int processPayload(char* payload, CHANNEL_DATA* pld, int store);
 uint32_t issueCommand(HttpParam* hp, CHANNEL_DATA *pld, const char* cmd, uint32_t token);
 int incomingUDPCallback(void* _hp);
 void deviceLogin(CHANNEL_DATA* pld);

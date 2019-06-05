@@ -116,6 +116,7 @@ int incomingUDPCallback(void* _hp)
 	uint32_t deviceTick = 0;
 	uint32_t token = 0;
 	int16_t eventID = 0;
+	uint16_t devflags = 0;
 
 	if (strstr(data, "EV=")) {
 		char* vin = 0;
@@ -140,6 +141,9 @@ int incomingUDPCallback(void* _hp)
 			else if (!strncmp(s, "VIN=", 4)) {
 				vin = s + 4;
 			}
+			else if (!strncmp(s, "DF=", 3)) {
+				devflags = atoi(s + 3);
+			}
 			else if (!strncmp(s, "SK=", 3)) {
 				key = s + 3;
 			}
@@ -158,6 +162,7 @@ int incomingUDPCallback(void* _hp)
 			if (vin && checkVIN(vin)) {
 				strcpy(pld->vin, vin);
 			}
+			pld->devflags = devflags;
 			// TODO: also check timed out device
 			if (*serverKey) {
 				// match server key
@@ -205,7 +210,9 @@ int incomingUDPCallback(void* _hp)
 #endif
 
 	if (eventID == 0) {
-		processPayload(data, pld);
+		processPayload(data, pld, 1);
+	} else if (eventID == EVENT_PING) {
+		processPayload(data, pld, 0);
 	} else if (eventID == EVENT_ACK) {
 		// pending command executed
 		if (msg) {
