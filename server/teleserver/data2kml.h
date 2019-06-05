@@ -41,11 +41,10 @@ typedef struct {
 	FILE* fp;
 	DATASET* data;
 	int datacount;
-	TIME_DATA lastTime;
 	COORDS bounds[2];
-	COORDS last;
 	uint8_t pidMap[65536];
 	float distance;
 	DATASET cur;
+	DATASET last;
 	uint32_t tsOffset;
 } KML_DATA;

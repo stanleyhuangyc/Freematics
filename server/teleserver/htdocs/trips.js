@@ -45,9 +45,15 @@ var myStyle = {
 function getDateFromGPSFormat(date, time)
 {
     var d = new Date();
-    d.setUTCFullYear(2000 + (date % 100));
-    d.setUTCMonth(Math.floor(date / 100) % 100 - 1);
-    d.setUTCDate(Math.floor(date / 10000));
+	if (date.length == 6) {
+		d.setUTCFullYear(2000 + (date % 100));
+		d.setUTCMonth(Math.floor(date / 100) % 100 - 1);
+		d.setUTCDate(Math.floor(date / 10000));
+	} else {
+		d.setUTCFullYear(Math.floor(date / 10000));
+		d.setUTCMonth(Math.floor(date / 100) % 100 - 1);
+		d.setUTCDate(date % 100);
+	}
     if (time) {
         d.setUTCHours(Math.floor(time / 1000000))
         d.setUTCMinutes(Math.floor((time % 1000000) / 10000));
@@ -136,20 +142,6 @@ var TRIPS = {
 	tripID: null,
 	loadTrip: function(tripIndex)
 	{
-		var html = "";
-		if (tripIndex < TRIPS.history.length - 1) {
-			html += "<input type='button' value='Previous' onclick='TRIPS.loadTrip(" + (tripIndex + 1) + ")'></input>";
-		} else {
-			html += "<input type='button' value='Previous' disabled></input>";
-		}
-		if (tripIndex > 0) {
-			html += "<input type='button' value='Next' onclick='TRIPS.loadTrip(" + (tripIndex - 1) + ")'></input>";
-		} else {
-			html += "<input type='button' value='Next' disabled></input>";
-		}
-		html += "<br/><br/><input type='button' onclick='TRIPS.showList()' value='Back'></input>";
-		document.getElementById("toolbar").innerHTML = html;
-
 		this.xhr.onreadystatechange = function () {
 			if (this.readyState != 4) return;
 			if (this.status != 200) {
@@ -167,8 +159,9 @@ var TRIPS = {
 			}
 			var length = data.trip.coordinates.length;
 			var features = new Array;
-			var startTime = getDateFromGPSFormat(data.stats.start.date, data.stats.start.time);
-			var finishTime = getDateFromGPSFormat(data.stats.end.date, data.stats.end.time);
+			var tripDate = TRIPS.tripID.substr(0, 8);
+			var startTime = getDateFromGPSFormat(data.stats.start.date ? data.stats.start.date : tripDate, data.stats.start.time);
+			var finishTime = getDateFromGPSFormat(data.stats.end.date ? data.stats.end.date : tripDate, data.stats.end.time);
 			TRIPS.startTimeEpoc = Date.parse(startTime.toISOString()) - startTime.getTimezoneOffset() * 60000;
 			TRIPS.startDeviceTick = data.stats.start.ts;
 
@@ -205,9 +198,11 @@ var TRIPS = {
 					indexTopSpeed = i;
 				}
 			}
+			/*
 			features.push({
 				type: "Feature", properties: { name: "Top Speed", info: topSpeed + " km/h" }, geometry: { type: "Point", coordinates: data.trip.coordinates[indexTopSpeed] }
 			});
+			*/
         
 			// generate popup info
 			var info = "Distance: " + (data.stats.distance / 1000).toFixed(1) + " km";
@@ -220,9 +215,9 @@ var TRIPS = {
 			if (hr || min) info += min + " minutes ";
 			if (hr == 0 && sec) info += sec + " seconds";
 
-			info += "<br/><br/>Top Speed: " + topSpeed + " km/h";
+			if (topSpeed >= 1) info += "<br/><br/>Top Speed: " + topSpeed + " km/h";
 			info += "<br/>Average Speed: " + (data.stats.distance / duration * 3600 / 1000).toFixed(1) + " km/h";
-			info += "<br/>Total Stopping Time: " + (totalStopping / 60).toFixed(0) + " minutes";
+			if (totalStopping) info += "<br/>Total Stopping Time: " + (totalStopping / 60).toFixed(0) + " minutes";
 			info += "<br/>Max Stopping Time: " + longestStopping + " seconds";
 
 			// generate summary
@@ -238,9 +233,9 @@ var TRIPS = {
 			summ += (min < 10 ? "0" : "") + min + ":";
 			summ += (sec < 10 ? "0" : "") + sec;
 
-			summ += "<br/>Stopping: " + (totalStopping / 60).toFixed(0) + " minutes";
+			if (totalStopping) summ += "<br/>Stopping: " + (totalStopping / 60).toFixed(0) + " minutes";
 			summ += "<br/>Average Speed: " + (data.stats.distance / duration * 3600 / 1000).toFixed(1) + " km/h";
-			summ += "<br/>Top Speed: " + topSpeed + " km/h";
+			if (topSpeed >= 1) summ += "<br/>Top Speed: " + topSpeed + " km/h";
 
 			// PID list for chart data
 			summ += "<br/><br/>Chart Data<br/>";
@@ -259,10 +254,14 @@ var TRIPS = {
 			document.getElementById("trips").innerHTML = summ;
 			document.getElementById("chartPID1").selectedIndex = 1;
 
-			OSMAP.clear();
+			if (OSMAP.map) {
+				OSMAP.clear();
+			} else {
+				OSMAP.init("map", data.bounds[0].lat, data.bounds[0].lng, 15);
+			}
 			OSMAP.line(data.trip, myStyle, info);
-			OSMAP.features(features, myStyle);
 			OSMAP.map.fitBounds(data.bounds);
+			OSMAP.features(features, myStyle);
 
 			//TRIPS.series = [TRIPS.getTimestampedArray(data.trip.speeds, data.trip.timestamps),
 			//	TRIPS.getTimestampedArray(data.trip.altitudes, data.trip.timestamps)];
@@ -271,10 +270,29 @@ var TRIPS = {
 				[parseInt(document.getElementById("chartPID0").value), parseInt(document.getElementById("chartPID1").value)]
 			);
 		}
-		document.getElementById("chart").style.display = "block";
+
 		this.tripID = this.history[tripIndex].id;
+
+		var html = "";
+		html += "<a href='" + serverURL + "trip?devid=" + USER.devid + "&tripid=" + this.tripID + "' target='_blank'>JSON</a> | " 
+		html += "<a href='" + serverURL + "trip/kml?devid=" + USER.devid + "&tripid=" + this.tripID + "' target='_blank'>KML</a> | " 
+		html += "<a href='" + serverURL + "trip/raw?devid=" + USER.devid + "&tripid=" + this.tripID + "' target='_blank'>RAW</a><hr/>";
+
+		if (tripIndex < TRIPS.history.length - 1) {
+			html += "<input type='button' value='Previous' onclick='TRIPS.loadTrip(" + (tripIndex + 1) + ")'></input>";
+		} else {
+			html += "<input type='button' value='Previous' disabled></input>";
+		}
+		if (tripIndex > 0) {
+			html += "<input type='button' value='Next' onclick='TRIPS.loadTrip(" + (tripIndex - 1) + ")'></input>";
+		} else {
+			html += "<input type='button' value='Next' disabled></input>";
+		}
+		html += "<br/><br/><input type='button' onclick='TRIPS.showList()' value='Back'></input>";
+		document.getElementById("toolbar").innerHTML = html;
+
+		document.getElementById("chart").style.display = "block";
 		var url = serverURL + "trip?devid=" + USER.devid + "&tripid=" + this.tripID;
-		//alert(url);
 		this.xhr.open('GET', url, true);
 		this.xhr.send(null);
 	},

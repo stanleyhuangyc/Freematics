@@ -20,7 +20,6 @@
 #include <ctype.h>
 #include "cdecode.h"
 #include "httpd.h"
-#include "processpil.h"
 #include "teleserver.h"
 #include "logdata.h"
 #include "data2kml.h"
@@ -32,7 +31,6 @@ char* getUserByDeviceID(const char* devid);
 int getUserInfo(const char* username, char** ppassword, char* pdevid[], int maxdev);
 
 #define MAX_UPLOAD_SIZE 256 * 1024
-#define MAX_JS_SIZE 512 * 1024
 
 char fileid[17];
 int error = 0;
@@ -334,22 +332,6 @@ int CreateDataFiles(KML_DATA* kd, const char* file)
 	size = ftell(fp);
 	fclose(fp);
 
-#if 0
-	if (count > 0) {
-		char cmd[256];
-		int n;
-		n = snprintf(cmd, sizeof(cmd), "7z a -tzip %s", path);
-		cmd[n - 1] = 'z';
-		snprintf(cmd + n, sizeof(cmd) - n, " %s", path);
-		SHELL_PARAM shell = { 0 };
-		if (ShellExec(&shell, cmd) != -1) {
-			//ShellWait(&shell, 1000);
-			//remove(path);
-		}
-		ShellClean(&shell);
-	}
-#endif
-
 	snprintf(path, sizeof(path), "%s/%s.json", dataDir, file);
 	fp = fopen(path, "w");
 	WriteGeoJSON(fp, kd, size, count);
@@ -529,6 +511,9 @@ int uhTrip(UrlHandlerParam* param)
 	if (!strcmp(param->pucRequest, "/kml")) {
 		ext = "kml";
 		param->contentType = HTTPFILETYPE_XML;
+	} else if (!strcmp(param->pucRequest, "/raw")) {
+		ext = "txt";
+		param->contentType = HTTPFILETYPE_TEXT;
 	}
 	else {
 		param->contentType = HTTPFILETYPE_JSON;

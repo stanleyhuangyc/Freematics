@@ -23,20 +23,37 @@ void WriteKMLData(KML_DATA* kd, uint32_t timestamp, uint16_t pid, float value[])
 		kd->tsOffset = kd->cur.timestamp;
 	}
 	timestamp += kd->tsOffset;
-	if (kd->cur.timestamp != timestamp && kd->cur.time != kd->lastTime.time && (kd->cur.flags & (FLAG_HAVE_LAT | FLAG_HAVE_LNG)) == (FLAG_HAVE_LAT | FLAG_HAVE_LNG)) do {
+	if (kd->cur.timestamp != timestamp && kd->cur.time != kd->last.time && (kd->cur.flags & (FLAG_HAVE_LAT | FLAG_HAVE_LNG)) == (FLAG_HAVE_LAT | FLAG_HAVE_LNG)) do {
 		// look for correct position to insert data
 		DATASET* lastpd = 0;
 		for (DATASET* pd = kd->data; pd && pd->timestamp <= kd->cur.timestamp; pd = pd->next) {
 			lastpd = pd;
 		}
+		// filter out duplicated data
 		if (lastpd && lastpd->timestamp == kd->cur.timestamp) {
-			// duplicated data
-			kd->lastTime.date = kd->cur.date;
-			kd->lastTime.time = kd->cur.time;
-			kd->lastTime.timestamp = kd->cur.timestamp;
+			kd->last = kd->cur;
 			break;
 		}
-
+		// filter out invalid coordinates
+		if (kd->last.timestamp) {
+			if (kd->cur.lat - kd->last.lat > 1 || kd->cur.lat - kd->last.lat < -1 || kd->cur.lng - kd->last.lng > 1 || kd->cur.lng - kd->last.lng < -1) {
+				break;
+			}
+			// calculate boundaries
+			if (kd->cur.lat < kd->bounds[0].lat)
+				kd->bounds[0].lat = kd->cur.lat;
+			else if (kd->cur.lat > kd->bounds[1].lat)
+				kd->bounds[1].lat = kd->cur.lat;
+			if (kd->cur.lng < kd->bounds[0].lng)
+				kd->bounds[0].lng = kd->cur.lng;
+			else if (kd->cur.lng > kd->bounds[1].lng)
+				kd->bounds[1].lng = kd->cur.lng;
+		}
+		else {
+			// first data
+			kd->bounds[1].lat = kd->bounds[0].lat = kd->cur.lat;
+			kd->bounds[1].lng = kd->bounds[0].lng = kd->cur.lng;
+		}
 	
 		DATASET* newdata = malloc(sizeof(DATASET));
 		memcpy(newdata, &kd->cur, sizeof(DATASET));
@@ -95,39 +112,17 @@ void WriteKMLData(KML_DATA* kd, uint32_t timestamp, uint16_t pid, float value[])
 		fprintf(kd->fp, "<gx:coord>%f %f %d</gx:coord>", kd->cur.lng, kd->cur.lat, (int)kd->cur.alt);
 
 		// keep as last coordinates
-		kd->last.lat = kd->cur.lat;
-		kd->last.lng = kd->cur.lng;
-		kd->lastTime.date = kd->cur.date;
-		kd->lastTime.time = kd->cur.time;
-		kd->lastTime.timestamp = kd->cur.timestamp;
+		kd->last = kd->cur;
 	} while (0);
 	kd->cur.timestamp = timestamp;
 	switch (pid) {
 	case PID_GPS_LATITUDE:
 		kd->cur.lat = value[0];
-		if (!(kd->cur.flags & FLAG_HAVE_LAT)) {
-			kd->bounds[1].lat = kd->bounds[0].lat = kd->cur.lat;
-			kd->last.lat = kd->cur.lat;
-		}
 		kd->cur.flags |= FLAG_HAVE_LAT;
-		// calculate boundaries
-		if (kd->cur.lat < kd->bounds[0].lat)
-			kd->bounds[0].lat = kd->cur.lat;
-		else if (kd->cur.lat > kd->bounds[1].lat)
-			kd->bounds[1].lat = kd->cur.lat;
 		break;
 	case PID_GPS_LONGITUDE:
 		kd->cur.lng = value[0];
-		if (!(kd->cur.flags & FLAG_HAVE_LNG)) {
-			kd->bounds[1].lng = kd->bounds[0].lng = kd->cur.lng;
-			kd->last.lng = kd->cur.lng;
-		}
 		kd->cur.flags |= FLAG_HAVE_LNG;
-		// calculate boundaries
-		if (kd->cur.lng < kd->bounds[0].lng)
-			kd->bounds[0].lng = kd->cur.lng;
-		else if (kd->cur.lng > kd->bounds[1].lng)
-			kd->bounds[1].lng = kd->cur.lng;
 		break;
 	case PID_GPS_ALTITUDE:
 		kd->cur.alt = value[0];
