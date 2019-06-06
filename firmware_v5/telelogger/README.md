@@ -8,24 +8,26 @@ The sketch collects following data.
 * Vehicle OBD-II PIDs data (from OBD port)
 * Battery voltage (from OBD port)
 * Geolocation data (from cellular module's internal GNSS or external GNSS receiver)
-* Acceleration data (from built-in motion sensor)
+* Acceleration data (from built-in MEMS sensor)
 * Orientation data (computed from motion sensor data)
-* CPU temperature (from ESP32 built-in sensor)
+* Device temperature (from MEMS sensor or ESP32 built-in sensor)
 
 Data Transmissions
 ------------------
 
-The sketch implements data transmissions with following networking hardware.
+Data transmission over UDP and HTTP protocols are implemented with following hardware.
 
 * WiFi(ESP32 built-in)
 * GSM/GPRS (SIM800)
 * 3G WCDMA (SIM5360)
 * 4G LTE (SIM7600)
 
+UDP mode implements a client for [Freematics Hub](https://freematics.com/hub/). HTTP mode implements a client for [Traccar](https://www.traccar.org) under [OsmAnd](https://www.traccar.org/osmand/) protocol.
+
 Data Storage
 ------------
 
-The sketch implements following data storage.
+Following types of data storage are supported.
 
 * MicroSD card storage
 * ESP32 built-in Flash memory storage (SPIFFS)
