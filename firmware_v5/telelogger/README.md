@@ -35,7 +35,7 @@ Following types of data storage are supported.
 Remote Commands
 ---------------
 
-Commands can be sent to Freematics ONE+ to execute with results responded, through serial terminal (ended by \n), BLE (as a  message) or [Freematics Hub API](https://freematics.com/hub/api/) (remotely). Currently following commands are implemented.
+Commands can be sent to Freematics ONE+ for execution with results obtained, through serial terminal or by [Freematics Hub API](https://freematics.com/hub/api/) (remotely). Currently following commands are implemented.
 
 * LED [0/1/2] - setting device LED status (0:auto 1:always off 2:always on)
 * REBOOT - performing a reboot immediately
