@@ -561,7 +561,8 @@ bool initialize(bool wait = false)
 #else
   if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
     Serial.print("NET...");
-    if (teleClient.net.setup(CELL_APN, !state.check(STATE_GPS_READY))) {
+    bool extGPS = state.check(STATE_GPS_READY);
+    if (teleClient.net.setup(CELL_APN, !extGPS)) {
       String op = teleClient.net.getOperatorName();
       if (op.length()) {
         Serial.println(op);
@@ -574,6 +575,7 @@ bool initialize(bool wait = false)
 #endif
         Serial.println("OK");
       }
+      if (!extGPS) Serial.println("Cellular GNSS ON");
       Serial.print("IP...");
       String ip = teleClient.net.getIP();
       if (ip.length()) {
@@ -608,6 +610,7 @@ bool initialize(bool wait = false)
 #endif
       } else {
         Serial.println("NO");
+        Serial.print(teleClient.net.getBuffer());
       }
     }
     timeoutsNet = 0;
@@ -876,7 +879,8 @@ void process()
     processOBD();
     if (obd.errors >= MAX_OBD_ERRORS) {
       if (!obd.init()) {
-        Serial.print("Logout(ECU)...");
+        Serial.println("ECU OFF");
+        Serial.print("Logout...");
         if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
         Serial.println();
         teleClient.reset();
@@ -988,7 +992,10 @@ void process()
     }
     if (loopTime == -1) {
       // stationery timeout, trip ended
-      Serial.print("Logout(stationary)...");
+      Serial.print("Stationary for ");
+      Serial.print(motionless);
+      Serial.println(" secs");
+      Serial.print("Logout...");
       if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
       Serial.println();
       teleClient.reset();
@@ -1211,6 +1218,12 @@ void showSysInfo()
   Serial.println();
 #endif
 
+  int rtc = rtc_clk_slow_freq_get();
+  if (rtc) {
+    Serial.print("RTC:");
+    Serial.println(rtc);
+  }
+  
 #if ENABLE_OLED
   oled.clear();
   oled.print("CPU:");
