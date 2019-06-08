@@ -11,6 +11,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_spi_flash.h"
+#include "soc/rtc.h"
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
 #include "FreematicsMEMS.h"
