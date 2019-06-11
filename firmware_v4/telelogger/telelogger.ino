@@ -49,10 +49,11 @@ uint16_t UTC = 0;
 uint32_t lastSyncTime = 0;
 uint32_t lastCmdToken = 0;
 uint32_t lastMotionTime = 0;
+uint32_t lastOBDTry = 0;
+uint8_t obdRetryInterval = 0;
 uint32_t sessionStartTime = 0;
 uint16_t stationaryTime[] = STATIONARY_TIME_TABLE;
-uint16_t sendingIntervals[] = SENDING_INTERVAL_TABLE;
-uint16_t sendingInterval = 0;
+uint8_t sendingIntervals[] = SENDING_INTERVAL_TABLE;
 
 void recvTasks(int timeout = 0);
 void processMEMS(bool process);
@@ -82,7 +83,7 @@ UDPClient net; // null client
 MPU9250_ACC mems;
 #endif
 
-CStorageRAM cache;
+Cache cache;
 
 class OBD : public COBDSPI {
 protected:
@@ -126,7 +127,7 @@ bool notify(byte event, const char* extra = 0)
     cache.dispatch(extra, strlen(extra));
   }
   cache.tailer();
-  //Serial.println(cache.buffer());
+
   for (byte attempts = 0; attempts < 3; attempts++) {
     if (!net.send(cache.buffer(), cache.length())) {
       Serial.println(F("Unsent"));
@@ -297,7 +298,7 @@ void processGPS()
         cache.log(PID_GPS_ALTITUDE, gd.alt);
         cache.log(PID_GPS_SAT_COUNT, gd.sat);
         cache.log(PID_GPS_SPEED, kph);
-        cache.log(PID_GPS_HEADING, gd.heading);
+        cache.log(PID_GPS_HEADING, gd.heading / 100);
       }
       Serial.print("[GPS] ");
       Serial.print(gd.lat);
@@ -490,6 +491,7 @@ bool initialize()
       Serial.println(F("OK"));
       state.set(STATE_OBD_READY);
     }
+    obdRetryInterval = 10;
   }
 
 #if ENABLE_GPS
@@ -739,19 +741,32 @@ void process()
 
   cache.tailer();
 
-#if 0
   Serial.print('{');
   Serial.print(cache.buffer()); 
   Serial.println('}');
-#endif
 
   if (cache.samples() > 0) {
     transmit();
   }
 
+  if (!state.check(STATE_OBD_READY)) {
+    if (millis() - lastOBDTry > 1000L * obdRetryInterval) {
+      Serial.print(F("OBD:"));
+      if (obd.testPID(PID_SPEED)) {
+        state.set(STATE_OBD_READY);
+        Serial.println(F("OK"));
+      } else {
+        Serial.println(F("NO"));
+      }
+      lastOBDTry = millis();
+      if (obdRetryInterval < MAX_OBD_RETRY_INTERVAL) obdRetryInterval += 10;
+    }
+  }
+
   // motion controlled data sending interval
   unsigned int motionless = (millis() - lastMotionTime) / 1000;
   bool stop = true;
+  uint16_t sendingInterval = 0;
   for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
     if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
       sendingInterval = 1000L * sendingIntervals[i];
@@ -862,14 +877,15 @@ void recvTasks(int timeout)
         return;
       }
       char *p = strstr_P(data, PSTR("EV="));
-      if (!p) return;
-      byte eventID = atoi(p + 3);
-      switch (eventID) {
-      case EVENT_COMMAND:
-        processCommand(data);
-        break;
+      if (p) {
+        byte eventID = atoi(p + 3);
+        switch (eventID) {
+        case EVENT_COMMAND:
+          processCommand(data);
+          break;
+        }
+        lastSyncTime = millis();
       }
-      lastSyncTime = millis();
     }
   }
 }
@@ -885,6 +901,7 @@ void setup()
 
   Serial.begin(115200);
   obd.begin();
+
   // initializing components
   initialize();
 }

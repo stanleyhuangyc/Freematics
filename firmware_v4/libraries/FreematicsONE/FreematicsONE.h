@@ -121,8 +121,8 @@ public:
 	void reset();
 	// read specified OBD-II PID value
 	bool readPID(byte pid, int& result);
-	// read multiple (up to 4) OBD-II PID value
-	byte readPID(const byte pid[], byte count, int result[]);
+	// test PID reading
+	bool testPID(byte pid);
 	// send AT command and receive response
 	byte sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = OBD_TIMEOUT_LONG);
 	// initialize GPS (set baudrate to 0 to power off GPS)

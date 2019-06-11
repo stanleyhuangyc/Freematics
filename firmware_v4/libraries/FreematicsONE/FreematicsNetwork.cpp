@@ -441,7 +441,7 @@ bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout, co
   do {
     do {
       Serial.print('.');
-      delay(500);
+      delay(1000);
       success = sendCommand("AT+CPSI?\r", 1000, "Online");
       if (success) {
         if (!strstr_P(m_buffer, PSTR("NO SERVICE")))

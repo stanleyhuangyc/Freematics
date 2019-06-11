@@ -125,6 +125,18 @@ void COBDSPI::lowPowerMode()
 	sendCommand("ATLP\r", buf, sizeof(buf));
 }
 
+bool COBDSPI::testPID(byte pid)
+{
+	char buffer[32];
+	sprintf_P(buffer, PSTR("%02X%02X\r"), dataMode, pid);
+	write(buffer);
+	idleTasks();
+	if (receive(buffer, sizeof(buffer)) <= 0 || checkErrorMessage(buffer)) {
+		return false;
+	}
+	return true;
+}
+
 bool COBDSPI::readPID(byte pid, int& result)
 {
 	char buffer[32];
@@ -132,8 +144,8 @@ bool COBDSPI::readPID(byte pid, int& result)
 	sprintf_P(buffer, PSTR("%02X%02X\r"), dataMode, pid);
 	write(buffer);
 	// receive and parse the response
-	char* data = 0;
 	idleTasks();
+	char* data = 0;
 	if (receive(buffer, sizeof(buffer)) > 0 && !checkErrorMessage(buffer)) {
 		char *p = buffer;
 		while ((p = strstr(p, "41 "))) {
@@ -316,65 +328,44 @@ byte COBDSPI::checkErrorMessage(const char* buffer)
 
 bool COBDSPI::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {PSTR("ATZ\r"), PSTR("ATE0\r"), PSTR("ATH0\r")};
+	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
-	byte stage;
-
 	m_state = OBD_DISCONNECTED;
-	for (byte n = 0; n < 2; n++) {
-		stage = 0;
-		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
-			delay(10);
-			strcpy_P(buffer, initcmd[i]);
-			if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
-				continue;
-			}
-		}
-		stage = 1;
-		if (protocol != PROTO_AUTO) {
-			sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
-			delay(10);
-			if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
-				continue;
-			}
-		}
-		stage = 2;
-		delay(10);
-		if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
+	for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
+		if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
 			continue;
 		}
-		stage = 3;
-		// load pid map
-		memset(pidmap, 0xff, sizeof(pidmap));
-		for (byte i = 0; i < 4; i++) {
-			byte pid = i * 0x20;
-			sprintf_P(buffer, PSTR("%02X%02X\r"), dataMode, pid);
-			write(buffer);
-			delay(10);
-			if (!receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) break;
-			for (char *p = buffer; (p = strstr_P(p, PSTR("41 "))); ) {
-				p += 3;
-				if (hex2uint8(p) == pid) {
-					p += 2;
-					for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
-						pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
-					}
+	}
+	if (protocol != PROTO_AUTO) {
+		sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
+		if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
+			return false;
+		}
+	}
+	// load pid map
+	memset(pidmap, 0xff, sizeof(pidmap));
+	for (byte i = 0; i < 4; i++) {
+		byte pid = i * 0x20;
+		sprintf_P(buffer, PSTR("%02X%02X\r"), dataMode, pid);
+		write(buffer);
+		delay(10);
+		if (!receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) break;
+		for (char *p = buffer; (p = strstr_P(p, PSTR("41 "))); ) {
+			p += 3;
+			if (hex2uint8(p) == pid) {
+				p += 2;
+				for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
+					pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 				}
 			}
 		}
-		break;
 	}
-	if (stage == 3) {
-		m_state = OBD_CONNECTED;
-		errors = 0;
-		return true;
-	} else {
-#ifdef DEBUG
-		DEBUG.print("Stage:");
-		DEBUG.println(stage);
-#endif
+	if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || checkErrorMessage(buffer)) {
 		return false;
 	}
+	m_state = OBD_CONNECTED;
+	errors = 0;
+	return true;
 }
 
 #ifdef DEBUG
@@ -503,18 +494,6 @@ void COBDSPI::write(const char* s)
 	delay(1);
 	digitalWrite(SPI_PIN_CS, HIGH);
 	SPI.endTransaction();
-}
-
-byte COBDSPI::readPID(const byte pid[], byte count, int result[])
-{
-	byte results = 0;
-	for (byte n = 0; n < count; n++) {
-		if (readPID(pid[n], result[n])) {
-			results++;
-		}
-		delay(10);
-	}
-	return results;
 }
 
 byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)

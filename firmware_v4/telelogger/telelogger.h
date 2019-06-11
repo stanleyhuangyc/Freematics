@@ -8,82 +8,49 @@
 
 #define CACHE_SIZE 160
 
-class CStorageNull;
-
-class CStorageNull {
+class Cache {
 public:
-    virtual bool init() { return true; }
-    virtual void uninit() {}
-    virtual bool begin() { return true; }
-    virtual void end() {}
-    virtual void log(uint16_t pid, int value)
+    void log(uint16_t pid, int value)
     {
         char buf[16];
         byte len = sprintf_P(buf, PSTR("%X:%d"), pid, value);
         dispatch(buf, len);
     }
-    virtual void log(uint16_t pid, unsigned int value)
+    void log(uint16_t pid, unsigned int value)
     {
         char buf[16];
         byte len = sprintf_P(buf, PSTR("%X:%u"), pid, value);
         dispatch(buf, len);
     }
-    virtual void log(uint16_t pid, int32_t value)
+    void log(uint16_t pid, int32_t value)
     {
         char buf[20];
         byte len = sprintf_P(buf, PSTR("%X:%ld"), pid, value);
         dispatch(buf, len);
     }
-    virtual void log(uint16_t pid, uint32_t value)
+    void log(uint16_t pid, uint32_t value)
     {
         char buf[20];
         byte len = sprintf_P(buf, PSTR("%X:%lu"), pid, value);
         dispatch(buf, len);
     }
-    virtual void log(uint16_t pid, int value1, int value2, int value3)
+    void log(uint16_t pid, int value1, int value2, int value3)
     {
         char buf[24];
         byte len = sprintf_P(buf, PSTR("%X:%d;%d;%d"), pid, value1, value2, value3);
         dispatch(buf, len);
     }
-    virtual void logCoordinate(uint16_t pid, int32_t value)
+    void logCoordinate(uint16_t pid, int32_t value)
     {
         char buf[24];
         byte len = sprintf_P(buf, PSTR("%X:%d.%06lu"), pid, (int)(value / 1000000), abs(value) % 1000000);
         dispatch(buf, len);
     }
-    virtual void timestamp(uint32_t ts)
+    void timestamp(uint32_t ts)
     {
         m_dataTime = ts;
-        if (m_next) m_next->timestamp(ts);
     }
-    virtual void setForward(CStorageNull* next) { m_next = next; }
-    virtual void purge() { m_samples = 0; }
-    virtual uint16_t samples() { return m_samples; }
-    virtual void dispatch(const char* buf, byte len)
-    {
-        // output data via serial
-        Serial.write((uint8_t*)buf, len);
-        Serial.write('\n');
-        m_samples++;
-        if (m_next) m_next->dispatch(buf, len);
-    }
-protected:
-    byte checksum(const char* data, int len)
-    {
-        byte sum = 0;
-        for (int i = 0; i < len; i++) sum += data[i];
-        return sum;
-    }
-    virtual void header(const char* devid) {}
-    virtual void tailer() {}
-    uint32_t m_dataTime = 0;
-    uint16_t m_samples = 0;
-    CStorageNull* m_next = 0;
-};
-
-class CStorageRAM: public CStorageNull {
-public:
+    uint16_t samples() { return m_samples; }
     void purge() { m_cacheBytes = 0; m_samples = 0; }
     unsigned int length() { return m_cacheBytes; }
     char* buffer() { return m_cache; }
@@ -101,12 +68,11 @@ public:
           m_dataTime = 0;
           log(0, ts);
         }
-        // store data in m_cache
+        // store in RAM cache
         memcpy(m_cache + m_cacheBytes, buf, len);
         m_cacheBytes += len;
         m_cache[m_cacheBytes++] = ',';
         m_samples++;
-        if (m_next) m_next->dispatch(buf, len);
     }
 
     void header(const char* devid)
@@ -118,15 +84,15 @@ public:
         if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
         m_cacheBytes += sprintf_P(m_cache + m_cacheBytes, PSTR("*%X"), (unsigned int)checksum(m_cache, m_cacheBytes));
     }
-    void untailer()
-    {
-        char *p = strrchr(m_cache, '*');
-        if (p) {
-            *p = ',';
-            m_cacheBytes = p + 1 - m_cache;
-        }
-    }
 protected:
-    unsigned int m_cacheBytes = 0;
+    byte checksum(const char* data, int len)
+    {
+        byte sum = 0;
+        for (int i = 0; i < len; i++) sum += data[i];
+        return sum;
+    }
+    uint32_t m_dataTime = 0;
+    uint16_t m_samples = 0;
+    uint16_t m_cacheBytes = 0;
     char m_cache[CACHE_SIZE];
 };
