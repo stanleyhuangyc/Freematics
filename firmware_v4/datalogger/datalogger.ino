@@ -308,7 +308,7 @@ void loop()
           one.state |= STATE_FILE_READY;
         }
       }
-      one.sleep(1000);
+      delay(1000);
       return;
     }
 #endif
