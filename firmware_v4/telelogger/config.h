@@ -14,6 +14,8 @@
 // maximum consecutive OBD-II access errors before disconnecting
 #define MAX_OBD_ERRORS 5
 
+#define MAX_OBD_RETRY_INTERVAL 120 /* seconds */
+
 /**************************************
 * Networking configurations
 **************************************/
