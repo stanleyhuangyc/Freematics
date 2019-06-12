@@ -28,7 +28,6 @@ public:
     uint32_t txBytes = 0;
     uint32_t rxBytes = 0;
     uint32_t lastSyncTime = 0;
-    uint32_t lastSentTime = 0;
     uint16_t feedid = 0;
     uint32_t startTime = 0;
     bool login = false;
