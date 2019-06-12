@@ -169,7 +169,6 @@ bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
   if (net.send(packetBuffer, packetSize)) {
     txBytes += packetSize;
     txCount++;
-    lastSentTime = millis();
     return true;
   }
   return false;
@@ -249,7 +248,6 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
     sprintf(url, "%s?id=%s", SERVER_PATH, devid);
   }
 
-  lastSentTime = millis();
   int ret;
 #if SERVER_PROTOCOL == PROTOCOL_HTTP_POST
   ret = net.send(HTTP_POST, url, true, packetBuffer, packetSize);

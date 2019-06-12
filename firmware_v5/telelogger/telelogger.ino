@@ -79,6 +79,7 @@ uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 
 uint16_t sendingInterval = 0;
+uint32_t lastSentTime = 0;
 uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 uint8_t connErrors = 0;
 uint32_t stationaryTime[] = STATIONARY_TIME_TABLE;
@@ -941,7 +942,7 @@ void process()
     timeoutsNet++;
     printTimeoutStats();
   }
-  if (millis() - teleClient.lastSentTime >= sendingInterval && cache.samples() > 0) {
+  if (millis() - lastSentTime >= sendingInterval && cache.samples() > 0) {
     // some data only need once for a transmission
 #if SERVER_PROTOCOL == PROTOCOL_UDP
     cache.tailer();
@@ -953,6 +954,7 @@ void process()
       // successfully sent
       connErrors = 0;
       showStats();
+      lastSentTime = millis();
     } else {
       connErrors++;
       timeoutsNet++;
