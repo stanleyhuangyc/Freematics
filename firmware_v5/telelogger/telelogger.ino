@@ -423,6 +423,21 @@ void calibrateMEMS()
 }
 #endif
 
+void printTime()
+{
+  time_t utc;
+  time(&utc);
+  struct tm *btm = gmtime(&utc);
+  if (btm->tm_year > 100) {
+    // valid system time available
+    char buf[64];
+    sprintf(buf, "%04u-%02u-%02u %02u:%02u:%02u",
+      1900 + btm->tm_year, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec);
+    Serial.print("UTC:");
+    Serial.println(buf);
+  }
+}
+
 /*******************************************************************************
   Initializing all components and network
 *******************************************************************************/
@@ -646,17 +661,7 @@ bool initialize(bool wait = false)
   connErrors = 0;
 
   // check system time
-  time_t utc;
-  time(&utc);
-  struct tm *btm = gmtime(&utc);
-  if (btm->tm_year > 100) {
-    // valid system time available
-    char buf[64];
-    sprintf(buf, "%04u-%02u-%02u %02u:%02u:%02u",
-      1900 + btm->tm_year, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec);
-    Serial.print("UTC:");
-    Serial.println(buf);
-  }
+  printTime();
 
   lastMotionTime = millis();
   state.set(STATE_WORKING);
