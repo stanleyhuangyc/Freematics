@@ -3,9 +3,10 @@ CFLAGS=-O3 -Wunused-result
 OBJS = httppil.o httpd.o httpjson.o
 HEADERS = httpint.h httpapi.h
 TARGET = teleserver
-OBJS += teleserver.o udpserver.o teletrips.o data2kml.o processpil.o cJSON.o cJSON_Utils.o cdecode.o cencode.o jsonconfig.o
+OBJS += teleserver.o udpserver.o teletrips.o data2kml.o processpil.o cJSON/cJSON.o cJSON/cJSON_Utils.o libb64/cdecode.o libb64/cencode.o jsonconfig.o
 
 CFLAGS+=-DMAX_CHANNELS=16
+CFLAGS+=-Ilibb64 -IcJSON
 LDFLAGS = -lm
 
 ifdef WINDIR
