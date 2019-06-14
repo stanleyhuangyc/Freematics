@@ -58,8 +58,8 @@ public:
     String getIP();
     int getSignal() { return 0; }
     const char* deviceName() { return "WiFi"; }
-protected:
     void listAPs();
+protected:
     char m_buffer[256] = {0};
 };
 
@@ -138,7 +138,7 @@ class ClientSIM5360
 public:
     virtual bool begin(CFreematics* device);
     virtual void end();
-    virtual bool setup(const char* apn, bool gps = false, bool roaming = false, unsigned int timeout = 30000);
+    virtual bool setup(const char* apn, bool gps = false, unsigned int timeout = 30000);
     String getIP();
     int getSignal();
     String getOperatorName();
@@ -193,7 +193,7 @@ public:
 class ClientSIM7600 : public ClientSIM5360
 {
 public:
-    bool setup(const char* apn, bool gps = false, bool roaming = false, unsigned int timeout = 30000);
+    bool setup(const char* apn, bool gps = false, unsigned int timeout = 30000);
 };
 
 class UDPClientSIM7600 : public ClientSIM7600
