@@ -505,7 +505,7 @@ void ClientSIM5360::end()
   }
 }
 
-bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int timeout)
+bool ClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -526,14 +526,21 @@ bool ClientSIM5360::setup(const char* apn, bool gps, bool roaming, unsigned int 
     } while (millis() - t < timeout);
     if (!success) break;
 
-    t = millis();
+    success = false;
     do {
-      success = sendCommand("AT+CREG?\r", 5000, roaming ? "+CREG: 0,5" : "+CREG: 0,1");
+      if (sendCommand("AT+CREG?\r", 1000, "+CREG: 0,")) {
+        char *p = strstr(m_buffer, "+CREG: 0,");
+        success = (p && (*(p + 9) == '1' || *(p + 9) == '5'));
+      }
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
+    success = false;
     do {
-      success = sendCommand("AT+CGREG?\r",1000, roaming ? "+CGREG: 0,5" : "+CGREG: 0,1");
+      if (sendCommand("AT+CGREG?\r",1000, "+CGREG: 0,")) {
+        char *p = strstr(m_buffer, "+CGREG: 0,");
+        success = (p && (*(p + 10) == '1' || *(p + 10) == '5'));
+      }
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
@@ -846,7 +853,7 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
   }
 }
 
-bool ClientSIM7600::setup(const char* apn, bool gps, bool roaming, unsigned int timeout)
+bool ClientSIM7600::setup(const char* apn, bool gps, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -868,14 +875,21 @@ bool ClientSIM7600::setup(const char* apn, bool gps, bool roaming, unsigned int 
     } while (millis() - t < timeout);
     if (!success) break;
 
-    t = millis();
+    success = false;
     do {
-      success = sendCommand("AT+CREG?\r", 5000, roaming ? "+CREG: 0,5" : "+CREG: 0,1");
+      if (sendCommand("AT+CREG?\r", 1000, "+CREG: 0,")) {
+        char *p = strstr(m_buffer, "+CREG: 0,");
+        success = (p && (*(p + 9) == '1' || *(p + 9) == '5'));
+      }
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
+    success = false;
     do {
-      success = sendCommand("AT+CGREG?\r",1000, roaming ? "+CGREG: 0,5" : "+CGREG: 0,1");
+      if (sendCommand("AT+CGREG?\r",1000, "+CGREG: 0,")) {
+        char *p = strstr(m_buffer, "+CGREG: 0,");
+        success = (p && (*(p + 10) == '1' || *(p + 10) == '5'));
+      }
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
