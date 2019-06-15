@@ -1015,6 +1015,7 @@ void process()
     waitMotion(min(n, 3000));
   }
 #else
+  sendingInterval = 1000L * sendingIntervals[0];
   do {
     idleTasks();
   } while (millis() - startTime < dataIntervals[0]);
@@ -1250,6 +1251,7 @@ void showSysInfo()
 #endif
 }
 
+#if CONFIG_MODE_TIMEOUT
 void configMode()
 {
   uint32_t t = millis();
@@ -1275,9 +1277,12 @@ void configMode()
     }
   } while (millis() - t < CONFIG_MODE_TIMEOUT);
 }
+#endif
 
 void setup()
 {
+    delay(500);
+    
 #if ENABLE_OLED
     oled.begin();
     oled.setFontSize(FONT_SIZE_SMALL);
@@ -1289,7 +1294,9 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
 
+#if CONFIG_MODE_TIMEOUT
     configMode();
+#endif
 
 #if LOG_EXT_SENSORS
     pinMode(PIN_SENSOR1, INPUT);

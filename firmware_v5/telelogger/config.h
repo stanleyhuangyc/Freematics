@@ -39,7 +39,7 @@
 // change the following line to change network device
 #define NET_DEVICE NET_SIM7600
 // WIFI settings
-#define WIFI_SSID "FREEMATICS"
+#define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network (if required)
 #define CELL_APN ""
@@ -119,7 +119,7 @@
 **************************************/
 #define ENABLE_HTTPD 0
 #define ENABLE_OLED 0
-#define CONFIG_MODE_TIMEOUT 1000
+#define CONFIG_MODE_TIMEOUT 0
 
 #define PIN_SENSOR1 34
 #define PIN_SENSOR2 35
