@@ -454,14 +454,21 @@ bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout, co
     } while (millis() - t < timeout);
     if (!success) break;
 
-    t = millis();
+    success = false;
     do {
-      success = sendCommand("AT+CREG?\r", 1000, "+CREG: 0,1");
+      if (sendCommand("AT+CREG?\r", 1000, "+CREG: 0,")) {
+        char *p = strstr(m_buffer, "+CREG: 0,");
+        success = (p && (*(p + 9) == '1' || *(p + 9) == '5'));
+      }
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
+    success = false;
     do {
-      success = sendCommand("AT+CGREG?\r",1000, "+CGREG: 0,1");
+      if (sendCommand("AT+CGREG?\r",1000, "+CGREG: 0,")) {
+        char *p = strstr(m_buffer, "+CGREG: 0,");
+        success = (p && (*(p + 10) == '1' || *(p + 10) == '5'));
+      }
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
