@@ -362,30 +362,40 @@ bool UDPClientSIM800::sendCommand(const char* cmd, unsigned int timeout, const c
   }
 }
 
-bool UDPClientSIM800::getLocation(NET_LOCATION* loc)
+GPS_LOCATION* UDPClientSIM800::getLocation()
 {
   if (sendCommand("AT+CIPGSMLOC=1,1\r", 3000)) do {
+    if (!m_gps) m_gps = new GPS_LOCATION;
     char *p;
     if (!(p = strchr(m_buffer, ':'))) break;
     if (!(p = strchr(p, ','))) break;
-    loc->lng = atof(++p);
+    float lng = atof(++p);
     if (!(p = strchr(p, ','))) break;
-    loc->lat = atof(++p);
+    float lat = atof(++p);
     if (!(p = strchr(p, ','))) break;
-    loc->year = atoi(++p) - 2000;
+    int year = atoi(++p);
+    if (year < 2019) break;
     if (!(p = strchr(p, '/'))) break;
-    loc->month = atoi(++p);
+    int month = atoi(++p);
     if (!(p = strchr(p, '/'))) break;
-    loc->day = atoi(++p);
+    int day = atoi(++p);
+    if (!m_gps) m_gps = new GPS_LOCATION;
+    m_gps->lng = (int32_t)(lng * 1000000);
+    m_gps->lat = (int32_t)(lat * 1000000);
+    m_gps->date = (uint32_t)day * 10000 + month * 100 + (year - 2000);
     if (!(p = strchr(p, ','))) break;
-    loc->hour = atoi(++p);
+    int hour = atoi(++p);
     if (!(p = strchr(p, ':'))) break;
-    loc->minute = atoi(++p);
+    int minute = atoi(++p);
     if (!(p = strchr(p, ':'))) break;
-    loc->second = atoi(++p);
-    return true;
+    int second = atoi(++p);
+    m_gps->time = (uint32_t)hour * 10000 + minute * 100 + second;
+    m_gps->speed = 0;
+    m_gps->alt = 0;
+    m_gps->heading = 0;
+    return m_gps;
   } while(0);
-  return false;
+  return 0;
 }
 
 /*******************************************************************************

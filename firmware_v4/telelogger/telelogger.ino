@@ -320,7 +320,6 @@ void processGPS()
 
 void processLocation()
 {
-#if NET_DEVICE == NET_SIM5360
   GPS_LOCATION* gi = net.getLocation();
   // read parsed GPS data
   if (gi) {
@@ -347,7 +346,6 @@ void processLocation()
         UTC = (uint16_t)gi->time;
       }
   }
-#endif
 }
 
 #if MEMS_MODE
