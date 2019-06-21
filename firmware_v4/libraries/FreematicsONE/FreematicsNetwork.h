@@ -10,17 +10,6 @@
 #include "FreematicsBase.h"
 
 typedef struct {
-    float lat;
-    float lng;
-    uint8_t year; /* year past 2000, e.g. 15 for 2015 */
-    uint8_t month;
-    uint8_t day;
-    uint8_t hour;
-    uint8_t minute;
-    uint8_t second;
-} NET_LOCATION;
-
-typedef struct {
     uint32_t date;
     uint32_t time;
     int32_t lat;
@@ -39,10 +28,12 @@ public:
     virtual void close() {}
     virtual bool send(const char* data, unsigned int len) = 0;
     virtual char* receive(int* pbytes, unsigned int timeout) = 0;
-    virtual bool getLocation(NET_LOCATION* loc) { return false; }
+    virtual GPS_LOCATION* getLocation() { return m_gps; }
+protected:
+    GPS_LOCATION* m_gps = 0;
 };
 
-class UDPClientESP8266AT
+class UDPClientESP8266AT : public NullClient
 {
 public:
     bool begin(CFreematics* device);
@@ -63,7 +54,7 @@ private:
     char buffer[128];
 };
 
-class UDPClientSIM800 : virtual NullClient
+class UDPClientSIM800 : public NullClient
 {
 public:
     bool begin(CFreematics* device);
@@ -77,8 +68,8 @@ public:
     bool send(const char* data, unsigned int len);
     void close();
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
-    bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
+    GPS_LOCATION* getLocation();
     char* getBuffer() { return m_buffer; }
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
@@ -88,7 +79,7 @@ private:
     CFreematics* m_device = 0;
 };
 
-class UDPClientSIM5360 : virtual NullClient
+class UDPClientSIM5360 : public NullClient
 {
 public:
     bool begin(CFreematics* device);
@@ -103,7 +94,6 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     char* getBuffer() { return m_buffer; }
-    GPS_LOCATION* getLocation() { return m_gps; }
 private:
     // send command and check for expected response 
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
@@ -114,6 +104,5 @@ private:
     byte udpIP[4] = {0};
     uint16_t udpPort = 0;
     uint8_t m_stage = 0;
-    GPS_LOCATION* m_gps = 0;
     CFreematics* m_device = 0;
 };
