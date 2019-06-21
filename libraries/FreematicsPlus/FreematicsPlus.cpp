@@ -701,6 +701,12 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate)
     return true;
 }
 
+void FreematicsESP32::xbEnd()
+{
+    uart_driver_delete(BEE_UART_NUM);
+    digitalWrite(PIN_BEE_PWR, LOW);
+}
+
 void FreematicsESP32::xbWrite(const char* cmd)
 {
     uart_write_bytes(BEE_UART_NUM, cmd, strlen(cmd));
@@ -777,19 +783,19 @@ void FreematicsESP32::xbTogglePower()
 {
 #ifdef PIN_BEE_PWR
     digitalWrite(PIN_BEE_PWR, HIGH);
-    delay(50);
+    delay(100);
 #if VERBOSE_XBEE
 	Serial.println("xBee power pin set to low");
 #endif
 	digitalWrite(PIN_BEE_PWR, LOW);
-	delay(2000);
+	delay(1010);
 #if VERBOSE_XBEE
 	Serial.println("xBee power pin set to high");
 #endif
     digitalWrite(PIN_BEE_PWR, HIGH);
-    delay(1000);
-    digitalWrite(PIN_BEE_PWR, LOW);
 #endif
+    delay(100);
+    digitalWrite(PIN_BEE_PWR, LOW);
 }
 
 void FreematicsESP32::buzzer(int freq)
@@ -886,7 +892,7 @@ bool FreematicsESP32::begin(int cpuMHz)
     CLink_SPI *linkSPI = new CLink_SPI;
     if (linkSPI->begin()) {
         link = linkSPI;
-        for (byte n = 0; n < 5 && !(version = getVersion()); n++) delay(50);
+        for (byte n = 0; n < 60 && !(version = getVersion()); n++) delay(300);
         if (version >= 11) {
             m_pinGPSPower = PIN_GPS_POWER;
             return true;
