@@ -78,6 +78,7 @@ public:
 	virtual void begin() {}
 	// start xBee UART communication
 	virtual bool xbBegin(unsigned long baudrate = 115200L) = 0;
+	virtual void xbEnd() {}
 	// read data to xBee UART
 	virtual int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000) = 0;
 	// send data to xBee UART
