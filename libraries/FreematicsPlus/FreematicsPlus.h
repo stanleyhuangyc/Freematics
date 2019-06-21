@@ -130,6 +130,7 @@ public:
   void gpsSendCommand(const char* string, int len);
   // start xBee UART communication
   bool xbBegin(unsigned long baudrate = BEE_BAUDRATE);
+  void xbEnd();
   // read data to xBee UART
   int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);
   // send data to xBee UART
