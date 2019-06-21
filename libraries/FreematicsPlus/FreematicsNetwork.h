@@ -194,6 +194,7 @@ class ClientSIM7600 : public ClientSIM5360
 {
 public:
     bool setup(const char* apn, bool gps = false, unsigned int timeout = 30000);
+    void end();
 };
 
 class UDPClientSIM7600 : public ClientSIM7600

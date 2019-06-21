@@ -194,9 +194,9 @@ bool ClientSIM800::begin(CFreematics* device)
   for (byte n = 0; n < 10; n++) {
     // try turning on module
     device->xbTogglePower();
-    delay(2000);
     // discard any stale data
     device->xbPurge();
+    delay(2000);
     for (byte m = 0; m < 3; m++) {
       if (sendCommand("AT\r")) {
         m_stage = 2;
@@ -463,12 +463,12 @@ bool ClientSIM5360::begin(CFreematics* device)
     device->xbBegin(XBEE_BAUDRATE);
     m_stage = 1;
   }
-  for (byte n = 0; n < 10; n++) {
+  for (byte n = 0; n < 3; n++) {
     // try turning on module
     device->xbTogglePower();
-    delay(3000);
     // discard any stale data
     device->xbPurge();
+    delay(2000);
     for (byte m = 0; m < 5; m++) {
       if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         m_stage = 2;
@@ -496,12 +496,19 @@ void ClientSIM5360::end()
 {
   sendCommand("AT+CRESET\r");
   sendCommand("AT+GPS=0\r");
-  delay(1000);
   sendCommand("AT+CPOF\r");
   m_stage = 1;
   if (m_gps) {
     delete m_gps;
     m_gps = 0;
+  }
+  // workaround for SIM5360 powering off issue
+  delay(5000);
+  for (byte m = 0; m < 10; m++) {
+      if (sendCommand("AT\r", 1000)) {
+        sendCommand("AT+CPOF\r");
+        break;
+      }
   }
 }
 
@@ -850,6 +857,18 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
     m_state = HTTP_CONNECTED;
     if (pbytes) *pbytes = received;
     return payload;
+  }
+}
+
+void ClientSIM7600::end()
+{
+  sendCommand("AT+CRESET\r");
+  sendCommand("AT+GPS=0\r");
+  sendCommand("AT+CPOF\r");
+  m_stage = 1;
+  if (m_gps) {
+    delete m_gps;
+    m_gps = 0;
   }
 }
 
