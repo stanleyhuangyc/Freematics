@@ -681,15 +681,6 @@ bool initialize(bool wait = false)
   return true;
 }
 
-void shutDownNet()
-{
-  Serial.print(teleClient.net.deviceName());
-  teleClient.net.close();
-  teleClient.net.end();
-  Serial.println(" OFF");
-  state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-}
-
 /*******************************************************************************
   Executing a remote command
 *******************************************************************************/
@@ -708,7 +699,7 @@ String executeCommand(const char* cmd)
       state.clear(STATE_STORAGE_READY);
     }
   #endif
-    shutDownNet();
+    teleClient.shutdown(true);
     ESP.restart();
     // never reach here
   } else if (!strcmp(cmd, "STANDBY")) {
@@ -858,6 +849,8 @@ bool waitMotion(unsigned long timeout)
       }
     } while (millis() - t < timeout);
     return false;
+  } else {
+    delay(10000);
   }
 #endif
   if (timeout <= 10000) {
@@ -976,7 +969,8 @@ void process()
       // unable to reconnect
       Serial.println("Re-init network");
       digitalWrite(PIN_LED, HIGH);
-      shutDownNet();
+      teleClient.shutdown(true);
+      state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
       initialize();
       digitalWrite(PIN_LED, LOW);
       return;
@@ -1049,13 +1043,12 @@ void standby()
 #endif
 #if ENABLE_OBD
 if (state.check(STATE_OBD_READY)) {
-    obd.reset();
+    //obd.reset();
     obd.enterLowPowerMode();
     state.clear(STATE_OBD_READY);
   }
 #endif
   state.set(STATE_STANDBY);
-  Serial.println("STANDBY");
 #if ENABLE_OLED
   oled.print("STANDBY");
   delay(1000);
@@ -1064,14 +1057,16 @@ if (state.check(STATE_OBD_READY)) {
 #if MEMS_MODE
   calibrateMEMS();
   for (;;) {
-    shutDownNet();
+    teleClient.shutdown(false);
+    state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
     cache.purge();
 #if SERVER_PROTOCOL == PROTOCOL_UDP
     cache.header(devid);
 #endif
+    Serial.println("STANDBY");
     if (waitMotion(1000L * PING_BACK_INTERVAL)) {
       // to wake up
-#if ENABLE_OBD
+#if ENABLE_OBD && !RESET_AFTER_WAKEUP
       obd.leaveLowPowerMode();
 #endif
       state.clear(STATE_STANDBY);
@@ -1282,7 +1277,7 @@ void configMode()
 void setup()
 {
     delay(500);
-    
+
 #if ENABLE_OLED
     oled.begin();
     oled.setFontSize(FONT_SIZE_SMALL);

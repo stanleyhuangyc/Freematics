@@ -210,6 +210,14 @@ void TeleClientUDP::inbound()
   } while(0);
 }
 
+void TeleClientUDP::shutdown(bool quick)
+{
+  Serial.print(net.deviceName());
+  if (!quick) net.close();
+  net.end(quick);
+  Serial.println(" OFF");
+}
+
 bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
   if (net.state() == HTTP_SENT) {
@@ -281,4 +289,12 @@ bool TeleClientHTTP::connect()
 bool TeleClientHTTP::ping()
 {
   return connect();
+}
+
+void TeleClientHTTP::shutdown(bool quick)
+{
+  Serial.print(net.deviceName());
+  if (!quick) net.close();
+  net.end(quick);
+  Serial.println(" OFF");
 }
