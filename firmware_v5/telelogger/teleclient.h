@@ -22,8 +22,6 @@ public:
     virtual bool connect() { return true; }
     virtual bool transmit(const char* packetBuffer, unsigned int packetSize)  { return true; }
     virtual void inbound() {}
-    virtual bool begin() { return true; }
-    virtual void end() {}
     uint32_t txCount = 0;
     uint32_t txBytes = 0;
     uint32_t rxBytes = 0;
@@ -42,6 +40,7 @@ public:
     bool ping();
     void inbound();
     bool verifyChecksum(char* data);
+    void shutdown(bool quick = false);
 #if NET_DEVICE == NET_WIFI
     UDPClientWIFI net;
 #elif NET_DEVICE == NET_SIM800
@@ -61,6 +60,7 @@ public:
     bool connect();
     bool transmit(const char* packetBuffer, unsigned int packetSize);
     bool ping();
+    void shutdown(bool quick = false);
 #if NET_DEVICE == NET_WIFI
     HTTPClientWIFI net;
 #elif NET_DEVICE == NET_SIM800

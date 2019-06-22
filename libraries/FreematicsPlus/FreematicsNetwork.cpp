@@ -51,9 +51,9 @@ bool ClientWIFI::begin(const char* ssid, const char* password)
   return true;
 }
 
-void ClientWIFI::end()
+void ClientWIFI::end(bool quick)
 {
-  WiFi.disconnect(true);
+  WiFi.disconnect(!quick);
 }
 
 void ClientWIFI::listAPs()
@@ -207,7 +207,7 @@ bool ClientSIM800::begin(CFreematics* device)
   return false;
 }
 
-void ClientSIM800::end()
+void ClientSIM800::end(bool quick)
 {
   sendCommand("AT+CPOWD=1\r");
   m_stage = 1;
@@ -492,23 +492,27 @@ bool ClientSIM5360::begin(CFreematics* device)
   return false;
 }
 
-void ClientSIM5360::end()
+void ClientSIM5360::end(bool quick)
 {
   sendCommand("AT+CRESET\r");
-  sendCommand("AT+GPS=0\r");
-  sendCommand("AT+CPOF\r");
-  m_stage = 1;
-  if (m_gps) {
-    delete m_gps;
-    m_gps = 0;
+  if (!quick) {
+    sendCommand("AT+GPS=0\r");
+    m_stage = 1;
+    if (m_gps) {
+      delete m_gps;
+      m_gps = 0;
+    }
   }
-  // workaround for SIM5360 powering off issue
-  delay(5000);
-  for (byte m = 0; m < 10; m++) {
-      if (sendCommand("AT\r", 1000)) {
-        sendCommand("AT+CPOF\r");
-        break;
-      }
+  sendCommand("AT+CPOF\r");
+  if (!quick) {
+    // workaround for SIM5360 powering off issue
+    delay(5000);
+    for (byte m = 0; m < 10; m++) {
+        if (sendCommand("AT\r", 1000)) {
+          sendCommand("AT+CPOF\r");
+          break;
+        }
+    }
   }
 }
 
@@ -860,16 +864,19 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
   }
 }
 
-void ClientSIM7600::end()
+void ClientSIM7600::end(bool quick)
 {
   sendCommand("AT+CRESET\r");
-  sendCommand("AT+GPS=0\r");
+  if (!quick) {
+    sendCommand("AT+GPS=0\r");
+    m_stage = 1;
+    if (m_gps) {
+      delete m_gps;
+      m_gps = 0;
+    }
+  }
   sendCommand("AT+CPOF\r");
   m_stage = 1;
-  if (m_gps) {
-    delete m_gps;
-    m_gps = 0;
-  }
 }
 
 bool ClientSIM7600::setup(const char* apn, bool gps, unsigned int timeout)

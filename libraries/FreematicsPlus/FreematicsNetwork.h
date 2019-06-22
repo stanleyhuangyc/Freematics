@@ -53,7 +53,7 @@ class ClientWIFI
 {
 public:
     bool begin(const char* ssid, const char* password);
-    void end();
+    void end(bool quick = false);
     bool setup(unsigned int timeout = 15000);
     String getIP();
     int getSignal() { return 0; }
@@ -93,7 +93,7 @@ class ClientSIM800
 {
 public:
     bool begin(CFreematics* device);
-    void end();
+    void end(bool quick = false);
     bool setup(const char* apn, bool gps = false, unsigned int timeout = 60000);
     String getIP();
     int getSignal();
@@ -137,7 +137,7 @@ class ClientSIM5360
 {
 public:
     virtual bool begin(CFreematics* device);
-    virtual void end();
+    virtual void end(bool quick = false);
     virtual bool setup(const char* apn, bool gps = false, unsigned int timeout = 30000);
     String getIP();
     int getSignal();
@@ -194,7 +194,7 @@ class ClientSIM7600 : public ClientSIM5360
 {
 public:
     bool setup(const char* apn, bool gps = false, unsigned int timeout = 30000);
-    void end();
+    void end(bool quick = false);
 };
 
 class UDPClientSIM7600 : public ClientSIM7600
