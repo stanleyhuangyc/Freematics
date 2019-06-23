@@ -696,7 +696,7 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate)
 
 #ifdef PIN_BEE_PWR
 	pinMode(PIN_BEE_PWR, OUTPUT);
-	digitalWrite(PIN_BEE_PWR, HIGH);
+	digitalWrite(PIN_BEE_PWR, LOW);
 #endif
     return true;
 }

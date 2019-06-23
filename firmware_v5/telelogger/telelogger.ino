@@ -699,7 +699,7 @@ String executeCommand(const char* cmd)
       state.clear(STATE_STORAGE_READY);
     }
   #endif
-    teleClient.shutdown(true);
+    teleClient.shutdown();
     ESP.restart();
     // never reach here
   } else if (!strcmp(cmd, "STANDBY")) {
@@ -969,7 +969,7 @@ void process()
       // unable to reconnect
       Serial.println("Re-init network");
       digitalWrite(PIN_LED, HIGH);
-      teleClient.shutdown(true);
+      teleClient.shutdown();
       state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
       initialize();
       digitalWrite(PIN_LED, LOW);
@@ -1057,7 +1057,7 @@ if (state.check(STATE_OBD_READY)) {
 #if MEMS_MODE
   calibrateMEMS();
   for (;;) {
-    teleClient.shutdown(false);
+    teleClient.shutdown();
     state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
     cache.purge();
 #if SERVER_PROTOCOL == PROTOCOL_UDP

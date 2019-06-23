@@ -40,7 +40,7 @@ public:
     bool ping();
     void inbound();
     bool verifyChecksum(char* data);
-    void shutdown(bool quick = false);
+    void shutdown();
 #if NET_DEVICE == NET_WIFI
     UDPClientWIFI net;
 #elif NET_DEVICE == NET_SIM800
@@ -60,7 +60,7 @@ public:
     bool connect();
     bool transmit(const char* packetBuffer, unsigned int packetSize);
     bool ping();
-    void shutdown(bool quick = false);
+    void shutdown();
 #if NET_DEVICE == NET_WIFI
     HTTPClientWIFI net;
 #elif NET_DEVICE == NET_SIM800

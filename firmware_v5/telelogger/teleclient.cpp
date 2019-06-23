@@ -210,11 +210,11 @@ void TeleClientUDP::inbound()
   } while(0);
 }
 
-void TeleClientUDP::shutdown(bool quick)
+void TeleClientUDP::shutdown()
 {
   Serial.print(net.deviceName());
-  if (!quick) net.close();
-  net.end(quick);
+  net.close();
+  net.end();
   Serial.println(" OFF");
 }
 
@@ -291,10 +291,10 @@ bool TeleClientHTTP::ping()
   return connect();
 }
 
-void TeleClientHTTP::shutdown(bool quick)
+void TeleClientHTTP::shutdown()
 {
   Serial.print(net.deviceName());
-  if (!quick) net.close();
-  net.end(quick);
+  net.close();
+  net.end();
   Serial.println(" OFF");
 }
