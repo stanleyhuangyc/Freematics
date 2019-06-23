@@ -249,36 +249,39 @@ String ClientSIM800::getIP()
 
 int ClientSIM800::getSignal()
 {
-    if (sendCommand("AT+CSQ\r", 500)) {
-        char *p = strchr(m_buffer, ':');
-        if (p) {
-          p += 2;
-          int db = atoi(p) * 10;
-          p = strchr(p, '.');
-          if (p) db += *(p + 1) - '0';
-          return db;
-        }
-    }
-    return -1;
+  if (sendCommand("AT+CSQ\r", 500)) {
+      char *p = strchr(m_buffer, ':');
+      if (p) {
+        int csq = atoi(p + 2);
+        if (csq == 0)
+          return -115;
+        else if (csq == 1)
+          return -111;
+        else if (csq != 99)
+          return csq * 2 - 114;
+      }
+  }
+  return 0;
 }
+
 String ClientSIM800::getOperatorName()
 {
-    // display operator name
-    if (sendCommand("AT+COPS?\r") == 1) {
-        char *p = strstr(m_buffer, ",\"");
-        if (p) {
-            p += 2;
-            char *s = strchr(p, '\"');
-            if (s) *s = 0;
-            return p;
-        }
-    }
-    return "";
+  // display operator name
+  if (sendCommand("AT+COPS?\r") == 1) {
+      char *p = strstr(m_buffer, ",\"");
+      if (p) {
+          p += 2;
+          char *s = strchr(p, '\"');
+          if (s) *s = 0;
+          return p;
+      }
+  }
+  return "";
 }
 
 bool ClientSIM800::checkSIM()
 {
-    return (sendCommand("AT+CPIN?\r") && strstr(m_buffer, "READY"));
+  return (sendCommand("AT+CPIN?\r") && strstr(m_buffer, "READY"));
 }
 
 String ClientSIM800::queryIP(const char* host)
@@ -594,14 +597,13 @@ int ClientSIM5360::getSignal()
   if (sendCommand("AT+CSQ\r", 500)) {
       char *p = strchr(m_buffer, ':');
       if (p) {
-        p += 2;
-        int db = atoi(p) * 10;
-        p = strchr(p, '.');
-        if (p) db += *(p + 1) - '0';
-        return db;
+        int csq = atoi(p + 2);
+        if (csq != 99) {
+          return csq * 2 - 113;
+        }
       }
   }
-  return -1;
+  return 0;
 }
 
 String ClientSIM5360::getOperatorName()

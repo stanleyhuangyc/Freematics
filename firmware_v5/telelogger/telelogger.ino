@@ -64,6 +64,7 @@ uint8_t accCount = 0;
 int16_t deviceTemp = 0;
 
 // live data
+int16_t rssi = 0;
 char vin[18] = {0};
 uint16_t dtc[6] = {0};
 int16_t batteryVoltage = 0;
@@ -109,7 +110,6 @@ public:
   bool check(uint16_t flags) { return (m_state & flags) == flags; }
   void set(uint16_t flags) { m_state |= flags; }
   void clear(uint16_t flags) { m_state &= ~flags; }
-private:
   uint16_t m_state = 0;
 };
 
@@ -603,15 +603,15 @@ bool initialize(bool wait = false)
       } else {
         Serial.println("NO");
       }
-      int csq = teleClient.net.getSignal();
-      if (csq > 0 && csq < 99) {
-        Serial.print("CSQ:");
-        Serial.print((float)csq / 10, 1);
-        Serial.println("dB");
+      rssi = teleClient.net.getSignal();
+      if (rssi) {
+        Serial.print("RSSI:");
+        Serial.print(rssi);
+        Serial.println("dBm");
 #if ENABLE_OLED
-        oled.print("CSQ:");
-        oled.print((float)csq / 10, 1);
-        oled.println("dB");
+        oled.print("RSSI:");
+        oled.print(rssi);
+        oled.println("dBm");
 #endif
       }
       state.set(STATE_NET_CONNECTED);
