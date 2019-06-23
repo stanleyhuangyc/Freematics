@@ -429,7 +429,6 @@ bool UDPClientSIM5360::begin(CFreematics* device)
 
 void UDPClientSIM5360::end()
 {
-  sendCommand("AT+CRESET\r");
   sendCommand("AT+GPS=0\r");
   sendCommand("AT+CPOF\r");
   m_stage = 1;
