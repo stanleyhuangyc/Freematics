@@ -6,6 +6,8 @@
 #define EVENT_ACK 6
 #define EVENT_PING 7
 
+#define DEV_SIG 0x1000
+
 #define CACHE_SIZE 160
 
 class Cache {

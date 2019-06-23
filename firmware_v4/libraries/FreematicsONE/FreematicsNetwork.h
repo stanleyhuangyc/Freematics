@@ -1,7 +1,8 @@
 /*************************************************************************
-* Telematics Data Logger Class
+* Freematics Hub Client implementations for ESP8266-AT, SIM800, SIM5360
 * Distributed under BSD license
-* Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
+* Visit http://freematics.com/products/freematics-one for more information
+* (C)2017-2019 Stanley Huang <stanley@freematics.com.au
 *************************************************************************/
 
 #pragma once
@@ -40,7 +41,7 @@ public:
     void end();
     bool setup(const char* ssid, const char* password, unsigned int timeout = 15000);
     String getIP();
-    int getSignal() { return 0; }
+    float getSignal() { return 0; }
     bool open(const char* host, uint16_t port);
     void close();
     bool send(const char* data, unsigned int len);
