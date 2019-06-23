@@ -1,9 +1,8 @@
 /*************************************************************************
-* Freematics Hub Client implementations for various communication devices
-* including BLE, WIFI, 2G, 3G
+* Freematics Hub Client implementations for ESP8266-AT, SIM800, SIM5360
 * Distributed under BSD license
 * Visit http://freematics.com/products/freematics-one for more information
-* (C)2017 Stanley Huang <support@freematics.com.au
+* (C)2017-2019 Stanley Huang <stanley@freematics.com.au
 *************************************************************************/
 
 #include <Arduino.h>
@@ -224,36 +223,39 @@ String UDPClientSIM800::getIP()
 
 int UDPClientSIM800::getSignal()
 {
-    if (sendCommand("AT+CSQ\r", 500)) {
-        char *p = strchr(m_buffer, ':');
-        if (p) {
-          p += 2;
-          int db = atoi(p) * 10;
-          p = strchr(p, '.');
-          if (p) db += *(p + 1) - '0';
-          return db;
-        }
-    }
-    return -1;
+  if (sendCommand("AT+CSQ\r", 500)) {
+      char *p = strchr(m_buffer, ':');
+      if (p) {
+        int csq = atoi(p + 2);
+        if (csq == 0)
+          return -115;
+        else if (csq == 1)
+          return -111;
+        else if (csq != 99)
+          return csq * 2 - 114;
+      }
+  }
+  return 0;
 }
+
 String UDPClientSIM800::getOperatorName()
 {
-    // display operator name
-    if (sendCommand("AT+COPS?\r") == 1) {
-        char *p = strstr(m_buffer, ",\"");
-        if (p) {
-            p += 2;
-            char *s = strchr(p, '\"');
-            if (s) *s = 0;
-            return p;
-        }
-    }
-    return "";
+  // display operator name
+  if (sendCommand("AT+COPS?\r") == 1) {
+      char *p = strstr(m_buffer, ",\"");
+      if (p) {
+          p += 2;
+          char *s = strchr(p, '\"');
+          if (s) *s = 0;
+          return p;
+      }
+  }
+  return "";
 }
 
 bool UDPClientSIM800::checkSIM()
 {
-  return sendCommand("AT+CPIN?\r", 500, ": READY");
+  return (sendCommand("AT+CPIN?\r") && strstr(m_buffer, "READY"));
 }
 
 bool UDPClientSIM800::open(const char* host, uint16_t port)
@@ -524,31 +526,31 @@ String UDPClientSIM5360::getIP()
 
 int UDPClientSIM5360::getSignal()
 {
-    if (sendCommand("AT+CSQ\r", 500)) {
-        char *p = strchr(m_buffer, ':');
-        if (p) {
-          p += 2;
-          int db = atoi(p) * 10;
-          p = strchr(p, '.');
-          if (p) db += *(p + 1) - '0';
-          return db;
+  if (sendCommand("AT+CSQ\r", 500)) {
+      char *p = strchr(m_buffer, ':');
+      if (p) {
+        int csq = atoi(p + 2);
+        if (csq != 99) {
+          return csq * 2 - 113;
         }
-    }
-    return -1;
+      }
+  }
+  return 0;
 }
+
 String UDPClientSIM5360::getOperatorName()
 {
-    // display operator name
-    if (sendCommand("AT+COPS?\r") == 1) {
-        char *p = strstr(m_buffer, ",\"");
-        if (p) {
-            p += 2;
-            char *s = strchr(p, '\"');
-            if (s) *s = 0;
-            return p;
-        }
-    }
-    return "";
+  // display operator name
+  if (sendCommand("AT+COPS?\r") == 1) {
+      char *p = strstr(m_buffer, ",\"");
+      if (p) {
+          p += 2;
+          char *s = strchr(p, '\"');
+          if (s) *s = 0;
+          return p;
+      }
+  }
+  return "";
 }
 
 bool UDPClientSIM5360::checkSIM()
