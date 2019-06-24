@@ -814,7 +814,7 @@ byte FreematicsESP32::getVersion()
 {
     if (!link) return 0;
     char buffer[32];
-    if (link->sendCommand("ATI\r", buffer, sizeof(buffer), 200)) {
+    if (link->sendCommand("ATI\r", buffer, sizeof(buffer), 1000)) {
         char *p = strstr(buffer, "OBD");
         if (p && (p = strchr(p, ' '))) {
             p += 2;
@@ -868,7 +868,7 @@ bool FreematicsESP32::begin(int cpuMHz)
     CLink_UART *linkUART = new CLink_UART;
     if (linkUART->begin()) {
         link = linkUART;
-        for (byte n = 0; n < 5 && !(version = getVersion()); n++) delay(50);
+        for (byte n = 0; n < 3 && !(version = getVersion()); n++);
         if (version) {
             if (version >= 14) {
                 m_flags |= GNSS_USE_LINK;
@@ -892,7 +892,7 @@ bool FreematicsESP32::begin(int cpuMHz)
     CLink_SPI *linkSPI = new CLink_SPI;
     if (linkSPI->begin()) {
         link = linkSPI;
-        for (byte n = 0; n < 60 && !(version = getVersion()); n++) delay(300);
+        for (byte n = 0; n < 30 && !(version = getVersion()); n++);
         if (version >= 11) {
             m_pinGPSPower = PIN_GPS_POWER;
             return true;
