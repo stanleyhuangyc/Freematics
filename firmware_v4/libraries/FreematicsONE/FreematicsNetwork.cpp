@@ -180,7 +180,7 @@ void UDPClientSIM800::end()
   m_stage = 1;
 }
 
-bool UDPClientSIM800::setup(const char* apn, unsigned int timeout, const char* pin)
+bool UDPClientSIM800::setup(const char* apn, unsigned int timeout, bool gps, const char* pin)
 {
   uint32_t t = millis();
   bool success = false;
@@ -440,7 +440,7 @@ void UDPClientSIM5360::end()
   }
 }
 
-bool UDPClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout, const char* pin)
+bool UDPClientSIM5360::setup(const char* apn, unsigned int timeout, bool gps, const char* pin)
 {
   uint32_t t = millis();
   bool success = false;
