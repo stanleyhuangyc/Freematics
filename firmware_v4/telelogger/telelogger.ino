@@ -26,7 +26,7 @@
 #include "telelogger.h"
 #include "config.h"
 
-// logger states
+// states
 #define STATE_OBD_READY 0x1
 #define STATE_GPS_READY 0x2
 #define STATE_LOCATION_READY 0x4
@@ -47,7 +47,6 @@ uint32_t txCount = 0;
 uint8_t connErrors = 0;
 uint16_t UTC = 0;
 uint32_t lastSyncTime = 0;
-uint32_t lastCmdToken = 0;
 uint32_t lastMotionTime = 0;
 uint32_t lastOBDTry = 0;
 uint8_t obdRetryInterval = 0;
@@ -60,11 +59,10 @@ void processMEMS(bool process);
 
 class State {
 public:
-  bool check(byte flags) { return (m_state & flags) == flags; }
-  void set(byte flags) { m_state |= flags; }
-  void clear(byte flags) { m_state &= ~flags; }
-private:
-  byte m_state = 0;
+  bool check(byte flags) { return (state & flags) == flags; }
+  void set(byte flags) { state |= flags; }
+  void clear(byte flags) { state &= ~flags; }
+  byte state = 0;
 };
 
 State state;
@@ -115,26 +113,44 @@ bool verifyChecksum(char* data)
   return false;
 }
 
-bool notify(byte event, const char* extra = 0)
+bool notify(byte event)
 {
   cache.header(devid);
   char buf[32];
-  byte len = snprintf_P(buf, sizeof(buf), PSTR("EV=%X"), (unsigned int)event);
-  cache.dispatch(buf, len);
-  len = snprintf_P(buf, sizeof(buf), PSTR("TS=%lu"), millis());
-  cache.dispatch(buf, len);
-  if (extra && *extra) {
-    cache.dispatch(extra, strlen(extra));
+
+  if (event == EVENT_LOGIN) {
+    if (state.check(STATE_OBD_READY)) {
+      char vin[128];
+      if (obd.getVIN(vin, sizeof(vin))) {
+        Serial.print(F("VIN:"));
+        Serial.println(vin);
+        cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("VIN=%s"), vin));
+      }
+    }
+    int rssi = net.getSignal();
+    if (rssi) {
+      Serial.print(F("RSSI:"));
+      Serial.print(rssi);
+      Serial.println(F("dBm"));
+      cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("SSI=%d"), rssi));
+    }
+    cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("DF=%u"), DEV_SIG | (unsigned int)state.state));
   }
+  cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("EV=%X"), (unsigned int)event));
+  cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("TS=%lu"), millis()));
   cache.tailer();
 
   for (byte attempts = 0; attempts < 3; attempts++) {
+    Serial.print(F("SERVER..."));
     if (!net.send(cache.buffer(), cache.length())) {
-      Serial.println(F("Unsent"));
+      Serial.print('.');
       delay(1000);
       continue;
     }
-    if (event == EVENT_ACK) return true; // no reply for ACK
+    if (event == EVENT_ACK) {
+      Serial.println(F("ACK"));
+      return true; // no reply for ACK
+    }
     // receive reply
     delay(1000);
     int len;
@@ -158,49 +174,29 @@ bool notify(byte event, const char* extra = 0)
     lastSyncTime = millis();
     connErrors = 0;
     // success
+    Serial.println(F("OK"));
     return true;
   }
+  Serial.println(F("NO"));
   return false;
 }
 
 bool login()
 {
-  char extra[32] = {0};
-  int csq = net.getSignal();
-  if (csq > 0) {
-    Serial.print(F("CSQ:"));
-    Serial.print((float)csq / 10, 1);
-    Serial.println(F("dB"));
-  }
-  byte l = snprintf_P(extra, sizeof(extra), PSTR("CSQ=%d"), csq);
-  if (state.check(STATE_OBD_READY)) {
-    char buf[128];
-    if (obd.getVIN(buf, sizeof(buf))) {
-      snprintf_P(extra + l, sizeof(extra) - l, PSTR(",VIN=%s"), buf);
-      Serial.print(F("VIN:"));
-      Serial.println(buf);
-    }
-  }
-
   // connect to telematics server
   for (byte attempts = 0; attempts < 3; attempts++) {
-    Serial.print(F("LOGIN("));
-    Serial.print(SERVER_HOST);
-    Serial.print(F(")..."));
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      Serial.println(F("NO"));
+      Serial.println(F("NO NET"));
       delay(1000);
       continue;
     }
     byte event = connErrors ? EVENT_RECONNECT : EVENT_LOGIN; 
     // login Freematics Hub
-    if (!notify(event, extra)) {
+    if (!notify(event)) {
       net.close();
-      Serial.println(F("NO ACK"));
       delay(3000);
       continue;
     }
-    Serial.println(F("OK"));
     return true;
   }
   return false;
@@ -530,7 +526,7 @@ bool initialize()
   }
 
   Serial.print(F("NET."));
-  if (net.setup(CELL_APN, !state.check(STATE_GPS_READY))) {
+  if (net.setup(CELL_APN, 30000, !state.check(STATE_GPS_READY))) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
@@ -613,83 +609,6 @@ bool waitMotion(long timeout)
     if (elapsed >= timeout) break;
     delay(min(5000, timeout - elapsed));
   } while (obd.getVoltage() < CHARGING_VOLTAGE);
-  return true;
-}
-
-/*******************************************************************************
-  Executing a command
-*******************************************************************************/
-String executeCommand(const char* cmd)
-{
-  String result;
-  Serial.println(cmd);
-  if (!strcmp_P(cmd, PSTR("REBOOT"))) {
-    shutDownNet();
-    void(* resetFunc) (void) = 0;
-    resetFunc();
-    // never reach here
-  } else if (!strcmp_P(cmd, PSTR("STANDBY"))) {
-    state.clear(STATE_WORKING);
-    result = "OK";
-  } else if (!strncmp_P(cmd, PSTR("OBD"), 3) && cmd[4]) {
-    // send OBD command
-    String obdcmd = cmd + 4;
-    obdcmd += '\r';
-    char buf[128];
-    if (obd.sendCommand(obdcmd.c_str(), buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
-      Serial.println(buf);
-      for (int n = 4; buf[n]; n++) {
-        switch (buf[n]) {
-        case '\r':
-        case '\n':
-          result += ' ';
-          break;
-        default:
-          result += buf[n];
-        }
-      }
-    } else {
-      result = "ERROR";
-    }
-  } else {
-    return "INVALID";
-  }
-  return result;
-}
-
-bool processCommand(char* data)
-{
-  char *p;
-  if (!(p = strstr_P(data, PSTR("TK=")))) return false;
-  uint32_t token = atol(p + 3);
-  if (!(p = strstr_P(data, PSTR("CMD=")))) return false;
-  char *cmd = p + 4;
-
-  if (token > lastCmdToken) {
-    // new command
-    String result = executeCommand(cmd);
-    // send command response
-    char buf[128];
-    snprintf_P(buf, sizeof(buf), PSTR("TK=%lu,MSG=%s"), token, result.c_str());
-    for (byte attempts = 0; attempts < 3; attempts++) {
-      Serial.println(F("ACK..."));
-      if (notify(EVENT_ACK, buf)) {
-        Serial.println(F("sent"));
-        break;
-      }
-    }
-  } else {
-    // previously executed command
-    char buf[64];
-    snprintf_P(buf, sizeof(buf), PSTR("TK=%lu,DUP=1"), token);
-    for (byte attempts = 0; attempts < 3; attempts++) {
-      Serial.println(F("ACK..."));
-      if (notify(EVENT_ACK, buf)) {
-        Serial.println(F("sent"));
-        break;
-      }
-    }
-  }
   return true;
 }
 
@@ -810,6 +729,7 @@ void standby()
 #if MEMS_MODE
     calibrateMEMS();
 #endif
+    obd.lowPowerMode();
     Serial.println(F("STANDBY"));
     if (waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t))) {
       // to wake up
@@ -820,6 +740,7 @@ void standby()
     Serial.print(F("Ping..."));
     for (byte n = 0; n < 10; n++) {
       if (obd.getVersion()) break;
+      Serial.print('.');
       delay(3000);
     }
     float volts = obd.getVoltage();
@@ -838,7 +759,7 @@ void standby()
 #if NET_DEVICE == NET_WIFI
     if (!net.setup(WIFI_SSID, WIFI_PASSWORD))
 #else
-    if (!net.begin(&sys) || !net.setup(CELL_APN, 60000))
+    if (!net.begin(&sys) || !net.setup(CELL_APN, 15000, false))
 #endif
     {
       Serial.println(F("NO"));
@@ -877,12 +798,7 @@ void recvTasks(int timeout)
       char *p = strstr_P(data, PSTR("EV="));
       if (p) {
         byte eventID = atoi(p + 3);
-        switch (eventID) {
-        case EVENT_COMMAND:
-          processCommand(data);
-          break;
-        }
-        lastSyncTime = millis();
+        if (eventID) lastSyncTime = millis();
       }
     }
   }
