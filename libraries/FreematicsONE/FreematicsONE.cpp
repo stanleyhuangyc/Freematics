@@ -397,7 +397,7 @@ byte COBDSPI::begin()
 byte COBDSPI::getVersion()
 {
 	byte version = 0;
-	for (byte n = 0; n < 10; n++) {
+	for (byte n = 0; n < 30; n++) {
 		char buffer[32];
 		if (sendCommand("ATI\r", buffer, sizeof(buffer), 1000)) {
 			char *p = strstr_P(buffer, PSTR("OBDUART"));
