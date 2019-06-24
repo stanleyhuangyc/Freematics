@@ -127,23 +127,23 @@ bool notify(byte event)
         cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("VIN=%s"), vin));
       }
     }
-    int rssi = net.getSignal();
-    if (rssi) {
-      Serial.print(F("RSSI:"));
-      Serial.print(rssi);
-      Serial.println(F("dBm"));
-      cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("SSI=%d"), rssi));
-    }
     cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("DF=%u"), DEV_SIG | (unsigned int)state.state));
+  }
+  int rssi = net.getSignal();
+  if (rssi) {
+    Serial.print(F("RSSI:"));
+    Serial.print(rssi);
+    Serial.println(F("dBm"));
+    cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("SSI=%d"), rssi));
   }
   cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("EV=%X"), (unsigned int)event));
   cache.dispatch(buf, snprintf_P(buf, sizeof(buf), PSTR("TS=%lu"), millis()));
   cache.tailer();
 
+  Serial.print(F("SERVER.."));
   for (byte attempts = 0; attempts < 3; attempts++) {
-    Serial.print(F("SERVER..."));
+    Serial.print('.');
     if (!net.send(cache.buffer(), cache.length())) {
-      Serial.print('.');
       delay(1000);
       continue;
     }
@@ -157,7 +157,7 @@ bool notify(byte event)
     char *data = net.receive(&len);
     if (!data) {
       // no reply yet
-      Serial.print('.');
+      
       continue;
     }
     data[len] = 0;
@@ -525,7 +525,7 @@ bool initialize()
     Serial.println("NO");
   }
 
-  Serial.print(F("NET."));
+  Serial.print(F("NET.."));
   if (net.setup(CELL_APN, 30000, !state.check(STATE_GPS_READY))) {
     String op = net.getOperatorName();
     if (op.length()) {
@@ -731,18 +731,14 @@ void standby()
 #endif
     obd.lowPowerMode();
     Serial.println(F("STANDBY"));
-    if (waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t))) {
-      // to wake up
-      break;
-    }
+    int ret = waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t));
+    Serial.println(F("WAKEUP"));
+    obd.getVersion();
+    Serial.println();
+    if (ret) break;
     t = millis();
     // start ping
     Serial.print(F("Ping..."));
-    for (byte n = 0; n < 10; n++) {
-      if (obd.getVersion()) break;
-      Serial.print('.');
-      delay(3000);
-    }
     float volts = obd.getVoltage();
     if (volts >= 6 && volts < BATTERY_LOW_VOLTAGE) {
       Serial.print(F("LOW BATT:"));
@@ -824,10 +820,8 @@ void loop()
 {
   if (!state.check(STATE_WORKING)) {
     if (state.check(STATE_SERVER_CONNECTED)) {
-      Serial.print(F("LOGOUT.."));
-      if (notify(EVENT_LOGOUT))
-        Serial.print(F("OK"));
-      Serial.println();
+      Serial.println(F("LOGOUT"));
+      notify(EVENT_LOGOUT);
       state.clear(STATE_SERVER_CONNECTED);
       connErrors = 0;
     }
