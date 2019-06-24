@@ -21,6 +21,7 @@
 
 bool processCommand(char* data);
 
+extern int16_t rssi;
 extern char devid[];
 extern char vin[];
 extern GPS_DATA* gd;
@@ -45,15 +46,14 @@ bool TeleClientUDP::notify(byte event, const char* payload)
   CStorageRAM netbuf;
   netbuf.init(128);
   netbuf.header(devid);
-  byte len = sprintf(buf, "EV=%X", (unsigned int)event);
-  netbuf.dispatch(buf, len);
-  len = sprintf(buf, "TS=%lu", millis());
-  netbuf.dispatch(buf, len);
-  len = sprintf(buf, "ID=%s", devid);
-  netbuf.dispatch(buf, len);
+  netbuf.dispatch(buf, sprintf(buf, "EV=%X", (unsigned int)event));
+  netbuf.dispatch(buf, sprintf(buf, "TS=%lu", millis()));
+  netbuf.dispatch(buf, sprintf(buf, "ID=%s", devid));
+  if (rssi) {
+    netbuf.dispatch(buf, sprintf(buf, "SSI=%d", (int)rssi));
+  }
   if (vin[0]) {
-    len = sprintf(buf, "VIN=%s", vin);
-    netbuf.dispatch(buf, len);
+    netbuf.dispatch(buf, sprintf(buf, "VIN=%s", vin));
   }
   if (payload) {
     netbuf.dispatch(payload, strlen(payload));

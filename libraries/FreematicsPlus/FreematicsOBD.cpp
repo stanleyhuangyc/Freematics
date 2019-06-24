@@ -270,9 +270,9 @@ void COBD::enterLowPowerMode()
 
 void COBD::leaveLowPowerMode()
 {
-	// simply send any command to wake the device up
+	// send any command to wake up
 	char buf[32];
-	link->sendCommand("ATI\r", buf, sizeof(buf), 1000);
+	for (byte n = 0; n < 30 && !link->sendCommand("ATI\r", buf, sizeof(buf), 1000); n++);
 }
 
 char* COBD::getResultValue(char* buf)
@@ -346,54 +346,61 @@ void COBD::recover()
 
 bool COBD::init(OBD_PROTOCOLS protocol)
 {
-	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
+	const char *initcmd[] = {"ATE0\r", "ATH0\r"};
 	char buffer[64];
 	byte stage;
 
-	if (!link) return false;
+	if (!link) {
+		return false;
+	}
+
 	m_state = OBD_DISCONNECTED;
-	for (byte n = 0; n < 3; n++) {
-		stage = 0;
-		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
-			delay(10);
-			if (!link->sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
-				continue;
-			}
+	stage = 0;
+	for (byte n = 0; n < 10; n++) {
+		if (link->sendCommand("ATZ\r", buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
+			stage = 1;
+			break;
 		}
-		stage = 1;
-		if (protocol != PROTO_AUTO) {
-			sprintf(buffer, "ATSP%u\r", protocol);
-			delay(10);
-			if (!link->sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
-				continue;
-			}
+	}
+	if (stage == 0) return false;
+	for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
+		link->sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT);
+	}
+	if (protocol != PROTO_AUTO) {
+		sprintf(buffer, "ATSP%u\r", protocol);
+		if (!link->sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
+			return false;
 		}
-		stage = 2;
-		delay(10);
-		if (!link->sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
-			continue;
+	}
+	stage = 2;
+	for (byte n = 0; n < 2; n++) {
+		if (link->sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) && !checkErrorMessage(buffer)) {
+			stage = 3;
+			break;
 		}
-		stage = 3;
-		// load pid map
-		memset(pidmap, 0xff, sizeof(pidmap));
-		for (byte i = 0; i < 4; i++) {
-			byte pid = i * 0x20;
-			sprintf(buffer, "%02X%02X\r", dataMode, pid);
-			delay(10);
-			link->send(buffer);
-			delay(10);
-			if (!link->receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) break;
-			for (char *p = buffer; (p = strstr(p, "41 ")); ) {
-				p += 3;
-				if (hex2uint8(p) == pid) {
-					p += 2;
-					for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
-						pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
-					}
+	}
+	if (stage != 3) {
+		return false;
+	}
+	// load pid map
+	memset(pidmap, 0xff, sizeof(pidmap));
+	for (byte i = 0; i < 4; i++) {
+		byte pid = i * 0x20;
+		sprintf(buffer, "%02X%02X\r", dataMode, pid);
+		link->send(buffer);
+		if (!link->receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
+			Serial.print("NO PID MAP ");
+			break;
+		}
+		for (char *p = buffer; (p = strstr(p, "41 ")); ) {
+			p += 3;
+			if (hex2uint8(p) == pid) {
+				p += 2;
+				for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
+					pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 				}
 			}
 		}
-		break;
 	}
 	if (stage == 3) {
 		m_state = OBD_CONNECTED;

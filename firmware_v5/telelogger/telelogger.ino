@@ -893,7 +893,7 @@ void process()
 #endif
 
 #if ENABLE_OBD
-  if (sys.getVersion() >= 13) {
+  if (sys.version >= 13) {
       batteryVoltage = (float)(analogRead(A0) * 11 * 370) / 4095;
       cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
   } else {
@@ -1043,7 +1043,6 @@ void standby()
 #endif
 #if ENABLE_OBD
 if (state.check(STATE_OBD_READY)) {
-    //obd.reset();
     obd.enterLowPowerMode();
     state.clear(STATE_OBD_READY);
   }
