@@ -121,8 +121,8 @@
 #define ENABLE_OLED 0
 #define CONFIG_MODE_TIMEOUT 0
 
-#define PIN_SENSOR1 34
-#define PIN_SENSOR2 35
+#define PIN_SENSOR1 35
+#define PIN_SENSOR2 36
 
 #define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
