@@ -1,9 +1,8 @@
 /*
   A Freematics ESPRIT demo sketch
 
-  This sketch demonstrates a BLE GATT server and an HTTP server running simultaneously
-  HTTP server is accessible via http://esprit.local URL thanks to mDNS responder.
-  IP address, BLE message and GPS data will be output on serial and OLED
+  This sketch demonstrates an HTTP server accessible via http://esprit.local
+  GPS data will be output on serial and OLED
 
   Instructions:
   - Connect GPS receiver to Serial1 header on ESPRIT board
@@ -29,7 +28,6 @@
 #include "config.h"
 
 #define WIFI_SSID "Freematics Esprit"
-#define BLE_DEVICE_NAME "Freematics Esprit"
 
 // TCP server at port 80 will respond to HTTP requests
 WiFiServer server(80);
@@ -38,28 +36,7 @@ LCD_SH1106 lcd;
 
 const char waitsign[] = {'|', '/', '-', '\\'};
 
-class MyGATTServer : public GATTServer
-{
-public:
-    size_t onRequest(uint8_t* buffer, size_t len)
-    {
-        return sprintf((char*)buffer, "%u", millis());
-    }
-    void onReceive(uint8_t* buffer, size_t len)
-    {
-        lcd.setCursor(0, 3);
-        lcd.setFontSize(FONT_SIZE_SMALL);
-        if (len > 20) len = 20;
-        Serial.print("BLE:");
-        for (size_t i = 0; i < len; i++) {
-            Serial.print((char)buffer[i]);
-            lcd.write(buffer[i]);
-        }
-    }
-};
-
 uint32_t lastTick = 0;
-MyGATTServer ble;
 
 void showTickCross(bool yes)
 {
@@ -104,19 +81,7 @@ void setup(void)
     delay(3000);
     lcd.clear();
 
-    // BLE
-    lcd.print("BLE");
-    if (ble.init(BLE_DEVICE_NAME)) {
-      Serial.println("BLE initialized");
-      showTickCross(true);
-    }
-    else {
-      Serial.println("BLE failed");
-      showTickCross(false);
-    }
-
     // Connect to WiFi network
-    lcd.setCursor(64, 0);
     lcd.print("WIFI");
     if (WiFi.softAP(WIFI_SSID)) {
       Serial.println("WIFI AP Started");
@@ -187,20 +152,6 @@ CGPS gps;
 
 void loop(void)
 {
-    // send serial input via BLE
-    if (Serial.available()) {
-        static uint8_t buffer[128];
-        static uint8_t len = 0;
-        char c = Serial.read();
-        buffer[len++] = c;
-        if (len >= sizeof(buffer) - 1 || millis() - lastTick > 100 || c == '\r' || c == '\n') {
-            // send BLE data
-            ble.send(buffer, len);
-            len = 0;
-            lastTick = millis();
-        }
-    }
-
     // read GPS NMEA data from Serial1 and parse it
     if (Serial2.available()) {
       char c = Serial2.read();
