@@ -16,76 +16,10 @@
 #include "esp_system.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
-#include "esp_bt.h"
-#include "bta_api.h"
-#include "esp_gatt_defs.h"
-#include "esp_gap_ble_api.h"
-#include "esp_gatts_api.h"
-#include "esp_bt_defs.h"
-#include "esp_bt_main.h"
-#include "esp_bt_main.h"
-
-HardwareSerial Serial1(1);
-HardwareSerial Serial2(2);
-
 #endif
 #include "Esprit.h"
 
 #ifndef _SIM
-
-extern "C" {
-  void gatts_init(const char* device_name);
-  int gatts_send(uint8_t* data, size_t len);
-}
-
-bool initBLE()
-{
-  btStart();
-  esp_err_t ret = esp_bluedroid_init();
-  if (ret) {
-      Serial.println("Bluetooth failed");
-      return false;
-  }
-  ret = esp_bluedroid_enable();
-  if (ret) {
-      Serial.println("Error enabling bluetooth");
-      return false;
-  }
-  return true;
-}
-
-static GATTServer* gatts_inst = 0;
-
-bool GATTServer::init(const char* deviceName)
-{
-  gatts_inst = this;
-  if (!initBLE()) return false;
-  gatts_init(deviceName);
-  return true;
-}
-
-bool GATTServer::send(uint8_t* data, size_t len)
-{
-  return gatts_send(data, len);
-}
-
-extern "C" {
-
-size_t gatts_read_callback(uint8_t* buffer, size_t len)
-{
-	if (gatts_inst) {
-		return gatts_inst->onRequest(buffer, len);
-	} else {
-		return 0;
-	}
-}
-
-void gatts_write_callback(uint8_t* data, size_t len)
-{
-    if (gatts_inst) gatts_inst->onReceive(data, len);
-}
-
-}
 
 bool CNVS::flashRead(void* buffer, size_t bufsize, size_t offset)
 {
