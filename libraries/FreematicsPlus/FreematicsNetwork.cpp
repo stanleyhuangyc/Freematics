@@ -497,7 +497,7 @@ bool ClientSIM5360::begin(CFreematics* device)
 
 void ClientSIM5360::end()
 {
-  sendCommand("AT+GPS=0\r");
+  sendCommand("AT+CGPS=0\r");
   sendCommand("AT+CPOF\r");
   m_stage = 1;
   if (m_gps) {
@@ -562,10 +562,14 @@ bool ClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout)
   if (gps) {
     sendCommand("AT+CVAUXV=61\r");
     sendCommand("AT+CVAUXS=1\r");
-    if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
-      if (!m_gps) {
-        m_gps = new GPS_DATA;
-        memset(m_gps, 0, sizeof(GPS_DATA));
+    for (byte n = 0; n < 3; n++) {
+      if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
+        Serial.println("Cellular GNSS ON");
+        if (!m_gps) {
+          m_gps = new GPS_DATA;
+          memset(m_gps, 0, sizeof(GPS_DATA));
+        }
+        break;
       }
     }
   }
@@ -856,7 +860,7 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 void ClientSIM7600::end()
 {
   sendCommand("AT+CRESET\r");
-  sendCommand("AT+GPS=0\r");
+  sendCommand("AT+CGPS=0\r");
   delay(1000);
   sendCommand("AT+CPOF\r");
   m_stage = 1;
@@ -920,14 +924,18 @@ bool ClientSIM7600::setup(const char* apn, bool gps, unsigned int timeout)
   } while(0);
   // enable internal GPS if required
   if (gps) {
-    if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
-      if (!m_gps) {
-        m_gps = new GPS_DATA;
-        memset(m_gps, 0, sizeof(GPS_DATA));
-      }
-    }
     sendCommand("AT+CVAUXV=3050\r");
     sendCommand("AT+CVAUXS=1\r");
+    for (byte n = 0; n < 3; n++) {
+      if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
+        Serial.println("Cellular GNSS ON");
+        if (!m_gps) {
+          m_gps = new GPS_DATA;
+          memset(m_gps, 0, sizeof(GPS_DATA));
+        }
+        break;
+      }
+    }
   }
   return success;
 }

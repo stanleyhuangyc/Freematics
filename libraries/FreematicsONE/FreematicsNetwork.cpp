@@ -431,7 +431,7 @@ bool UDPClientSIM5360::begin(CFreematics* device)
 
 void UDPClientSIM5360::end()
 {
-  sendCommand("AT+GPS=0\r");
+  sendCommand("AT+CGPS=0\r");
   sendCommand("AT+CPOF\r");
   m_stage = 1;
   if (m_gps) {
@@ -494,12 +494,17 @@ bool UDPClientSIM5360::setup(const char* apn, unsigned int timeout, bool gps, co
     sendCommand("AT+NETOPEN\r");
   } while(0);
   if (!success) Serial.println(m_buffer);
-  if (gps) {
-    if (!m_gps) {
-      m_gps = new GPS_LOCATION;
-      memset(m_gps, 0, sizeof(GPS_LOCATION));
+  sendCommand("AT+CVAUXV=61\r");
+  sendCommand("AT+CVAUXS=1\r");
+  for (byte n = 0; n < 3; n++) {
+    if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
+      Serial.println(F("GNSS ON"));
+      if (!m_gps) {
+        m_gps = new GPS_DATA;
+        memset(m_gps, 0, sizeof(GPS_DATA));
+      }
+      break;
     }
-    sendCommand("AT+CGPS=1\r");
   }
   return success;
 }
