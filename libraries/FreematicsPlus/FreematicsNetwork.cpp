@@ -563,13 +563,14 @@ bool ClientSIM5360::setGPS(bool on)
     sendCommand("AT+CVAUXV=61\r");
     sendCommand("AT+CVAUXS=1\r");
     for (byte n = 0; n < 3; n++) {
-      if (sendCommand("AT+CGPS=1,1\r") || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
+      if ((sendCommand("AT+CGPS=1,1\r") && sendCommand("AT+CGPSINFO=1\r")) || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
         if (!m_gps) {
           m_gps = new GPS_DATA;
           memset(m_gps, 0, sizeof(GPS_DATA));
         }
         return true;
       }
+      sendCommand("AT+CGPS=0\r");
     }
     return false;
   } else {
@@ -933,8 +934,8 @@ bool ClientSIM7600::setGPS(bool on)
   if (on) {
     sendCommand("AT+CVAUXV=61\r");
     sendCommand("AT+CVAUXS=1\r");
-    for (byte n = 0; n < 5; n++) {
-      if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
+    for (byte n = 0; n < 3; n++) {
+      if ((sendCommand("AT+CGPS=1,1\r") && sendCommand("AT+CGPSINFO=1\r")) || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
         if (!m_gps) {
           m_gps = new GPS_DATA;
           memset(m_gps, 0, sizeof(GPS_DATA));
