@@ -33,6 +33,17 @@
 #define PID_DEVICE_TEMP 0x82
 #define PID_DEVICE_HALL 0x83
 
+typedef struct {
+    uint32_t date;
+    uint32_t time;
+    int32_t lat;
+    int32_t lng;
+    int16_t alt; /* meter */
+    uint16_t speed; /* 1/100 Knot */
+    int16_t heading;
+    uint8_t sat;
+} GPS_DATA;
+
 class CFreematics
 {
 public:

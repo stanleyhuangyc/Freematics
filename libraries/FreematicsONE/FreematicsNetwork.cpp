@@ -364,10 +364,10 @@ bool UDPClientSIM800::sendCommand(const char* cmd, unsigned int timeout, const c
   }
 }
 
-GPS_LOCATION* UDPClientSIM800::getLocation()
+GPS_DATA* UDPClientSIM800::getLocation()
 {
   if (sendCommand("AT+CIPGSMLOC=1,1\r", 3000)) do {
-    if (!m_gps) m_gps = new GPS_LOCATION;
+    if (!m_gps) m_gps = new GPS_DATA;
     char *p;
     if (!(p = strchr(m_buffer, ':'))) break;
     if (!(p = strchr(p, ','))) break;
@@ -381,7 +381,7 @@ GPS_LOCATION* UDPClientSIM800::getLocation()
     int month = atoi(++p);
     if (!(p = strchr(p, '/'))) break;
     int day = atoi(++p);
-    if (!m_gps) m_gps = new GPS_LOCATION;
+    if (!m_gps) m_gps = new GPS_DATA;
     m_gps->lng = (int32_t)(lng * 1000000);
     m_gps->lat = (int32_t)(lat * 1000000);
     m_gps->date = (uint32_t)day * 10000 + month * 100 + (year - 2000);
@@ -497,8 +497,7 @@ bool UDPClientSIM5360::setup(const char* apn, unsigned int timeout, bool gps, co
   sendCommand("AT+CVAUXV=61\r");
   sendCommand("AT+CVAUXS=1\r");
   for (byte n = 0; n < 3; n++) {
-    if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
-      Serial.println(F("GNSS ON"));
+    if (sendCommand("AT+CGPS=1,1\r") || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
       if (!m_gps) {
         m_gps = new GPS_DATA;
         memset(m_gps, 0, sizeof(GPS_DATA));
@@ -672,7 +671,7 @@ void UDPClientSIM5360::checkGPS()
 {
   char *p;
   if (m_gps && (p = strstr_P(m_buffer, PSTR("+CGPSINFO:")))) do {
-    GPS_LOCATION gl;
+    GPS_DATA gl;
     if (!(p = strchr(p, ':'))) break;
     if (*(++p) == ',') break;
     gl.lat = parseDegree(p);

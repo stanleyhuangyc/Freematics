@@ -10,16 +10,6 @@
 #include <Arduino.h>
 #include "FreematicsBase.h"
 
-typedef struct {
-    uint32_t date;
-    uint32_t time;
-    int32_t lat;
-    int32_t lng;
-    uint16_t speed; /* 0.01 Knot */
-    int16_t alt; /* meter */
-    int16_t heading; /* degree */
-} GPS_LOCATION;
-
 class NullClient
 {
 public:
@@ -29,9 +19,9 @@ public:
     virtual void close() {}
     virtual bool send(const char* data, unsigned int len) = 0;
     virtual char* receive(int* pbytes, unsigned int timeout) = 0;
-    virtual GPS_LOCATION* getLocation() { return m_gps; }
+    virtual GPS_DATA* getLocation() { return m_gps; }
 protected:
-    GPS_LOCATION* m_gps = 0;
+    GPS_DATA* m_gps = 0;
 };
 
 class UDPClientESP8266AT : public NullClient
@@ -70,7 +60,7 @@ public:
     void close();
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     String queryIP(const char* host);
-    GPS_LOCATION* getLocation();
+    GPS_DATA* getLocation();
     char* getBuffer() { return m_buffer; }
 private:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK", bool terminated = false);
