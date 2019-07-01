@@ -455,7 +455,7 @@ bool initialize(bool wait = false)
 #if ENABLE_GPS
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-    Serial.print("GPS...");
+    Serial.print("GNSS...");
     if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false)) {
       state.set(STATE_GPS_READY);
       Serial.println("OK");
@@ -578,7 +578,7 @@ bool initialize(bool wait = false)
   if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
     Serial.print("NET...");
     bool extGPS = state.check(STATE_GPS_READY);
-    if (teleClient.net.setup(CELL_APN, !extGPS)) {
+    if (teleClient.net.setup(CELL_APN)) {
       String op = teleClient.net.getOperatorName();
       if (op.length()) {
         Serial.println(op);
@@ -591,6 +591,12 @@ bool initialize(bool wait = false)
 #endif
         Serial.println("OK");
       }
+
+      if (!extGPS) {
+        Serial.print("CELL GNSS...");
+        Serial.println(teleClient.net.setGPS(true) ? "OK" : "NO");
+      }
+
       Serial.print("IP...");
       String ip = teleClient.net.getIP();
       if (ip.length()) {

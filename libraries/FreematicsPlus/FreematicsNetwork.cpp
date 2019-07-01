@@ -497,16 +497,12 @@ bool ClientSIM5360::begin(CFreematics* device)
 
 void ClientSIM5360::end()
 {
-  sendCommand("AT+CGPS=0\r");
+  setGPS(false);
   sendCommand("AT+CPOF\r");
   m_stage = 1;
-  if (m_gps) {
-    delete m_gps;
-    m_gps = 0;
-  }
 }
 
-bool ClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout)
+bool ClientSIM5360::setup(const char* apn, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -558,22 +554,33 @@ bool ClientSIM5360::setup(const char* apn, bool gps, unsigned int timeout)
     sendCommand("AT+NETOPEN\r");
   } while(0);
   if (!success) Serial.println(m_buffer);
-  // enable internal GPS if required
-  if (gps) {
+  return success;
+}
+
+bool ClientSIM5360::setGPS(bool on)
+{
+  if (on) {
     sendCommand("AT+CVAUXV=61\r");
     sendCommand("AT+CVAUXS=1\r");
     for (byte n = 0; n < 3; n++) {
-      if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
-        Serial.println("Cellular GNSS ON");
+      if (sendCommand("AT+CGPS=1,1\r") || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
         if (!m_gps) {
           m_gps = new GPS_DATA;
           memset(m_gps, 0, sizeof(GPS_DATA));
         }
-        break;
+        return true;
       }
     }
+    return false;
+  } else {
+    sendCommand("AT+CVAUXS=0\r");
+    sendCommand("AT+CGPS=0\r");
+    if (m_gps) {
+      delete m_gps;
+      m_gps = 0;
+    }
+    return true;
   }
-  return success;
 }
 
 String ClientSIM5360::getIP()
@@ -860,17 +867,13 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 void ClientSIM7600::end()
 {
   sendCommand("AT+CRESET\r");
-  sendCommand("AT+CGPS=0\r");
+  setGPS(false);
   delay(1000);
   sendCommand("AT+CPOF\r");
   m_stage = 1;
-  if (m_gps) {
-    delete m_gps;
-    m_gps = 0;
-  }
 }
 
-bool ClientSIM7600::setup(const char* apn, bool gps, unsigned int timeout)
+bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -922,22 +925,34 @@ bool ClientSIM7600::setup(const char* apn, bool gps, unsigned int timeout)
     sendCommand("AT+CIPMODE=0\r");
     sendCommand("AT+NETOPEN\r");
   } while(0);
-  // enable internal GPS if required
-  if (gps) {
-    sendCommand("AT+CVAUXV=3050\r");
+  return success;
+}
+
+bool ClientSIM7600::setGPS(bool on)
+{
+  if (on) {
+    sendCommand("AT+CVAUXV=61\r");
     sendCommand("AT+CVAUXS=1\r");
-    for (byte n = 0; n < 3; n++) {
+    for (byte n = 0; n < 5; n++) {
       if (sendCommand("AT+CGPS=1\r") && sendCommand("AT+CGPSINFO=1\r")) {
-        Serial.println("Cellular GNSS ON");
         if (!m_gps) {
           m_gps = new GPS_DATA;
           memset(m_gps, 0, sizeof(GPS_DATA));
         }
-        break;
+        return true;
       }
+      sendCommand("AT+CGPS=0\r");
     }
+    return false;
+  } else {
+    sendCommand("AT+CVAUXS=0\r");
+    sendCommand("AT+CGPS=0\r");
+    if (m_gps) {
+      delete m_gps;
+      m_gps = 0;
+    }
+    return true;
   }
-  return success;
 }
 
 bool UDPClientSIM7600::open(const char* host, uint16_t port)
