@@ -591,7 +591,6 @@ bool initialize(bool wait = false)
 #endif
         Serial.println("OK");
       }
-      if (!extGPS) Serial.println("Cellular GNSS ON");
       Serial.print("IP...");
       String ip = teleClient.net.getIP();
       if (ip.length()) {
@@ -849,8 +848,6 @@ bool waitMotion(unsigned long timeout)
       }
     } while (millis() - t < timeout);
     return false;
-  } else {
-    delay(10000);
   }
 #endif
   if (timeout <= 10000) {
@@ -1301,7 +1298,7 @@ void setup()
     showSysInfo();
 
     if (sys.begin()) {
-      Serial.print("Firmware: V");
+      Serial.print("Firmware: R");
       Serial.println(sys.version);
     }
 
