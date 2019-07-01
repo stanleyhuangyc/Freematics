@@ -316,31 +316,29 @@ void processGPS()
 
 void processLocation()
 {
-  GPS_LOCATION* gi = net.getLocation();
+  GPS_DATA* gd = net.getLocation();
   // read parsed GPS data
-  if (gi) {
-      if (UTC != (uint16_t)gi->time) {
-        cache.log(PID_GPS_DATE, gi->date);
-        cache.log(PID_GPS_TIME, gi->time);
-        cache.logCoordinate(PID_GPS_LATITUDE, gi->lat);
-        cache.logCoordinate(PID_GPS_LONGITUDE, gi->lng);
-        cache.log(PID_GPS_ALTITUDE, gi->alt);
-        unsigned int kph = (unsigned long)gi->speed * 1852 / 100000;
-        cache.log(PID_GPS_SPEED, kph);
-        if (kph >= 1) lastMotionTime = millis();
-        cache.log(PID_GPS_HEADING, gi->heading);
-        Serial.print("[GPS] ");
-        Serial.print(gi->lat);
-        Serial.print(' ');
-        Serial.print(gi->lng);
-        Serial.print(' ');
-        Serial.print(gi->alt);
-        Serial.print("m ");
-        Serial.print(kph);
-        Serial.print("kph UTC:");
-        Serial.println(gi->time);
-        UTC = (uint16_t)gi->time;
-      }
+  if (gd && UTC != (uint16_t)gd->time) {
+    cache.log(PID_GPS_DATE, gd->date);
+    cache.log(PID_GPS_TIME, gd->time);
+    cache.logCoordinate(PID_GPS_LATITUDE, gd->lat);
+    cache.logCoordinate(PID_GPS_LONGITUDE, gd->lng);
+    cache.log(PID_GPS_ALTITUDE, gd->alt);
+    unsigned int kph = (unsigned long)gd->speed * 1852 / 100000;
+    cache.log(PID_GPS_SPEED, kph);
+    if (kph >= 1) lastMotionTime = millis();
+    cache.log(PID_GPS_HEADING, gd->heading);
+    Serial.print("[GPS] ");
+    Serial.print(gd->lat);
+    Serial.print(' ');
+    Serial.print(gd->lng);
+    Serial.print(' ');
+    Serial.print(gd->alt);
+    Serial.print("m ");
+    Serial.print(kph);
+    Serial.print("kph UTC:");
+    Serial.println(gd->time);
+    UTC = (uint16_t)gd->time;
   }
 }
 
