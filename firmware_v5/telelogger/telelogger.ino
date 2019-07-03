@@ -966,7 +966,6 @@ void process()
 
   if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
     if (teleClient.connect()) {
-      Serial.println("Reconnected");
       connErrors = 0;
     } else {
       // unable to reconnect
@@ -1303,12 +1302,11 @@ void setup()
     // show system information
     showSysInfo();
 
+#if ENABLE_OBD
     if (sys.begin()) {
       Serial.print("Firmware: R");
       Serial.println(sys.version);
     }
-
-#if ENABLE_OBD
     obd.begin(sys.link);
 #endif
 
