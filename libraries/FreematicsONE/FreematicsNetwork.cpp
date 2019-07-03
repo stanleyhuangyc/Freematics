@@ -496,13 +496,10 @@ bool UDPClientSIM5360::setup(const char* apn, unsigned int timeout, bool gps, co
   if (!success) Serial.println(m_buffer);
   sendCommand("AT+CVAUXV=61\r");
   sendCommand("AT+CVAUXS=1\r");
-  for (byte n = 0; n < 3; n++) {
-    if (sendCommand("AT+CGPS=1,1\r") || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
-      if (!m_gps) {
-        m_gps = new GPS_DATA;
-        memset(m_gps, 0, sizeof(GPS_DATA));
-      }
-      break;
+  if (sendCommand("AT+CGPS=1\r") || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
+    if (!m_gps) {
+      m_gps = new GPS_DATA;
+      memset(m_gps, 0, sizeof(GPS_DATA));
     }
   }
   return success;
