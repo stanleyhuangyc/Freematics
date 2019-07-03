@@ -15,6 +15,7 @@
 #include "data2kml.h"
 
 uint16_t hex2uint16(const char *p);
+int ishex(char c);
 
 void WriteKMLData(KML_DATA* kd, uint32_t timestamp, uint16_t pid, float value[])
 {
@@ -204,15 +205,10 @@ void WriteKMLTail(KML_DATA* kd)
 
 	fprintf(kd->fp, "<gx:SimpleArrayData name=\"%X\">", PID_ACC);
 	for (pd = kd->data; pd; pd = pd->next) {
-		fprintf(kd->fp, "<gx:value>X:%d Y:%d Z:%d</gx:value>", pd->acc[0], pd->acc[1], pd->acc[2]);
+		fprintf(kd->fp, "<gx:value>%d/%d/%d</gx:value>", pd->acc[0], pd->acc[1], pd->acc[2]);
 	}
 	fprintf(kd->fp, "</gx:SimpleArrayData>");
 
-	fprintf(kd->fp, "<gx:SimpleArrayData name=\"0\">");
-	for (pd = kd->data; pd; pd = pd->next) {
-		fprintf(kd->fp, "<gx:value>%u</gx:value>", pd->timestamp);
-	}
-	fprintf(kd->fp, "</gx:SimpleArrayData>");
 	fprintf(kd->fp, "</SchemaData></ExtendedData>\r\n</gx:Track></Placemark>");
 
 #if 0
@@ -290,6 +286,7 @@ int ConvertToKML(KML_DATA* kd, FILE* fp, const char* kmlfile, uint32_t startpos,
 
 	while (fscanf(fp, "%1024s\n", line) > 0) {
 		for (char* p = strtok(line, ","); p; p = strtok(0, ",")) {
+			if (!ishex(*p)) break;
 			pid = hex2uint16(p);
 			if (!(p = strchr(p, ':'))) break;
 			float value[3] = { 0 };
