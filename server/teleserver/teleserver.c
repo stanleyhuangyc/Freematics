@@ -129,12 +129,12 @@ int hex2uint16(const char *p)
 	return i;
 }
 
-BOOL ishex(char c)
+int ishex(char c)
 {
 	return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
 }
 
-BOOL isnum(const char* s)
+int isnum(const char* s)
 {
 	do {
 		if (!isdigit(*s)) return FALSE;;
@@ -253,41 +253,50 @@ FILE* getLogFile()
 
 FILE* createDataFile(CHANNEL_DATA* pld)
 {
-	if (pld) {
-		if (pld->fp) fclose(pld->fp);
+	if (!pld) return NULL;
 
-		// Create data directory if it doesn't exist yet, print error message on failure
-		if (!IsDir(dataDir) && mkdir(dataDir, 0755) < 0) {
-			char *errstr = strerror(errno);
-			fprintf(getLogFile(), "Can't create data directory '%s': %s\n", dataDir, errstr);
-		}
+	if (pld->fp) fclose(pld->fp);
 
-		time_t t = time(NULL);
-		struct tm *btm = gmtime(&t);
-		char filename[256];
-		int n;
-		n = snprintf(filename, sizeof(filename), "%s/%s", dataDir, pld->devid);
-		if (!IsDir(filename)) {
-			fprintf(getLogFile(), "New device:%s\n", pld->devid);
-			mkdir(filename, 0755);
-		}
-		n += snprintf(filename + n, sizeof(filename) - n, "/%04u", btm->tm_year + 1900);
-		mkdir(filename, 0755);
-		n += snprintf(filename + n, sizeof(filename) - n, "/%02u", btm->tm_mon + 1);
-		mkdir(filename, 0755);
-		n += snprintf(filename + n, sizeof(filename) - n, "/%02u", btm->tm_mday);
-		mkdir(filename, 0755);
-		n += snprintf(filename + n, sizeof(filename) - n, "/%04u%02u%02u-%02u%02u%02u.txt",
-			btm->tm_year + 1900,
-			btm->tm_mon + 1,
-			btm->tm_mday,
-			btm->tm_hour,
-			btm->tm_min,
-			btm->tm_sec);
-		pld->fp = fopen(filename, "a+");
-		return pld->fp;
+	// Create data directory if it doesn't exist yet, print error message on failure
+	if (!IsDir(dataDir) && mkdir(dataDir, 0755) < 0) {
+		char *errstr = strerror(errno);
+		fprintf(getLogFile(), "Can't create data directory '%s': %s\n", dataDir, errstr);
 	}
-	return NULL;
+
+	time_t t = time(NULL);
+	struct tm *btm = gmtime(&t);
+	char filename[256];
+	int n;
+	n = snprintf(filename, sizeof(filename), "%s/%s", dataDir, pld->devid);
+	if (!IsDir(filename)) {
+		fprintf(getLogFile(), "New device:%s\n", pld->devid);
+		mkdir(filename, 0755);
+	}
+	n += snprintf(filename + n, sizeof(filename) - n, "/%04u", btm->tm_year + 1900);
+	mkdir(filename, 0755);
+	n += snprintf(filename + n, sizeof(filename) - n, "/%02u", btm->tm_mon + 1);
+	mkdir(filename, 0755);
+	n += snprintf(filename + n, sizeof(filename) - n, "/%02u", btm->tm_mday);
+	mkdir(filename, 0755);
+	n += snprintf(filename + n, sizeof(filename) - n, "/%04u%02u%02u-%02u%02u%02u.txt",
+		btm->tm_year + 1900,
+		btm->tm_mon + 1,
+		btm->tm_mday,
+		btm->tm_hour,
+		btm->tm_min,
+		btm->tm_sec);
+	pld->fp = fopen(filename, "a+");
+	if (!pld->fp) return 0;
+	if (ftell(pld->fp) == 0) {
+		// write initial data
+		if (pld->mode[0][PID_GPS_LATITUDE].ts && pld->mode[0][PID_GPS_LONGITUDE].ts) {
+			fprintf(pld->fp, "%X:%s,%X:%s,%X:%s\n",
+				PID_GPS_LATITUDE, pld->mode[0][PID_GPS_LATITUDE].data,
+				PID_GPS_LONGITUDE, pld->mode[0][PID_GPS_LONGITUDE].data,
+				PID_GPS_ALTITUDE, pld->mode[0][PID_GPS_ALTITUDE].data);
+		}
+	}
+	return pld->fp;
 }
 
 void deviceLogin(CHANNEL_DATA* pld)
@@ -317,15 +326,17 @@ void deviceLogout(CHANNEL_DATA* pld)
 	fprintf(getLogFile(), " LOGOUT:%s\n", pld->devid);
 }
 
-int processPayload(char* payload, CHANNEL_DATA* pld, int store)
+int processPayload(char* payload, CHANNEL_DATA* pld, uint16_t eventID)
 {
 	uint64_t tick = GetTickCount64();
-	if (!pld->fp && (pld->flags & FLAG_RUNNING)) {
-		createDataFile(pld);
-	}
-	// save data to log file
-	if (pld->fp) {
-		fprintf(pld->fp, "%s\n", payload);
+	if (eventID == 0) {
+		if (!pld->fp && (pld->flags & FLAG_RUNNING)) {
+			createDataFile(pld);
+		}
+		// save data to log file
+		if (pld->fp) {
+			fprintf(pld->fp, "%s\n", payload);
+		}
 	}
 
 	char *p = payload;
@@ -363,8 +374,8 @@ int processPayload(char* payload, CHANNEL_DATA* pld, int store)
 			memcpy(pld->mode[m][index].data, value, len + 1);
 			// collect some stats
 			switch (pid) {
-			case PID_CSQ: /* signal strength */
-				pld->csq = atoi(value);
+			case PID_RSSI: /* signal strength */
+				pld->rssi = atoi(value);
 				break;
 			case PID_DEVICE_TEMP:
 				pld->deviceTemp = atoi(value);
@@ -402,16 +413,13 @@ int processPayload(char* payload, CHANNEL_DATA* pld, int store)
 		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
 		pld->flags &= ~FLAG_SLEEPING;
 	}
-	else if (interval <= 60000) {
+	else if (eventID == 0) {
 		// this happens when login packet not received
 		deviceLogin(pld);
 		pld->sessionStartTick = pld->serverDataTick;
 		pld->elapsedTime = (uint32_t)((tick - pld->sessionStartTick) / 1000);
 	}
-	if (pld->flags & FLAG_SLEEPING) {
-		pld->serverPingTick = tick;
-	}
-	else {
+	if (!(pld->flags & FLAG_SLEEPING)) {
 		pld->serverDataTick = tick;
 	}
 
@@ -575,9 +583,9 @@ int uhChannelsXML(UrlHandlerParam* param)
 	for (int n = 0; n < MAX_CHANNELS; n++) {
 		CHANNEL_DATA* pld = ld + n;
 		if (pld->id) {
-			p += sprintf(p, "<channel id=\"%u\" devid=\"%s\" recv=\"%u\" rate=\"%u\" tick=\"%u\" elapsed=\"%u\" age=\"%u\" parked=\"%u\" csq=\"%d\" flags=\"%u\"",
+			p += sprintf(p, "<channel id=\"%u\" devid=\"%s\" recv=\"%u\" rate=\"%u\" tick=\"%u\" elapsed=\"%u\" age=\"%u\" parked=\"%u\" rssi=\"%d\" flags=\"%u\"",
 				pld->id, pld->devid, pld->dataReceived, (unsigned int)pld->sampleRate, pld->deviceTick, pld->elapsedTime, 
-				(int)(tick - pld->serverDataTick), (pld->flags & FLAG_RUNNING) ? 0 : 1, pld->csq, pld->devflags);
+				(int)(tick - pld->serverDataTick), (pld->flags & FLAG_RUNNING) ? 0 : 1, (int)pld->rssi, pld->devflags);
 
 			if (extend) {
 				if (*pld->vin) p += sprintf(p, "<vin>%s</vin>", pld->vin);
@@ -655,9 +663,9 @@ int uhChannels(UrlHandlerParam* param)
 				removeChannel(pld);
 				continue;
 			}
-			l += snprintf(buf + l, bs - l, "\n{\"id\":\"%u\",\"devid\":\"%s\",\"recv\":%u,\"rate\":%u,\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"flags\":%u,\"parked\":%u",
+			l += snprintf(buf + l, bs - l, "\n{\"id\":\"%u\",\"devid\":\"%s\",\"recv\":%u,\"rate\":%u,\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"rssi\":%d,\"flags\":%u,\"parked\":%u",
 				pld->id, pld->devid, pld->dataReceived, (unsigned int)pld->sampleRate, pld->serverDataTick, pld->deviceTick, pld->elapsedTime,
-				age, pingage, pld->devflags, (pld->flags & FLAG_RUNNING) ? 0 : 1);
+				age, pingage, (int)pld->rssi, pld->devflags, (pld->flags & FLAG_RUNNING) ? 0 : 1);
 
 			if (extend) {
 				if (*pld->vin) {
@@ -669,7 +677,6 @@ int uhChannels(UrlHandlerParam* param)
 				else {
 					l += snprintf(buf + l, bs - l, ",\"ip\":\"%s\"", inet_ntoa(pld->udpPeer.sin_addr));
 				}
-				l += snprintf(buf + l, bs - l, ",\"csq\":\"%d\"", pld->csq);
 			}
 
 			if (data) {
@@ -777,7 +784,7 @@ int uhPost(UrlHandlerParam* param)
 	printf("POST from %u.%u.%u.%u | ",
 		param->hs->ipAddr.caddr[3], param->hs->ipAddr.caddr[2], param->hs->ipAddr.caddr[1], param->hs->ipAddr.caddr[0]);
 
-	int count = processPayload(param->pucPayload, pld, 1);
+	int count = processPayload(param->pucPayload, pld, 0);
 	pld->dataReceived += param->payloadSize;
 	pld->ip = param->hs->ipAddr;
 
@@ -801,9 +808,9 @@ int uhGet(UrlHandlerParam* param)
 	int l = 0;
 	unsigned int age = pld->serverDataTick ? (unsigned int)(tick - pld->serverDataTick) : 0;
 	unsigned int pingage = pld->serverPingTick ? (unsigned int)(tick - pld->serverPingTick) : 0;
-	l += snprintf(buf + l, bs - l, "{\"stats\":{\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"flags\":%u,\"parked\":%u}",
+	l += snprintf(buf + l, bs - l, "{\"stats\":{\"tick\":%llu,\"devtick\":%u,\"elapsed\":%u,\"age\":{\"data\":%u,\"ping\":%u},\"rssi\":%d,\"flags\":%u,\"parked\":%u}",
 		pld->serverDataTick, pld->deviceTick, pld->elapsedTime,
-		age, pingage, pld->devflags, (pld->flags & FLAG_RUNNING) ? 0 : 1);
+		age, pingage, (int)pld->rssi, pld->devflags, (pld->flags & FLAG_RUNNING) ? 0 : 1);
 
 	l += snprintf(buf + l, bs - l, ",\"data\":[");
 	for (unsigned int m = 0; m < PID_MODES; m++) {
@@ -983,6 +990,7 @@ int uhNotify(UrlHandlerParam* param)
 	int event = mwGetVarValueInt(param->pxVars, "EV", 0);
 	uint64_t ts = mwGetVarValueInt64(param->pxVars, "TS");
 	unsigned int devflags = mwGetVarValueInt(param->pxVars, "DF", 0);
+	int rssi = mwGetVarValueInt(param->pxVars, "SSI", 0);
 	const char* sid;
 	if (param->pucRequest[0] == '/') {
 		sid = param->pucRequest + 1;
@@ -1018,6 +1026,7 @@ int uhNotify(UrlHandlerParam* param)
 			strncpy(pld->vin, vin, sizeof(pld->vin) - 1);
 		}
 		pld->devflags = devflags;
+		pld->rssi = rssi;
 		pld->sessionStartTick = tick;
 		pld->proxyTick = 0;
 		pld->serverDataTick = tick;

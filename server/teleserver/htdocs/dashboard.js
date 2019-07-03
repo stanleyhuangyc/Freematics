@@ -128,7 +128,7 @@ var DASH = {
     updateUserInfo: function (info, devid)
     {
 		if (!USER.info) {
-			document.getElementById("info").innerHTML = devid ? ("DEVICE: " + devid) : "";
+			document.getElementById("info").innerHTML = !devid ? "" : ("DEVICE: <input type='text' size='7' readonly value='" + devid + "'/>");
 			return;
 		}
         var s = "<select onchange='USER.goDash(this.value)'>";
@@ -205,7 +205,20 @@ var DASH = {
         this.updatePID(1);
 
         // update data grid
-        var s = "<hr/><span class='smaller_text'>Timestamp </span>" + ch.stats.devtick;
+        var s = "<hr/>";
+		if (this.deviceFlags && (this.deviceFlags & 0xf000) == 0x1000) {
+			if (this.deviceFlags & 0x1) s += "[OBD]";
+			if (this.deviceFlags & (0x2 | 0x4)) s += "[GNSS]";
+			if (this.deviceFlags & 0x8) s += "[MEMS] ";
+			s += "<br/>";
+		}
+		
+		s += "<span class='smaller_text'>Timestamp </span>" + ch.stats.devtick;
+
+		if (this.deviceRSSI) {
+			s += "<br/><span class='smaller_text'>RSSI </span>" + this.deviceRSSI + "dBm";
+		}
+
         for (var n = 0; n < this.data.length; n++) {
             var pid = this.data[n][0];
             var value = this.data[n][1];
@@ -259,6 +272,8 @@ var DASH = {
             var chdata = JSON.parse(this.responseText);
             if (chdata && chdata.id) {
                 DASH.deviceID = chdata.devid;
+				DASH.deviceFlags = chdata.flags;
+				DASH.deviceRSSI = chdata.rssi;
                 self.setTimeout("DASH.showChart()", 0);
             } else {
                 alert("Not an active device. Please check if your device is working or the device ID is correct.");

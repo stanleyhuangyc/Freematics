@@ -104,7 +104,7 @@ typedef struct {
 	uint32_t txCount;
 	uint32_t dataReceived; /* bytes */
 	uint32_t elapsedTime; /* seconds */
-	uint16_t csq;
+	int16_t rssi;
 	uint8_t unused;
 	uint8_t deviceTemp;
 	float sampleRate;
@@ -125,7 +125,7 @@ FILE* getLogFile();
 uint8_t hex2uint8(const char *p);
 int hex2uint16(const char *p);
 int checkVIN(const char* vin);
-int processPayload(char* payload, CHANNEL_DATA* pld, int store);
+int processPayload(char* payload, CHANNEL_DATA* pld, uint16_t eventID);
 uint32_t issueCommand(HttpParam* hp, CHANNEL_DATA *pld, const char* cmd, uint32_t token);
 int incomingUDPCallback(void* _hp);
 void deviceLogin(CHANNEL_DATA* pld);
