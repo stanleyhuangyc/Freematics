@@ -31,7 +31,6 @@
 #define TRACCAR_PORT 5055
 #define TRACCAR_DEV_ID "YOUR_DEVICE_ID"
 
-HardwareSerial Serial1(1);
 TinyGPS gps;
 WiFiClient client;
 
