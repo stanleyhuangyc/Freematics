@@ -560,6 +560,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
 bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
     if (!gpsData) return false;
+    if (pgd) *pgd = gpsData;
     if (m_flags & GNSS_USE_LINK) {
         char buf[160];
         if (link->sendCommand("ATGPS\r", buf, sizeof(buf), 100) == 0) {
@@ -603,7 +604,6 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         gpsData->lat = lat;
         gpsData->lng = lng;
         gpsData->alt = alt;
-        if (pgd) *pgd = gpsData;
         return true;
     } else {
         gps.stats(&gpsData->sentences, &gpsData->errors);
@@ -631,7 +631,6 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         unsigned long hdop = gps.hdop();
         gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
         gpsPendingData = 0;
-        if (pgd) *pgd = gpsData;
         return true;
     }
 }
