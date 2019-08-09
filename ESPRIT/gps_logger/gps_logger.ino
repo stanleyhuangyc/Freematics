@@ -293,9 +293,10 @@ public:
         Serial.println("Waiting GPS signal...");
 #if ENABLE_DISPLAY
         lcd.setCursor(0, 6);
-        lcd.print("Waiting GPS...");
+        lcd.print("Waiting GPS Signal...");
 #endif
         while (!sys.gpsGetData(&gd)) {
+            if (!gd) continue;
             Serial.print((millis() - t) / 1000);
             Serial.print("s NMEA:");
             Serial.print(gd->sentences);
@@ -497,6 +498,7 @@ void setup()
     Serial.print("GPS...");
     if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
         logger.setState(STATE_GPS_FOUND);
+        lcd.println("GPS Receiver OK");
         Serial.println("OK");
         logger.waitGPS();
     } else {
