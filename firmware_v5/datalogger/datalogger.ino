@@ -575,16 +575,9 @@ void loop()
                 store.log((uint16_t)pid | 0x100, value);
             } else {
                 pidErrors++;
-                Serial.print("PID errors: ");
+                Serial.print("PID Errors: ");
                 Serial.println(pidErrors);
-                if (obd.errors > 0) {
-                    delay(500);
-                    if (obd.errors >= 5) {
-                        logger.standby();
-                        logger.init();
-                        return;
-                    }
-                }
+                break;
             }
             if (tier > 1) break;
         }
@@ -624,6 +617,11 @@ void loop()
         // log battery voltage (from voltmeter), data in 0.01v
         batteryVoltage = obd.getVoltage() * 100;
         store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+    }
+    if (obd.errors >= 3) {
+        logger.standby();
+        logger.init();
+        return;
     }
 #endif
 
