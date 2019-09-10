@@ -3,9 +3,9 @@
 #include <SD.h>
 #include <SPIFFS.h>
 
-class CStorageNull;
+class CStorage;
 
-class CStorageNull {
+class CStorage {
 public:
     virtual bool init() { return true; }
     virtual void uninit() {}
@@ -15,7 +15,7 @@ public:
         byte len = sprintf(buf, "%X%c%d", pid, m_delimiter, value);
         dispatch(buf, len);
     }
-    virtual void log(uint16_t pid, unsigned int value)
+    virtual void log(uint16_t pid, uint32_t value)
     {
         char buf[24];
         byte len = sprintf(buf, "%X%c%u", pid, m_delimiter, value);
@@ -24,35 +24,27 @@ public:
     virtual void log(uint16_t pid, float value)
     {
         char buf[24];
-        byte len = sprintf(buf, "%X%c%.2f", pid, m_delimiter, value);
+        byte len = sprintf(buf, "%X%c%f", pid, m_delimiter, value);
         dispatch(buf, len);
     }
-    virtual void log(uint16_t pid, int value1, int value2, int value3)
+    virtual void log(uint16_t pid, float value[])
     {
         char buf[48];
-        byte len = sprintf(buf, "%X%c%d;%d;%d", pid, m_delimiter, value1, value2, value3);
-        dispatch(buf, len);
-    }
-    virtual void logFloat(uint16_t pid, float value)
-    {
-        char buf[32];
-        byte len = sprintf(buf, "%X%c%f", pid, m_delimiter, value);
+        byte len = sprintf(buf, "%X%c%.2f;%.2f;%.2f", pid, m_delimiter, value[0], value[1], value[2]);
         dispatch(buf, len);
     }
     virtual void timestamp(uint32_t ts)
     {
         log(0, ts);
     }
-    virtual void setForward(CStorageNull* next) { m_next = next; }
     virtual void purge() { m_samples = 0; }
     virtual uint16_t samples() { return m_samples; }
     virtual void dispatch(const char* buf, byte len)
     {
         // output data via serial
         Serial.write((uint8_t*)buf, len);
-        Serial.write('\n');
+        Serial.write(' ');
         m_samples++;
-        if (m_next) m_next->dispatch(buf, len);
     }
 protected:
     byte checksum(const char* data, int len)
@@ -65,10 +57,9 @@ protected:
     virtual void tailer() {}
     uint16_t m_samples = 0;
     char m_delimiter = ':';
-    CStorageNull* m_next = 0;
 };
 
-class CStorageRAM: public CStorageNull {
+class CStorageRAM: public CStorage {
 public:
     bool init(unsigned int cacheSize)
     {
@@ -102,7 +93,6 @@ public:
         m_cacheBytes += len;
         m_cache[m_cacheBytes++] = ',';
         m_samples++;
-        if (m_next) m_next->dispatch(buf, len);
     }
 
     void header(const char* devid)
@@ -128,12 +118,11 @@ protected:
     char* m_cache = 0;
 };
 
-class FileLogger : public CStorageNull {
+class FileLogger : public CStorage {
 public:
     FileLogger() { m_delimiter = ','; }
     virtual void dispatch(const char* buf, byte len)
     {
-        if (m_next) m_next->dispatch(buf, len);
         if (m_id == 0) return;
 
         if (m_file.write((uint8_t*)buf, len) != len) {

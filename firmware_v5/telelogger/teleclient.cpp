@@ -27,6 +27,118 @@ extern char vin[];
 extern GPS_DATA* gd;
 extern char isoTime[];
 
+CBuffer::CBuffer()
+{
+  purge();
+}
+
+void CBuffer::add(uint16_t pid, int value)
+{
+  if (offset < BUFFER_LENGTH - sizeof(uint16_t) - sizeof(int)) {
+    setType(ELEMENT_INT);
+    *(uint16_t*)(data + offset) = pid;
+    offset += 2;
+    *(int*)(data + offset) = value;
+    offset += sizeof(int);
+    count++;
+  } else {
+    Serial.println("FULL");
+  }
+}
+void CBuffer::add(uint16_t pid, uint32_t value)
+{
+  if (offset < BUFFER_LENGTH - sizeof(uint16_t) - sizeof(uint32_t)) {
+    setType(ELEMENT_UINT);
+    *(uint16_t*)(data + offset) = pid;
+    offset += 2;
+    *(uint32_t*)(data + offset) = value;
+    offset += sizeof(uint32_t);
+    count++;
+  } else {
+    Serial.println("FULL");
+  }
+}
+void CBuffer::add(uint16_t pid, float value)
+{
+  if (offset < BUFFER_LENGTH - sizeof(uint16_t) - sizeof(float)) {
+    setType(ELEMENT_FLOAT);
+    *(uint16_t*)(data + offset) = pid;
+    offset += 2;
+    *(float*)(data + offset) = value;
+    offset += sizeof(float);
+    count++;
+  } else {
+    Serial.println("FULL");
+  }
+}
+void CBuffer::add(uint16_t pid, float value[])
+{
+  if (offset < BUFFER_LENGTH - sizeof(uint16_t) + sizeof(float) * 3) {
+    setType(ELEMENT_FLOATX3);
+    *(uint16_t*)(data + offset) = pid;
+    offset += 2;
+    memcpy(data + offset, value, sizeof(float) * 3);
+    offset += sizeof(float) * 3;
+    count++;
+  } else {
+    Serial.println("FULL");
+  }
+}
+
+void CBuffer::purge()
+{
+  state = BUFFER_STATE_EMPTY;
+  timestamp = 0;
+  offset = 0;
+  count = 0;
+  memset(types, 0, sizeof(types));
+}
+
+void CBuffer::setType(uint32_t dataType)
+{
+  types[count / 16] |= (dataType << ((count % 16) * 2));
+}
+
+void CBuffer::serialize(CStorage& store)
+{
+  int of = 0;
+  for (int n = 0; n < count; n++) {
+    uint16_t pid = *(uint16_t*)(data + of);
+    of += sizeof(uint16_t);
+    switch ((types[n / 16] >> ((n % 16) * 2)) & 0x3) {
+    case ELEMENT_INT:
+      {
+        int value = *(int*)(data + of);
+        of += sizeof(value);
+        store.log(pid, value);
+      }
+      break;
+    case ELEMENT_UINT:
+      {
+        uint32_t value = *(uint32_t*)(data + of);
+        of += sizeof(value);
+        store.log(pid, value);
+      }
+      break;
+    case ELEMENT_FLOAT:
+      {
+        float value = *(float*)(data + of);
+        of += sizeof(value);
+        store.log(pid, value);
+      }
+      break;
+    case ELEMENT_FLOATX3:
+      {
+        float value[3];
+        memcpy(value, data + of, sizeof(value));
+        of += sizeof(value);
+        store.log(pid, value);
+      }
+      break;
+    }
+  }
+}
+
 bool TeleClientUDP::verifyChecksum(char* data)
 {
   uint8_t sum = 0;
@@ -127,7 +239,7 @@ bool TeleClientUDP::connect()
     Serial.print(SERVER_HOST);
     Serial.print(':');
     Serial.print(SERVER_PORT);
-    Serial.print(")...");
+    Serial.println(")...");
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
       Serial.println("Network error");
       delay(1000);
@@ -136,11 +248,10 @@ bool TeleClientUDP::connect()
     // log in or reconnect to Freematics Hub
     if (!notify(event)) {
       net.close();
-      Serial.println("server timeout");
+      Serial.println("Server timeout");
       delay(1000);
       continue;
     }
-    Serial.println("OK");
     success = true;
     break;
   }
@@ -164,7 +275,6 @@ bool TeleClientUDP::ping()
 
 bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
-  //Serial.println(cache.buffer()); // print the content to be sent
   // transmit data
   if (net.send(packetBuffer, packetSize)) {
     txBytes += packetSize;

@@ -27,7 +27,7 @@
 #include "FreematicsOLED.h"
 #endif
 
-// logger states
+// states
 #define STATE_STORAGE_READY 0x1
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_READY 0x4
@@ -56,6 +56,9 @@ PID_POLLING_INFO obdData[]= {
   {PID_INTAKE_TEMP, 3},
 };
 
+CBufferManager bufman;
+Task subtask;
+
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
 float accSum[3] = {0};
@@ -79,13 +82,7 @@ uint32_t lastMotionTime = 0;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 
-uint16_t sendingInterval = 0;
-uint32_t lastSentTime = 0;
 uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
-uint8_t connErrors = 0;
-uint32_t stationaryTime[] = STATIONARY_TIME_TABLE;
-uint16_t sendingIntervals[] = SENDING_INTERVAL_TABLE;
-uint32_t dataIntervals[] = DATA_INTERVAL_TABLE;
 
 #if STORAGE != STORAGE_NONE
 int fileid = 0;
@@ -97,13 +94,12 @@ String serialCommand;
 
 byte ledMode = 0;
 
-void idleTasks();
 bool serverSetup(IPAddress& ip);
 void serverProcess(int timeout);
 String executeCommand(const char* cmd);
 bool processCommand(char* data);
-void processMEMS(bool process);
-bool processGPS();
+void processMEMS(CBuffer* buffer);
+bool processGPS(CBuffer* buffer);
 
 class State {
 public:
@@ -122,7 +118,7 @@ protected:
   {
     // do some quick tasks while waiting for OBD response
 #if MEMS_MODE
-    processMEMS(false);
+    processMEMS(0);
 #endif
   }
 };
@@ -137,11 +133,10 @@ MPU9250_9DOF mems;
 MPU9250_DMP mems;
 #endif
 
-CStorageRAM cache;
 #if STORAGE == STORAGE_SPIFFS
-SPIFFSLogger store;
+SPIFFSLogger logger;
 #elif STORAGE == STORAGE_SD
-SDLogger store;
+SDLogger logger;
 #endif
 
 #if SERVER_PROTOCOL == PROTOCOL_UDP
@@ -165,17 +160,17 @@ void printTimeoutStats()
 }
 
 #if LOG_EXT_SENSORS
-void processExtInputs()
+void processExtInputs(CBuffer* buffer)
 {
   int pins[] = {PIN_SENSOR1, PIN_SENSOR2};
   int pids[] = {PID_EXT_SENSOR1, PID_EXT_SENSOR2};
 #if LOG_EXT_SENSORS == 1
   for (int i = 0; i < 2; i++) {
-    cache.log(pids[i], digitalRead(pins[i]));
+    buffer->add(pids[i], digitalRead(pins[i]));
   }
 #elif LOG_EXT_SENSORS == 2
   for (int i = 0; i < 2; i++) {
-    cache.log(pids[i], analogRead(pins[i]));
+    buffer->add(pids[i], analogRead(pins[i]));
   }
 #endif
 }
@@ -189,7 +184,7 @@ int handlerLiveData(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
-    int n = snprintf(buf, bufsize, "{\"obd\":{\"vin\":\"%s\",\"battery\":%d,\"pid\":[", vin, (int)batteryVoltage);
+    int n = snprintf(buf, bufsize, "{\"obd\":{\"vin\":\"%s\",\"battery\":%.1f,\"pid\":[", vin, (float)batteryVoltage / 100);
     uint32_t t = millis();
     for (int i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
         n += snprintf(buf + n, bufsize - n, "{\"pid\":%u,\"value\":%d,\"age\":%u},",
@@ -230,7 +225,7 @@ int handlerControl(UrlHandlerParam* param)
   Reading and processing OBD data
 *******************************************************************************/
 #if ENABLE_OBD
-void processOBD()
+void processOBD(CBuffer* buffer)
 {
   static int idx[2] = {0, 0};
   int tier = 1;
@@ -255,7 +250,7 @@ void processOBD()
     if (obd.readPID(pid, value)) {
         obdData[i].ts = millis();
         obdData[i].value = value;
-        cache.log((uint16_t)pid | 0x100, value);
+        buffer->add((uint16_t)pid | 0x100, value);
     } else {
         timeoutsOBD++;
         printTimeoutStats();
@@ -268,7 +263,7 @@ void processOBD()
 }
 #endif
 
-bool processGPS()
+bool processGPS(CBuffer* buffer)
 {
   if (state.check(STATE_GPS_READY)) {
     // read parsed GPS data
@@ -285,20 +280,21 @@ bool processGPS()
 
   if (!gd || lastGPStime == gd->time) return false;
 
-  cache.log(PID_GPS_DATE, gd->date);
-  cache.log(PID_GPS_TIME, gd->time);
-
   float kph = gd->speed * 1.852f;
   if (kph >= 2) lastMotionTime = millis();
 
-  if (gd->lat && gd->lng && gd->alt) {
-    cache.logFloat(PID_GPS_LATITUDE, gd->lat);
-    cache.logFloat(PID_GPS_LONGITUDE, gd->lng);
-    cache.log(PID_GPS_ALTITUDE, gd->alt); /* m */
-    cache.log(PID_GPS_SPEED, kph);
-    cache.log(PID_GPS_HEADING, gd->heading);
-    cache.log(PID_GPS_SAT_COUNT, gd->sat);
-    cache.log(PID_GPS_HDOP, gd->hdop);
+  if (buffer) {
+    buffer->add(PID_GPS_DATE, gd->date);
+    buffer->add(PID_GPS_TIME, gd->time);
+    if (gd->lat && gd->lng && gd->alt) {
+      buffer->add(PID_GPS_LATITUDE, gd->lat);
+      buffer->add(PID_GPS_LONGITUDE, gd->lng);
+      buffer->add(PID_GPS_ALTITUDE, gd->alt); /* m */
+      buffer->add(PID_GPS_SPEED, kph);
+      buffer->add(PID_GPS_HEADING, gd->heading);
+      buffer->add(PID_GPS_SAT_COUNT, gd->sat);
+      buffer->add(PID_GPS_HDOP, gd->hdop);
+    }
   }
   
   // generate ISO time string
@@ -337,15 +333,14 @@ bool waitMotionGPS(int timeout)
   lastMotionTime = 0;
   do {
     delay(200);
-    cache.purge();
-    if (!processGPS()) continue;
+    if (!processGPS(0)) continue;
     if (lastMotionTime) return true;
   } while (millis() - t < timeout);
   return false;
 }
 
 #if MEMS_MODE
-void processMEMS(bool process)
+void processMEMS(CBuffer* buffer)
 {
   if (!state.check(STATE_MEMS_READY)) return;
 
@@ -365,18 +360,22 @@ void processMEMS(bool process)
   accSum[2] += acc[2];
   accCount++;
 
-  if (process) {
+  if (buffer) {
     if (accCount) {
-      acc[0] = accSum[0] / accCount;
-      acc[1] = accSum[1] / accCount;
-      acc[2] = accSum[2] / accCount;
-      cache.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+      float value[3];
+      value[0] = accSum[0] / accCount - accBias[0];
+      value[1] = accSum[1] / accCount - accBias[1];
+      value[2] = accSum[2] / accCount - accBias[2];
+      buffer->add(PID_ACC, value);
 #if ENABLE_ORIENTATION
-      cache.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
+      value[0] = ori.yaw;
+      value[1] = ori.pitch;
+      value[2] = ori.roll;
+      buffer->add(PID_ORIENTATION, value);
 #endif
       temp /= 10;
       if (temp != deviceTemp) {
-        cache.log(PID_DEVICE_TEMP, deviceTemp = temp);
+        buffer->add(PID_DEVICE_TEMP, (int)(deviceTemp = temp));
       }
       // calculate instant motion
       float motion = 0;
@@ -442,10 +441,8 @@ void printTime()
 /*******************************************************************************
   Initializing all components and network
 *******************************************************************************/
-bool initialize(bool wait = false)
+void initialize()
 {
-  state.clear(STATE_WORKING);
-
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
@@ -481,13 +478,13 @@ bool initialize(bool wait = false)
 #endif
     } else {
       Serial.println("NO");
-      if (state.check(STATE_OBD_FOUND)) return false;
+      if (state.check(STATE_OBD_FOUND)) return;
     }
   }
 #endif
 
 #if 0
-  if (wait && !state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
+  if (!state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
     // wait for movement from GPS when OBD not connected
     Serial.println("Waiting...");
     if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
@@ -499,147 +496,16 @@ bool initialize(bool wait = false)
 #if STORAGE != STORAGE_NONE
   if (!state.check(STATE_STORAGE_READY)) {
     // init storage
-    if (store.init()) {
+    if (logger.init()) {
       state.set(STATE_STORAGE_READY);
     }
   }
   if (state.check(STATE_STORAGE_READY)) {
-    fileid = store.begin();
-    if (fileid) {
-      cache.setForward(&store);
-    }
+    fileid = logger.begin();
   }
 #endif
 
-  if (!state.check(STATE_NET_READY)) {
-#if NET_DEVICE != NET_WIFI
-    // power on network module
-    Serial.print("CELL...");
-    if (teleClient.net.begin(&sys)) {
-      Serial.println(teleClient.net.deviceName());
-#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-      Serial.print("IMEI:");
-      Serial.println(teleClient.net.IMEI);
-#endif
-      state.set(STATE_NET_READY);
-#if ENABLE_OLED
-      oled.print(teleClient.net.deviceName());
-      oled.println(" OK\r");
-#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-      oled.print("IMEI:");
-      oled.println(teleClient.net.IMEI);
-#endif
-#endif
-    } else {
-      Serial.println("NO");
-#if ENABLE_OLED
-      oled.println("No Cell Module");
-#endif
-    }
-    Serial.print("SIM CARD:");
-    if (teleClient.net.checkSIM()) {
-#if ENABLE_OLED
-      oled.print("SIM OK ");
-#endif
-      Serial.println("OK");
-    } else {
-      Serial.println("NO");
-    }
-#endif
-  }
 
-#if NET_DEVICE == NET_WIFI
-#if ENABLE_OLED
-  oled.print("Connecting WiFi...");
-#endif
-  for (byte attempts = 0; attempts < 10; attempts++) {
-    Serial.print("WiFi...");
-    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
-    if (teleClient.net.setup()) {
-      Serial.println("OK");
-      state.set(STATE_NET_READY);
-      Serial.print("IP...");
-      String ip = teleClient.net.getIP();
-      if (ip.length()) {
-        state.set(STATE_NET_CONNECTED);
-        Serial.println(ip);
-#if ENABLE_OLED
-        oled.println(ip);
-#endif
-        break;
-      } else {
-        Serial.println("NO");
-      }
-    } else {
-      Serial.println("NO");
-    }
-  }
-#else
-  if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
-    Serial.print("NET...");
-    bool extGPS = state.check(STATE_GPS_READY);
-    if (teleClient.net.setup(CELL_APN)) {
-      String op = teleClient.net.getOperatorName();
-      if (op.length()) {
-        Serial.println(op);
-#if ENABLE_OLED
-        oled.println(op);
-#endif
-      } else {
-#if ENABLE_OLED
-        oled.print("Cell Connected");
-#endif
-        Serial.println("OK");
-      }
-
-      if (!extGPS) {
-        Serial.print("CELL GNSS...");
-        Serial.println(teleClient.net.setGPS(true) ? "OK" : "NO");
-      }
-
-      Serial.print("IP...");
-      String ip = teleClient.net.getIP();
-      if (ip.length()) {
-        Serial.println(ip);
-#if ENABLE_OLED
-        oled.print("IP:");
-        oled.println(ip);
-#endif
-      } else {
-        Serial.println("NO");
-      }
-      rssi = teleClient.net.getSignal();
-      if (rssi) {
-        Serial.print("RSSI:");
-        Serial.print(rssi);
-        Serial.println("dBm");
-#if ENABLE_OLED
-        oled.print("RSSI:");
-        oled.print(rssi);
-        oled.println("dBm");
-#endif
-      }
-      state.set(STATE_NET_CONNECTED);
-    } else {
-      char *p = strstr(teleClient.net.getBuffer(), "+CPSI:");
-      if (p) {
-        char *q = strchr(p, '\r');
-        if (q) *q = 0;
-        Serial.println(p + 7);
-#if ENABLE_OLED
-        oled.println(p + 7);
-#endif
-      } else {
-        Serial.println("NO");
-        Serial.print(teleClient.net.getBuffer());
-      }
-    }
-    timeoutsNet = 0;
-  }
-#endif
-  if (!state.check(STATE_NET_CONNECTED)) {
-    return false;
-  }
 
   // re-try OBD if connection not established
 #if ENABLE_OBD
@@ -662,10 +528,6 @@ bool initialize(bool wait = false)
   }
 #endif
 
-  teleClient.connect();
-  teleClient.startTime = millis();
-  connErrors = 0;
-
   // check system time
   printTime();
 
@@ -683,7 +545,6 @@ bool initialize(bool wait = false)
   oled.print("KB Sent");
   oled.setFontSize(FONT_SIZE_MEDIUM);
 #endif
-  return true;
 }
 
 /*******************************************************************************
@@ -700,7 +561,7 @@ String executeCommand(const char* cmd)
   } else if (!strcmp(cmd, "REBOOT")) {
   #if STORAGE != STORAGE_NONE
     if (state.check(STATE_STORAGE_READY)) {
-      store.end();
+      logger.end();
       state.clear(STATE_STORAGE_READY);
     }
   #endif
@@ -715,10 +576,7 @@ String executeCommand(const char* cmd)
     result = "OK";
   } else if (!strncmp(cmd, "SET", 3) && cmd[3]) {
     const char* subcmd = cmd + 4;
-    if (!strncmp(subcmd, "INTERVAL", 8) && subcmd[8]) {
-      sendingInterval = atoi(subcmd + 8 + 1);
-      result = "OK";
-    } else if (!strncmp(subcmd, "SYNC", 4) && subcmd[4]) {
+    if (!strncmp(subcmd, "SYNC", 4) && subcmd[4]) {
       syncInterval = atoi(subcmd + 4 + 1);
       result = "OK";
     } else {
@@ -796,20 +654,21 @@ void showStats()
   uint32_t t = millis() - teleClient.startTime;
   char timestr[24];
   sprintf(timestr, "%02u:%02u.%c ", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
+  Serial.print("[NET] ");
   Serial.print(timestr);
   Serial.print("| Packet #");
   Serial.print(teleClient.txCount);
-  Serial.print(' ');
-  Serial.print(cache.length());
-  Serial.print(" bytes | Out: ");
+  Serial.print(" | Out: ");
   Serial.print(teleClient.txBytes >> 10);
   Serial.print(" KB | In: ");
-  Serial.print(teleClient.rxBytes >> 10);
-  Serial.print(" KB");
+  Serial.print(teleClient.rxBytes);
+  Serial.print(" bytes");
 #if STORAGE != STORAGE_NONE
-  Serial.print(" | File: ");
-  Serial.print(store.size() >> 10);
-  Serial.print("KB");
+  if (state.check(STATE_STORAGE_READY)) {
+    Serial.print(" | File: ");
+    Serial.print(logger.size() >> 10);
+    Serial.print("KB");
+  }
 #endif
   Serial.println();
 #if ENABLE_OLED
@@ -822,7 +681,7 @@ void showStats()
 #endif
 }
 
-bool waitMotion(unsigned long timeout)
+bool waitMotion(long timeout)
 {
   unsigned long t = millis();
 #if MEMS_MODE
@@ -852,18 +711,11 @@ bool waitMotion(unsigned long timeout)
         //lastMotionTime = millis();
         return true;
       }
-    } while (millis() - t < timeout);
+    } while ((long)(millis() - t) < timeout || timeout == -1);
     return false;
   }
 #endif
-  if (timeout <= 10000) {
-    serverProcess(timeout);
-  } else {
-    do {
-      serverProcess(10000);
-      if (obd.init()) return true;
-    } while (millis() - t < timeout);
-  }
+  serverProcess(timeout);
   return false;
 }
 
@@ -873,154 +725,346 @@ bool waitMotion(unsigned long timeout)
 void process()
 {
   uint32_t startTime = millis();
-  cache.timestamp(startTime);
+
+  CBuffer* buffer = bufman.get();
+  if (!buffer) {
+    buffer = bufman.getOldest();
+    if (!buffer) return;
+    while (buffer->state == BUFFER_STATE_LOCKED) delay(1);
+    buffer->purge();
+  }
+
+  buffer->state = BUFFER_STATE_FILLING;
 
 #if ENABLE_OBD
   // process OBD data if connected
   if (state.check(STATE_OBD_READY)) {
-    processOBD();
+    processOBD(buffer);
     if (obd.errors >= MAX_OBD_ERRORS) {
-      if (!obd.init()) {
-        Serial.println("ECU OFF");
-        Serial.print("Logout...");
-        if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
-        Serial.println();
-        teleClient.reset();
-        state.clear(STATE_OBD_READY | STATE_WORKING);
-        return;
-      }
+      Serial.println("ECU OFF");
+      state.clear(STATE_OBD_READY | STATE_WORKING);
+      return;
     }
   }
 #else
-  cache.log(PID_DEVICE_HALL, readChipHallSensor() / 200);
+  buffer->add(PID_DEVICE_HALL, readChipHallSensor() / 200);
 #endif
 
 #if ENABLE_OBD
-  if (sys.version >= 13) {
-      batteryVoltage = (float)(analogRead(A0) * 11 * 370) / 4095;
-      cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+  if (sys.version > 12) {
+    batteryVoltage = (float)(analogRead(A0) * 11 * 370) / 4095;
   } else {
-    // read and log car battery voltage, data in 0.01v
-    float volts = obd.getVoltage();
-    if (volts) {
-      batteryVoltage = volts * 100;
-      cache.log(PID_BATTERY_VOLTAGE, batteryVoltage);
-    }
+    batteryVoltage = obd.getVoltage() * 100;
+  }
+  if (batteryVoltage) {
+    buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage);
   }
 #endif
 
 #if LOG_EXT_SENSORS
-  processExtInputs();
+  processExtInputs(buffer);
 #endif
 
 #if MEMS_MODE
-  processMEMS(true);
+  processMEMS(buffer);
 #endif
 
-  processGPS();
+  processGPS(buffer);
 
   if (!state.check(STATE_MEMS_READY)) {
     deviceTemp = readChipTemperature();
-    cache.log(PID_DEVICE_TEMP, deviceTemp);
+    buffer->add(PID_DEVICE_TEMP, deviceTemp);
   }
 
 #if STORAGE != STORAGE_NONE
-  uint8_t sizeKB = (uint8_t)(store.size() >> 10);
-  if (sizeKB != lastSizeKB) {
-      store.flush();
-      lastSizeKB = sizeKB;
+  if (state.check(STATE_STORAGE_READY)) {
+    uint8_t sizeKB = (uint8_t)(logger.size() >> 10);
+    if (sizeKB != lastSizeKB) {
+        logger.flush();
+        lastSizeKB = sizeKB;
+    }
   }
 #endif
 
-  if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
-    Serial.println("Connection instable");
-    connErrors++;
-    timeoutsNet++;
-    printTimeoutStats();
+  buffer->timestamp = millis();
+  buffer->state = BUFFER_STATE_FILLED;
+
+#if STORAGE != STORAGE_NONE
+  if (state.check(STATE_STORAGE_READY)) {
+    buffer->serialize(logger);
   }
-  if (millis() - lastSentTime >= sendingInterval && cache.samples() > 0) {
-    // some data only need once for a transmission
-#if SERVER_PROTOCOL == PROTOCOL_UDP
-    cache.tailer();
 #endif
-    // start transmission
-    if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+  bufman.printStats();
 
-    if (teleClient.transmit(cache.buffer(), cache.length())) {
-      // successfully sent
-      connErrors = 0;
-      showStats();
-      lastSentTime = millis();
-    } else {
-      connErrors++;
-      timeoutsNet++;
-      printTimeoutStats();
-    }
-    // purge cache
-    cache.purge();
-#if SERVER_PROTOCOL == PROTOCOL_UDP
-    cache.header(devid);
+#if DATASET_INTERVAL
+  long t = (long)DATASET_INTERVAL - (millis() - startTime);
+  if (t > 0 && t < DATASET_INTERVAL) delay(t);
 #endif
-    if (ledMode == 0) digitalWrite(PIN_LED, LOW);
-  }
-
-  if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-    if (teleClient.connect()) {
-      connErrors = 0;
-    } else {
-      // unable to reconnect
-      Serial.println("Re-init network");
-      digitalWrite(PIN_LED, HIGH);
-      teleClient.shutdown();
-      state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-      initialize();
-      digitalWrite(PIN_LED, LOW);
-      return;
-    }
-  } else {
-    delay(1000L * connErrors);
-  }
-
-#if ENABLE_OBD || ENABLE_GPS || MEMS_MODE
-  // motion adaptive data interval control
-  for (;;) {
-    unsigned int motionless = (millis() - lastMotionTime) / 1000;
-    long loopTime = -1;
-    for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
-      if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
-        loopTime = dataIntervals[i];
-        sendingInterval = 1000L * sendingIntervals[i];
-        break;
-      }
-    }
-    if (loopTime == -1) {
-      // stationery timeout, trip ended
-      Serial.print("Stationary for ");
-      Serial.print(motionless);
-      Serial.println(" secs");
-      Serial.print("Logout...");
-      if (teleClient.notify(EVENT_LOGOUT)) Serial.print("OK");
-      Serial.println();
-      teleClient.reset();
-      state.clear(STATE_WORKING);
-      break;
-    }
-    idleTasks();
-    long n = loopTime + startTime - millis();
-    if (n < 0) break;
-    waitMotion(min(n, 3000));
-  }
-#else
-  sendingInterval = 1000L * sendingIntervals[0];
-  do {
-    idleTasks();
-  } while (millis() - startTime < dataIntervals[0]);
-#endif
-
   if (deviceTemp >= COOLING_DOWN_TEMP) {
     // device too hot, cool down
-    Serial.println("Cooling down");
+    Serial.println("Overheat");
     delay(10000);
+  }
+}
+
+bool initNetwork()
+{
+#if NET_DEVICE != NET_WIFI
+  // power on network module
+  if (teleClient.net.begin(&sys)) {
+    Serial.print(teleClient.net.deviceName());
+#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+    Serial.print(" IMEI:");
+    Serial.println(teleClient.net.IMEI);
+#endif
+    state.set(STATE_NET_READY);
+#if ENABLE_OLED
+    oled.print(teleClient.net.deviceName());
+    oled.println(" OK\r");
+#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+    oled.print("IMEI:");
+    oled.println(teleClient.net.IMEI);
+#endif
+#endif
+  } else {
+    Serial.println("No Cell Module");
+#if ENABLE_OLED
+    oled.println("No Cell Module");
+#endif
+    return false;
+  }
+  if (!teleClient.net.checkSIM()) {
+    Serial.println("NO SIM CARD");
+    return false;
+  }
+#endif
+
+#if NET_DEVICE == NET_WIFI
+#if ENABLE_OLED
+  oled.print("Connecting WiFi...");
+#endif
+  for (byte attempts = 0; attempts < 10; attempts++) {
+    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
+    if (teleClient.net.setup()) {
+      state.set(STATE_NET_READY);
+      Serial.print("WiFi IP:");
+      String ip = teleClient.net.getIP();
+      if (ip.length()) {
+        state.set(STATE_NET_CONNECTED);
+        Serial.print(ip);
+#if ENABLE_OLED
+        oled.println(ip);
+#endif
+        break;
+      }
+      Serial.println();
+    } else {
+      Serial.println("No WiFi");
+      return false;
+    }
+  }
+#else
+  if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
+    bool extGPS = state.check(STATE_GPS_READY);
+    if (teleClient.net.setup(CELL_APN)) {
+      String op = teleClient.net.getOperatorName();
+      if (op.length()) {
+        Serial.print("Operator:");
+        Serial.println(op);
+#if ENABLE_OLED
+        oled.println(op);
+#endif
+      } else {
+#if ENABLE_OLED
+        oled.print("Cell Connected");
+#endif
+      }
+
+      if (!extGPS && teleClient.net.setGPS(true)) {
+        Serial.println("Cell GNSS ON");
+      }
+
+      String ip = teleClient.net.getIP();
+      if (ip.length()) {
+        Serial.print("IP:");
+        Serial.println(ip);
+#if ENABLE_OLED
+        oled.print("IP:");
+        oled.println(ip);
+#endif
+      }
+      rssi = teleClient.net.getSignal();
+      if (rssi) {
+        Serial.print("RSSI:");
+        Serial.print(rssi);
+        Serial.println("dBm");
+#if ENABLE_OLED
+        oled.print("RSSI:");
+        oled.print(rssi);
+        oled.println("dBm");
+#endif
+      }
+      state.set(STATE_NET_CONNECTED);
+    } else {
+      char *p = strstr(teleClient.net.getBuffer(), "+CPSI:");
+      if (p) {
+        char *q = strchr(p, '\r');
+        if (q) *q = 0;
+        Serial.println(p + 7);
+#if ENABLE_OLED
+        oled.println(p + 7);
+#endif
+      } else {
+        Serial.print(teleClient.net.getBuffer());
+      }
+    }
+    timeoutsNet = 0;
+  }
+#endif
+  return state.check(STATE_NET_CONNECTED);
+}
+
+void telemetry(void* inst)
+{
+  uint8_t connErrors = 0;
+  const uint16_t stationaryTime[] = STATIONARY_TIME_TABLE;
+  const int sendingIntervals[] = SENDING_INTERVAL_TABLE;
+  CStorageRAM store;
+  store.init(SERIALIZE_BUFFER_SIZE);
+  teleClient.reset();
+
+  for (;;) {
+    if (!state.check(STATE_WORKING)) {
+      if (state.check(STATE_NET_CONNECTED)) {
+        if (teleClient.notify(EVENT_LOGOUT)) {
+          Serial.println("Logged Out");
+        }
+      }
+      if (state.check(STATE_NET_READY)) {
+        teleClient.shutdown();
+      }
+      state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
+      teleClient.reset();
+
+      uint32_t t = millis();
+      do {
+        delay(1000);
+      } while (state.check(STATE_STANDBY) && millis() - t < 1000L * PING_BACK_INTERVAL);
+      if (state.check(STATE_STANDBY)) {
+        // start ping
+        Serial.print("Ping...");
+#if NET_DEVICE == NET_WIFI
+        if (!teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD) || !teleClient.net.setup()) {
+          Serial.println("No WiFi");
+          continue;
+        }
+#else
+        if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) {
+          Serial.println("No network");
+          continue;
+        }
+#endif
+        Serial.print(teleClient.net.getIP());
+        state.set(STATE_NET_READY);
+        if (teleClient.ping()) {
+          Serial.print(" OK");
+        }
+        Serial.println();   
+      }
+      continue;
+    }
+    
+    if (!state.check(STATE_NET_CONNECTED)) {
+      if (!initNetwork() || !teleClient.connect()) {
+        teleClient.shutdown();
+        state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
+        delay(3000);
+        continue;
+      }
+    }
+
+    connErrors = 0;
+    teleClient.startTime = millis();
+
+    for (;;) {
+      CBuffer* buffer = bufman.getNewest();
+      if (!buffer) {
+        if (!state.check(STATE_WORKING)) break;
+        delay(10);
+        continue;
+      }
+
+      uint32_t startTime = millis();
+      buffer->state = BUFFER_STATE_LOCKED;
+#if SERVER_PROTOCOL == PROTOCOL_UDP
+      store.header(devid);
+#endif
+      store.timestamp(buffer->timestamp);
+      buffer->serialize(store);
+      buffer->purge();
+#if SERVER_PROTOCOL == PROTOCOL_UDP
+      store.tailer();
+#endif
+      //Serial.println(store.buffer());
+
+      // start transmission
+      if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+      if (teleClient.transmit(store.buffer(), store.length())) {
+        // successfully sent
+        connErrors = 0;
+        showStats();
+      } else {
+        connErrors++;
+        timeoutsNet++;
+        printTimeoutStats();
+      }
+      if (ledMode == 0) digitalWrite(PIN_LED, LOW);
+
+      store.purge();
+
+      // process inbound data
+      teleClient.inbound();
+
+      if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
+        Serial.println("Instable connection");
+        connErrors++;
+        timeoutsNet++;
+      }
+
+#if ENABLE_OBD || ENABLE_GPS || MEMS_MODE
+      // motion adaptive data transmission interval control
+      while (state.check(STATE_WORKING)) {
+        unsigned int motionless = (millis() - lastMotionTime) / 1000;
+        int sendingInterval = -1;
+        for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
+          if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
+            sendingInterval = sendingIntervals[i];
+            break;
+          }
+        }
+        if (sendingInterval == -1) {
+          // stationery timeout, trip ended
+          Serial.print("Stationary for ");
+          Serial.print(motionless);
+          Serial.println(" secs");
+          //teleClient.reset();
+          state.clear(STATE_WORKING);
+          break;
+        }
+        int n = startTime + sendingInterval - millis();
+        if (n <= 0) break;
+        waitMotion(min(n, 3000));
+      }
+#endif
+      if (connErrors > MAX_CONN_ERRORS_RECONNECT) {
+        teleClient.net.close();
+        if (!teleClient.connect()) {
+          teleClient.shutdown();
+          state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
+          break;
+        }
+      }
+    }
   }
 }
 
@@ -1031,7 +1075,7 @@ void standby()
 {
 #if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
-    store.end();
+    logger.end();
     state.clear(STATE_STORAGE_READY);
   }
 #endif
@@ -1055,60 +1099,10 @@ if (state.check(STATE_OBD_READY)) {
   delay(1000);
   oled.clear();
 #endif
+  Serial.println("STANDBY");
 #if MEMS_MODE
   calibrateMEMS();
-  for (;;) {
-    teleClient.shutdown();
-    state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-    cache.purge();
-#if SERVER_PROTOCOL == PROTOCOL_UDP
-    cache.header(devid);
-#endif
-    Serial.println("STANDBY");
-    if (waitMotion(1000L * PING_BACK_INTERVAL)) {
-      // to wake up
-#if ENABLE_OBD && !RESET_AFTER_WAKEUP
-      obd.leaveLowPowerMode();
-#endif
-      state.clear(STATE_STANDBY);
-      break;
-    }
-    cache.timestamp(millis());
-    cache.log(PID_DEVICE_TEMP, readChipTemperature());
-    if (accCount) {
-      cache.log(PID_ACC, (int16_t)((accSum[0] / accCount - accBias[0]) * 100), (int16_t)((accSum[1] / accCount - accBias[1]) * 100), (int16_t)((accSum[2] / accCount - accBias[2]) * 100));
-    }
-    if (!state.check(STATE_STANDBY)) {
-      break;
-    }
-    // start ping
-    Serial.print("Ping...");
-#if NET_DEVICE == NET_WIFI
-    if (!teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD) || !teleClient.net.setup()) {
-      Serial.println("No WiFi");
-      continue;
-    }
-#else
-    if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) {
-      Serial.println("No network");
-      continue;
-    }
-#endif
-    Serial.println(teleClient.net.getIP());
-    state.set(STATE_NET_READY);
-    if (teleClient.ping()) {
-      state.set(STATE_NET_CONNECTED);
-      // ping back data
-      Serial.print("Ping back data...");
-#if SERVER_PROTOCOL == PROTOCOL_UDP
-      cache.tailer();
-#endif
-      if (teleClient.transmit(cache.buffer(), cache.length())) {
-        Serial.print("OK");
-      }
-    }
-    Serial.println();      
-  }
+  waitMotion(-1);
 #elif ENABLE_OBD
   do {
     delay(5000);
@@ -1123,30 +1117,12 @@ if (state.check(STATE_OBD_READY)) {
 #endif
   ESP.restart();
 #endif  
+  state.clear(STATE_STANDBY);
 }
 
 /*******************************************************************************
   Tasks to perform in idle/waiting time
 *******************************************************************************/
-void idleTasks()
-{
-  teleClient.inbound();
-
-  // check serial input for command
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c == '\r' || c == '\n') {
-      if (serialCommand.length() > 0) {
-        String result = executeCommand(serialCommand.c_str());
-        serialCommand = "";
-        Serial.println(result);
-      }
-    } else if (serialCommand.length() < 32) {
-      serialCommand += c;
-    }
-  }
-}
-
 void genDeviceID(char* buf)
 {
     uint64_t seed = ESP.getEfuseMac() >> 8;
@@ -1340,15 +1316,11 @@ void setup()
     }
 #endif
 
-    // allocate for data cache
-    cache.init(RAM_CACHE_SIZE);
-
-    // reset client stats
-    teleClient.reset();
-
     sys.buzzer(0);
 
-    // initializing components
+    state.set(STATE_WORKING);
+    subtask.create(telemetry, "telemetry", 0, 8192);
+    // initialize components
     initialize();
 
     digitalWrite(PIN_LED, LOW);
@@ -1360,11 +1332,25 @@ void loop()
   if (!state.check(STATE_WORKING)) {
     standby();
     digitalWrite(PIN_LED, HIGH);
-    initialize(true);
+    initialize();
     digitalWrite(PIN_LED, LOW);
     return;
   }
 
   // collect and transmit data
   process();
+
+  // check serial input for command
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\r' || c == '\n') {
+      if (serialCommand.length() > 0) {
+        String result = executeCommand(serialCommand.c_str());
+        serialCommand = "";
+        Serial.println(result);
+      }
+    } else if (serialCommand.length() < 32) {
+      serialCommand += c;
+    }
+  }
 }

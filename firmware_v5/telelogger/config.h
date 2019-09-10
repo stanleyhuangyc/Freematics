@@ -1,6 +1,14 @@
 #ifndef CONFIG_H_INCLUDED
 #define CONFIG_H_INCLUDED
 
+
+/**************************************
+* Buffer Configuration
+**************************************/
+#define BUFFER_SLOTS 16 /* max number of buffer */
+#define BUFFER_LENGTH 128 /* bytes per slot */
+#define SERIALIZE_BUFFER_SIZE 1024 /* bytes */
+
 /**************************************
 * Configuration Definitions
 **************************************/
@@ -29,8 +37,8 @@
 #define ENABLE_OBD 1
 #endif
 
-// maximum consecutive OBD-II access errors before entering standby
-#define MAX_OBD_ERRORS 5
+// maximum consecutive OBD access errors before entering standby
+#define MAX_OBD_ERRORS 3
 
 /**************************************
 * Networking configurations
@@ -72,10 +80,10 @@
 // expected maximum server sync signal interval
 #define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
 // data interval configurations
-#define STATIONARY_TIME_TABLE {10, 30, 180} /* seconds */
-#define SENDING_INTERVAL_TABLE {1, 2, 5} /* seconds */
-#define DATA_INTERVAL_TABLE {500, 2000, 2500} /* ms */
-#define PING_BACK_INTERVAL 900 /* seconds */
+#define STATIONARY_TIME_TABLE {10, 30, 60} /* seconds */
+#define SENDING_INTERVAL_TABLE {0, 2000, 5000} /* ms */
+#define DATASET_INTERVAL 100
+#define PING_BACK_INTERVAL 300 /* seconds */
 
 /**************************************
 * Data storage configurations
@@ -84,8 +92,6 @@
 // change the following line to change storage type
 #define STORAGE STORAGE_SD
 #endif
-
-#define RAM_CACHE_SIZE 1024 /* bytes */
 
 /**************************************
 * MEMS sensors
@@ -108,7 +114,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 1
+#define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
