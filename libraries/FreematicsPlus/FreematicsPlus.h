@@ -50,6 +50,8 @@
 #define GPS_SOFT_BAUDRATE 38400L
 
 #define PIN_BUZZER 25
+#define PIN_MOLEX_2 34
+#define PIN_MOLEX_4 26
 
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
