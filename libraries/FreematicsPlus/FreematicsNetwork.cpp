@@ -741,11 +741,11 @@ void UDPClientSIM5360::close()
 
 bool UDPClientSIM5360::send(const char* data, unsigned int len)
 {
-  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP.c_str(), udpPort);
-  if (sendCommand(m_buffer, 100, ">")) {
-    m_device->xbWrite(data, len);
-    return sendCommand(0, 1000);
-  }
+  int n = sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP.c_str(), udpPort);
+  m_device->xbWrite(m_buffer, n);
+  delay(10);
+  m_device->xbWrite(data, len);
+  if (sendCommand(0, 500)) return true;
   return false;
 }
 
@@ -981,11 +981,11 @@ void UDPClientSIM7600::close()
 
 bool UDPClientSIM7600::send(const char* data, unsigned int len)
 {
-  sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP.c_str(), udpPort);
-  if (sendCommand(m_buffer, 100, ">")) {
-    m_device->xbWrite(data, len);
-    return sendCommand(0, 1000);
-  }
+  int n = sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP.c_str(), udpPort);
+  m_device->xbWrite(m_buffer, n);
+  delay(10);
+  m_device->xbWrite(data, len);
+  if (sendCommand(0, 500)) return true;
   return false;
 }
 
