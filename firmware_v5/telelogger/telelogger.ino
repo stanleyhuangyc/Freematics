@@ -35,7 +35,6 @@
 #define STATE_NET_READY 0x10
 #define STATE_NET_CONNECTED 0x20
 #define STATE_WORKING 0x40
-#define STATE_OBD_FOUND 0x80
 #define STATE_STANDBY 0x100
 
 typedef struct {
@@ -397,7 +396,6 @@ void processMEMS(CBuffer* buffer)
 void calibrateMEMS()
 {
   if (state.check(STATE_MEMS_READY)) {
-    Serial.print("ACC BIAS...");
     accBias[0] = 0;
     accBias[1] = 0;
     accBias[2] = 0;
@@ -414,6 +412,7 @@ void calibrateMEMS()
     accBias[0] /= n;
     accBias[1] /= n;
     accBias[2] /= n;
+    Serial.print("ACC BIAS:");
     Serial.print(accBias[0]);
     Serial.print('/');
     Serial.print(accBias[1]);
@@ -472,13 +471,14 @@ void initialize()
     Serial.print("OBD...");
     if (obd.init()) {
       Serial.println("OK");
-      state.set(STATE_OBD_READY | STATE_OBD_FOUND);
+      state.set(STATE_OBD_READY);
 #if ENABLE_OLED
       oled.println("OBD OK");
 #endif
     } else {
       Serial.println("NO");
-      if (state.check(STATE_OBD_FOUND)) return;
+      state.clear(STATE_WORKING);
+      return;
     }
   }
 #endif
@@ -847,17 +847,16 @@ bool initNetwork()
     teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
     if (teleClient.net.setup()) {
       state.set(STATE_NET_READY);
-      Serial.print("WiFi IP:");
       String ip = teleClient.net.getIP();
       if (ip.length()) {
         state.set(STATE_NET_CONNECTED);
-        Serial.print(ip);
+        Serial.print("WiFi IP:");
+        Serial.println(ip);
 #if ENABLE_OLED
         oled.println(ip);
 #endif
         break;
       }
-      Serial.println();
     } else {
       Serial.println("No WiFi");
       return false;
@@ -990,7 +989,7 @@ void telemetry(void* inst)
       CBuffer* buffer = bufman.getNewest();
       if (!buffer) {
         if (!state.check(STATE_WORKING)) break;
-        delay(10);
+        delay(20);
         continue;
       }
 
@@ -1089,7 +1088,7 @@ void standby()
 #endif
 #if ENABLE_OBD
 if (state.check(STATE_OBD_READY)) {
-    obd.enterLowPowerMode();
+    obd.reset();
     state.clear(STATE_OBD_READY);
   }
 #endif
@@ -1319,7 +1318,7 @@ void setup()
     sys.buzzer(0);
 
     state.set(STATE_WORKING);
-    subtask.create(telemetry, "telemetry", 0, 8192);
+    subtask.create(telemetry, "telemetry", 2, 8192);
     // initialize components
     initialize();
 
