@@ -322,9 +322,9 @@ void TeleClientUDP::inbound()
 
 void TeleClientUDP::shutdown()
 {
-  Serial.print(net.deviceName());
   net.close();
   net.end();
+  Serial.print(net.deviceName());
   Serial.println(" OFF");
 }
 
