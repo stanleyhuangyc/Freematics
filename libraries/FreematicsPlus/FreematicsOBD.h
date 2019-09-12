@@ -74,7 +74,6 @@ protected:
 	int normalizeData(byte pid, char* data);
 	byte checkErrorMessage(const char* buffer);
 	char* getResultValue(char* buf);
-	void recover();
 	OBD_STATES m_state = OBD_DISCONNECTED;
 };
 

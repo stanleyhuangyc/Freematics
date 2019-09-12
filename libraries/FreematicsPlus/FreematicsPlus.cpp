@@ -811,9 +811,9 @@ void FreematicsESP32::buzzer(int freq)
 byte FreematicsESP32::getVersion()
 {
     if (!link) return 0;
-    char buffer[32];
-    if (link->sendCommand("ATI\r", buffer, sizeof(buffer), 1000)) {
-        char *p = strstr(buffer, "OBD");
+    char buf[32];
+    if (link->sendCommand("ATI\r", buf, sizeof(buf), 1000)) {
+        char *p = strstr(buf, "OBD");
         if (p && (p = strchr(p, ' '))) {
             p += 2;
             if (isdigit(*p) && *(p + 1) == '.' && isdigit(*(p + 2))) {
@@ -825,6 +825,16 @@ byte FreematicsESP32::getVersion()
 	return 0;
 }
 
+bool FreematicsESP32::reactivateLink()
+{
+    if (!link) return false;
+    for (int n = 0; n < 30; n++) {
+        char buf[32];
+        if (link->sendCommand("ATI\r", buf, sizeof(buf), 1000)) return true;
+    }
+    return false;
+}
+
 void FreematicsESP32::resetLink()
 {
     if (version == 14) {
@@ -833,7 +843,7 @@ void FreematicsESP32::resetLink()
         digitalWrite(PIN_LINK_RESET, HIGH);
     } else {
         char buf[16];
-        link->sendCommand("ATR\r", buf, sizeof(buf), 100);
+        if (link) link->sendCommand("ATR\r", buf, sizeof(buf), 100);
     }
     delay(2000);
 }
