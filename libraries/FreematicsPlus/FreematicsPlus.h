@@ -104,7 +104,7 @@ public:
 
 class CLink_SPI : public CLink {
 public:
-	bool begin(unsigned long freq = SPI_FREQ);
+	bool begin(unsigned int freq = SPI_FREQ, int rxPin = 0, int txPin = 0);
 	void end();
 	// send command and receive response
 	int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout = 1000);
