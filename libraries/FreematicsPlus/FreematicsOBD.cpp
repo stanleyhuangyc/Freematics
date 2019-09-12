@@ -99,7 +99,6 @@ bool COBD::readPID(byte pid, int& result)
 
 	if (!data) {
 		errors++;
-		recover();
 		return false;
 	}
 	result = normalizeData(pid, data);
@@ -337,11 +336,6 @@ bool COBD::isValidPID(byte pid)
 	byte i = pid >> 3;
 	byte b = 0x80 >> (pid & 0x7);
 	return (pidmap[i] & b) != 0;
-}
-
-void COBD::recover()
-{
-	link->sendCommand("\r", 0, 0, 100);
 }
 
 bool COBD::init(OBD_PROTOCOLS protocol)

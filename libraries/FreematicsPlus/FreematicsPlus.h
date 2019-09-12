@@ -149,6 +149,8 @@ public:
   void buzzer(int freq);
   // reset co-processor
   void resetLink();
+  // reactivate co-processor
+  bool reactivateLink();
 	// get co-processor version
 	byte getVersion();
 	// co-processor firmware version number
