@@ -368,7 +368,8 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 	}
 	stage = 2;
 	for (byte n = 0; n < 2; n++) {
-		if (link->sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) && !checkErrorMessage(buffer)) {
+		int value;
+		if (readPID(PID_SPEED, value)) {
 			stage = 3;
 			break;
 		}
