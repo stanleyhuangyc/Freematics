@@ -837,7 +837,7 @@ bool FreematicsESP32::reactivateLink()
 
 void FreematicsESP32::resetLink()
 {
-    if (version == 14) {
+    if (version >= 14) {
         digitalWrite(PIN_LINK_RESET, LOW);
         delay(50);
         digitalWrite(PIN_LINK_RESET, HIGH);
@@ -845,7 +845,6 @@ void FreematicsESP32::resetLink()
         char buf[16];
         if (link) link->sendCommand("ATR\r", buf, sizeof(buf), 100);
     }
-    delay(2000);
 }
 
 bool FreematicsESP32::begin(int cpuMHz)
