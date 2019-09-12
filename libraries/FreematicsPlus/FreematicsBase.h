@@ -60,7 +60,7 @@ class CLink
 {
 public:
 	virtual ~CLink() {}
-	virtual bool begin() { return true; }
+	virtual bool begin(unsigned int baudrate = 0, int rxPin = 0, int txPin = 0) { return true; }
 	virtual void end() {}
 	// send command and receive response
 	virtual int sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout) { return 0; }

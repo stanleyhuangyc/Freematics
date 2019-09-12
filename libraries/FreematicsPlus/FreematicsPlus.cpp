@@ -35,7 +35,6 @@ static int nmeaBytes = 0;
 Mutex nmeaBufferMutex;
 static Task taskGPS;
 static GPS_DATA* gpsData = 0;
-static SPISettings settings = SPISettings(SPI_FREQ, MSBFIRST, SPI_MODE0);
 
 static uint32_t inline getCycleCount()
 {
@@ -308,7 +307,7 @@ bool CLink_UART::changeBaudRate(unsigned int baudrate)
 	return begin(baudrate);
 }
 
-bool CLink_SPI::begin(unsigned long freq)
+bool CLink_SPI::begin(unsigned int freq, int rxPin, int txPin)
 {
 #if VERBOSE_LINK
     Serial.println("[SPI BEGIN]");
