@@ -81,6 +81,7 @@ public:
     {
         m_file.close();
         m_id = 0;
+        m_dataCount = 0;
     }
     virtual void flush()
     {
