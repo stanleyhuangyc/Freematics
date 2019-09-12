@@ -1,6 +1,6 @@
 /******************************************************************************
-* Reference sketch for a vehicle telematics data feed for Freematics Hub
-* Works with Freematics ONE+
+* Arduino sketch of a vehicle data data logger and telemeter for Freematics Hub
+* Works with Freematics ONE+ Model A and Model B
 * Developed by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
@@ -1075,24 +1075,19 @@ void standby()
 #if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
     logger.end();
-    state.clear(STATE_STORAGE_READY);
   }
 #endif
 #if ENABLE_GPS
   if (state.check(STATE_GPS_READY)) {
     Serial.println("GPS OFF");
     sys.gpsEnd();
-    state.clear(STATE_GPS_READY);
   }
   gd = 0;
 #endif
-#if ENABLE_OBD
-if (state.check(STATE_OBD_READY)) {
-    obd.reset();
-    state.clear(STATE_OBD_READY);
-  }
-#endif
+  state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_STORAGE_READY);
   state.set(STATE_STANDBY);
+  // this will put co-processor into a delayed sleep
+  sys.resetLink();
 #if ENABLE_OLED
   oled.print("STANDBY");
   delay(1000);
@@ -1110,6 +1105,9 @@ if (state.check(STATE_OBD_READY)) {
   delay(5000);
 #endif
   Serial.println("Wakeup");
+  // this will wake up co-processor
+  sys.reactivateLink();
+
 #if RESET_AFTER_WAKEUP
 #if MEMS_MODE
   mems.end();  
