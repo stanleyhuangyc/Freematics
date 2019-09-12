@@ -94,13 +94,7 @@ class DataOutputter : public FileLogger
     }
 };
 
-class OBD : public COBD
-{
-protected:
-    void idleTasks();
-};
-
-OBD obd;
+COBD obd;
 
 #if STORAGE == STORAGE_SD
 SDLogger store(new DataOutputter);
@@ -347,14 +341,11 @@ public:
             Serial.println("OFF");
         }
 #endif
-#if USE_OBD
-        if (checkState(STATE_OBD_READY)) {
-            obd.reset();
-        }
-#endif
+        // this will put co-processor into a delayed sleep
+        sys.resetLink();
         clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
         setState(STATE_STANDBY);
-        Serial.println("Standby");
+        Serial.println("Standby"); 
 #if MEMS_MODE
         if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
@@ -388,6 +379,8 @@ public:
         while (!obd.init()) Serial.print('.');
 #endif
         Serial.println("Wakeup");
+        // this will wake up co-processor
+        sys.reactivateLink();
         //ESP.restart();
     }
     bool checkState(byte flags) { return (m_state & flags) == flags; }
@@ -398,13 +391,6 @@ private:
 };
 
 DataLogger logger;
-
-void OBD::idleTasks()
-{
-#if USE_GPS
-    logger.logGPSData();
-#endif
-}
 
 void showStats()
 {
@@ -537,6 +523,11 @@ void executeCommand()
 
 void loop()
 {
+    if (!logger.checkState(STATE_OBD_READY) && !obd.init()) {
+        logger.standby();
+        return;
+    }
+
     // if file not opened, create a new file
     if (logger.checkState(STATE_STORE_READY) && !logger.checkState(STATE_FILE_READY)) {
       fileid = store.open();
@@ -549,44 +540,47 @@ void loop()
     // poll and log OBD data
     store.setTimestamp(ts);
 #if USE_OBD
-    if (logger.checkState(STATE_OBD_READY)) {
-        static int idx[2] = {0, 0};
-        int tier = 1;
-        for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
-            if (obdData[i].tier > tier) {
-                // reset previous tier index
-                idx[tier - 2] = 0;
-                // keep new tier number
-                tier = obdData[i].tier;
-                // move up current tier index
-                i += idx[tier - 2]++;
-                // check if into next tier
-                if (obdData[i].tier != tier) {
-                    idx[tier - 2]= 0;
-                    i--;
-                    continue;
-                }
+    static int idx[2] = {0, 0};
+    int tier = 1;
+    for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
+        if (obdData[i].tier > tier) {
+            // reset previous tier index
+            idx[tier - 2] = 0;
+            // keep new tier number
+            tier = obdData[i].tier;
+            // move up current tier index
+            i += idx[tier - 2]++;
+            // check if into next tier
+            if (obdData[i].tier != tier) {
+                idx[tier - 2]= 0;
+                i--;
+                continue;
             }
-            byte pid = obdData[i].pid;
-            if (!obd.isValidPID(pid)) continue;
-            int value;
-            if (obd.readPID(pid, value)) {
-                obdData[i].ts = millis();
-                store.log((uint16_t)pid | 0x100, value);
-            } else {
-                pidErrors++;
-                Serial.print("PID Errors: ");
-                Serial.println(pidErrors);
-                break;
-            }
-            if (tier > 1) break;
         }
+        byte pid = obdData[i].pid;
+        if (!obd.isValidPID(pid)) continue;
+        int value;
+        if (obd.readPID(pid, value)) {
+            obdData[i].ts = millis();
+            store.log((uint16_t)pid | 0x100, value);
+        } else {
+            pidErrors++;
+            Serial.print("PID Errors: ");
+            Serial.println(pidErrors);
+            break;
+        }
+#if USE_GPS
+        logger.logGPSData();
+#endif
+        if (tier > 1) break;
     }
 #endif
 
+#if USE_GPS
     if (!logger.checkState(STATE_OBD_READY)) {
         logger.logGPSData();
     }
+#endif
 
 #if MEMS_MODE
     if (logger.checkState(STATE_MEMS_READY)) {
