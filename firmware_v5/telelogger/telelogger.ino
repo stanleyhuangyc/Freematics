@@ -438,7 +438,7 @@ void printTime()
 }
 
 /*******************************************************************************
-  Initializing all components and network
+  Initializing all data logging components
 *******************************************************************************/
 void initialize()
 {
@@ -923,6 +923,9 @@ bool initNetwork()
   return state.check(STATE_NET_CONNECTED);
 }
 
+/*******************************************************************************
+  Initializing network, maintaining connection and doing transmissions
+*******************************************************************************/
 void telemetry(void* inst)
 {
   uint8_t connErrors = 0;
@@ -1283,6 +1286,7 @@ void setup()
     obd.begin(sys.link);
 #endif
 
+    // turn on buzzer at 2000Hz frequency 
     sys.buzzer(2000);
 
 #if MEMS_MODE
@@ -1313,9 +1317,11 @@ void setup()
     }
 #endif
 
+    // turn off buzzer
     sys.buzzer(0);
 
     state.set(STATE_WORKING);
+    // initialize network and maintain connection
     subtask.create(telemetry, "telemetry", 2, 8192);
     // initialize components
     initialize();
@@ -1334,7 +1340,7 @@ void loop()
     return;
   }
 
-  // collect and transmit data
+  // collect and log data
   process();
 
   // check serial input for command
