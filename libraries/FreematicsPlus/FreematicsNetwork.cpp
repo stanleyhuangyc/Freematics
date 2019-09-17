@@ -13,15 +13,15 @@
 
 unsigned int HTTPClient::genHeader(char* header, HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
 {
-    // generate HTTP header
-    char *p = header;
-    p += sprintf(p, "%s %s HTTP/1.1\r\nConnection: %s\r\n",
-      method == HTTP_GET ? "GET" : "POST", path, keepAlive ? "keep-alive" : "close");
-    if (method == HTTP_POST) {
-      p += sprintf(p, "Content-length: %u\r\n", payloadSize);
-    }
-    p += sprintf(p, "\r\n");
-    return (unsigned int)(p - header);
+  // generate a simplest HTTP header
+  char *p = header;
+  p += sprintf(p, "%s %s HTTP/1.1\r\nConnection: %s\r\n",
+    method == METHOD_GET ? "GET" : "POST", path, keepAlive ? "keep-alive" : "close");
+  if (method != METHOD_GET) {
+    p += sprintf(p, "Content-length: %u\r\n", payloadSize);
+  }
+  p += sprintf(p, "\r\n");
+  return (unsigned int)(p - header);
 }
 
 /*******************************************************************************
@@ -407,7 +407,7 @@ int HTTPClientSIM800::send(HTTP_METHOD method, const char* path, bool keepAlive,
   sendCommand("AT+HTTPPARA = \"CID\",1\r");
   sprintf(m_buffer, "AT+HTTPPARA=\"URL\",\"%s:%u%s\"\r", m_host.c_str(), m_port, path);
   if (!sendCommand(m_buffer)) {  
-  } else if (method == HTTP_GET) {
+  } else if (method == METHOD_GET) {
     if (sendCommand("AT+HTTPACTION=0\r", HTTP_CONN_TIMEOUT)) {
       m_state = HTTP_SENT;
       return strlen(path);  
