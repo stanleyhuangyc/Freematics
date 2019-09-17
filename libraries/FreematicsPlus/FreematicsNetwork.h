@@ -18,8 +18,8 @@
 #define HTTP_CONN_TIMEOUT 5000
 
 typedef enum {
-  HTTP_GET = 0,
-  HTTP_POST,
+  METHOD_GET = 0,
+  METHOD_POST,
 } HTTP_METHOD;
 
 typedef enum {
@@ -103,6 +103,7 @@ public:
     String queryIP(const char* host);
     char* getBuffer() { return m_buffer; }
     const char* deviceName() { return "SIM800"; }
+    const char* IMEI = "N/A";
 protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
     char m_buffer[256] = {0};
