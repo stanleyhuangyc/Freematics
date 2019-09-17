@@ -1103,8 +1103,6 @@ void standby()
   delay(5000);
 #endif
   Serial.println("Wakeup");
-  // this will wake up co-processor
-  sys.reactivateLink();
 
 #if RESET_AFTER_WAKEUP
 #if MEMS_MODE
@@ -1113,6 +1111,8 @@ void standby()
   ESP.restart();
 #endif  
   state.clear(STATE_STANDBY);
+  // this will wake up co-processor
+  sys.reactivateLink();
 }
 
 /*******************************************************************************
