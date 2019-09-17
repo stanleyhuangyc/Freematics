@@ -17,6 +17,7 @@
 
 #include <FreematicsPlus.h>
 #include "telelogger.h"
+#include "telemesh.h"
 #include "teleclient.h"
 
 bool processCommand(char* data);
@@ -179,6 +180,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
       // error sending data
       break;
     }
+#if NET_DEVICE != NET_SERIAL && NET_DEVICE != NET_WIFI_MESH
     if (event == EVENT_ACK) return true; // no reply for ACK
     char *data = 0;
     // receive reply
@@ -223,6 +225,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
     } else if (event == EVENT_LOGOUT) {
       login = false;
     }
+#endif
     // success
     return true;
   }
@@ -241,7 +244,7 @@ bool TeleClientUDP::connect()
     Serial.print(SERVER_PORT);
     Serial.println(")...");
     if (!net.open(SERVER_HOST, SERVER_PORT)) {
-      Serial.println("Network error");
+      Serial.println("Unable to connect");
       delay(1000);
       continue;
     }
@@ -328,6 +331,8 @@ void TeleClientUDP::shutdown()
   Serial.println(" OFF");
 }
 
+#if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+
 bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
   if (net.state() == HTTP_SENT) {
@@ -368,9 +373,9 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 
   int ret;
 #if SERVER_PROTOCOL == PROTOCOL_HTTP_POST
-  ret = net.send(HTTP_POST, url, true, packetBuffer, packetSize);
+  ret = net.send(METHOD_POST, url, true, packetBuffer, packetSize);
 #else
-  ret = net.send(HTTP_GET, url, true);
+  ret = net.send(METHOD_GET, url, true);
 #endif
   if (ret == 0) {
     Serial.println("Connection closed by server");
@@ -408,3 +413,5 @@ void TeleClientHTTP::shutdown()
   net.end();
   Serial.println(" OFF");
 }
+
+#endif

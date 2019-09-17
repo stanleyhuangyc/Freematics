@@ -21,7 +21,8 @@
   </define>
   <define name="WiFi AP &amp; HTTP Server" const="ENABLE_HTTPD" type="bool"/>
   <define name="Networking">
-    <option name="WIFI" const="NET_DEVICE=NET_WIFI"/>
+    <option name="WiFi" const="NET_DEVICE=NET_WIFI"/>
+    <option name="WiFi Mesh" const="NET_DEVICE=NET_WIFI_MESH"/>
     <option name="GSM/GPRS (SIM800)" const="NET_DEVICE=NET_SIM800"/>
     <option name="3G WCDMA (SIM5360)" const="NET_DEVICE=NET_SIM5360"/>
     <option name="4G LTE (SIM7600)" const="NET_DEVICE=NET_SIM7600" default="true"/>
