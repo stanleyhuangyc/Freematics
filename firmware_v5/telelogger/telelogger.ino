@@ -19,6 +19,7 @@
 #include <httpd.h>
 #include "config.h"
 #include "telelogger.h"
+#include "telemesh.h"
 #include "teleclient.h"
 #ifdef BOARD_HAS_PSRAM
 #include "esp_himem.h"
@@ -809,36 +810,6 @@ void process()
 
 bool initNetwork()
 {
-#if NET_DEVICE != NET_WIFI
-  // power on network module
-  if (teleClient.net.begin(&sys)) {
-    Serial.print(teleClient.net.deviceName());
-#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-    Serial.print(" IMEI:");
-    Serial.println(teleClient.net.IMEI);
-#endif
-    state.set(STATE_NET_READY);
-#if ENABLE_OLED
-    oled.print(teleClient.net.deviceName());
-    oled.println(" OK\r");
-#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-    oled.print("IMEI:");
-    oled.println(teleClient.net.IMEI);
-#endif
-#endif
-  } else {
-    Serial.println("No Cell Module");
-#if ENABLE_OLED
-    oled.println("No Cell Module");
-#endif
-    return false;
-  }
-  if (!teleClient.net.checkSIM()) {
-    Serial.println("NO SIM CARD");
-    return false;
-  }
-#endif
-
 #if NET_DEVICE == NET_WIFI
 #if ENABLE_OLED
   oled.print("Connecting WiFi...");
@@ -863,6 +834,30 @@ bool initNetwork()
     }
   }
 #else
+  // power on network module
+  if (teleClient.net.begin(&sys)) {
+    state.set(STATE_NET_READY);
+  } else {
+    Serial.println("No Net Module");
+#if ENABLE_OLED
+    oled.println("No Net Module");
+#endif
+    return false;
+  }
+#if NET_DEVICE == SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+#if ENABLE_OLED
+    oled.print(teleClient.net.deviceName());
+    oled.println(" OK\r");
+    oled.print("IMEI:");
+    oled.println(teleClient.net.IMEI);
+#endif
+  Serial.print(teleClient.net.deviceName());
+  Serial.print(" IMEI:");
+  Serial.println(teleClient.net.IMEI);
+  if (!teleClient.net.checkSIM()) {
+    Serial.println("NO SIM CARD");
+    return false;
+  }
   if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
     bool extGPS = state.check(STATE_GPS_READY);
     if (teleClient.net.setup(CELL_APN)) {
@@ -872,10 +867,6 @@ bool initNetwork()
         Serial.println(op);
 #if ENABLE_OLED
         oled.println(op);
-#endif
-      } else {
-#if ENABLE_OLED
-        oled.print("Cell Connected");
 #endif
       }
 
@@ -919,6 +910,9 @@ bool initNetwork()
     }
     timeoutsNet = 0;
   }
+#else
+  state.set(STATE_NET_CONNECTED);
+#endif
 #endif
   return state.check(STATE_NET_CONNECTED);
 }
@@ -960,13 +954,14 @@ void telemetry(void* inst)
           Serial.println("No WiFi");
           continue;
         }
-#else
+        Serial.print(teleClient.net.getIP());
+#elif NET_DEVICE == SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
         if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) {
           Serial.println("No network");
           continue;
         }
-#endif
         Serial.print(teleClient.net.getIP());
+#endif
         state.set(STATE_NET_READY);
         if (teleClient.ping()) {
           Serial.print(" OK");

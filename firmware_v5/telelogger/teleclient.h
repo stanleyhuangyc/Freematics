@@ -149,10 +149,13 @@ public:
     UDPClientSIM5360 net;
 #elif NET_DEVICE == NET_SIM7600
     UDPClientSIM7600 net;
+#elif NET_DEVICE == NET_WIFI_MESH
+    ClientWiFiMesh net;
 #else
-    NullClient net;
+    ClientSerial net;
 #endif
 };
+
 
 class TeleClientHTTP : public TeleClient
 {
@@ -169,7 +172,5 @@ public:
     HTTPClientSIM5360 net;
 #elif NET_DEVICE == NET_SIM7600
     HTTPClientSIM7600 net;
-#else
-    NullClient net;
 #endif
 };

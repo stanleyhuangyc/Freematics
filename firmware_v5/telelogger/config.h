@@ -1,11 +1,10 @@
 #ifndef CONFIG_H_INCLUDED
 #define CONFIG_H_INCLUDED
 
-
 /**************************************
-* Buffer Configuration
+* Circular Buffer Configuration
 **************************************/
-#define BUFFER_SLOTS 16 /* max number of buffer */
+#define BUFFER_SLOTS 32 /* max number of buffer */
 #define BUFFER_LENGTH 128 /* bytes per slot */
 #define SERIALIZE_BUFFER_SIZE 1024 /* bytes */
 
@@ -16,6 +15,8 @@
 #define NET_SIM800 2
 #define NET_SIM5360 3
 #define NET_SIM7600 4
+#define NET_WIFI_MESH 5
+#define NET_SERIAL 6
 
 #define MEMS_DISABLED 0
 #define MEMS_ACC 1
@@ -46,9 +47,12 @@
 #ifndef NET_DEVICE
 // change the following line to change network device
 #define NET_DEVICE NET_SIM7600
-// WIFI settings
+// WiFi settings
 #define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
+// WiFi Mesh settings
+#define WIFI_MESH_ID "123456"
+#define WIFI_MESH_CHANNEL 13
 // APN settings for cellular network (if required)
 #define CELL_APN ""
 // Freematics Hub server settings
@@ -80,7 +84,7 @@
 // expected maximum server sync signal interval
 #define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
 // data interval configurations
-#define STATIONARY_TIME_TABLE {10, 30, 180} /* seconds */
+#define STATIONARY_TIME_TABLE {10, 30, 300} /* seconds */
 #define SENDING_INTERVAL_TABLE {0, 2000, 5000} /* ms */
 #define DATASET_INTERVAL 200
 #define PING_BACK_INTERVAL 300 /* seconds */
@@ -114,7 +118,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 1
+#define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
