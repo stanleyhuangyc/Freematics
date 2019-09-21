@@ -722,7 +722,7 @@ void standby()
   }
 #endif
   UTC = 0;
-  state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_SERVER_CONNECTED);
+  state.clear(STATE_OBD_READY | STATE_GPS_READY);
   for (;;) {
     if (state.check(STATE_NET_READY)) shutDownNet();
 #if MEMS_MODE
@@ -731,6 +731,7 @@ void standby()
     Serial.println(F("STANDBY"));
     int ret = waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t));
     Serial.println(F("WAKEUP"));
+    t = millis();
     obd.getVersion();
     Serial.println();
     if (ret) break;
