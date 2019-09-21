@@ -13,12 +13,6 @@
 class NullClient
 {
 public:
-    virtual bool begin() { return true; }
-    virtual void end() {}
-    virtual bool open(const char* host, uint16_t port) = 0;
-    virtual void close() {}
-    virtual bool send(const char* data, unsigned int len) = 0;
-    virtual char* receive(int* pbytes, unsigned int timeout) = 0;
     virtual GPS_DATA* getLocation() { return m_gps; }
 protected:
     GPS_DATA* m_gps = 0;
@@ -27,7 +21,7 @@ protected:
 class UDPClientESP8266AT : public NullClient
 {
 public:
-    bool begin(CFreematics* device);
+    bool begin(CFreematics* device, bool nocheck = false);
     void end();
     bool setup(const char* ssid, const char* password, unsigned int timeout = 15000);
     String getIP();
@@ -48,7 +42,7 @@ private:
 class UDPClientSIM800 : public NullClient
 {
 public:
-    bool begin(CFreematics* device);
+    bool begin(CFreematics* device, bool nocheck = false);
     void end();
     bool setup(const char* apn, unsigned int timeout = 30000, bool gps = false, const char* pin = 0);
     String getIP();
@@ -73,7 +67,7 @@ private:
 class UDPClientSIM5360 : public NullClient
 {
 public:
-    bool begin(CFreematics* device);
+    bool begin(CFreematics* device, bool nocheck = false);
     void end();
     bool setup(const char* apn, unsigned int timeout = 30000, bool gps = false, const char* pin = 0);
     String getIP();

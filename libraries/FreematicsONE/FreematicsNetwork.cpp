@@ -14,7 +14,7 @@
 /*******************************************************************************
   Implementation for ESP8266 WIFI (ESP8266 AT command-set)
 *******************************************************************************/
-bool UDPClientESP8266AT::begin(CFreematics* device)
+bool UDPClientESP8266AT::begin(CFreematics* device, bool nocheck)
 {
   m_device = device;
   m_device->xbBegin(XBEE_BAUDRATE);
@@ -150,19 +150,19 @@ bool UDPClientESP8266AT::sendCommand(const char* cmd, unsigned int timeout, cons
   Implementation for SIM800 (SIM800 AT command-set)
 *******************************************************************************/
 
-bool UDPClientSIM800::begin(CFreematics* device)
+bool UDPClientSIM800::begin(CFreematics* device, bool nocheck)
 {
   m_device = device;
   if (m_stage == 0) {
     device->xbBegin(XBEE_BAUDRATE);
     m_stage = 1;
   }
-  for (byte n = 0; n < 10; n++) {
-    // try turning on module
+  if (nocheck) {
     device->xbTogglePower();
-    delay(2000);
-    // discard any stale data
-    device->xbPurge();
+    return true;
+  }
+  unsigned long t = millis();
+  for (;;) {
     for (byte m = 0; m < 3; m++) {
       sendCommand("AT\r");
       if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
@@ -170,6 +170,9 @@ bool UDPClientSIM800::begin(CFreematics* device)
         return true;
       }
     }
+    if (millis() - t >= 30000) break;
+    device->xbTogglePower();
+    delay(2000);
   }
   return false;
 }
@@ -404,20 +407,20 @@ GPS_DATA* UDPClientSIM800::getLocation()
   Implementation for SIM5360
 *******************************************************************************/
 
-bool UDPClientSIM5360::begin(CFreematics* device)
+bool UDPClientSIM5360::begin(CFreematics* device, bool nocheck)
 {
   m_device = device;
   if (m_stage == 0) {
     device->xbBegin(XBEE_BAUDRATE);
     m_stage = 1;
   }
-  unsigned long t = millis();
-  do {
-    // try turning on module
+  if (nocheck) {
     device->xbTogglePower();
+    return true;
+  }
+  unsigned long t = millis();
+  for (;;) {
     delay(3000);
-    // discard any stale data
-    device->xbPurge();
     for (byte m = 0; m < 3; m++) {
       sendCommand("AT\r");
       if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
@@ -425,7 +428,9 @@ bool UDPClientSIM5360::begin(CFreematics* device)
         return true;
       }
     }
-  } while (millis() - t < 60000);
+    if (millis() - t >= 30000) break;
+    device->xbTogglePower();
+  }
   return false;
 }
 
