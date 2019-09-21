@@ -17,7 +17,8 @@ Data Transmissions
 
 Data transmission over UDP and HTTP protocols are implemented with following hardware.
 
-* WiFi(ESP32 built-in)
+* WiFi (ESP32 built-in)
+* WiFi Mesh (ESP-MDF for ESP32)
 * GSM/GPRS (SIM800)
 * 3G WCDMA (SIM5360)
 * 4G LTE (SIM7600)
@@ -41,7 +42,6 @@ Commands can be sent to Freematics ONE+ for execution with results obtained, thr
 * REBOOT - performing a reboot immediately
 * STANDBY - entering standby mode immediately
 * WAKEUP - waking up the device from standby mode
-* SET INTERVAL [interval in ms] - setting data sending interval
 * SET SYNC [interval in ms] - setting server sync checking interval
 * STATS - returning some stats
 * OBD [PID] - querying and returning specified OBD-II PID value (raw data)
