@@ -28,12 +28,13 @@
 
 // states
 #define STATE_OBD_READY 0x1
-#define STATE_GPS_READY 0x2
-#define STATE_LOCATION_READY 0x4
-#define STATE_MEMS_READY 0x8
-#define STATE_NET_READY 0x10
-#define STATE_SERVER_CONNECTED 0x20
-#define STATE_WORKING 0x40
+#define STATE_OBD_FOUND 0x2
+#define STATE_GPS_READY 0x4
+#define STATE_LOCATION_READY 0x8
+#define STATE_MEMS_READY 0x10
+#define STATE_NET_READY 0x20
+#define STATE_SERVER_CONNECTED 0x40
+#define STATE_WORKING 0x80
 
 #if MEMS_MODE
 float accBias[3] = {0}; // calibrated reference accelerometer data
@@ -410,17 +411,39 @@ bool initialize()
 {
   state.clear(STATE_WORKING);
 
-  byte ver;
-  for (byte n = 0; n < 10; n++) {
-    if ((ver = obd.getVersion())) break;
-    delay(3000);
-  }
-  
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
     Serial.print(F("MEMS:"));
     if (mems.begin()) {
       state.set(STATE_MEMS_READY);
+      Serial.println(F("OK"));
+    } else {
+      Serial.println(F("NO"));
+    }
+  }
+#endif
+
+  net.begin(&sys, true);
+  
+  // initialize OBD communication
+  if (!state.check(STATE_OBD_READY)) {
+    Serial.print(F("OBD:"));
+    if (!obd.init()) {
+      Serial.println(F("NO"));
+      if (state.check(STATE_OBD_FOUND)) return false;
+    } else {
+      Serial.println(F("OK"));
+      state.set(STATE_OBD_READY | STATE_OBD_FOUND);
+    }
+    obdRetryInterval = 10;
+  }
+
+#if ENABLE_GPS
+  // start serial communication with GPS receiver
+  if (!state.check(STATE_GPS_READY)) {
+    Serial.print(F("GPS:"));
+    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
+      state.set(STATE_GPS_READY);
       Serial.println(F("OK"));
     } else {
       Serial.println(F("NO"));
@@ -474,31 +497,6 @@ bool initialize()
   Serial.print(F("DEVID:"));
   Serial.println(devid);
 
-  // initialize OBD communication
-  if (!state.check(STATE_OBD_READY)) {
-    Serial.print(F("OBD:"));
-    if (!obd.init()) {
-      Serial.println(F("NO"));
-    } else {
-      Serial.println(F("OK"));
-      state.set(STATE_OBD_READY);
-    }
-    obdRetryInterval = 10;
-  }
-
-#if ENABLE_GPS
-  // start serial communication with GPS receiver
-  if (!state.check(STATE_GPS_READY)) {
-    Serial.print(F("GPS:"));
-    if (sys.gpsInit(GPS_SERIAL_BAUDRATE)) {
-      state.set(STATE_GPS_READY);
-      Serial.println(F("OK"));
-    } else {
-      Serial.println(F("NO"));
-    }
-  }
-#endif
-
 #if NET_DEVICE == NET_WIFI
   for (byte attempts = 0; attempts < 3; attempts++) {
     Serial.print(F("WIFI(SSID:"));
@@ -521,6 +519,7 @@ bool initialize()
     Serial.println("OK");
   } else {
     Serial.println("NO");
+    return false;
   }
 
   Serial.print(F("NET.."));
@@ -546,6 +545,7 @@ bool initialize()
   }
 #endif
 
+#if 0
   Serial.print(F("IP:"));
   String ip = net.getIP();
   if (ip.length()) {
@@ -553,6 +553,7 @@ bool initialize()
   } else {
     Serial.println(F("NO"));
   }
+#endif
 
   txCount = 0;
 
@@ -723,20 +724,17 @@ void standby()
   UTC = 0;
   state.clear(STATE_OBD_READY | STATE_GPS_READY | STATE_NET_READY | STATE_SERVER_CONNECTED);
   for (;;) {
-    shutDownNet();
+    if (state.check(STATE_NET_READY)) shutDownNet();
 #if MEMS_MODE
     calibrateMEMS();
 #endif
-    obd.lowPowerMode();
     Serial.println(F("STANDBY"));
     int ret = waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t));
     Serial.println(F("WAKEUP"));
     obd.getVersion();
     Serial.println();
     if (ret) break;
-    t = millis();
-    // start ping
-    Serial.print(F("Ping..."));
+    // check battery voltage
     float volts = obd.getVoltage();
     if (volts >= 6 && volts < BATTERY_LOW_VOLTAGE) {
       Serial.print(F("LOW BATT:"));
@@ -745,6 +743,9 @@ void standby()
       for (byte n = 0; n < 15; n++) sleep(WDTO_8S);
       continue;
     }
+    // start ping
+    Serial.print(F("Ping..."));
+    net.begin(&sys, true);
     cache.header(devid);
     cache.timestamp(millis());
     cache.log(PID_DEVICE_TEMP, deviceTemp);
