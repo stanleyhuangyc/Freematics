@@ -306,7 +306,7 @@ void COBDSPI::reset()
 {
 	char buf[32];
 	sendCommand("ATR\r", buf, sizeof(buf));
-	delay(3000);
+	delay(2000);
 	errors = 0;
 }
 
