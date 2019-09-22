@@ -319,9 +319,9 @@ void COBDSPI::end()
 
 byte COBDSPI::checkErrorMessage(const char* buffer)
 {
-	const char *errmsg[] = {PSTR("UNABLE"), PSTR("ERROR"), PSTR("TIMEOUT"), PSTR("NO DATA")};
+	const char *errmsg[] = {"UNABLE", "ERROR", "TIMEOUT", "NO DATA"};
 	for (byte i = 0; i < sizeof(errmsg) / sizeof(errmsg[0]); i++) {
-		if (strstr_P(buffer, errmsg[i])) return i + 1;
+		if (strstr(buffer, errmsg[i])) return i + 1;
 	}
 	return 0;
 }
@@ -338,7 +338,7 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 	}
 	if (protocol != PROTO_AUTO) {
 		sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
-		if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
+		if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr_P(buffer, PSTR("OK"))) {
 			return false;
 		}
 	}
