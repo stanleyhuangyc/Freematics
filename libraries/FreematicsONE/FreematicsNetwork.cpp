@@ -624,16 +624,10 @@ char* UDPClientSIM5360::receive(int* pbytes, unsigned int timeout)
         *ipd = '-';
         return payload;
       }
-      if (sendCommand("AT+CGPSINFO\r", timeout)) {
-        checkGPS();
-        return m_buffer;
-      }
+    }
+    if (!sendCommand("AT+CGPSINFO\r", timeout, "+IPD")) {
+      checkGPS();
       break;
-    } else {
-      if (!sendCommand("AT+CGPSINFO\r", timeout, "+IPD")) {
-        checkGPS();
-        break;
-      }
     }
   }
   return 0;
