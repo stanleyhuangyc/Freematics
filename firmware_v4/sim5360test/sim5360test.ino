@@ -41,7 +41,7 @@ public:
       for (byte n = 0; n < 3; n++) {
         // try turning on module
         xbTogglePower();
-        sleep(3000);
+        delay(3000);
         // discard any stale data
         xbPurge();
         for (byte m = 0; m < 3; m++) {
@@ -115,7 +115,7 @@ public:
             }
           }
         }
-        sleep(500);
+        delay(500);
         ip = 0;
       } while (millis() - t < 60000);
       return ip;
@@ -267,10 +267,19 @@ byte errors = 0;
 void setup()
 {
     Serial.begin(115200);
-    delay(500);
+    delay(1000);
     // this will init SPI communication
     sim.begin();
-    sim.xbBegin(XBEE_BAUDRATE);
+    //sim.xbBegin(XBEE_BAUDRATE);
+
+    //delay(25000);
+    for (;;) {
+      char buf[256];
+      //sim.xbRead(buf, sizeof(buf));
+      sim.sendCommand("ATI\r", buf, sizeof(buf));
+      delay(100);
+      //Serial.println(buf);
+    }
 
     // initialize SIM5360 xBee module (if present)
     for (;;) {
@@ -319,6 +328,13 @@ void setup()
     }
 }
 
+void printTime()
+{
+  Serial.print('[');
+  Serial.print(millis());
+  Serial.print(']');
+}
+
 void loop()
 {
   if (errors > 0) {
@@ -333,6 +349,8 @@ void loop()
 
   // connect to HTTP server
   if (netState != NET_CONNECTED) {
+    
+    printTime();
     Serial.println("Connecting...");
     sim.xbPurge();
     if (!sim.httpConnect()) {
@@ -344,6 +362,7 @@ void loop()
   }
 
   // send HTTP request
+  printTime();
   Serial.print("Sending HTTP request...");
   if (!sim.httpSend(HTTP_GET, "/test", true)) {
     Serial.println("failed");
@@ -355,6 +374,7 @@ void loop()
     Serial.println("OK");
   }
 
+  printTime();
   Serial.print("Receiving...");
   char *payload;
   if (sim.httpReceive(&payload)) {
@@ -369,6 +389,6 @@ void loop()
     errors++;
   }
 
-  Serial.println("Waiting 3 seconds...");
-  delay(3000);
+  //Serial.println("Waiting 3 seconds...");
+  delay(100);
 }
