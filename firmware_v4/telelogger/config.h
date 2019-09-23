@@ -14,7 +14,7 @@
 // maximum consecutive OBD-II access errors before disconnecting
 #define MAX_OBD_ERRORS 5
 
-#define MAX_OBD_RETRY_INTERVAL 120 /* seconds */
+#define MAX_OBD_RETRY_INTERVAL 10 /* seconds */
 
 /**************************************
 * Networking configurations
@@ -26,9 +26,7 @@
 #define WIFI_SSID "HOTSPOT"
 #define WIFI_PASSWORD "PASSWORD"
 // APN settings for cellular network (if required)
-#define CELL_APN ""
-// SIM PIN code (if required)
-#define SIM_PIN ""
+#define CELL_APN "hologram"
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 8081
@@ -63,7 +61,7 @@
 **************************************/
 #ifndef ENABLE_GPS
 // change the following line to enable (1)/disable (0) GPS
-#define ENABLE_GPS 1
+#define ENABLE_GPS 0
 #endif
 #define GPS_SERIAL_BAUDRATE 115200L
 
