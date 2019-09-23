@@ -515,24 +515,26 @@ bool initialize()
   }
 #else
   Serial.print("SIM:");
-  if (net.checkSIM()) {
-    Serial.println("OK");
+  bool hasSIM = net.checkSIM();
+  if (hasSIM) {
+    Serial.println(F("OK"));
   } else {
-    Serial.println("NO");
-    return false;
+    Serial.println(F("NO"));
   }
 
   Serial.print(F("NET.."));
-  if (net.setup(CELL_APN, 30000, !state.check(STATE_GPS_READY))) {
+  if (net.setup(CELL_APN, hasSIM ? 30000 : 1000, !state.check(STATE_GPS_READY))) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
     } else {
       Serial.println(F("OK"));
     }
+    state.set(STATE_SERVER_CONNECTED);
+    login();
   } else {
     Serial.println(F("NO"));
-    return false;
+    if (hasSIM) return false;
   }
   if (net.getLocation()) {
     Serial.println(F("CELL GPS ON"));
@@ -557,14 +559,8 @@ bool initialize()
 
   txCount = 0;
 
-  if (!state.check(STATE_OBD_READY) && obd.init()) {
-    state.set(STATE_OBD_READY);
-  }
-
-  login();
-
   sessionStartTime = lastMotionTime = millis();
-  state.set(STATE_SERVER_CONNECTED | STATE_WORKING);
+  state.set(STATE_WORKING);
   return true;
 }
 
@@ -616,10 +612,8 @@ bool waitMotion(long timeout)
 *******************************************************************************/
 void process()
 {
-  uint32_t startTime = millis();
-
   cache.header(devid);
-  cache.timestamp(startTime);
+  cache.timestamp(millis());
 
   // process GPS data if connected
   if (state.check(STATE_GPS_READY)) {
@@ -656,46 +650,6 @@ void process()
 #endif
 
   cache.tailer();
-
-  Serial.print('{');
-  Serial.print(cache.buffer()); 
-  Serial.println('}');
-
-  if (cache.samples() > 0) {
-    transmit();
-  }
-
-  if (!state.check(STATE_OBD_READY)) {
-    if (millis() - lastOBDTry > 1000L * obdRetryInterval) {
-      Serial.print(F("OBD:"));
-      if (obd.testPID(PID_SPEED)) {
-        state.set(STATE_OBD_READY);
-        Serial.println(F("OK"));
-      } else {
-        Serial.println(F("NO"));
-      }
-      lastOBDTry = millis();
-      if (obdRetryInterval < MAX_OBD_RETRY_INTERVAL) obdRetryInterval += 10;
-    }
-  }
-
-  // motion controlled data sending interval
-  unsigned int motionless = (millis() - lastMotionTime) / 1000;
-  bool stop = true;
-  uint16_t sendingInterval = 0;
-  for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
-    if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
-      sendingInterval = 1000L * sendingIntervals[i];
-      stop = false;
-      break;
-    }
-  }
-  if (stop) {
-    state.clear(STATE_WORKING);
-  } else {
-    long n = startTime + sendingInterval - millis();
-    if (n > 0) waitMotion(n);
-  }
 }
 
 /*******************************************************************************
@@ -729,7 +683,20 @@ void standby()
     calibrateMEMS();
 #endif
     Serial.println(F("STANDBY"));
-    int ret = waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t));
+    int ret = 0;
+    if (state.check(STATE_MEMS_READY)) {
+      ret = waitMotion(1000L * PING_BACK_INTERVAL - (millis() - t));
+    } else {
+      do {
+        float volts = obd.getVoltage();
+        Serial.println(volts, 1);
+        if (volts >= CHARGING_VOLTAGE) {
+          ret = 1;
+          break;
+        }
+        delay(5000);
+      } while (millis() - t < 1000L * PING_BACK_INTERVAL);
+    }
     Serial.println(F("WAKEUP"));
     t = millis();
     obd.getVersion();
@@ -787,8 +754,10 @@ void recvTasks(int timeout)
     char *data = net.receive(&len, timeout);
     if (data) {
       data[len] = 0;
+      Serial.print(F("RECV:{"));
+      Serial.print(data);
+      Serial.println('}');
       if (!verifyChecksum(data)) {
-        Serial.println(data);
         return;
       }
       char *p = strstr_P(data, PSTR("EV="));
@@ -818,6 +787,8 @@ void setup()
 
 void loop()
 {
+  uint32_t startTime = millis();
+
   if (!state.check(STATE_WORKING)) {
     if (state.check(STATE_SERVER_CONNECTED)) {
       Serial.println(F("LOGOUT"));
@@ -829,11 +800,13 @@ void loop()
     initialize();
     return;
   }
+
   // receive network data
   recvTasks();
+
 #if SERVER_SYNC_INTERVAL
   // check server sync signal to ensure connection consistency
-  if (millis() - lastSyncTime > 1000L * SERVER_SYNC_INTERVAL) {
+  if (state.check(STATE_SERVER_CONNECTED) && millis() - lastSyncTime > 1000L * SERVER_SYNC_INTERVAL) {
     Serial.println(F("NO SYNC"));
     connErrors = MAX_CONN_ERRORS;
   }
@@ -846,6 +819,51 @@ void loop()
     initialize();
     return;
   }
-  // collect and transmit data
+
+  // collect data
   process();
+
+  Serial.print(F("DATA:{"));
+  Serial.print(cache.buffer()); 
+  Serial.println('}');
+
+  // transmit data
+  if (state.check(STATE_SERVER_CONNECTED)) {
+    if (cache.samples() > 0) {
+      transmit();
+    }
+  }
+
+  // re-try OBD connection if it is not ready
+  if (!state.check(STATE_OBD_READY)) {
+    if (millis() - lastOBDTry > 1000L * obdRetryInterval) {
+      Serial.print(F("OBD:"));
+      if (obd.testPID(PID_SPEED)) {
+        state.set(STATE_OBD_READY);
+        Serial.println(F("OK"));
+      } else {
+        Serial.println(F("NO"));
+      }
+      lastOBDTry = millis();
+      if (obdRetryInterval < MAX_OBD_RETRY_INTERVAL) obdRetryInterval += 10;
+    }
+  }
+
+  // motion controlled interval
+  unsigned int motionless = (millis() - lastMotionTime) / 1000;
+  bool stop = true;
+  uint16_t sendingInterval = 0;
+  for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
+    if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
+      sendingInterval = 1000L * sendingIntervals[i];
+      stop = false;
+      break;
+    }
+  }
+  if (stop) {
+    state.clear(STATE_WORKING);
+  } else {
+    long n = startTime + sendingInterval - millis();
+    if (n > 0) waitMotion(n);
+  }
 }

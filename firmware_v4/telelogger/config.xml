@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
 <target name="Freematics ONE" board="uno" monitor_baudrate="115200">
-  <define name="Enable GPS" type="bool" const="ENABLE_GPS" default="true"/>
   <define name="Enable Motion Sensor" type="bool" const="MEMS_MODE" default="true"/>
   <define name="Networking">
-    <option name="GPRS (SIM800)" const="NET_DEVICE=NET_SIM800"/>
-    <option name="WCDMA (SIM5360)" const="NET_DEVICE=NET_SIM5360" default="true"/>
+    <option name="SIM800 (GSM)" const="NET_DEVICE=NET_SIM800"/>
+    <option name="SIM5360 (WCDMA)" const="NET_DEVICE=NET_SIM5360" default="true"/>
   </define>
-  <define name="Cellular Network APN" const="CELL_APN" type="string"/>
+  <define name="Cellular Network APN" const="CELL_APN" type="string" default="hologram" />
+  <define name="Use External GPS" type="bool" const="ENABLE_GPS"/>
   <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
   <define name="Server Port" const="SERVER_PORT" type="number" default="8081"/>
 </target>
