@@ -2,6 +2,13 @@
 #define CONFIG_H_INCLUDED
 
 /**************************************
+* CSV Logging Configuration
+**************************************/
+
+#define SHOULD_OBD_LOG true
+#define SHOULD_GPS_LOG true
+
+/**************************************
 * Circular Buffer Configuration
 **************************************/
 #define BUFFER_SLOTS 32 /* max number of buffer */
@@ -46,10 +53,10 @@
 **************************************/
 #ifndef NET_DEVICE
 // change the following line to change network device
-#define NET_DEVICE NET_SIM7600
+#define NET_DEVICE NET_WIFI
 // WiFi settings
-#define WIFI_SSID "SSID"
-#define WIFI_PASSWORD "PASSWORD"
+#define WIFI_SSID "LII"
+#define WIFI_PASSWORD "industri@40"
 // WiFi Mesh settings
 #define WIFI_MESH_ID "123456"
 #define WIFI_MESH_CHANNEL 13
