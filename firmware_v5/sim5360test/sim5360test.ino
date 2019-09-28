@@ -27,7 +27,6 @@ int errors = 0;
 
 bool init_net()
 {
-    // initialize SIM5360 xBee module (if present)
     Serial.print("Init cellular module...");
     if (net.begin(&sys)) {
       Serial.print(net.deviceName());
@@ -96,19 +95,16 @@ void setup()
 
 void loop()
 {
-  if (errors > 0) {
-    net.close();
-    if (errors > 10) {
-      // re-initialize cellular module
-      net.end();
-      if (init_net()) {
-        Serial.println("OK");
-        errors = 0;
-      } else {
-        Serial.println("NO");
-        delay(3000);
-        return;
-      }
+  if (errors > 10) {
+    // re-initialize cellular module
+    net.end();
+    if (init_net()) {
+      Serial.println("OK");
+      errors = 0;
+    } else {
+      Serial.println("NO");
+      delay(3000);
+      return;
     }
   }
 
@@ -119,6 +115,7 @@ void loop()
       Serial.println("OK");
     } else {
       Serial.println("failed");
+      net.close();
       errors++;
       return;
     }
@@ -128,8 +125,8 @@ void loop()
   Serial.print("Sending request...");
   if (!net.send(METHOD_GET, SERVER_PATH, true)) {
     Serial.println("failed");
-    errors++;
     net.close();
+    errors++;
     return;
   } else {
     Serial.println("OK");
@@ -148,6 +145,7 @@ void loop()
     errors = 0;
   } else {
     Serial.println("failed");
+    net.close();
     errors++;
   }
 
