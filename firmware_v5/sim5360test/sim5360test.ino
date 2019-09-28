@@ -21,16 +21,9 @@
 #define CELL_APN ""
 #define CONN_TIMEOUT 5000
 
-typedef enum {
-    NET_DISCONNECTED = 0,
-    NET_CONNECTED,
-    NET_HTTP_ERROR,
-} NET_STATES;
-
 FreematicsESP32 sys;
 HTTPClientSIM5360 net;
-byte netState = NET_DISCONNECTED;
-byte errors = 0;
+int errors = 0;
 
 bool init_net()
 {
@@ -105,7 +98,6 @@ void loop()
 {
   if (errors > 0) {
     net.close();
-    netState = NET_DISCONNECTED;
     if (errors > 10) {
       // re-initialize cellular module
       net.end();
@@ -121,7 +113,7 @@ void loop()
   }
 
   // connect to HTTP server
-  if (netState != NET_CONNECTED) {
+  if (net.state() != HTTP_CONNECTED) {
     Serial.print("Connecting...");
     if (net.open(SERVER_HOST, SERVER_PORT)) {
       Serial.println("OK");
@@ -137,7 +129,7 @@ void loop()
   if (!net.send(METHOD_GET, SERVER_PATH, true)) {
     Serial.println("failed");
     errors++;
-    netState = NET_DISCONNECTED;
+    net.close();
     return;
   } else {
     Serial.println("OK");
@@ -153,7 +145,6 @@ void loop()
     Serial.println("-----HTTP RESPONSE-----");
     Serial.println(response);
     Serial.println("-----------------------");
-    netState = NET_CONNECTED;
     errors = 0;
   } else {
     Serial.println("failed");
