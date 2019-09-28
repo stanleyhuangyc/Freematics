@@ -15,7 +15,8 @@
 
 #include "FreematicsBase.h"
 
-#define HTTP_CONN_TIMEOUT 5000
+#define XBEE_BAUDRATE 115200
+#define HTTP_CONN_TIMEOUT 10000
 
 typedef enum {
   METHOD_GET = 0,
@@ -45,8 +46,9 @@ class HTTPClient
 public:
     HTTP_STATES state() { return m_state; }
 protected:
-    unsigned int genHeader(char* header, HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize);
+    String genHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize);
     HTTP_STATES m_state = HTTP_DISCONNECTED;
+    String m_host;
 };
 
 class ClientWIFI
@@ -82,7 +84,7 @@ class HTTPClientWIFI : public HTTPClient, public ClientWIFI
 public:
     bool open(const char* host, uint16_t port);
     void close();
-    int send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
     int code = 0;
 private:
@@ -107,7 +109,6 @@ public:
 protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
     char m_buffer[256] = {0};
-    uint8_t m_stage = 0;
     CFreematics* m_device = 0;
 };
 
@@ -126,7 +127,7 @@ class HTTPClientSIM800 : public HTTPClient, public ClientSIM800
 {
 public:
     bool open(const char* host, uint16_t port);
-    int send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
     void close();
 protected:
@@ -164,7 +165,6 @@ protected:
     void checkGPS();
     float parseDegree(const char* s);
     char m_buffer[384] = {0};
-    uint8_t m_stage = 0;
     char m_model[12] = {0};
     CFreematics* m_device = 0;
     GPS_DATA* m_gps = 0;
@@ -186,9 +186,9 @@ protected:
 class HTTPClientSIM5360 : public HTTPClient, public ClientSIM5360
 {
 public:
-    bool open(const char* host, uint16_t port);
+    bool open(const char* host = 0, uint16_t port = 0);
     void close();
-    int send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };
 
@@ -216,8 +216,8 @@ protected:
 class HTTPClientSIM7600 : public HTTPClient, public ClientSIM7600
 {
 public:
-    bool open(const char* host, uint16_t port);
+    bool open(const char* host = 0, uint16_t port = 0);
     void close();
-    int send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };

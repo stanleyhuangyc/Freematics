@@ -153,10 +153,9 @@ public:
 protected:
     int getFileID(File& root)
     {
-        int id = 0;
-        m_dataCount = 0;
         if (root) {
             File file;
+            int id = 0;
             while(file = root.openNextFile()) {
                 Serial.println(file.name());
                 if (!strncmp(file.name(), "/DATA/", 6)) {
@@ -164,9 +163,10 @@ protected:
                     if (n > id) id = n;
                 }
             }
-            id++;
+            return id + 1;
+        } else {
+            return 1;
         }
-        return id;
     }
     uint32_t m_dataTime = 0;
     uint32_t m_dataCount = 0;
@@ -179,16 +179,18 @@ class SDLogger : public FileLogger {
 public:
     bool init()
     {
-        Serial.print("SD:");
         SPI.begin();
         if (SD.begin(PIN_SD_CS, SPI, SPI_FREQ)) {
-            Serial.print((unsigned int)(SD.totalBytes() >> 20));
+            unsigned int total = SD.totalBytes() >> 20;
+            unsigned int used = SD.usedBytes() >> 20;
+            Serial.print("SD:");
+            Serial.print(total);
             Serial.print(" MB total, ");
-            Serial.print((unsigned int)(SD.usedBytes() >> 20));
+            Serial.print(used);
             Serial.println(" MB used");
             return true;
         } else {
-            Serial.println("NO CARD");
+            Serial.println("NO SD CARD");
             return false;
         }
     }
@@ -206,6 +208,7 @@ public:
             Serial.println("File error");
             m_id = 0;
         }
+        m_dataCount = 0;
         return m_id;
     }
     void flush()
@@ -229,14 +232,14 @@ public:
             Serial.println("Formatting SPIFFS...");
             mounted = SPIFFS.begin(true);
         }
-        Serial.print("SPIFFS:");
         if (mounted) {
+            Serial.print("SPIFFS:");
             Serial.print(SPIFFS.totalBytes());
             Serial.print(" bytes total, ");
             Serial.print(SPIFFS.usedBytes());
             Serial.println(" bytes used");
         } else {
-            Serial.println("failed");
+            Serial.println("No SPIFFS");
         }
         return mounted;
     }
@@ -253,6 +256,7 @@ public:
             Serial.println("File error");
             m_id = 0;
         }
+        m_dataCount = 0;
         return m_id;
     }
 private:

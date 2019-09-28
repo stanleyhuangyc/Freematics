@@ -34,8 +34,7 @@
   <define name="Server Port (0 for auto)" const="SERVER_PORT" type="number" default="0"/>
   <define name="Transport Protocol">
     <option name="UDP" const="SERVER_PROTOCOL=PROTOCOL_UDP"/>
-    <option name="HTTP GET" const="SERVER_PROTOCOL=PROTOCOL_HTTP_GET"/>
-    <option name="HTTP POST" const="SERVER_PROTOCOL=PROTOCOL_HTTP_POST"/>
+    <option name="HTTPS" const="SERVER_PROTOCOL=PROTOCOL_HTTPS"/>
   </define>
 </target>
 </config>

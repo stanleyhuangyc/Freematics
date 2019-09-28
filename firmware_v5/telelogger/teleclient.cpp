@@ -278,6 +278,7 @@ bool TeleClientUDP::ping()
 
 bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
+  inbound();
   // transmit data
   if (net.send(packetBuffer, packetSize)) {
     txBytes += packetSize;
@@ -333,28 +334,16 @@ void TeleClientUDP::shutdown()
 
 #if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
 
+bool TeleClientHTTP::notify(byte event, const char* payload)
+{
+  char url[256];
+  snprintf(url, sizeof(url), "%s/notify/%s?EV=%u&SSI=%d&VIN=%s", SERVER_PATH, devid,
+    (unsigned int)event, (int)rssi, vin);
+  return net.send(METHOD_GET, url, true) && net.receive();
+}
+
 bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
-  if (net.state() == HTTP_SENT) {
-    // check response
-    int bytes = 0;
-    char* resp = net.receive(&bytes, 3000);
-    if (resp) {
-      if (strstr(resp, " 200 ")) {
-        // successful
-        lastSyncTime = millis();
-        rxBytes += bytes;
-      } else {
-        Serial.print(resp);
-      }
-    } else {
-      // close connection on receiving timeout
-      Serial.println("No HTTP response");
-      net.close();
-      return false;
-    }
-  }
-
   if (net.state() != HTTP_CONNECTED) {
     // reconnect if disconnected
     if (!connect()) {
@@ -363,41 +352,72 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   }
 
   char url[256];
+  bool success;
+  int len;
+#if SERVER_METHOD == PROTOCOL_METHOD_GET
   if (gd && gd->ts) {
-    sprintf(url, "%s?id=%s&timestamp=%s&lat=%f&lon=%f&altitude=%d&speed=%f&heading=%d",
+    len = snprintf(url, sizeof(url), "%s/push?id=%s&timestamp=%s&lat=%f&lon=%f&altitude=%d&speed=%f&heading=%d",
       SERVER_PATH, devid, isoTime,
       gd->lat, gd->lng, (int)gd->alt, gd->speed, (int)gd->heading);
   } else {
-    sprintf(url, "%s?id=%s", SERVER_PATH, devid);
+    len = snprintf(url, sizeof(url), "%s/push?id=%s", SERVER_PATH, devid);
+  }
+  success = net.send(METHOD_GET, url, true);
+#else
+  len = snprintf(url, sizeof(url), "%s/post/%s", SERVER_PATH, devid);
+  success = net.send(METHOD_POST, url, true, packetBuffer, packetSize);
+  len += packetSize;
+#endif
+  if (!success) {
+    Serial.println("Connection closed");
+    net.close();
+    return false;
+  } else {
+    txBytes += len;
+    txCount++;
   }
 
-  int ret;
-#if SERVER_PROTOCOL == PROTOCOL_HTTP_POST
-  ret = net.send(METHOD_POST, url, true, packetBuffer, packetSize);
-#else
-  ret = net.send(METHOD_GET, url, true);
-#endif
-  if (ret == 0) {
-    Serial.println("Connection closed by server");
+  // check response
+  int bytes = 0;
+  char* response = net.receive(&bytes);
+  if (!response) {
+    // close connection on receiving timeout
+    Serial.println("No HTTP response");
     net.close();
-  } else if (ret < 0) {
-    Serial.println("Error sending HTTP request");
-    net.close();
-  } else {
-    txBytes += ret;
-    txCount++;
-  }  
-  return ret > 0;
+    return false;
+  }
+  Serial.println(response);
+  if (strstr(response, " 200 ")) {
+    // successful
+    lastSyncTime = millis();
+    rxBytes += bytes;
+  }
+  return true;
 }
 
 bool TeleClientHTTP::connect()
 {
+  if (!started) {
+    started = net.open();
+    Serial.println("HTTPS stack started");
+  }
+
   // connect to HTTP server
   if (!net.open(SERVER_HOST, SERVER_PORT)) {
     Serial.println("Error connecting to server");
     return false;
   }
-  lastSyncTime = millis();
+
+  byte event = login ? EVENT_RECONNECT : EVENT_LOGIN;
+  Serial.print(event == EVENT_LOGIN ? "LOGIN(" : "RECONNECT(");
+  Serial.print(SERVER_HOST);
+  Serial.print(':');
+  Serial.print(SERVER_PORT);
+  Serial.println(")...");
+  // log in or reconnect to Freematics Hub
+  if (notify(event)) {
+    lastSyncTime = millis();
+  }
   return true;
 }
 
@@ -412,6 +432,7 @@ void TeleClientHTTP::shutdown()
   net.close();
   net.end();
   Serial.println(" OFF");
+  started = false;
 }
 
 #endif

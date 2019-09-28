@@ -156,10 +156,10 @@ public:
 #endif
 };
 
-
 class TeleClientHTTP : public TeleClient
 {
 public:
+    bool notify(byte event, const char* payload = 0);
     bool connect();
     bool transmit(const char* packetBuffer, unsigned int packetSize);
     bool ping();
@@ -173,4 +173,6 @@ public:
 #elif NET_DEVICE == NET_SIM7600
     HTTPClientSIM7600 net;
 #endif
+private:
+    bool started = false;
 };

@@ -76,7 +76,7 @@ class CFreematics
 public:
 	virtual void begin() {}
 	// start xBee UART communication
-	virtual bool xbBegin(unsigned long baudrate = 115200L) = 0;
+	virtual bool xbBegin(unsigned long baudrate = 115200L, int pinRx = 0, int pinTx = 0) = 0;
 	virtual void xbEnd() {}
 	// read data to xBee UART
 	virtual int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000) = 0;
