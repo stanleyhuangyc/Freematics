@@ -922,11 +922,6 @@ void telemetry(void* inst)
 
   for (;;) {
     if (!state.check(STATE_WORKING)) {
-      if (state.check(STATE_NET_CONNECTED)) {
-        if (teleClient.notify(EVENT_LOGOUT)) {
-          Serial.println("Logged Out");
-        }
-      }
       if (state.check(STATE_NET_READY)) {
         teleClient.shutdown();
       }

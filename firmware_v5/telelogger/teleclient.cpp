@@ -326,6 +326,10 @@ void TeleClientUDP::inbound()
 
 void TeleClientUDP::shutdown()
 {
+  if (login) {
+    notify(EVENT_LOGOUT);
+    login = false;
+  }
   net.close();
   net.end();
   Serial.print(net.deviceName());
@@ -339,6 +343,7 @@ bool TeleClientHTTP::notify(byte event, const char* payload)
   char url[256];
   snprintf(url, sizeof(url), "%s/notify/%s?EV=%u&SSI=%d&VIN=%s", SERVER_PATH, devid,
     (unsigned int)event, (int)rssi, vin);
+  if (event == EVENT_LOGOUT) login = false;
   return net.send(METHOD_GET, url, true) && net.receive();
 }
 
@@ -408,15 +413,17 @@ bool TeleClientHTTP::connect()
     return false;
   }
 
-  byte event = login ? EVENT_RECONNECT : EVENT_LOGIN;
-  Serial.print(event == EVENT_LOGIN ? "LOGIN(" : "RECONNECT(");
-  Serial.print(SERVER_HOST);
-  Serial.print(':');
-  Serial.print(SERVER_PORT);
-  Serial.println(")...");
-  // log in or reconnect to Freematics Hub
-  if (notify(event)) {
-    lastSyncTime = millis();
+  if (!login) {
+    Serial.print("LOGIN(");
+    Serial.print(SERVER_HOST);
+    Serial.print(':');
+    Serial.print(SERVER_PORT);
+    Serial.println(")...");
+    // log in or reconnect to Freematics Hub
+    if (notify(EVENT_LOGIN)) {
+      lastSyncTime = millis();
+      login = true;
+    }
   }
   return true;
 }
@@ -429,6 +436,10 @@ bool TeleClientHTTP::ping()
 void TeleClientHTTP::shutdown()
 {
   Serial.print(net.deviceName());
+  if (login) {
+    notify(EVENT_LOGOUT);
+    login = false;
+  }
   net.close();
   net.end();
   Serial.println(" OFF");
