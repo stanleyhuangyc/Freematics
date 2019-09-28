@@ -28,8 +28,10 @@
 #define STORAGE_SD 2
 
 #define PROTOCOL_UDP 1
-#define PROTOCOL_HTTP_GET 2
-#define PROTOCOL_HTTP_POST 3
+#define PROTOCOL_HTTPS 2
+
+#define PROTOCOL_METHOD_GET 0
+#define PROTOCOL_METHOD_POST 1
 
 /**************************************
 * OBD-II configurations
@@ -57,20 +59,19 @@
 #define CELL_APN ""
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
-#define SERVER_PORT 0
 #define SERVER_PROTOCOL PROTOCOL_UDP
-#endif
+#endif 
+
+#define SERVER_METHOD PROTOCOL_METHOD_POST
+#define SERVER_PATH "/hub/api"
 
 #if !SERVER_PORT
-#undef SERVER_PORT
 #if SERVER_PROTOCOL == PROTOCOL_UDP
 #define SERVER_PORT 8081
-#else
-#define SERVER_PORT 8080
+#elif SERVER_PROTOCOL == PROTOCOL_HTTPS
+#define SERVER_PORT 443
 #endif
 #endif
-
-#define SERVER_PATH "/api/post"
 
 #define WIFI_AP_SSID "TELELOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
@@ -84,10 +85,10 @@
 // expected maximum server sync signal interval
 #define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
 // data interval configurations
-#define STATIONARY_TIME_TABLE {10, 30, 300} /* seconds */
+#define STATIONARY_TIME_TABLE {30, 60, 180} /* seconds */
 #define SENDING_INTERVAL_TABLE {0, 2000, 5000} /* ms */
 #define DATASET_INTERVAL 200
-#define PING_BACK_INTERVAL 300 /* seconds */
+#define PING_BACK_INTERVAL 900 /* seconds */
 
 /**************************************
 * Data storage configurations

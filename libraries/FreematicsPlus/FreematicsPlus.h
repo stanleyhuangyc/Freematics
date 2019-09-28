@@ -56,8 +56,11 @@
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
 
-#define GNSS_SOFT_SERIAL 0x1
-#define GNSS_USE_LINK 0x2
+#define USE_GNSS 0x1
+#define USE_CELL 0x2
+#define USE_UART_LINK 0x4
+#define GNSS_SOFT_SERIAL 0x8
+#define GNSS_USE_LINK 0x10
 
 int readChipTemperature();
 int readChipHallSensor();
@@ -119,7 +122,7 @@ private:
 class FreematicsESP32 : public CFreematics
 {
 public:
-  bool begin(int cpuMHz = 0);
+  bool begin(bool useGNSS = true, bool useCellular = true);
   // start GPS
   bool gpsBegin(int baudrate = 115200, bool buffered = false);
   // turn off GPS
@@ -131,7 +134,7 @@ public:
   // send command string to GPS
   void gpsSendCommand(const char* string, int len);
   // start xBee UART communication
-  bool xbBegin(unsigned long baudrate = BEE_BAUDRATE);
+  bool xbBegin(unsigned long baudrate = BEE_BAUDRATE, int pinRx = PIN_BEE_UART_RXD, int pinTx = PIN_BEE_UART_TXD);
   void xbEnd();
   // read data to xBee UART
   int xbRead(char* buffer, int bufsize, unsigned int timeout = 1000);

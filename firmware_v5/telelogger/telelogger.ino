@@ -86,7 +86,7 @@ uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 
 #if STORAGE != STORAGE_NONE
 int fileid = 0;
-static uint8_t lastSizeKB = 0;
+static uint16_t lastSizeKB = 0;
 #endif
 
 uint32_t lastCmdToken = 0;
@@ -777,22 +777,17 @@ void process()
     buffer->add(PID_DEVICE_TEMP, deviceTemp);
   }
 
-#if STORAGE != STORAGE_NONE
-  if (state.check(STATE_STORAGE_READY)) {
-    uint8_t sizeKB = (uint8_t)(logger.size() >> 10);
-    if (sizeKB != lastSizeKB) {
-        logger.flush();
-        lastSizeKB = sizeKB;
-    }
-  }
-#endif
-
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;
 
 #if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
     buffer->serialize(logger);
+    uint16_t sizeKB = (uint16_t)(logger.size() >> 10);
+    if (sizeKB != lastSizeKB) {
+        logger.flush();
+        lastSizeKB = sizeKB;
+    }
   }
 #endif
   bufman.printStats();
@@ -801,11 +796,6 @@ void process()
   long t = (long)DATASET_INTERVAL - (millis() - startTime);
   if (t > 0 && t < DATASET_INTERVAL) delay(t);
 #endif
-  if (deviceTemp >= COOLING_DOWN_TEMP) {
-    // device too hot, cool down
-    Serial.println("Overheat");
-    delay(10000);
-  }
 }
 
 bool initNetwork()
@@ -851,13 +841,14 @@ bool initNetwork()
     oled.print("IMEI:");
     oled.println(teleClient.net.IMEI);
 #endif
+  if (!teleClient.net.checkSIM()) {
+    Serial.print(teleClient.net.deviceName());
+    Serial.println(" NO SIM");
+    return false;
+  }
   Serial.print(teleClient.net.deviceName());
   Serial.print(" IMEI:");
   Serial.println(teleClient.net.IMEI);
-  if (!teleClient.net.checkSIM()) {
-    Serial.println("NO SIM CARD");
-    return false;
-  }
   if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
     bool extGPS = state.check(STATE_GPS_READY);
     if (teleClient.net.setup(CELL_APN)) {
@@ -1019,9 +1010,6 @@ void telemetry(void* inst)
 
       store.purge();
 
-      // process inbound data
-      teleClient.inbound();
-
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
         Serial.println("Instable connection");
         connErrors++;
@@ -1061,6 +1049,13 @@ void telemetry(void* inst)
           break;
         }
       }
+
+      if (deviceTemp >= COOLING_DOWN_TEMP) {
+        // device too hot, cool down by pause transmission
+        Serial.println("Overheat");
+        delay(10000);
+      }
+
     }
   }
 }

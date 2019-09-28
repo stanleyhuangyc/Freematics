@@ -9,19 +9,22 @@
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
 
-#define XBEE_BAUDRATE 115200
-
-unsigned int HTTPClient::genHeader(char* header, HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+String HTTPClient::genHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
 {
+  String header;
   // generate a simplest HTTP header
-  char *p = header;
-  p += sprintf(p, "%s %s HTTP/1.1\r\nConnection: %s\r\n",
-    method == METHOD_GET ? "GET" : "POST", path, keepAlive ? "keep-alive" : "close");
+  header = method == METHOD_GET ? "GET " : "POST ";
+  header += path;
+  header += " HTTP/1.1\r\nConnection: ";
+  header += keepAlive ? "keep-alive" : "close";
+  header += "\r\nHost: ";
+  header += m_host;
   if (method != METHOD_GET) {
-    p += sprintf(p, "Content-length: %u\r\n", payloadSize);
+    header += "\r\nContent-length: ";
+    header += String(payloadSize);
   }
-  p += sprintf(p, "\r\n");
-  return (unsigned int)(p - header);
+  header += "\r\n\r\n";
+  return header;
 }
 
 /*******************************************************************************
@@ -125,6 +128,7 @@ bool HTTPClientWIFI::open(const char* host, uint16_t port)
 {
   if (client.connect(host, port)) {
     m_state = HTTP_CONNECTED;
+    m_host = host;
     return true;
   } else {
     m_state = HTTP_ERROR;
@@ -138,21 +142,22 @@ void HTTPClientWIFI::close()
   m_state = HTTP_DISCONNECTED;
 }
 
-int HTTPClientWIFI::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+bool HTTPClientWIFI::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
 {
-  unsigned int headerSize = genHeader(m_buffer, method, path, keepAlive, payload, payloadSize);
-  if (client.write(m_buffer, headerSize) != headerSize) {
+  String header = genHeader(method, path, keepAlive, payload, payloadSize);
+  int len = header.length();
+  if (client.write(header.c_str(), len) != len) {
     m_state = HTTP_DISCONNECTED;
-    return 0;
+    return false;
   }
   if (payloadSize) {
     if (client.write(payload, payloadSize) != payloadSize) {
       m_state = HTTP_ERROR;
-      return -1;
+      return false;
     }
   }
   m_state = HTTP_SENT;
-  return headerSize + payloadSize;
+  return true;
 }
 
 char* HTTPClientWIFI::receive(int* pbytes, unsigned int timeout)
@@ -187,10 +192,6 @@ char* HTTPClientWIFI::receive(int* pbytes, unsigned int timeout)
 bool ClientSIM800::begin(CFreematics* device)
 {
   m_device = device;
-  if (m_stage == 0) {
-    device->xbBegin(XBEE_BAUDRATE);
-    m_stage = 1;
-  }
   for (byte n = 0; n < 10; n++) {
     // try turning on module
     device->xbTogglePower();
@@ -199,7 +200,6 @@ bool ClientSIM800::begin(CFreematics* device)
     delay(2000);
     for (byte m = 0; m < 3; m++) {
       if (sendCommand("AT\r")) {
-        m_stage = 2;
         return true;
       }
     }
@@ -210,7 +210,6 @@ bool ClientSIM800::begin(CFreematics* device)
 void ClientSIM800::end()
 {
   sendCommand("AT+CPOWD=1\r");
-  m_stage = 1;
 }
 
 bool ClientSIM800::setup(const char* apn, bool gps, unsigned int timeout)
@@ -402,7 +401,7 @@ bool HTTPClientSIM800::open(const char* host, uint16_t port)
   return true;
 }
 
-int HTTPClientSIM800::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+bool HTTPClientSIM800::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
 {
   sendCommand("AT+HTTPPARA = \"CID\",1\r");
   sprintf(m_buffer, "AT+HTTPPARA=\"URL\",\"%s:%u%s\"\r", m_host.c_str(), m_port, path);
@@ -410,19 +409,19 @@ int HTTPClientSIM800::send(HTTP_METHOD method, const char* path, bool keepAlive,
   } else if (method == METHOD_GET) {
     if (sendCommand("AT+HTTPACTION=0\r", HTTP_CONN_TIMEOUT)) {
       m_state = HTTP_SENT;
-      return strlen(path);  
+      return true;
     }
   } else {
     sprintf(m_buffer, "AT+HTTPDATA=%u,10000\r", payloadSize);
     if (sendCommand(m_buffer)) {
       if (sendCommand("AT+HTTPACTION=1\r", HTTP_CONN_TIMEOUT))
         m_state = HTTP_SENT;
-        return payloadSize;
+        return true;
     }
   }
   m_state = HTTP_ERROR;
   Serial.println(m_buffer);
-  return -1;
+  return false;
 }
 
 void HTTPClientSIM800::close()
@@ -462,19 +461,14 @@ char* HTTPClientSIM800::receive(int* pbytes, unsigned int timeout)
 bool ClientSIM5360::begin(CFreematics* device)
 {
   m_device = device;
-  if (m_stage == 0) {
-    device->xbBegin(XBEE_BAUDRATE);
-    m_stage = 1;
-  }
   for (byte n = 0; n < 3; n++) {
     // try turning on module
     device->xbTogglePower();
     // discard any stale data
     device->xbPurge();
-    delay(2000);
+    delay(3000);
     for (byte m = 0; m < 5; m++) {
       if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
-        m_stage = 2;
         // retrieve module info
         char *p = strstr(m_buffer, "Model:");
         if (p) p = strchr(p, '_');
@@ -499,7 +493,6 @@ void ClientSIM5360::end()
 {
   setGPS(false);
   sendCommand("AT+CPOF\r");
-  m_stage = 1;
 }
 
 bool ClientSIM5360::setup(const char* apn, unsigned int timeout)
@@ -718,6 +711,7 @@ void ClientSIM5360::checkGPS()
 
 bool UDPClientSIM5360::open(const char* host, uint16_t port)
 {
+  sendCommand("AT+NETOPEN\r");
   if (host) {
     udpIP = queryIP(host);
     if (!udpIP.length()) {
@@ -737,6 +731,7 @@ bool UDPClientSIM5360::open(const char* host, uint16_t port)
 void UDPClientSIM5360::close()
 {
   sendCommand("AT+CIPCLOSE=0\r");
+  sendCommand("AT+NETCLOSE\r");
 }
 
 bool UDPClientSIM5360::send(const char* data, unsigned int len)
@@ -778,74 +773,80 @@ char* UDPClientSIM5360::checkIncoming(int* pbytes)
 
 bool HTTPClientSIM5360::open(const char* host, uint16_t port)
 {
-  sendCommand("AT+CHTTPSSTART\r", 1000);
-  sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,1\r", host, port);
-  if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT)) {
-    m_state = HTTP_CONNECTED;
-    return true;
-  } else {
-    m_state = HTTP_ERROR;
+  if (!host) {
+    close();
+    for (int i = 0; i < 30; i++) {
+      sendCommand("AT+CHTTPSSTOP\r");
+      if (sendCommand("AT+CHTTPSSTART\r")) {
+        return true;
+      }
+    }
     return false;
   }
+  sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,%u\r", host, port, port == 443 ? 2: 1);
+  if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT)) {
+    m_state = HTTP_CONNECTED;
+    m_host = host;
+    return true;
+  }
+  Serial.println(m_buffer);
+  m_state = HTTP_ERROR;
+  return false;
 }
 
 void HTTPClientSIM5360::close()
 {
-  sendCommand("AT+CHTTPSCLSE\r");
+  sendCommand("AT+CHTTPSCLSE\r", 1000, "+CHTTPSCLSE:");
   m_state = HTTP_DISCONNECTED;
 }
 
-int HTTPClientSIM5360::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+bool HTTPClientSIM5360::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
 {
-  unsigned int headerSize = genHeader(m_buffer, method, path, keepAlive, payload, payloadSize);
-  // issue HTTP send command
-  sprintf(m_buffer, "AT+CHTTPSSEND=%u\r", headerSize + payloadSize);
+  String header = genHeader(method, path, keepAlive, payload, payloadSize);
+  int len = header.length();
+  sprintf(m_buffer, "AT+CHTTPSSEND=%u\r", len + payloadSize);
   if (!sendCommand(m_buffer, 100, ">")) {
     m_state = HTTP_DISCONNECTED;
-    return 0;
+    return false;
   }
   // send HTTP header
-  genHeader(m_buffer, method, path, keepAlive, payload, payloadSize);
-  m_device->xbWrite(m_buffer);
+  m_device->xbWrite(header.c_str());
   // send POST payload if any
-  if (payload) m_device->xbWrite(payload);
-  m_buffer[0] = 0;
-  if (sendCommand("AT+CHTTPSSEND\r")) {
+  if (method == METHOD_POST && payload) m_device->xbWrite(payload);
+  if (sendCommand(0, 200)) {
     m_state = HTTP_SENT;
-    return headerSize + payloadSize;
-  } else {
-    Serial.println(m_buffer);
-    m_state = HTTP_ERROR;
-    return -1;
+    return true;
   }
+  //Serial.println(m_buffer);
+  m_state = HTTP_ERROR;
+  return false;
 }
 
 char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 {
-  const char* expected = "+CHTTPS: RECV EVENT";
-  checkGPS();
-  if (!strstr(m_buffer, expected)) {
-    bool hasEvent = sendCommand(0, timeout, expected);
-    checkGPS();
-    if (!hasEvent) return 0;
-  }
-
   // start receiving
   int received = 0;
   char* payload = 0;
+
+  // wait for RECV EVENT
+  if (!sendCommand(0, timeout, "\r\n+CHTTPS: RECV EVENT")) {
+    checkGPS();
+    return 0;
+  }
+  checkGPS();
+
   /*
     +CHTTPSRECV:XX\r\n
     [XX bytes from server]\r\n
     +CHTTPSRECV: 0\r\n
   */
+  // TODO: implement for multiple chunks of data
+  // only deals with first chunk now
   sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", sizeof(m_buffer) - 36);
-  bool success = sendCommand(m_buffer, HTTP_CONN_TIMEOUT, "\r\n+CHTTPSRECV: 0");
-  checkGPS();
-  if (success) {
-    char *p = strstr(m_buffer, "+CHTTPSRECV:");
+  if (sendCommand(m_buffer, timeout, "\r\n+CHTTPSRECV: 0")) {
+    char *p = strstr(m_buffer, "\r\n+CHTTPSRECV: DATA");
     if (p) {
-      p = strchr(p, ',');
-      if (p) {
+      if ((p = strchr(p, ','))) {
         received = atoi(p + 1);
         char *q = strchr(p, '\n');
         payload = q ? (q + 1) : p;
@@ -871,7 +872,6 @@ void ClientSIM7600::end()
   setGPS(false);
   delay(1000);
   sendCommand("AT+CPOF\r");
-  m_stage = 1;
 }
 
 bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
@@ -1018,54 +1018,89 @@ char* UDPClientSIM7600::checkIncoming(int* pbytes)
 
 bool HTTPClientSIM7600::open(const char* host, uint16_t port)
 {
-  sprintf(m_buffer, "AT+CHTTPACT=\"%s\",%u\r", host, port);
-  if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT, "+CHTTPACT: REQUEST")) {
-    m_state = HTTP_CONNECTED;
-    return true;
-  } else {
-    m_state = HTTP_ERROR;
+  if (!host) {
+    close();
+    for (int i = 0; i < 30; i++) {
+      sendCommand("AT+CHTTPSSTOP\r");
+      if (sendCommand("AT+CHTTPSSTART\r", 1000, "+CHTTPSSTART: 0")) {
+        return true;
+      }
+    }
     return false;
   }
+
+  sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,%u\r", host, port, port == 443 ? 2: 1);
+  if (sendCommand(m_buffer, 1000)) {
+    if (sendCommand(0, 10000, "+CHTTPSOPSE: 0")) {
+      m_state = HTTP_CONNECTED;
+      m_host = host;
+      return true;
+    }
+  }
+  Serial.println(m_buffer);
+  m_state = HTTP_ERROR;
+  return false;
 }
 
 void HTTPClientSIM7600::close()
 {
+  sendCommand("AT+CHTTPSCLSE\r", 1000, "+CHTTPSCLSE:");
   m_state = HTTP_DISCONNECTED;
 }
 
-int HTTPClientSIM7600::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+bool HTTPClientSIM7600::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
 {
+  String header = genHeader(method, path, keepAlive, payload, payloadSize);
+  int len = header.length();
+  sprintf(m_buffer, "AT+CHTTPSSEND=%u\r", len + payloadSize);
+  if (!sendCommand(m_buffer, 100, ">")) {
+    m_state = HTTP_DISCONNECTED;
+    return false;
+  }
   // send HTTP header
-  int headerSize = genHeader(m_buffer, method, path, keepAlive, payload, payloadSize);
-  m_device->xbWrite(m_buffer);
+  m_device->xbWrite(header.c_str());
   // send POST payload if any
   if (payload) m_device->xbWrite(payload);
-  m_buffer[0] = 0;
-  if (sendCommand("\x1A")) {
+  if (sendCommand(0, 200, "+CHTTPSSEND: 0")) {
     m_state = HTTP_SENT;
-    return headerSize + payloadSize;
-  } else {
-    Serial.println(m_buffer);
-    m_state = HTTP_ERROR;
-    return -1;
+    return true;
   }
+  //Serial.println(m_buffer);
+  m_state = HTTP_ERROR;
+  return false;
 }
 
 char* HTTPClientSIM7600::receive(int* pbytes, unsigned int timeout)
 {
+  // start receiving
   int received = 0;
   char* payload = 0;
-  bool success = sendCommand(0, HTTP_CONN_TIMEOUT, "\r\n+CHTTPACT: 0");
+
+  // wait for RECV EVENT
+  if (!sendCommand(0, timeout, "\r\n+CHTTPS: RECV EVENT")) {
+    checkGPS();
+    return 0;
+  }
   checkGPS();
-  if (success) {
-    char *p = strstr(m_buffer, "\r\n+CHTTPACT: DATA,");
+
+  /*
+    +CHTTPSRECV:XX\r\n
+    [XX bytes from server]\r\n
+    +CHTTPSRECV: 0\r\n
+  */
+  // TODO: implement for multiple chunks of data
+  // only deals with first chunk now
+  sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", sizeof(m_buffer) - 36);
+  if (sendCommand(m_buffer, timeout, "\r\n+CHTTPSRECV: 0")) {
+    char *p = strstr(m_buffer, "\r\n+CHTTPSRECV: DATA");
     if (p) {
-      p += 18;
-      received = atoi(p);
-      char *q = strchr(p, '\n');
-      payload = q ? (q + 1) : p;
-      if (m_buffer + sizeof(m_buffer) - payload > received) {
-        payload[received] = 0;
+      if ((p = strchr(p, ','))) {
+        received = atoi(p + 1);
+        char *q = strchr(p, '\n');
+        payload = q ? (q + 1) : p;
+        if (m_buffer + sizeof(m_buffer) - payload > received) {
+          payload[received] = 0;
+        }
       }
     }
   }
@@ -1073,7 +1108,7 @@ char* HTTPClientSIM7600::receive(int* pbytes, unsigned int timeout)
     m_state = HTTP_ERROR;
     return 0;
   } else {
-    m_state = HTTP_DISCONNECTED;
+    m_state = HTTP_CONNECTED;
     if (pbytes) *pbytes = received;
     return payload;
   }
