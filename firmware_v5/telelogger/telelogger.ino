@@ -664,13 +664,6 @@ void showStats()
   Serial.print(" KB | In: ");
   Serial.print(teleClient.rxBytes);
   Serial.print(" bytes");
-#if STORAGE != STORAGE_NONE
-  if (state.check(STATE_STORAGE_READY)) {
-    Serial.print(" | File: ");
-    Serial.print(logger.size() >> 10);
-    Serial.print("KB");
-  }
-#endif
   Serial.println();
 #if ENABLE_OLED
   oled.setCursor(0, 2);
@@ -785,8 +778,11 @@ void process()
     buffer->serialize(logger);
     uint16_t sizeKB = (uint16_t)(logger.size() >> 10);
     if (sizeKB != lastSizeKB) {
-        logger.flush();
-        lastSizeKB = sizeKB;
+      logger.flush();
+      lastSizeKB = sizeKB;
+      Serial.print("[FILE] ");
+      Serial.print(sizeKB);
+      Serial.println("KB");
     }
   }
 #endif

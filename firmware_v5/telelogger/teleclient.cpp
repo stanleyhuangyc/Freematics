@@ -408,11 +408,14 @@ bool TeleClientHTTP::connect()
   }
 
   // connect to HTTP server
-  if (!net.open(SERVER_HOST, SERVER_PORT)) {
+  bool success = false;
+  for (byte attempts = 0; !success && attempts < 5; attempts++) {
+    success = net.open(SERVER_HOST, SERVER_PORT);
+  }
+  if (!success) {
     Serial.println("Error connecting to server");
     return false;
   }
-
   if (!login) {
     Serial.print("LOGIN(");
     Serial.print(SERVER_HOST);
