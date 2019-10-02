@@ -49,14 +49,14 @@ typedef struct {
 } PID_POLLING_INFO;
 
 PID_POLLING_INFO obdData[]= {
-    {PID_SPEED, 1},
-    {PID_RPM, 1},
-    {PID_INTAKE_TEMP, 1},
-    {PID_THROTTLE, 1},
-    {PID_ENGINE_LOAD, 1},
-    {PID_RELATIVE_THROTTLE_POS, 1},
-    {PID_MAF_FLOW, 1},
-    {PID_INTAKE_MAP, 1},
+  {PID_SPEED, 1},
+  {PID_RPM, 1},
+  {PID_INTAKE_TEMP, 1},
+  {PID_THROTTLE, 1},
+  {PID_ENGINE_LOAD, 1},
+  {PID_RELATIVE_THROTTLE_POS, 1},
+  {PID_MAF_FLOW, 1},
+  {PID_INTAKE_MAP, 1},
 };
 
 typedef struct {
