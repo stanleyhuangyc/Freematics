@@ -82,7 +82,7 @@ private:
 class HTTPClientWIFI : public HTTPClient, public ClientWIFI
 {
 public:
-    bool open(const char* host, uint16_t port);
+    bool open(const char* host = 0, uint16_t port = 0);
     void close();
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
