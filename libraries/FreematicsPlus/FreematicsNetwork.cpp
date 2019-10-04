@@ -126,6 +126,7 @@ void UDPClientWIFI::close()
 
 bool HTTPClientWIFI::open(const char* host, uint16_t port)
 {
+  if (!host) return true;
   if (client.connect(host, port)) {
     m_state = HTTP_CONNECTED;
     m_host = host;
@@ -394,7 +395,10 @@ char* UDPClientSIM800::checkIncoming(int* pbytes)
 
 bool HTTPClientSIM800::open(const char* host, uint16_t port)
 {
-  if (!sendCommand("AT+HTTPINIT\r")) return false;
+  if (!host) {
+    close();
+    return sendCommand("AT+HTTPINIT\r");
+  }
   m_host = host;
   m_port = port;
   m_state = HTTP_CONNECTED;
