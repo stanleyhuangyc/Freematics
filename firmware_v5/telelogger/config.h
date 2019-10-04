@@ -52,9 +52,6 @@
 // WiFi settings
 #define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
-// WiFi Mesh settings
-#define WIFI_MESH_ID "123456"
-#define WIFI_MESH_CHANNEL 13
 // APN settings for cellular network (if required)
 #define CELL_APN ""
 // Freematics Hub server settings
@@ -62,6 +59,7 @@
 #define SERVER_PROTOCOL PROTOCOL_UDP
 #endif 
 
+// HTTPS settings
 #define SERVER_METHOD PROTOCOL_METHOD_POST
 #define SERVER_PATH "/hub/api"
 
@@ -73,6 +71,11 @@
 #endif
 #endif
 
+// WiFi Mesh settings
+#define WIFI_MESH_ID "123456"
+#define WIFI_MESH_CHANNEL 13
+
+// WiFi AP settings
 #define WIFI_AP_SSID "TELELOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
 
