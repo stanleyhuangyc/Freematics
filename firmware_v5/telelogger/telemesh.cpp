@@ -76,8 +76,6 @@ bool ClientWiFiMesh::send(const char* data, unsigned int len)
     mwifi_data_type_t data_type = {0x0};
     if (mwifi_write(NULL, &data_type, data, len, true) == MDF_OK)
       return true;
-  } else {
-      return true;
   }
   return false;
 }
@@ -88,7 +86,7 @@ char* ClientWiFiMesh::receive(int* pbytes, unsigned int timeout)
     uint8_t src_addr[MWIFI_ADDR_LEN] = {0x0};
     mwifi_data_type_t data_type      = {0x0};
     size_t size   = sizeof(m_buffer) - 1;
-    if (mwifi_read(src_addr, &data_type, m_buffer, &size, timeout) == MDF_OK) {
+    if (mwifi_read(src_addr, &data_type, m_buffer, &size, timeout / portTICK_PERIOD_MS) == MDF_OK) {
       if (pbytes) *pbytes = size;
       return m_buffer;
     }
