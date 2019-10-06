@@ -1,9 +1,7 @@
 /******************************************************************************
-* Sample sketch for Freematics Esprit with SIM5360 (WCDMA/GSM) module
-* Developed by Stanley Huang <stanley@freematics.com.au>
-* Distributed under BSD license
-* Visit http://freematics.com/products/esprit for hardware information
-* To obtain your Freematics Hub server key, contact support@freematics.com.au
+* HTTPS testing sketch for Freematics ONE+ with SIM5360
+* https://freematics.com/products/freematics-one-plus/
+* Developed by Stanley Huang, distributed under BSD license
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -14,355 +12,143 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <Esprit.h>
+#include <FreematicsCell.h>
 
-#define APN "connect"
-#define HTTP_SERVER_URL "hub.freematics.com"
-#define HTTP_SERVER_PORT 80
-#define MAX_CONN_TIME 5000
-#define XBEE_BAUDRATE 115200
+#define PIN_BEE_UART_RXD 16
+#define PIN_BEE_UART_TXD 17
+#define PIN_BEE_PWR 27
 
-typedef enum {
-    NET_DISCONNECTED = 0,
-    NET_CONNECTED,
-    NET_HTTP_ERROR,
-} NET_STATES;
+// testing URL: https://hub.freematics.com/test
+#define SERVER_HOST "hub.freematics.com"
+#define SERVER_PORT 443
+#define SERVER_PATH "/test"
+#define CELL_APN ""
+#define CONN_TIMEOUT 5000
 
-typedef enum {
-  HTTP_GET = 0,
-  HTTP_POST,
-} HTTP_METHOD;
+HTTPClientSIM5360 net;
+int errors = 0;
 
-class CSIM5360 : public CFreematicsESP32 {
-public:
-    CSIM5360() { buffer[0] = 0; }
-    bool netInit()
-    {
-      for (byte n = 0; n < 10; n++) {
-        // try turning on module
-        xbTogglePower();
-        sleep(3000);
-        // discard any stale data
-        xbPurge();
-        for (byte m = 0; m < 3; m++) {
-          if (netSendCommand("AT\r"))
-            return true;
-        }
-      }
+bool init_net()
+{
+    Serial.print("Init cellular module...");
+    if (net.begin()) {
+      Serial.print(net.deviceName());
+      Serial.println(" OK");
+    } else {
+      Serial.println("NO");
       return false;
     }
-    bool netSetup(const char* apn, bool only3G = false)
-    {
-      uint32_t t = millis();
-      bool success = false;
-      netSendCommand("ATE0\r");
-      if (only3G) netSendCommand("AT+CNMP=14\r"); // use WCDMA only
-      do {
-        do {
-          Serial.print('.');
-          sleep(500);
-          success = netSendCommand("AT+CPSI?\r", 1000, "Online");
-          if (success) {
-            if (!strstr_P(buffer, PSTR("NO SERVICE")))
-              break;
-            success = false;
-          } else {
-            if (strstr_P(buffer, PSTR("Off"))) break;
-          }
-        } while (millis() - t < 60000);
-        if (!success) break;
+    Serial.print("IMEI:");
+    Serial.println(net.IMEI);
+    if (!net.checkSIM()) {
+      Serial.println("No SIM Card");
+      return false;
+    }
+    Serial.println("SIM Card OK");
 
-        t = millis();
-        do {
-          success = netSendCommand("AT+CREG?\r", 5000, "+CREG: 0,1");
-        } while (!success && millis() - t < 30000);
-        if (!success) break;
-
-        do {
-          success = netSendCommand("AT+CGREG?\r",1000, "+CGREG: 0,1");
-        } while (!success && millis() - t < 30000);
-        if (!success) break;
-
-        do {
-          sprintf_P(buffer, PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), apn);
-          success = netSendCommand(buffer);
-        } while (!success && millis() - t < 30000);
-        if (!success) break;
-
-        success = netSendCommand("AT+CSOCKSETPN=1\r");
-        if (!success) break;
-
-        success = netSendCommand("AT+CIPMODE=0\r");
-        if (!success) break;
-
-        netSendCommand("AT+NETOPEN\r");
-      } while(0);
-      if (!success) Serial.println(buffer);
-      return success;
-    }
-    const char* getIP()
-    {
-      uint32_t t = millis();
-      char *ip = 0;
-      do {
-        if (netSendCommand("AT+IPADDR\r", 5000, "\r\nOK\r\n", true)) {
-          char *p = strstr(buffer, "+IPADDR:");
-          if (p) {
-            ip = p + 9;
-            if (*ip != '0') {
-              break;
-            }
-          }
-        }
-        sleep(500);
-        ip = 0;
-      } while (millis() - t < 15000);
-      return ip;
-    }
-    int getSignal()
-    {
-        if (netSendCommand("AT+CSQ\r", 500)) {
-            char *p = strchr(buffer, ':');
-            if (p) {
-              p += 2;
-              int db = atoi(p) * 10;
-              p = strchr(p, '.');
-              if (p) db += *(p + 1) - '0';
-              return db;
-            }
-        }
-        return -1;
-    }
-    bool getOperatorName()
-    {
-        // display operator name
-        if (netSendCommand("AT+COPS?\r") == 1) {
-            char *p = strstr(buffer, ",\"");
-            if (p) {
-                p += 2;
-                char *s = strchr(p, '\"');
-                if (s) *s = 0;
-                strcpy(buffer, p);
-                return true;
-            }
-        }
-        return false;
-    }
-    bool httpOpen()
-    {
-        return netSendCommand("AT+CHTTPSSTART\r", 3000);
-    }
-    void httpClose()
-    {
-      netSendCommand("AT+CHTTPSCLSE\r");
-    }
-    bool httpConnect()
-    {
-        sprintf_P(buffer, PSTR("AT+CHTTPSOPSE=\"%s\",%u,1\r"), HTTP_SERVER_URL, HTTP_SERVER_PORT);
-        //Serial.println(buffer);
-	      return netSendCommand(buffer, MAX_CONN_TIME);
-    }
-    unsigned int genHttpHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
-    {
-        // generate HTTP header
-        char *p = buffer;
-        p += sprintf_P(p, PSTR("%s %s HTTP/1.1\r\nUser-Agent: ONE\r\nHost: %s\r\nConnection: %s\r\n"),
-          method == HTTP_GET ? "GET" : "POST", path, HTTP_SERVER_URL, keepAlive ? "keep-alive" : "close");
-        if (method == HTTP_POST) {
-          p += sprintf_P(p, PSTR("Content-length: %u\r\n"), payloadSize);
-        }
-        p += sprintf_P(p, PSTR("\r\n\r"));
-        return (unsigned int)(p - buffer);
-    }
-    bool httpSend(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0)
-    {
-      unsigned int headerSize = genHttpHeader(method, path, keepAlive, payload, payloadSize);
-      // issue HTTP send command
-      sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), headerSize + payloadSize);
-      if (!netSendCommand(buffer, 100, ">")) {
-        Serial.println(buffer);
-        Serial.println("Connection closed");
-      }
-      // send HTTP header
-      genHttpHeader(method, path, keepAlive, payload, payloadSize);
-      xbWrite(buffer);
-      // send POST payload if any
-      if (payload) xbWrite(payload);
-      buffer[0] = 0;
-      if (netSendCommand("AT+CHTTPSSEND\r")) {
-        checkTimer = millis();
-        return true;
-      } else {
-        Serial.println(buffer);
-        return false;
-      }
-    }
-    int httpReceive(char** payload)
-    {
-        int received = 0;
-        // wait for RECV EVENT
-        checkbuffer("RECV EVENT", MAX_CONN_TIME);
-        /*
-          +CHTTPSRECV:XX\r\n
-          [XX bytes from server]\r\n
-          \r\n+CHTTPSRECV: 0\r\n
-        */
-        if (netSendCommand("AT+CHTTPSRECV=384\r", MAX_CONN_TIME, "\r\n+CHTTPSRECV: 0", true)) {
-          char *p = strstr(buffer, "+CHTTPSRECV:");
-          if (p) {
-            p = strchr(p, ',');
-            if (p) {
-              received = atoi(p + 1);
-              if (payload) {
-                char *q = strchr(p, '\n');
-                *payload = q ? (q + 1) : p;
-              }
-            }
-          }
-        }
-        return received;
-    }
-    byte checkbuffer(const char* expected, unsigned int timeout = 2000)
-    {
-      // check if expected string is in reception buffer
-      if (strstr(buffer, expected)) {
-        return 1;
-      }
-      // if not, receive a chunk of data from xBee module and look for expected string
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1) != 0;
-      if (ret == 0) {
-        // timeout
-        return (millis() - checkTimer < timeout) ? 0 : 2;
-      } else {
-        return ret;
-      }
-    }
-    bool netSendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK\r\n", bool terminated = false)
-    {
-      if (cmd) {
-        xbWrite(cmd);
-      }
-      buffer[0] = 0;
-      byte ret = xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
-      if (ret) {
-        if (terminated) {
-          char *p = strstr(buffer, expected);
-          if (p) *p = 0;
-        }
-        return true;
-      } else {
-        return false;
-      }
-    }
-    char buffer[384];
-private:
-    uint32_t checkTimer;
-};
-
-CSIM5360 sim;
-byte netState = NET_DISCONNECTED;
-byte errors = 0;
-
-void setup()
-{
-    Serial.begin(115200);
-    delay(500);
-    // initialize SIM5360 xBee module (if present)
-    Serial.print("Init SIM5360...");
-    sim.xbBegin(XBEE_BAUDRATE);
-    if (sim.netInit()) {
+    Serial.print("Registering on network...");
+    if (net.setup(CELL_APN)) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
-      for (;;);
+      return false;
     }
 
-    Serial.print("Connecting network");
-    if (sim.netSetup(APN, true)) {
-      Serial.println("OK");
-    } else {
-      Serial.println("NO");
-      for (;;);
-    }
-
-    if (sim.getOperatorName()) {
+    String op = net.getOperatorName();
+    if (op.length()) {
       Serial.print("Operator:");
-      Serial.println(sim.buffer);
+      Serial.println(op);
     }
 
     Serial.print("Obtaining IP address...");
-    const char *ip = sim.getIP();
+    String ip = net.getIP();
     if (ip) {
-      Serial.print(ip);
+      Serial.println(ip);
     } else {
-      Serial.println("failed");
+      Serial.println("N/A");
     }
 
-    int signal = sim.getSignal();
-    if (signal > 0) {
-      Serial.print("CSQ:");
-      Serial.print((float)signal / 10, 1);
-      Serial.println("dB");
+    int signal = net.getSignal();
+    if (signal) {
+      Serial.print("RSSI:");
+      Serial.print(signal);
+      Serial.println("dBm");
     }
 
-    Serial.print("Init HTTP...");
-    if (sim.httpOpen()) {
+    Serial.print("Init HTTPS stack...");
+    if (net.open()) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
     }
+    return true;
+}
+
+void setup()
+{
+  Serial.begin(115200);
+  net.xbBegin(115200, PIN_BEE_UART_RXD, PIN_BEE_UART_TXD);
+
+  // initialize cellular module
+  while (!init_net());
 }
 
 void loop()
 {
-  if (errors > 0) {
-    sim.httpClose();
-    netState = NET_DISCONNECTED;
-    if (errors > 3) {
-      // re-initialize 3G module
-      setup();
+  if (errors > 10) {
+    // re-initialize cellular module
+    net.end();
+    if (init_net()) {
+      Serial.println("OK");
       errors = 0;
+    } else {
+      Serial.println("NO");
+      delay(3000);
+      return;
     }
   }
 
   // connect to HTTP server
-  if (netState != NET_CONNECTED) {
-    Serial.println("Connecting...");
-    sim.xbPurge();
-    if (!sim.httpConnect()) {
-      Serial.println("Error connecting");
-      Serial.println(sim.buffer);
+  if (net.state() != HTTP_CONNECTED) {
+    Serial.print("Connecting...");
+    if (net.open(SERVER_HOST, SERVER_PORT)) {
+      Serial.println("OK");
+    } else {
+      Serial.println("failed");
+      net.close();
       errors++;
       return;
     }
   }
 
   // send HTTP request
-  Serial.print("Sending HTTP request...");
-  if (!sim.httpSend(HTTP_GET, "/test", true)) {
+  Serial.print("Sending request...");
+  if (!net.send(METHOD_GET, SERVER_PATH, true)) {
     Serial.println("failed");
-    sim.httpClose();
+    net.close();
     errors++;
-    netState = NET_DISCONNECTED;
     return;
   } else {
     Serial.println("OK");
   }
 
+  // receive HTTP response
   Serial.print("Receiving...");
-  char *payload;
-  if (sim.httpReceive(&payload)) {
+  char *response;
+  int bytes;
+  response = net.receive(&bytes);
+  if (response) {
     Serial.println("OK");
     Serial.println("-----HTTP RESPONSE-----");
-    Serial.println(payload);
+    Serial.println(response);
     Serial.println("-----------------------");
-    netState = NET_CONNECTED;
     errors = 0;
   } else {
     Serial.println("failed");
+    net.close();
     errors++;
   }
 
-  Serial.println("Waiting 3 seconds...");
-  delay(3000);
+  Serial.println("Waiting 5 seconds...");
+  delay(5000);
 }
