@@ -1,8 +1,12 @@
 #include <Arduino.h>
-#include "WifiMesh.h"
+#include "WiFiMesh.h"
 
-// Node number 0 for root node
+// node number 0 for root
 #define NODE_NUM 0
+
+// mesh network parameters
+#define MESH_CHANNEL 13
+#define MESH_ID "123456"
 
 #if NODE_NUM == 0
 WiFiMeshRoot mesh;
@@ -17,7 +21,7 @@ int32_t hall_sens_read();
 void setup()
 {
   Serial.begin(115200);
-  mesh.begin(13, "123456");
+  mesh.begin(MESH_CHANNEL, MESH_ID);
 }
 
 void loop()
