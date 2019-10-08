@@ -837,7 +837,7 @@ bool initNetwork()
     oled.print("IMEI:");
     oled.println(teleClient.net.IMEI);
 #endif
-  if (!teleClient.net.checkSIM()) {
+  if (!teleClient.net.checkSIM(SIM_PIN)) {
     Serial.print(teleClient.net.deviceName());
     Serial.println(" NO SIM");
     return false;
