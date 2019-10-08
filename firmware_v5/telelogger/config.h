@@ -54,11 +54,13 @@
 #define WIFI_PASSWORD "PASSWORD"
 // cellular network settings
 #define CELL_APN ""
-#define SIM_CARD_PIN ""
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PROTOCOL PROTOCOL_UDP
 #endif 
+
+// SIM card setting
+#define SIM_CARD_PIN ""
 
 // HTTPS settings
 #define SERVER_METHOD PROTOCOL_METHOD_POST
