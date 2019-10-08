@@ -279,8 +279,12 @@ String ClientSIM800::getOperatorName()
   return "";
 }
 
-bool ClientSIM800::checkSIM()
+bool ClientSIM800::checkSIM(const char* pin)
 {
+  if (pin) {
+    sprintf(m_buffer, "AT+CPIN=\"%s\"\r", pin);
+    sendCommand(m_buffer);
+  }
   return (sendCommand("AT+CPIN?\r") && strstr(m_buffer, "READY"));
 }
 
@@ -629,9 +633,13 @@ String ClientSIM5360::getOperatorName()
   return "";
 }
 
-bool ClientSIM5360::checkSIM()
+bool ClientSIM5360::checkSIM(const char* pin)
 {
   bool success;
+  if (pin) {
+    sprintf(m_buffer, "AT+CPIN=\"%s\"\r", pin);
+    sendCommand(m_buffer);
+  }
   for (byte n = 0; n < 10 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);
   return success;  
 }
@@ -791,9 +799,11 @@ bool HTTPClientSIM5360::open(const char* host, uint16_t port)
   if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT)) {
     m_state = HTTP_CONNECTED;
     m_host = host;
+    checkGPS();
     return true;
   }
   Serial.println(m_buffer);
+  checkGPS();
   m_state = HTTP_ERROR;
   return false;
 }
@@ -1033,14 +1043,17 @@ bool HTTPClientSIM7600::open(const char* host, uint16_t port)
     return false;
   }
 
+  memset(m_buffer, 0, sizeof(m_buffer));
   sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,%u\r", host, port, port == 443 ? 2: 1);
   if (sendCommand(m_buffer, 1000)) {
-    if (sendCommand(0, 10000, "+CHTTPSOPSE: 0")) {
+    if (sendCommand(0, HTTP_CONN_TIMEOUT, "+CHTTPSOPSE: 0")) {
       m_state = HTTP_CONNECTED;
       m_host = host;
+      checkGPS();
       return true;
     }
   }
+  checkGPS();
   Serial.println(m_buffer);
   m_state = HTTP_ERROR;
   return false;

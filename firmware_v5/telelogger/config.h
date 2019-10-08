@@ -52,8 +52,9 @@
 // WiFi settings
 #define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
-// APN settings for cellular network (if required)
+// cellular network settings
 #define CELL_APN ""
+#define SIM_CARD_PIN ""
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PROTOCOL PROTOCOL_UDP
