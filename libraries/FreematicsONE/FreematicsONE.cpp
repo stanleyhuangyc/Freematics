@@ -380,11 +380,6 @@ void COBDSPI::debugOutput(const char *s)
 
 byte COBDSPI::begin()
 {
-	// turn off ADC
-#ifdef ARDUINO_ARCH_AVR
-	ADCSRA &= ~(1 << ADEN);
-#endif
-
 	m_target = TARGET_OBD;
 	pinMode(SPI_PIN_READY, INPUT);
 	pinMode(SPI_PIN_CS, OUTPUT);
