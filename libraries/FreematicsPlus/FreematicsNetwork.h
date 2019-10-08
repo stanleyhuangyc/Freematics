@@ -100,7 +100,7 @@ public:
     String getIP();
     int getSignal();
     String getOperatorName();
-    bool checkSIM();
+    bool checkSIM(const char* pin = 0);
     bool getLocation(NET_LOCATION* loc);
     String queryIP(const char* host);
     char* getBuffer() { return m_buffer; }
@@ -145,7 +145,7 @@ public:
     String getIP();
     int getSignal();
     String getOperatorName();
-    bool checkSIM();
+    bool checkSIM(const char* pin = 0);
     String queryIP(const char* host);
     bool getLocation(GPS_DATA** pgd)
     {
