@@ -1,5 +1,5 @@
 /******************************************************************************
-* Simple GPS test sketch for Freematics ONE+
+* Simple GPS test sketch for Freematics ONE+ Model A with GNSS receiver
 * Written by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
