@@ -577,7 +577,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             if (!(s = strchr(s, ','))) break;
             uint32_t time = atoi(++s);
             if (!(s = strchr(s, ','))) break;
-            if (date % 100 < 19) break;
+            if (!date) break;
             gpsData->date = date;
             gpsData->time = time;
             lat = (float)atoi(++s) / 1000000;
