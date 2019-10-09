@@ -597,7 +597,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         } while(0);
         if (good && (gpsData->lat || gpsData->lng)) {
             // filter out invalid coordinates
-            good = (abs(lat - gpsData->lat * 1000000) < 100000 && abs(lng - gpsData->lng * 1000000) < 100000);
+            good = (abs(lat * 1000000 - gpsData->lat * 1000000) < 100000 && abs(lng * 1000000 - gpsData->lng * 1000000) < 100000);
         }
         if (!good) return false;
         gpsData->lat = lat;
