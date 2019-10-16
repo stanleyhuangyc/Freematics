@@ -262,11 +262,11 @@ void setup()
     // Disable digital input buffers on all analog input pins
     DIDR0 = DIDR0 | B00111111;
 
+    // change to 9600bps when using BLE
     Serial.begin(115200);
-    Serial.println("Freematics ONE");
-    delay(1000);
+    
     byte ver = one.begin();
-    Serial.print("Firmware Ver. ");
+    Serial.print("Firmware R");
     Serial.println(ver);
 
 #if USE_MEMS
