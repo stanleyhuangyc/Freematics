@@ -824,9 +824,9 @@ bool initNetwork()
   if (teleClient.net.begin(&sys)) {
     state.set(STATE_NET_READY);
   } else {
-    Serial.println("No Net Module");
+    Serial.println("CELL:NO");
 #if ENABLE_OLED
-    oled.println("No Net Module");
+    oled.println("No Cell Module");
 #endif
     return false;
   }
@@ -837,13 +837,13 @@ bool initNetwork()
     oled.print("IMEI:");
     oled.println(teleClient.net.IMEI);
 #endif
+  Serial.print("CELL:");
+  Serial.println(teleClient.net.deviceName());
   if (!teleClient.net.checkSIM(SIM_CARD_PIN)) {
-    Serial.print(teleClient.net.deviceName());
-    Serial.println(" NO SIM");
+    Serial.println("NO SIM CARD");
     return false;
   }
-  Serial.print(teleClient.net.deviceName());
-  Serial.print(" IMEI:");
+  Serial.print("IMEI:");
   Serial.println(teleClient.net.IMEI);
   if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
     bool extGPS = state.check(STATE_GPS_READY);
@@ -1001,37 +1001,41 @@ void telemetry(void* inst)
 
       store.purge();
 
+#if ENABLE_OBD || ENABLE_GPS || MEMS_MODE
+      // motion adaptive data transmission interval control
+      unsigned int motionless = (millis() - lastMotionTime) / 1000;
+      int sendingInterval = -1;
+      for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
+        if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
+          sendingInterval = sendingIntervals[i];
+          break;
+        }
+      }
+      if (sendingInterval == -1) {
+        // stationery timeout, trip ended
+        Serial.print("Stationary for ");
+        Serial.print(motionless);
+        Serial.println(" secs");
+        //teleClient.reset();
+        state.clear(STATE_WORKING);
+        break;
+      }
+      while (state.check(STATE_WORKING)) {
+        // network inbound reception
+        teleClient.inbound();
+        // maintain interval
+        int n = startTime + sendingInterval - millis();
+        if (n <= 0) break;
+        waitMotion(min(n, 1000));
+      }
+#else
+      teleClient.inbound();
+#endif
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
         Serial.println("Instable connection");
         connErrors++;
         timeoutsNet++;
       }
-
-#if ENABLE_OBD || ENABLE_GPS || MEMS_MODE
-      // motion adaptive data transmission interval control
-      while (state.check(STATE_WORKING)) {
-        unsigned int motionless = (millis() - lastMotionTime) / 1000;
-        int sendingInterval = -1;
-        for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
-          if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
-            sendingInterval = sendingIntervals[i];
-            break;
-          }
-        }
-        if (sendingInterval == -1) {
-          // stationery timeout, trip ended
-          Serial.print("Stationary for ");
-          Serial.print(motionless);
-          Serial.println(" secs");
-          //teleClient.reset();
-          state.clear(STATE_WORKING);
-          break;
-        }
-        int n = startTime + sendingInterval - millis();
-        if (n <= 0) break;
-        waitMotion(min(n, 3000));
-      }
-#endif
       if (connErrors > MAX_CONN_ERRORS_RECONNECT) {
         teleClient.net.close();
         if (!teleClient.connect()) {

@@ -70,6 +70,11 @@ bool ClientWiFiMesh::begin(CFreematics* device)
   return false;
 }
 
+ bool ClientWiFiMesh::open(const char* host, uint16_t port)
+ {
+   return mwifi_is_connected();
+ }
+ 
 bool ClientWiFiMesh::send(const char* data, unsigned int len)
 {
   if (mwifi_is_connected()) {
@@ -85,13 +90,24 @@ char* ClientWiFiMesh::receive(int* pbytes, unsigned int timeout)
   if (mwifi_is_connected()) {
     uint8_t src_addr[MWIFI_ADDR_LEN] = {0x0};
     mwifi_data_type_t data_type      = {0x0};
-    size_t size   = sizeof(m_buffer) - 1;
+    size_t size   = MESH_RECV_BUF_SIZE - 1;
     if (mwifi_read(src_addr, &data_type, m_buffer, &size, timeout / portTICK_PERIOD_MS) == MDF_OK) {
+      m_buffer[size] = 0;
       if (pbytes) *pbytes = size;
       return m_buffer;
     }
   }
   return 0;
+}
+
+ClientWiFiMesh::ClientWiFiMesh()
+{
+    m_buffer = (char*)malloc(MESH_RECV_BUF_SIZE);
+}
+
+ClientWiFiMesh::~ClientWiFiMesh()
+{
+    free(m_buffer);
 }
 
 #endif
