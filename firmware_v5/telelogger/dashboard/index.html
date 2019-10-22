@@ -1,0 +1,33 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<style type="text/css">
+body{ margin:0; padding:0; border:none;font-size:16px; color:#3f3c8e; background:#dce4ed; font-family: Verdana, Geneva, Tahoma, sans-serif}
+a:link, a:visited{ color:#fff; text-decoration:underline;}
+a:hover, a:active{ color:#FFC; text-decoration:underline;}
+input { font-size: 16px; text-align:center; }
+span { font-weight:bold; }
+li { line-height: 28px; }
+</style> 
+</head>
+<body>
+    <ul>
+        <li>Device ID: <input type="text" id="devid" readonly /></li>
+        <li>Firmware: <span id="firmware"></span></li>
+        <li>FLASH: <span id="flash_size"></span></li>
+        <li>PSRAM: <span id="psram_size"></span></li>
+        <li>SD Card: <span id="sd_size"></span></li>
+        <li>Motion Sensor <span id="mems"></span></li>
+        <li>GNSS <span id="gps"></span></li>
+        <li>OBD <span id="obd"></span></li>
+        <li>Wi-Fi <span id="wifi"></span></li>
+        <li>Cellular Module <span id="cell"></span> <span id="imei"></span></li>
+        <li>Cellular SIM Card <span id="sim_card"></span></li>
+        <li>Server: <span id="server"></span></li>
+        <li>Buffer: <span id="buffer"></span></li>
+        <li>File: <span id="file"></span></li>
+    </ul>
+<script language="javascript" src="dashboard.js"></script>
+</body>
+</html>
