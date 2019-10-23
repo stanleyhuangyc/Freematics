@@ -37,11 +37,12 @@ bool init_net()
     }
     Serial.print("IMEI:");
     Serial.println(net.IMEI);
-    if (!net.checkSIM()) {
+
+    if (net.checkSIM()) {
+      Serial.println("SIM Card OK");
+    } else {
       Serial.println("No SIM Card");
-      return false;
     }
-    Serial.println("SIM Card OK");
 
     Serial.print("Registering on network...");
     if (net.setup(CELL_APN)) {

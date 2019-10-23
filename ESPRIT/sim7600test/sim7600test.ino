@@ -1,5 +1,5 @@
 /******************************************************************************
-* HTTPS testing sketch for Freematics ONE+ with SIM5360
+* HTTPS testing sketch for Freematics ONE+ with SIM7600
 * https://freematics.com/products/freematics-one-plus/
 * Developed by Stanley Huang, distributed under BSD license
 *
@@ -12,7 +12,11 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <FreematicsPlus.h>
+#include <FreematicsCell.h>
+
+#define PIN_BEE_UART_RXD 16
+#define PIN_BEE_UART_TXD 17
+#define PIN_BEE_PWR 27
 
 // testing URL: https://hub.freematics.com/test
 #define SERVER_HOST "hub.freematics.com"
@@ -21,8 +25,7 @@
 #define CELL_APN ""
 #define CONN_TIMEOUT 5000
 
-FreematicsESP32 sys;
-HTTPClientSIM5360 net;
+HTTPClientSIM7600 net;
 int errors = 0;
 
 bool init_net()
@@ -85,10 +88,9 @@ bool init_net()
 void setup()
 {
   Serial.begin(115200);
-  // use following for Freematics ONE+
-  sys.begin();
-  // use following for Freematics Esprit or other ESP32 dev board
-  //sys.xbBegin(115200, 16, 17);
+  
+  // start serial communication with cellular module
+  net.xbBegin(115200, PIN_BEE_UART_RXD, PIN_BEE_UART_TXD);
 
   // initialize cellular module
   while (!init_net());
