@@ -40,11 +40,12 @@ bool init_net()
     }
     Serial.print("IMEI:");
     Serial.println(net.IMEI);
-    if (!net.checkSIM()) {
+    
+    if (net.checkSIM()) {
+      Serial.println("SIM Card OK");
+    } else {
       Serial.println("No SIM Card");
-      return false;
     }
-    Serial.println("SIM Card OK");
 
     Serial.print("Registering on network...");
     if (net.setup(CELL_APN)) {
@@ -87,6 +88,8 @@ bool init_net()
 void setup()
 {
   Serial.begin(115200);
+
+  // start serial communication with cellular module
   net.xbBegin(115200, PIN_BEE_UART_RXD, PIN_BEE_UART_TXD);
 
   // initialize cellular module
