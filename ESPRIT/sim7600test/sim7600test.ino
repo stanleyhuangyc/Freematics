@@ -31,7 +31,7 @@ int errors = 0;
 bool init_net()
 {
     Serial.print("Init cellular module...");
-    if (net.begin(&sys)) {
+    if (net.begin()) {
       Serial.print(net.deviceName());
       Serial.println(" OK");
     } else {
@@ -88,7 +88,7 @@ bool init_net()
 void setup()
 {
   Serial.begin(115200);
-  
+
   // start serial communication with cellular module
   net.xbBegin(115200, PIN_BEE_UART_RXD, PIN_BEE_UART_TXD);
 
