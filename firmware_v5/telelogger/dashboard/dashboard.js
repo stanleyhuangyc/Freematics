@@ -67,8 +67,8 @@ function processInput(data)
 		if (ret = checkData(con, "HTTPD...")) {
 			document.getElementById("wifi").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
 		}
-		if (ret = checkData(con, "WiFi...")) {
-			document.getElementById("wifi").innerHTML = ret.indexOf("OK") >= 0 ? imgTick : imgCross;
+		if (ret = checkData(con, "WiFi IP:")) {
+			document.getElementById("wifi").innerHTML = imgTick + " IP:" + ret;
 		}
 		if (ret = checkData(con, "IMEI:")) {
 			document.getElementById("sim_card").innerHTML = imgTick;
