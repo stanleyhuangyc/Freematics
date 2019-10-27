@@ -1263,11 +1263,12 @@ void setup()
     // show system information
     showSysInfo();
 
-#if ENABLE_OBD
     if (sys.begin()) {
       Serial.print("Firmware: R");
       Serial.println(sys.version);
     }
+
+#if ENABLE_OBD
     obd.begin(sys.link);
 #endif
 
