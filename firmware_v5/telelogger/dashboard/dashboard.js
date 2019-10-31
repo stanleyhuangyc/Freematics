@@ -43,10 +43,10 @@ function processInput(data)
 		if (ret = checkData(con, "PSRAM:")) {
 			document.getElementById("psram_size").innerText = ret.substr(0, 2) == "E " ? "N/A" : ret;
 		}
-		if (ret = checkData(con, "Firmware: ")) {
+		if (ret = checkData(con, "Firmware:")) {
 			document.getElementById("firmware").innerText = ret;
 		}
-		if (ret = checkData(con, "DEVICE ID: ")) {
+		if (ret = checkData(con, "DEVICE ID:")) {
 			document.getElementById("devid").value = ret;
 		}
 		if (ret = checkData(con, "SD:")) {
@@ -55,16 +55,16 @@ function processInput(data)
 		if (ret = checkData(con, "NO SD CARD") != null) {
 			document.getElementById("sd_size").innerHTML = "NO CARD";
 		}
-		if (ret = checkData(con, "GNSS...")) {
-			document.getElementById("gps").innerHTML = ret.indexOf("OK") >= 0 ? imgTick : imgCross;
+		if (ret = checkData(con, "GNSS:")) {
+			document.getElementById("gps").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
 		}
-		if (ret = checkData(con, "OBD...")) {
-			document.getElementById("obd").innerHTML = ret.indexOf("OK") >= 0 ? imgTick : imgCross;
+		if (ret = checkData(con, "OBD:")) {
+			document.getElementById("obd").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
 		}
-		if (ret = checkData(con, "MEMS...")) {
-			document.getElementById("mems").innerHTML = ret.indexOf("OK") >= 0 ? imgTick : imgCross;
+		if (ret = checkData(con, "MEMS:")) {
+			document.getElementById("mems").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
 		}
-		if (ret = checkData(con, "HTTPD...")) {
+		if (ret = checkData(con, "HTTPD:")) {
 			document.getElementById("wifi").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
 		}
 		if (ret = checkData(con, "WiFi IP:")) {
