@@ -452,15 +452,14 @@ void initialize()
 #if ENABLE_GPS
   // start serial communication with GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-    Serial.print("GNSS...");
     if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, false)) {
       state.set(STATE_GPS_READY);
-      Serial.println("OK");
+      Serial.println("GNSS:OK");
 #if ENABLE_OLED
-      oled.println("GPS OK");
+      oled.println("GNSS OK");
 #endif
     } else {
-      Serial.println("NO");
+      Serial.println("GNSS:NO");
     }
   }
 #endif
@@ -469,15 +468,14 @@ void initialize()
   // initialize OBD communication
   if (!state.check(STATE_OBD_READY)) {
     timeoutsOBD = 0;
-    Serial.print("OBD...");
     if (obd.init()) {
-      Serial.println("OK");
+      Serial.println("OBD:OK");
       state.set(STATE_OBD_READY);
 #if ENABLE_OLED
       oled.println("OBD OK");
 #endif
     } else {
-      Serial.println("NO");
+      Serial.println("OBD:NO");
       state.clear(STATE_WORKING);
       return;
     }
@@ -1198,12 +1196,12 @@ void showSysInfo()
   oled.println("MB Flash");
 #endif
 
-    // generate a unique ID in case VIN is inaccessible
+    // generate unique device ID
     genDeviceID(devid);
-    Serial.print("DEVICE ID: ");
+    Serial.print("DEVICE ID:");
     Serial.println(devid);
 #if ENABLE_OLED
-    oled.print("DEVICE ID: ");
+    oled.print("DEVICE ID:");
     oled.println(devid);
 #endif
 }
@@ -1264,7 +1262,7 @@ void setup()
     showSysInfo();
 
     if (sys.begin()) {
-      Serial.print("Firmware: R");
+      Serial.print("Firmware:R");
       Serial.println(sys.version);
     }
 
@@ -1277,29 +1275,28 @@ void setup()
 
 #if MEMS_MODE
   if (!state.check(STATE_MEMS_READY)) {
-    Serial.print("MEMS...");
     byte ret = mems.begin(ENABLE_ORIENTATION);
     if (ret) {
       state.set(STATE_MEMS_READY);
-      if (ret == 2) Serial.print("9-DOF ");
-      Serial.println("OK");
+      Serial.print("MEMS:OK");
+      if (ret == 2) Serial.print(" 9-DOF");
+      Serial.println();
     } else {
-      Serial.println("NO");
+      Serial.println("MEMS:NO");
     }
   }
 #endif
 
 #if ENABLE_HTTPD
     IPAddress ip;
-    Serial.print("HTTPD...");
     if (serverSetup(ip)) {
+      Serial.println("HTTPD:");
       Serial.println(ip);
 #if ENABLE_OLED
-      oled.print("AP:");
       oled.println(ip);
 #endif
     } else {
-      Serial.println("NO");
+      Serial.println("HTTPD:NO");
     }
 #endif
 
