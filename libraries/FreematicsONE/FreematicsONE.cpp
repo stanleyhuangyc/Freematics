@@ -453,6 +453,7 @@ int COBDSPI::receive(char* buffer, int bufsize, unsigned int timeout)
 		debugOutput("RECV TIMEOUT");
 	}
 #endif
+	if (n >= 2 && buffer[n - 1] == '>' && buffer[n - 2] == '\r') n -= 2;
 	buffer[n] = 0;
 #ifdef DEBUG
 	if (m_target == TARGET_OBD) {
