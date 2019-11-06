@@ -17,7 +17,7 @@ function sendMessage(data) {
 function checkData(data, key)
 {
 	var i;
-	if ((i = data.indexOf(key)) >= 0) {
+	if ((i = data.lastIndexOf(key)) >= 0) {
 		var j = data.indexOf("\r", i);
 		return j >= 0 ? data.substr(i + key.length, j - i - key.length) : data.substr(i + key.length);
 	}
@@ -34,7 +34,7 @@ function processInput(data)
 {
 	var i;
 	var ret;
-	if (con.length > 4096) con = con.substr(1024)
+	if (con.length > 1024) con = con.substr(512);
 	con += data;
 	if (!inited) {
 		if (ret = checkData(con, "Flash:")) {
@@ -84,11 +84,11 @@ function processInput(data)
 			document.getElementById("sim_card").innerHTML = imgTick + " " + ret
 		}
 		if (ret = checkData(con, "Unable to connect") != null) {
-			document.getElementById("server").innerText = imgCross;
+			document.getElementById("server").innerHTML = imgCross;
 		}
-	}
-	if (ret = checkData(con, "LOGIN")) {
-		document.getElementById("server").innerText = "Connecting to server" + ret;
+		if (ret = checkData(con, "LOGIN")) {
+			document.getElementById("server").innerText = "Connecting to server" + ret;
+		}
 	}
 	if (ret = checkData(con, "[NET]")) {
 		document.getElementById("server").innerText = ret;
