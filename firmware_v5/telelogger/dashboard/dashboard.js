@@ -74,6 +74,9 @@ function processInput(data)
 			document.getElementById("sim_card").innerHTML = imgTick;
 			document.getElementById("imei").innerText = "IMEI:" + ret;
 		}
+		if (ret = checkData(con, "RSSI:")) {
+			document.getElementById("rssi").innerText = "RSSI:" + ret;
+		}
 		if (ret = checkData(con, "CELL:")) {
 			document.getElementById("cell").innerHTML = ret == "NO" ? imgCross : (imgTick + " " + ret);
 		}
@@ -99,5 +102,8 @@ function processInput(data)
 	}
 	if (ret = checkData(con, "[FILE]")) {
 		document.getElementById("file").innerText = ret;
+	}
+	if (ret = checkData(con, "[GPS]")) {
+		document.getElementById("gps").innerText = ret;
 	}
 }
