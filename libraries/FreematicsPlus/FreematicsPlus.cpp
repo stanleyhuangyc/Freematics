@@ -255,7 +255,7 @@ int CLink_UART::receive(char* buffer, int bufsize, unsigned int timeout)
 		if (len < 0) break;
 		if (len == 0) continue;
 		buffer[n + len] = 0;
-		if (strchr(buffer + n, '>')) {
+		if (strstr(buffer + n, "\r>")) {
 			n += len;
 			break;
 		}
@@ -317,6 +317,7 @@ bool CLink_SPI::begin(unsigned int freq, int rxPin, int txPin)
 	digitalWrite(PIN_LINK_SPI_CS, HIGH);
 	SPI.begin();
 	SPI.setFrequency(freq);
+	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 	return true;
 }
 
