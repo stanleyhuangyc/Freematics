@@ -856,7 +856,7 @@ bool initNetwork()
       }
 
       if (!extGPS && teleClient.net.setGPS(true)) {
-        Serial.println("Cell GNSS ON");
+        Serial.println("CELL GNSS:OK");
       }
 
       String ip = teleClient.net.getIP();
