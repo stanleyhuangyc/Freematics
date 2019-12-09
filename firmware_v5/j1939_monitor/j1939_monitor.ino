@@ -1,5 +1,5 @@
 /******************************************************************************
-* Simple CAN bus sniffing example for Freematics ONE+ (Model B only)
+* J1939 broadcast data monitor for Freematics ONE+ (Model HD only)
 * Written by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
@@ -27,22 +27,14 @@ void setup()
   while (!sys.begin());
   Serial.print("Firmware: R");
   Serial.println(sys.version);
+
   // initialize OBD library
   obd.begin(sys.link);
 
-  // stop sniffing in case previously running
-  obd.sniff(false);
+  // start with J1939 protocol
+  while (!obd.init(PROTO_J1939));
 
-  // start on 11-bit/500Kbps CAN bus
-  while (!obd.init(PROTO_CAN_11B_500K));
-  
-  // we are interested in CAN messages with header 7E*
-  obd.setHeaderFilter(0x7E0);
-  obd.setHeaderMask(0xFFFFFFF0);
-
-  // start CAN bus sniffing
-  obd.sniff();
-  Serial.println("CAN sniffer started");
+  Serial.println("J1939 data monitor started");
 }
 
 void loop()
@@ -51,12 +43,20 @@ void loop()
   // load one received CAN message into buffer
   int bytes = obd.receiveData(buf, sizeof(buf));
   if (bytes > 0) {
+    if (bytes < 3) {
+      Serial.println("Invalid data");
+      return;
+    }
     // print timestamp
     Serial.print('[');
     Serial.print(millis());
     Serial.print("] ");
     // print received CAN message
-    for (int n = 0; n < bytes; n++) {
+    uint32_t pgn = (uint32_t)buf[0] << 16 | (uint32_t)buf[1] << 8 | buf[2];
+    Serial.print("PGN:");
+    Serial.print(pgn);
+    Serial.print(" Data:");
+    for (int n = 3; n < bytes; n++) {
       byte d = buf[n];
       if (d < 0x10) Serial.print('0');
       Serial.print(d, HEX);

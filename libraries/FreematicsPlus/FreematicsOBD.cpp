@@ -361,12 +361,18 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		link->sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT);
 	}
 	if (protocol != PROTO_AUTO) {
-		sprintf(buffer, "ATSP%u\r", protocol);
+		sprintf(buffer, "ATSP %X\r", protocol);
 		if (!link->sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
 			return false;
 		}
 	}
 	stage = 2;
+	if (protocol == PROTO_J1939) {
+		m_state = OBD_CONNECTED;
+		errors = 0;
+		return true;
+	}
+
 	for (byte n = 0; n < 2; n++) {
 		int value;
 		if (readPID(PID_SPEED, value)) {
@@ -374,9 +380,8 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 			break;
 		}
 	}
-	if (stage != 3) {
-		return false;
-	}
+	if (stage != 3) return false;
+
 	// load pid map
 	memset(pidmap, 0xff, sizeof(pidmap));
 	for (byte i = 0; i < 4; i++) {
@@ -397,13 +402,9 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 			}
 		}
 	}
-	if (stage == 3) {
-		m_state = OBD_CONNECTED;
-		errors = 0;
-		return true;
-	} else {
-		return false;
-	}
+	m_state = OBD_CONNECTED;
+	errors = 0;
+	return true;
 }
 
 void COBD::reset()
@@ -476,7 +477,7 @@ void COBD::setHeaderMask(uint32_t bitmask)
 	link->sendCommand(buf, buf, sizeof(buf), 1000);
 }
 
-int COBD::receiveCAN(byte* buf, int len)
+int COBD::receiveData(byte* buf, int len)
 {
 	int n = 0;
 	for (n = 0; n < len; ) {

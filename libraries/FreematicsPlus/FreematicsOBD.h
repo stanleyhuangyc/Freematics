@@ -54,8 +54,8 @@ public:
 	void setHeaderFilter(uint32_t num);
 	// set CAN bus header filter bitmask
 	void setHeaderMask(uint32_t bitmask);
-	// receive sniffed CAN data
-	int receiveCAN(byte* buf, int len);
+	// receive sniffed data
+	int receiveData(byte* buf, int len);
 	// set current PID mode
 	byte dataMode = 1;
 	// occurrence of errors
