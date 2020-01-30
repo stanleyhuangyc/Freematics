@@ -289,11 +289,11 @@ FILE* createDataFile(CHANNEL_DATA* pld)
 	if (!pld->fp) return 0;
 	if (ftell(pld->fp) == 0) {
 		// write initial data
-		if (pld->mode[0][PID_GPS_LATITUDE].ts && pld->mode[0][PID_GPS_LONGITUDE].ts) {
+		if (pld->data[PID_GPS_LATITUDE].ts && pld->data[PID_GPS_LONGITUDE].ts) {
 			fprintf(pld->fp, "%X:%s,%X:%s,%X:%s\n",
-				PID_GPS_LATITUDE, pld->mode[0][PID_GPS_LATITUDE].data,
-				PID_GPS_LONGITUDE, pld->mode[0][PID_GPS_LONGITUDE].data,
-				PID_GPS_ALTITUDE, pld->mode[0][PID_GPS_ALTITUDE].data);
+				PID_GPS_LATITUDE, pld->data[PID_GPS_LATITUDE].value,
+				PID_GPS_LONGITUDE, pld->data[PID_GPS_LONGITUDE].value,
+				PID_GPS_ALTITUDE, pld->data[PID_GPS_ALTITUDE].value);
 		}
 	}
 	return pld->fp;
@@ -367,11 +367,10 @@ int processPayload(char* payload, CHANNEL_DATA* pld, uint16_t eventID)
 			continue;
 		}
 		// store in table
-		int m = (uint16_t)pid >> 8;
-		int index = (uint8_t)pid;
+		int m = pid >> 8;
 		if (m < PID_MODES) {
-			pld->mode[m][index].ts = ts;
-			memcpy(pld->mode[m][index].data, value, len + 1);
+			pld->data[pid].ts = ts;
+			memcpy(pld->data[pid].value, value, len + 1);
 			// collect some stats
 			switch (pid) {
 			case PID_RSSI: /* signal strength */
@@ -405,7 +404,7 @@ int processPayload(char* payload, CHANNEL_DATA* pld, uint16_t eventID)
 	} while (p && *p);
 	if (ts == 0) ts = pld->deviceTick;
 	int interval = ts - pld->deviceTick;
-	if (ts) pld->deviceTick = ts;
+	pld->deviceTick = ts;
 
 	if (pld->flags & FLAG_RUNNING) {
 		// normal
@@ -429,10 +428,10 @@ int processPayload(char* payload, CHANNEL_DATA* pld, uint16_t eventID)
 	return count;
 }
 
-void __inline setPIDData(CHANNEL_DATA* pld, int mode, int pid, uint32_t ts, const char* data)
+void __inline setPIDData(CHANNEL_DATA* pld, int pid, uint32_t ts, const char* value)
 {
-	pld->mode[mode][pid].ts = ts;
-	strncpy(pld->mode[mode][pid].data, data, MAX_PID_DATA_LEN - 1);
+	pld->data[pid].ts = ts;
+	strncpy(pld->data[pid].value, value, MAX_PID_DATA_LEN - 1);
 }
 
 void SaveChannels()
@@ -505,16 +504,16 @@ void showLiveData(CHANNEL_DATA* pld)
 	int i = 0;
 	printf("[DEVID]%s\n", pld->devid);
 	printf("[OBD]");
-	for (i = 0; i < 256; i++) {
-		if (pld->mode[1][i].ts) {
-			printf("01%02X=%s ", i, pld->mode[1][i].data);
+	for (i = 0x100; i < 0x100 * PID_MODES; i++) {
+		if (pld->data[i].ts) {
+			printf("%4X=%s ", i, pld->data[i].value);
 		}
 	}
 	printf("\n");
-	if (pld->mode[0][PID_GPS_TIME].ts) {
+	if (pld->data[PID_GPS_TIME].ts) {
 		printf("[GPS]UTC:%s LAT:%s LNG:%s ALT:%sm Speed:%skm/h Sat:%s\n",
-			pld->mode[0][PID_GPS_TIME].data, pld->mode[0][PID_GPS_LATITUDE].data, pld->mode[0][PID_GPS_LONGITUDE].data,
-			pld->mode[0][PID_GPS_ALTITUDE].data, pld->mode[0][PID_GPS_SPEED].data, pld->mode[0][PID_GPS_SAT_COUNT].data);
+			pld->data[PID_GPS_TIME].value, pld->data[PID_GPS_LATITUDE].value, pld->data[PID_GPS_LONGITUDE].value,
+			pld->data[PID_GPS_ALTITUDE].value, pld->data[PID_GPS_SPEED].value, pld->data[PID_GPS_SAT_COUNT].value);
 	}
 	printf("\n");
 }
@@ -681,13 +680,11 @@ int uhChannels(UrlHandlerParam* param)
 
 			if (data) {
 				l += snprintf(buf + l, bs - l, ",\"data\":[");
-				for (unsigned int m = 0; m < PID_MODES; m++) {
-					for (unsigned int i = 0; i < 256; i++) {
-						if (pld->mode[m][i].ts) {
-							l += snprintf(buf + l, bs - l, "[%u,", (m << 8) | i);
-							l += copyData(buf + l, pld->mode[m][i].data);
-							l += snprintf(buf + l, bs - l, ",%u],", age + (pld->deviceTick - pld->mode[m][i].ts));
-						}
+				for (unsigned int i = 0; i < 0x100 * PID_MODES; i++) {
+					if (pld->data[i].ts) {
+						l += snprintf(buf + l, bs - l, "[%u,", i);
+						l += copyData(buf + l, pld->data[i].value);
+						l += snprintf(buf + l, bs - l, ",%u],", age + (pld->deviceTick - pld->data[i].ts));
 					}
 				}
 				if (buf[l - 1] == ',') l--;
@@ -741,7 +738,7 @@ CHANNEL_DATA* assignChannel(const char* devid)
 	pld->cacheReadPos = 0;
 	pld->cacheWritePos = 0;
 	// clear instance data cache
-	memset(pld->mode, 0, sizeof(pld->mode));
+	memset(pld->data, 0, sizeof(pld->data));
 	// clear stats
 	pld->dataReceived = 0;
 	pld->elapsedTime = 0;
@@ -768,11 +765,11 @@ int uhPost(UrlHandlerParam* param)
 	const char* speed = mwGetVarValue(param->pxVars, "speed", 0);
 	const char* heading = mwGetVarValue(param->pxVars, "heading", 0);
 	pld->deviceTick = ts;
-	if (lat) setPIDData(pld, 0, PID_GPS_LATITUDE, ts, lat);
-	if (lon) setPIDData(pld, 0, PID_GPS_LONGITUDE, ts, lon);
-	if (speed) setPIDData(pld, 0, PID_GPS_SPEED, ts, speed);
-	if (alt) setPIDData(pld, 0, PID_GPS_ALTITUDE, ts, alt);
-	if (heading) setPIDData(pld, 0, PID_GPS_HEADING, ts, heading);
+	if (lat) setPIDData(pld, PID_GPS_LATITUDE, ts, lat);
+	if (lon) setPIDData(pld, PID_GPS_LONGITUDE, ts, lon);
+	if (speed) setPIDData(pld, PID_GPS_SPEED, ts, speed);
+	if (alt) setPIDData(pld, PID_GPS_ALTITUDE, ts, alt);
+	if (heading) setPIDData(pld, PID_GPS_HEADING, ts, heading);
 
 	if (!param->payloadSize) {
 		printf("GET from %u.%u.%u.%u | LAT:%s LON:%s ALT:%sm\n",
@@ -784,11 +781,11 @@ int uhPost(UrlHandlerParam* param)
 	printf("POST from %u.%u.%u.%u | ",
 		param->hs->ipAddr.caddr[3], param->hs->ipAddr.caddr[2], param->hs->ipAddr.caddr[1], param->hs->ipAddr.caddr[0]);
 
-	int count = processPayload(param->pucPayload, pld, 0);
+	unsigned int count = processPayload(param->pucPayload, pld, 0);
 	pld->dataReceived += param->payloadSize;
 	pld->ip = param->hs->ipAddr;
 
-	param->contentLength = sprintf(param->pucBuffer, "OK");
+	param->contentLength = sprintf(param->pucBuffer, "OK %u", count);
 	param->contentType = HTTPFILETYPE_TEXT;
 	return FLAG_DATA_RAW;
 }
@@ -813,14 +810,12 @@ int uhGet(UrlHandlerParam* param)
 		age, pingage, (int)pld->rssi, pld->devflags, (pld->flags & FLAG_RUNNING) ? 0 : 1);
 
 	l += snprintf(buf + l, bs - l, ",\"data\":[");
-	for (unsigned int m = 0; m < PID_MODES; m++) {
-		for (unsigned int i = 0; i < 256; i++) {
-			if (pld->mode[m][i].ts) {
-				l += snprintf(buf + l, bs - l, "[%u,", (m << 8) | i);
-				l += copyData(buf + l, pld->mode[m][i].data);
-				l += snprintf(buf + l, bs - l, ",%u],",
-					pld->deviceTick >= pld->mode[m][i].ts ? (age + pld->deviceTick - pld->mode[m][i].ts) : 0);
-			}
+	for (unsigned int i = 0; i < 0x100 * PID_MODES; i++) {
+		if (pld->data[i].ts) {
+			l += snprintf(buf + l, bs - l, "[%u,", i);
+			l += copyData(buf + l, pld->data[i].value);
+			l += snprintf(buf + l, bs - l, ",%u],",
+				pld->deviceTick >= pld->data[i].ts ? (age + pld->deviceTick - pld->data[i].ts) : 0);
 		}
 	}
 	if (buf[l - 1] == ',') l--;
@@ -860,13 +855,11 @@ int uhPull(UrlHandlerParam* param)
 		pld->dataReceived, (unsigned int)pld->sampleRate, pld->serverDataTick, pld->deviceTick, pld->elapsedTime, age, pingage, (pld->flags & FLAG_RUNNING) ? 0 : 1);
 
 	bytes += snprintf(buf + bytes, bufsize - bytes, ",\"live\":[");
-	for (unsigned int m = 0; m < PID_MODES; m++) {
-		for (unsigned int i = 0; i < 256; i++) {
-			if (pld->mode[m][i].ts) {
-				bytes += snprintf(buf + bytes, bufsize - bytes, "[%u,", (m << 8) | i);
-				bytes += copyData(buf + bytes, pld->mode[m][i].data);
-				bytes += snprintf(buf + bytes, bufsize - bytes, "],");
-			}
+	for (unsigned int i = 0; i < 0x100 * PID_MODES; i++) {
+		if (pld->data[i].ts) {
+			bytes += snprintf(buf + bytes, bufsize - bytes, "[%u,", i);
+			bytes += copyData(buf + bytes, pld->data[i].value);
+			bytes += snprintf(buf + bytes, bufsize - bytes, "],");
 		}
 	}
 	if (buf[bytes - 1] == ',') bytes--;
@@ -881,7 +874,6 @@ int uhPull(UrlHandlerParam* param)
 	bytes += sprintf(buf + bytes, ",\"data\":[");
 	uint32_t readPos = pld->cacheReadPos;
 	uint64_t begin = 0;
-	uint64_t end = 0;
 	int bytesMargin = bytes;
 	uint32_t lastts = 0;
 	for (; readPos != pld->cacheWritePos; readPos = (readPos + 1) % pld->cacheSize) {
@@ -904,7 +896,6 @@ int uhPull(UrlHandlerParam* param)
 			}
 			// keep ts range
 			if (begin == 0) begin = d->ts;
-			end = d->ts;
 		}
 	}
 	if (buf[bytes - 1] == ',') bytes--;
@@ -988,7 +979,6 @@ int uhNotify(UrlHandlerParam* param)
 {
 	char* vin = mwGetVarValue(param->pxVars, "VIN", 0);
 	int event = mwGetVarValueInt(param->pxVars, "EV", 0);
-	uint64_t ts = mwGetVarValueInt64(param->pxVars, "TS");
 	unsigned int devflags = mwGetVarValueInt(param->pxVars, "DF", 0);
 	int rssi = mwGetVarValueInt(param->pxVars, "SSI", 0);
 	const char* sid;
@@ -1076,7 +1066,7 @@ int uhPush(UrlHandlerParam* param)
 			int pid = hex2uint16(s);
 			int mode = pid >> 8;
 			if (mode <= PID_MODES) {
-				setPIDData(pld, mode, pid & 0xff, pld->deviceTick, param->pxVars[n].value);
+				setPIDData(pld, pid, pld->deviceTick, param->pxVars[n].value);
 				count++;
 			}
 		}
@@ -1095,8 +1085,6 @@ int uhTest(UrlHandlerParam* param)
 	char content[64];
 	time_t t = time(NULL);
 	struct tm* btm = gmtime(&t);
-	uint32_t date = (btm->tm_year + 1900) * 10000 + (btm->tm_mon + 1) * 100 + btm->tm_mday;
-
 	int len = snprintf(content, sizeof(content), "{\"date\":%02u%02u%02u,\"time\":%u%02u%02u,\"tick\":%u}",
 		btm->tm_year - 100, btm->tm_mon + 1, btm->tm_mday, btm->tm_hour, btm->tm_min, btm->tm_sec, GetTickCount());
 	param->contentLength = snprintf(param->pucBuffer, param->bufSize, "HTTP/1.1 200 OK\r\nServer:TeleServer\r\nContent-Length:%d\r\n\r\n%s",
@@ -1141,9 +1129,11 @@ void GetFullPath(char* buffer, char* argv0, char* path)
 	}
 }
 
+int genHttpPostPayload(CHANNEL_DATA* pld);
+
 int main(int argc,char* argv[])
 {
-	fprintf(stderr, "Freematics Hub Version %s (built on %s)\n(C)2016-2018 Mediatronic Pty Ltd / Developed by Stanley Huang\nThis is free software and is distributed under GPL v3.0\n\n", REVISION, __DATE__);
+	fprintf(stderr, "Freematics Hub Version %s (built on %s)\n(C)2016-2020 Mediatronic Pty Ltd / Developed by Stanley Huang\nThis is free software and is distributed under GPL v3.0\n\n", REVISION, __DATE__);
 
 #ifdef WIN32
 	SetConsoleCtrlHandler( (PHANDLER_ROUTINE) ServerQuit, TRUE );
@@ -1156,16 +1146,12 @@ int main(int argc,char* argv[])
 	//fill in default settings
 	char path[256];
 	GetFullPath(path, argv[0], "app/htdocs");
-#ifndef WIN32
-	mwInitParam(&httpParam, 0, path, FLAG_DISABLE_RANGE, "127.0.0.1", 5055);
-#else
-	mwInitParam(&httpParam, 0, path, FLAG_DISABLE_RANGE, 0, 0);
-#endif
+	mwInitParam(&httpParam, 0, path, FLAG_DISABLE_RANGE, "telelogger.multitel.net", 80);
 	httpParam.maxClients = 256;
 	httpParam.maxClientsPerIP = 16;
 	httpParam.httpPort = 8080;
 	httpParam.udpPort = 8081;
-	httpParam.pxUrlHandler=urlHandlerList;
+	httpParam.pxUrlHandler = urlHandlerList;
 	httpParam.hlBindIP = htonl(INADDR_ANY);
 	httpParam.pfnIncomingUDP = incomingUDPCallback;
 	httpParam.pfnProxyData = phData;

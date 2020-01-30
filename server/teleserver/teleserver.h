@@ -55,7 +55,7 @@ typedef enum {
 
 typedef struct {
 	uint32_t ts;
-	char data[MAX_PID_DATA_LEN];
+	char value[MAX_PID_DATA_LEN];
 } PID_DATA;
 
 typedef struct {
@@ -88,7 +88,7 @@ typedef struct {
 	uint16_t flags;
 	uint16_t devflags;
 	// instant data
-	PID_DATA mode[PID_MODES][256];
+	PID_DATA data[256 * PID_MODES];
 	// cache
 	CACHE_DATA* cache;
 	uint32_t cacheSize;

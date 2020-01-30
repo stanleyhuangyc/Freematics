@@ -687,7 +687,7 @@ void mwHttpLoop(HttpParam *hp, uint32_t timeout)
 		if (phsSocketCur->socket == 0)
 			break;
 		phsSocketCur->ipAddr.laddr=ntohl(sinaddr.sin_addr.s_addr);
-		SYSLOG(LOG_INFO,"[%d] Client IP: %d.%d.%d.%d\n",
+		SYSLOG(LOG_INFO,"[%d] Client: %d.%d.%d.%d\n",
 			phsSocketCur->socket,
 			phsSocketCur->ipAddr.caddr[3],
 			phsSocketCur->ipAddr.caddr[2],
@@ -1056,7 +1056,6 @@ int _mwCheckUrlHandlers(HttpParam* hp, HttpSocket* phsSocket)
 			} else if (ret & FLAG_DATA_REDIRECT) {
 				phsSocket->pucData = up.pucBuffer;
 			}
-			_mwFreeJSONPairs(&up);
 			break;
 		}
 	}
@@ -1410,7 +1409,6 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* filePath
 		hp->stats.openedFileCount++;
 		fseek(phsSocket->fp, 0, SEEK_END);
 		long fileSize = ftell(phsSocket->fp);
-		fseek(phsSocket->fp, 0, SEEK_SET);
 		phsSocket->response.contentLength = fileSize - phsSocket->request.startByte;
 		if (phsSocket->response.contentLength <= 0) {
 			phsSocket->request.startByte = 0;
@@ -1419,6 +1417,8 @@ int _mwStartSendFile2(HttpParam* hp, HttpSocket* phsSocket, const char* filePath
 		if (phsSocket->request.startByte) {
 			fseek(phsSocket->fp, (long)phsSocket->request.startByte, SEEK_SET);
 			phsSocket->response.statusCode = 206;
+		} else {
+			fseek(phsSocket->fp, 0, SEEK_SET);
 		}
 		if (!phsSocket->response.fileType && hfp.pchExt) {
 			phsSocket->response.fileType=mwGetContentType(hfp.pchExt);

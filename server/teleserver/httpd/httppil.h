@@ -96,9 +96,7 @@ typedef int SOCKET;
 typedef unsigned int DWORD;
 typedef unsigned short int WORD;
 typedef unsigned char BYTE;
-#ifndef ESP8266
 typedef unsigned char BOOL;
-#endif
 #endif
 typedef unsigned char OCTET;
 

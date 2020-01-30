@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <ctype.h>
+#include "cJSON.h"
 #include "cdecode.h"
 #include "httpd.h"
 #include "teleserver.h"
@@ -39,121 +40,6 @@ const char* errmsg[] = {"Invalid data format", "File creation error"};
 FILE* fpDest;
 char* xsl;
 extern char dataDir[];
-
-int genRequest(char* buf, int bufsize)
-{
-	int valids = 0;
-	uint32_t date = 0;
-	uint32_t time = 0;
-	float lat = 0;
-	float lng = 0;
-	float alt = 0;
-	float speed = 0;
-	int heading = 0;
-	int hdop = 0;
-	uint8_t mask = 0;
-	int len = 0;
-
-	for (int i = 0; i < MAX_CHANNELS; i++) {
-		if (ld[i].id) {
-			uint32_t startTick = ld[i].proxyTick;
-			CHANNEL_DATA* pld = ld + i;
-			//if (pld->deviceTick > startTick + PROXY_MAX_TIME_BEHIND) startTick = pld->deviceTick - PROXY_MAX_TIME_BEHIND;
-			uint32_t readPos = pld->cacheReadPos;
-			mask = 0;
-			for (; readPos != pld->cacheWritePos; readPos = (readPos + 1) % pld->cacheSize) {
-				CACHE_DATA* d = pld->cache + readPos;
-				if (d->ts <= startTick) continue;
-				if (pld->proxyTick != d->ts) {
-					pld->proxyTick = d->ts;
-					// new time stamp, check validity
-					if (mask == 0xff) {
-						break;
-					}
-				}
-				switch (d->pid) {
-				case PID_GPS_DATE:
-					date = atol(d->data);
-					mask |= 0x1;
-					break;
-				case PID_GPS_TIME:
-					time = atol(d->data);
-					mask |= 0x2;
-					break;
-				case PID_GPS_LATITUDE:
-					lat = (float)atof(d->data);
-					mask |= 0x4;
-					break;
-				case PID_GPS_LONGITUDE:
-					lng = (float)atof(d->data);
-					mask |= 0x8;
-					break;
-				case PID_GPS_ALTITUDE:
-					alt = (float)atof(d->data);
-					mask |= 0x10;
-					break;
-				case PID_GPS_SPEED:
-					speed = (float)atof(d->data);
-					mask |= 0x20;
-					break;
-				case PID_GPS_HEADING:
-					heading = atoi(d->data);
-					mask |= 0x40;
-					break;
-				case PID_GPS_HDOP:
-					hdop = atoi(d->data);
-					break;
-				}
-				mask |= 0x80;
-			}
-			if (mask == 0xff) {
-				// complete set of GPS data available
-				char isoTime[26];
-				char* p = isoTime + sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u",
-					(unsigned int)(date % 100) + 2000, (unsigned int)(date / 100) % 100, (unsigned int)(date / 10000),
-					(unsigned int)(time / 1000000), (unsigned int)(time % 1000000) / 10000, (unsigned int)(time % 10000) / 100);
-				unsigned char tenth = (time % 100) / 10;
-				if (tenth) p += sprintf(p, ".%c00", '0' + tenth);
-				*p = 'Z';
-				*(p + 1) = 0;
-				len = snprintf(buf, bufsize, "GET ?id=%s&timestamp=%s&lat=%f&lon=%f&altitude=%.1f&speed=%.2f&heading=%d&hdop=%.1f HTTP/1.1\r\nConnection: keep-alive\r\n\r\n",
-					pld->devid, isoTime, lat, lng, alt, speed / 1.852f, heading, (float)hdop / 10);
-				break;
-			}
-			else if (mask) {
-				// no complete set of GPS data but still some new data
-				len = snprintf(buf, bufsize, "GET ?id=%s HTTP/1.1\r\nConnection: keep-alive\r\n\r\n", pld->devid);
-				break;
-			}
-			else if ((pld->flags & FLAG_PINGED)) {
-				len = snprintf(buf, bufsize, "GET ?id=%s HTTP/1.1\r\nConnection: keep-alive\r\n\r\n", pld->devid);
-				pld->flags &= ~FLAG_PINGED;
-				fprintf(stderr, "Ping responded\n");
-				break;
-			}
-		}
-	}
-	if (len > 0) printf("%s", buf);
-	return len;
-}
-
-int phData(void* _hp, int op, char* buf, int len)
-{
-	HttpParam* hp = _hp;
-	static int state = 0;
-	if (op == PROXY_DATA_REQUESTED) {
-		int bytes = genRequest(buf, len);
-		return bytes;
-	}
-	else if (op == PROXY_DATA_RECEIVED) {
-		if (strstr(buf, "HTTP/1.1 200 OK")) {
-		}
-		else {
-			printf("%s", buf);
-		}
-	}
-	return 0;
-}
 
 int uhQuery(UrlHandlerParam* param)
 {
@@ -277,33 +163,33 @@ void WriteGeoJSON(FILE* fpout, KML_DATA* kd, int size, int count)
 	fprintf(fpout, "\"trip\":{\"type\":\"LineString\"");
 	DATASET* pd = kd->data;
 	fprintf(fpout, ",\"coordinates\":[[%f,%f]", pd->lng, pd->lat);
-	while (pd = pd->next) fprintf(fpout, ",[%f,%f]", pd->lng, pd->lat);
+	while ((pd = pd->next)) fprintf(fpout, ",[%f,%f]", pd->lng, pd->lat);
 	fprintf(fpout, "],\n");
 
 	pd = kd->data;
 	uint32_t t = kd->data->timestamp;
 	fprintf(fpout, "\"timestamps\":[%u", pd->timestamp - t);
-	while (pd = pd->next) fprintf(fpout, ",%u", pd->timestamp - t);
+	while ((pd = pd->next)) fprintf(fpout, ",%u", pd->timestamp - t);
 	fprintf(fpout, "],\n");
 
 	pd = kd->data;
 	fprintf(fpout, "\"altitudes\":[%d", (int)pd->alt);
-	while (pd = pd->next) fprintf(fpout, ",%d", (int)pd->alt);
+	while ((pd = pd->next)) fprintf(fpout, ",%d", (int)pd->alt);
 	fprintf(fpout, "],\n");
 
 	pd = kd->data;
 	fprintf(fpout, "\"accels\":[[%d,%d,%d]", pd->acc[0], pd->acc[1], pd->acc[2]);
-	while (pd = pd->next) fprintf(fpout, ",[%d,%d,%d]", pd->acc[0], pd->acc[1], pd->acc[2]);
+	while ((pd = pd->next)) fprintf(fpout, ",[%d,%d,%d]", pd->acc[0], pd->acc[1], pd->acc[2]);
 	fprintf(fpout, "],\n");
 
 	pd = kd->data;
 	fprintf(fpout, "\"battery\":[%.1f", (float)pd->battery / 100);
-	while (pd = pd->next) fprintf(fpout, ",%.1f", (float)pd->battery / 100);
+	while ((pd = pd->next)) fprintf(fpout, ",%.1f", (float)pd->battery / 100);
 	fprintf(fpout, "],\n");
 
 	pd = kd->data;
 	fprintf(fpout, "\"speeds\":[%.1f", pd->speed);
-	while (pd = pd->next) fprintf(fpout, ",%.1f", pd->speed);
+	while ((pd = pd->next)) fprintf(fpout, ",%.1f", pd->speed);
 	fprintf(fpout, "]\n");
 	fprintf(fpout, "}\n");
 
@@ -508,10 +394,10 @@ int uhTrip(UrlHandlerParam* param)
 		return FLAG_DATA_RAW;
 	}
 
-	if (!strcmp(param->pucRequest, "/kml")) {
+	if (!strcmp(param->pucRequest, ".kml")) {
 		ext = "kml";
 		param->contentType = HTTPFILETYPE_XML;
-	} else if (!strcmp(param->pucRequest, "/raw")) {
+	} else if (!strcmp(param->pucRequest, ".raw")) {
 		ext = "txt";
 		param->contentType = HTTPFILETYPE_TEXT;
 	}
@@ -528,7 +414,7 @@ int uhTrip(UrlHandlerParam* param)
 	}	
 }
 
-void getDateTimeInt(const char* isotime, int* dateint, int* timeint)
+void getDateTimeInt(const char* isotime, unsigned int* dateint, unsigned int* timeint)
 {
 	int year = 0;
 	int month = 0;

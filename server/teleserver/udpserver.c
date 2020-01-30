@@ -83,7 +83,6 @@ int incomingUDPCallback(void* _hp)
 		return -1;
 	}
 
-	int success = 0;
 	CHANNEL_DATA* pld = 0;
 	char *msg = 0;
 	char *data;
@@ -151,8 +150,7 @@ int incomingUDPCallback(void* _hp)
 			else if (!strncmp(s, "SK=", 3)) {
 				key = s + 3;
 			}
-		} while (s = strtok(0, ","));
-
+		} while ((s = strtok(0, ",")));
 
 		//fprintf(stderr, "Channel ID:%u Event ID:%u\n", id, eventID);
 		if (eventID == EVENT_LOGIN) {
@@ -195,7 +193,7 @@ int incomingUDPCallback(void* _hp)
 			pld->cacheReadPos = 0;
 			pld->cacheWritePos = 0;
 			// clear instance data cache
-			memset(pld->mode, 0, sizeof(pld->mode));
+			memset(pld->data, 0, sizeof(pld->data));
 		}
 	}
 	if (!pld) {

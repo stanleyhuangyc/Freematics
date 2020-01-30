@@ -12,6 +12,8 @@
 #include <time.h>
 #include "httppil.h"
 
+#define	FD_ISSET_BOOL(n, p)	((FD_ISSET(n,p)) >> ((n) % NFDBITS))
+
 #ifndef min
 #define min(x,y) (x>y?y:x)
 #endif
@@ -175,18 +177,6 @@ typedef struct _HttpSocket{
 	uint16_t reqCount;
 } HttpSocket;
 
-typedef enum {
-	JSON_TYPE_STRING = 0,
-	JSON_TYPE_DECIMAL,
-	JSON_TYPE_BOOLEAN,
-} JSONValueType;
-
-typedef struct {
-	char* name;
-	char* value;
-	JSONValueType type;
-} NameValuePair;
-
 typedef struct {
 	void* hp;
 	HttpSocket* hs;
@@ -200,8 +190,6 @@ typedef struct {
 	unsigned int payloadSize;
 	unsigned int contentLength;
 	HttpFileType contentType;
-	NameValuePair* json;
-	int jsonPairCount;
 } UrlHandlerParam;
 
 // Callback function protos
@@ -249,7 +237,7 @@ typedef struct _httpParam {
 	SOCKET udpSocket;
 	uint16_t httpPort;
 	uint16_t udpPort;
-	const char* pchWebPath;
+	char* pchWebPath;
 	UrlHandler *pxUrlHandler;		/* pointer to URL handler array */
 	AuthHandler *pxAuthHandler;     /* pointer to authorization handler array */
 	// incoming udp callback
@@ -337,8 +325,6 @@ float mwGetVarValueFloat(HttpVariables* vars, const char *varname);
 int mwParseQueryString(UrlHandlerParam* up);
 int mwGetContentType(const char *pchExtname);
 void mwDecodeString(char* s);
-NameValuePair* mwGetJSONData(UrlHandlerParam* up, const char* name);
-int mwParseJSONString(UrlHandlerParam* up);
 
 #ifdef __cplusplus
 }
