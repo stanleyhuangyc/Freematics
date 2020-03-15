@@ -14,6 +14,8 @@ class NullClient
 {
 public:
     virtual GPS_DATA* getLocation() { return m_gps; }
+    virtual bool startGPS() { return false; }
+    virtual void stopGPS() {}
 protected:
     GPS_DATA* m_gps = 0;
 };
@@ -74,6 +76,8 @@ public:
     int getSignal();
     String getOperatorName();
     bool checkSIM();
+    bool startGPS();
+    void stopGPS();
     bool open(const char* host, uint16_t port);
     void close();
     bool send(const char* data, unsigned int len);

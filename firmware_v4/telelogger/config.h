@@ -45,7 +45,7 @@
 // data interval configurations
 #define DATA_INTERVAL 1000 /* ms */
 #define STATIONARY_TIME_TABLE {10, 30, 180} /* seconds */
-#define SENDING_INTERVAL_TABLE {1, 5, 10} /* seconds */
+#define SENDING_INTERVAL_TABLE {2, 5, 10} /* seconds */
 #define PING_BACK_INTERVAL 900 /* seconds */
 
 /**************************************
