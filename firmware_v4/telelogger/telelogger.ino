@@ -536,12 +536,12 @@ bool initialize()
     Serial.println(F("NO"));
     if (hasSIM) return false;
   }
-#endif
 
   if (!state.check(STATE_GPS_READY)) {
     net.startGPS();
     Serial.println(F("GPS:CELL"));
   }
+#endif
 
 #if MEMS_MODE
   if (state.check(STATE_MEMS_READY)) {
@@ -757,9 +757,8 @@ void recvTasks(int timeout)
     char *data = net.receive(&len, timeout);
     if (data) {
       data[len] = 0;
-      Serial.print(F("[RECV]"));
-      Serial.print(data);
-      Serial.println('}');
+      Serial.print(F("[IN]"));
+      Serial.println(data);
       if (!verifyChecksum(data)) {
         return;
       }
@@ -829,7 +828,7 @@ void loop()
   // collect data
   process();
 
-  Serial.print(F("[DATA]"));
+  Serial.print(F("[OUT]"));
   Serial.println(cache.buffer()); 
 
   // transmit data
