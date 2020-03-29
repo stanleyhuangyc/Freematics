@@ -300,7 +300,7 @@ int CLink_UART::read()
 bool CLink_UART::changeBaudRate(unsigned int baudrate)
 {
 	char buf[32];
-	sprintf(buf, "ATBR1 %u\r", baudrate);
+	sprintf(buf, "ATBR1 %X\r", baudrate);
 	sendCommand(buf, buf, sizeof(buf), 1000);
 	delay(50);
 	end();
