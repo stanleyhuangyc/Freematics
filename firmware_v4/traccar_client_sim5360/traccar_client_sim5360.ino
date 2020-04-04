@@ -141,7 +141,6 @@ public:
   {
     char *p;
     if (sendCommand("AT+CGPSINFO\r", 100) && (p = strstr_P(buffer, PSTR("+CGPSINFO:")))) do {
-      Serial.println(buffer);
       if (!(p = strchr(p, ':'))) break;
       if (*(++p) == ',') break;
       gd.lat = parseDegree(p);
@@ -337,7 +336,11 @@ void initSIM5360()
 
     Serial.print("Searching network");
     if (net.setup(OPERATOR_APN)) {
-      Serial.println("OK");
+      if (net.getOperatorName()) {
+        Serial.println(net.buffer);
+      } else {
+        Serial.println("OK");
+      }
       break;
     } else {
       Serial.println("NO");
@@ -345,11 +348,6 @@ void initSIM5360()
   }
 
   net.startGPS();
-
-  if (net.getOperatorName()) {
-    Serial.print("Operator:");
-    Serial.println(net.buffer);
-  }
 
   Serial.print("IP address...");
   const char *ip = net.getIP();
@@ -386,7 +384,8 @@ void setup()
 void loop()
 {
   static unsigned long lastutc = 0;
-  static int retries = 0;
+  static long lastlat = 0, lastlng = 0;
+  static byte retries = 0;
 
   // connect to HTTP server
   if (net.state() != HTTP_CONNECTED) {
@@ -394,7 +393,8 @@ void loop()
     if (!net.httpConnect(TRACCAR_HOST, TRACCAR_PORT)) {
       Serial.println();
       Serial.println(net.buffer);
-      if (++retries >= 3) {
+      net.httpClose();
+      if (++retries >= 10) {
         initSIM5360();
         retries = 0;
       }
@@ -405,7 +405,7 @@ void loop()
   }
 
   GPS_DATA gd = {0};
-  if (!net.getGPSInfo(gd) || gd.time == lastutc) {
+  if (!net.getGPSInfo(gd) || gd.time == lastutc || gd.date == 0 || (gd.lat == lastlat && gd.lng == lastlng)) {
     delay(200);
     return;
   }
@@ -413,34 +413,27 @@ void loop()
   // arrange and send data in OsmAnd protocol
   // refer to https://www.traccar.org/osmand
   char buf[128];
-  int len;
-  if (gd.lat || gd.lng) {
-    sprintf(buf, "/?id=%s&timestamp=%04u-%02u-%02uT%02u:%02u:%02uZ&lat=%d.%06lu&lon=%d.%06lu&altitude=%d&speed=%u.%02u&heading=%d",
-      net.IMEI,
-      (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
-      (unsigned int)(gd.time / 10000), (unsigned int)(gd.time % 10000) / 100, (unsigned int)(gd.time % 100),
-      (int)(gd.lat / 1000000), abs(gd.lat) % 1000000, (int)(gd.lng / 1000000), abs(gd.lng) % 1000000, gd.alt, gd.speed / 100, gd.speed % 100, gd.heading);
-  } else {
-    sprintf(buf, "/?id=%s", net.IMEI);
-  }
+  sprintf(buf, "/?id=%s&timestamp=%04u-%02u-%02uT%02u:%02u:%02uZ&lat=%d.%06lu&lon=%d.%06lu&altitude=%d&speed=%u.%02u&heading=%d",
+    net.IMEI,
+    (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
+    (unsigned int)(gd.time / 10000), (unsigned int)(gd.time % 10000) / 100, (unsigned int)(gd.time % 100),
+    (int)(gd.lat / 1000000), abs(gd.lat) % 1000000, (int)(gd.lng / 1000000), abs(gd.lng) % 1000000, gd.alt, gd.speed / 100, gd.speed % 100, gd.heading);
   Serial.println(buf + 2);
 
   if (!net.httpSend(HTTP_GET, buf, true)) {
     Serial.println("Error sending data");                        
     net.httpClose();
-  }
-
-  // output server response
-  if (net.state() == HTTP_CONNECTED) {
-    // waiting for server response while still decoding NMEA
-    for (uint32_t t = millis(); !net.checkRecvEvent(1000) && millis() - t < 10000; );
+  } else if (net.state() == HTTP_CONNECTED) {
+    // waiting for server response
+    net.checkRecvEvent(CONN_TIMEOUT);
     char *response;
     int bytes = net.httpReceive(&response);
     if (bytes > 0) {
       Serial.println(response);
     }
+    // keep processed data
+    lastutc = gd.time;
+    lastlat = gd.lat;
+    lastlng = gd.lng;
   }
-
-  // keep processed UTC timestamp
-  lastutc = gd.time;
 }
