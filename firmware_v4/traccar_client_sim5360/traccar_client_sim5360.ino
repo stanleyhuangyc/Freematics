@@ -1,5 +1,5 @@
 /******************************************************************************
-* Traccar client for Freematics ONE+ and Freematics Esprit w/ SIM5360
+* Traccar client for Freematics ONE w/ SIM5360 and Trackie
 * Written by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
