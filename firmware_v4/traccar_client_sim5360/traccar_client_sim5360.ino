@@ -374,9 +374,7 @@ void initSIM5360()
 
 void setup()
 {
-  // USB serial
   Serial.begin(115200);
-
   sys.begin();
   initSIM5360();
 }
@@ -423,9 +421,8 @@ void loop()
   if (!net.httpSend(HTTP_GET, buf, true)) {
     Serial.println("Error sending data");                        
     net.httpClose();
-  } else if (net.state() == HTTP_CONNECTED) {
-    // waiting for server response
-    net.checkRecvEvent(CONN_TIMEOUT);
+  } else if (net.state() == HTTP_CONNECTED && net.checkRecvEvent(CONN_TIMEOUT)) {
+    // get and output server response
     char *response;
     int bytes = net.httpReceive(&response);
     if (bytes > 0) {
