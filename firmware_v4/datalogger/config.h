@@ -21,17 +21,20 @@
 // enable(1)/disable(0) MEMS sensor
 #define USE_MEMS 1
 
-// enable(1)/disable(0) GPS module
+// enable(1)/disable(0) external GPS receiver
 #define USE_GPS 1
+
+// enable(1)/disable(0) cellular module (SIM5360) internal GPS
+#define USE_CELL_GPS 1
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
 
 // time for OBD-II attempt before entering non-OBD mode
-#define OBD_ATTEMPT_TIME 180000
+#define OBD_ATTEMPT_TIME 180 /* seconds */
 
 // motion threshold for waking up
-#define WAKEUP_MOTION_THRESHOLD 0.15f /* in unit of G */
+#define WAKEUP_MOTION_THRESHOLD 0.25f /* in unit of G */
 
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
