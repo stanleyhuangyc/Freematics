@@ -42,21 +42,18 @@ public:
     sys.xbBegin(BEE_BAUDRATE);
     unsigned long t = millis();
     for (;;) {
-      sys.xbTogglePower();
-      delay(3000);
-      for (byte m = 0; m < 3; m++) {
-        sendCommand("AT\r");
-        if (sendCommand("ATE0\r") && sendCommand("ATI\r", 1000, "IMEI:")) {
-          char *p = strstr_P(buffer, PSTR("IMEI:"));
-          if (p) {
-            char *q = strchr(p, '\r');
-            if (q) *q = 0;
-            strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
-          }
-          return true;
+      if (!sendCommand("AT")) sendCommand(0, 5000, "START");
+      if (sendCommand("ATE0\r") && sendCommand("ATI\r", 1000, "IMEI:")) {
+        char *p = strstr_P(buffer, PSTR("IMEI:"));
+        if (p) {
+          char *q = strchr(p, '\r');
+          if (q) *q = 0;
+          strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
         }
+        return true;
       }
       if (millis() - t >= 30000) break;
+      sys.xbTogglePower();
     }
     return false;
   }
@@ -116,9 +113,9 @@ public:
     // set GPS antenna voltage
     sendCommand("AT+CVAUXV=61\r");
     sendCommand("AT+CVAUXS=1\r");
-    if (sendCommand("AT+CGPS=1\r") || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
-      return true;
-    }
+    if (sendCommand("AT+CGPS?\r", 1000, "+CGPS: 1")) return true;
+    delay(2000);
+    sendCommand("AT+CGPS=1\r");
     return false;
   }
   long parseDegree(const char* s)
@@ -140,8 +137,8 @@ public:
   bool getGPSInfo(GPS_DATA& gd)
   {
     char *p;
-    if (sendCommand("AT+CGPSINFO\r", 100) && (p = strstr_P(buffer, PSTR("+CGPSINFO:")))) do {
-      if (!(p = strchr(p, ':'))) break;
+    if (sendCommand("AT+CGPSINFO\r", 200, "+CGPSINFO:")) do {
+      if (!(p = strchr(buffer, ':'))) break;
       if (*(++p) == ',') break;
       gd.lat = parseDegree(p);
       if (!(p = strchr(p, ','))) break;
@@ -215,10 +212,10 @@ public:
   {
       return sendCommand("AT+CHTTPSSTART\r", 3000);
   }
-  void httpClose()
+  bool httpClose()
   {
-    sendCommand("AT+CHTTPSCLSE\r");
     m_state = HTTP_DISCONNECTED;
+    return sendCommand("AT+CHTTPSCLSE\r");
   }
   bool httpConnect(const char* host, unsigned int port)
   {
@@ -334,7 +331,7 @@ void initSIM5360()
       continue;
     }
 
-    Serial.print("Searching network");
+    Serial.print("Searching network...");
     if (net.setup(OPERATOR_APN)) {
       if (net.getOperatorName()) {
         Serial.println(net.buffer);
@@ -347,7 +344,12 @@ void initSIM5360()
     }
   }
 
-  net.startGPS();
+  Serial.print("Starting GPS...");
+  if (net.startGPS()) {
+    Serial.println("OK");
+  } else {
+    Serial.println("NO");
+  }
 
   Serial.print("IP address...");
   const char *ip = net.getIP();
@@ -365,7 +367,7 @@ void initSIM5360()
   }
 
   Serial.print("Init HTTP...");
-  if (net.httpOpen()) {
+  if (net.httpOpen() || net.httpClose()) {
     Serial.println("OK");
   } else {
     Serial.println("NO");
@@ -383,6 +385,7 @@ void loop()
 {
   static unsigned long lastutc = 0;
   static long lastlat = 0, lastlng = 0;
+  static int long lastspeed = 0;
   static byte retries = 0;
 
   // connect to HTTP server
@@ -406,6 +409,13 @@ void loop()
   if (!net.getGPSInfo(gd) || gd.time == lastutc || gd.date == 0 || (gd.lat == lastlat && gd.lng == lastlng)) {
     delay(200);
     return;
+  }
+
+  // reduce data when speed is 0
+  for (byte n = 0; (gd.speed == 0 && lastspeed == 0) && n < 10; n++) {
+    delay(1000);
+    net.getGPSInfo(gd);
+    lastspeed = gd.speed;
   }
 
   // arrange and send data in OsmAnd protocol
@@ -432,5 +442,6 @@ void loop()
     lastutc = gd.time;
     lastlat = gd.lat;
     lastlng = gd.lng;
+    lastspeed = gd.speed;
   }
 }
