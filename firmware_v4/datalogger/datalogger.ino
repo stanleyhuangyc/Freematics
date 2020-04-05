@@ -25,9 +25,10 @@
 #define STATE_SD_READY 0x1
 #define STATE_OBD_READY 0x2
 #define STATE_GPS_FOUND 0x4
-#define STATE_GPS_READY 0x8
-#define STATE_MEMS_READY 0x10
-#define STATE_FILE_READY 0x20
+#define STATE_CELL_GPS_FOUND 0x8
+#define STATE_GPS_READY 0x10
+#define STATE_MEMS_READY 0x20
+#define STATE_FILE_READY 0x40
 
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
@@ -88,7 +89,7 @@ public:
     ONE():state(0) {}
     void setup()
     {
-      Serial.print("OBD ");
+      Serial.print("OBD:");
       if (init()) {
         Serial.println("OK");
         state |= STATE_OBD_READY;
@@ -96,19 +97,29 @@ public:
         Serial.println("NO");
       }
 #if USE_GPS
-      Serial.print("GPS ");
+      Serial.print("GPS:");
       if (gpsInit(GPS_SERIAL_BAUDRATE)) {
         state |= STATE_GPS_FOUND;
         Serial.println("OK");
-        //waitGPS();
       } else {
         Serial.println("NO");
+      }
+#endif
+#if USE_CELL_GPS
+      if (!(state & STATE_GPS_FOUND)) {
+        Serial.print("CELL GPS:");
+        if (cellInit()) {
+          Serial.println("OK");
+          state |= STATE_CELL_GPS_FOUND;
+        } else {
+          Serial.println("NO");
+        }
       }
 #endif
 
 #if ENABLE_DATA_LOG
       if (!(state & STATE_SD_READY)) {
-        Serial.print("SD ");
+        Serial.print("SD:");
         pinMode(SD_CS_PIN, OUTPUT);
         if (SD.begin(SD_CS_PIN)) {
           Serial.println("OK");
@@ -130,52 +141,46 @@ public:
 
       calibrateMEMS();
     }
+    void logLocationData(GPS_DATA* gd)
+    {
+      if (gd->time && gd->time != UTC) {
+        byte day = gd->date / 10000;
+        dataTime = millis();
+        if (MMDD % 100 != day) {
+          log(PID_GPS_DATE, gd->date);
+        }
+        log(PID_GPS_TIME, gd->time);
+        log(PID_GPS_LATITUDE, gd->lat);
+        log(PID_GPS_LONGITUDE, gd->lng);
+        log(PID_GPS_ALTITUDE, gd->alt);
+        log(PID_GPS_SPEED, gd->speed);
+        log(PID_GPS_SAT_COUNT, gd->sat);
+        // save current date in MMDD format
+        unsigned int DDMM = gd->date / 100;
+        UTC = gd->time;
+        MMDD = (DDMM % 100) * 100 + (DDMM / 100);
+      }
+    }
 #if USE_GPS
-    void logGPSData()
+    void processGPS()
     {
         // issue the command to get parsed GPS data
         GPS_DATA gd = {0};
         if (gpsGetData(&gd)) {
-            dataTime = millis();
-            if (gd.time && gd.time != UTC) {
-              byte day = gd.date / 10000;
-              if (MMDD % 100 != day) {
-                log(PID_GPS_DATE, gd.date);
-              }
-              log(PID_GPS_TIME, gd.time);
-              log(PID_GPS_LATITUDE, gd.lat);
-              log(PID_GPS_LONGITUDE, gd.lng);
-              log(PID_GPS_ALTITUDE, gd.alt);
-              log(PID_GPS_SPEED, gd.speed);
-              log(PID_GPS_SAT_COUNT, gd.sat);
-              // save current date in MMDD format
-              unsigned int DDMM = gd.date / 100;
-              UTC = gd.time;
-              MMDD = (DDMM % 100) * 100 + (DDMM / 100);
-              // set GPS ready flag
-              state |= STATE_GPS_READY;
-            }
+          logLocationData(&gd);
+          // set GPS ready flag
+          state |= STATE_GPS_READY;
         }
     }
-    void waitGPS()
+#endif
+#if USE_CELL_GPS
+    void processCellGPS()
     {
-        int elapsed = 0;
-        GPS_DATA gd = {0};
-        for (uint32_t t = millis(); millis() - t < 300000;) {
-          int t1 = (millis() - t) / 1000;
-          if (t1 != elapsed) {
-            Serial.print("Waiting for GPS (");
-            Serial.print(elapsed);
-            Serial.println(")");
-            elapsed = t1;
-          }
-          // read parsed GPS data
-          if (gpsGetData(&gd) && gd.sat != 0 && gd.sat != 255) {
-            Serial.print("SAT:");
-            Serial.println(gd.sat);
-            break;
-          }
-        }
+      GPS_DATA gd;
+      if (cellGetGPSInfo(gd)) {
+        logLocationData(&gd);
+        state |= STATE_GPS_READY;
+      }
     }
 #endif
 #if ENABLE_DATA_LOG
@@ -248,6 +253,88 @@ public:
     {
       memsUpdated = mems.read(acc);
     }
+#if USE_CELL_GPS
+    bool cellSendCommand(const char* cmd, char* buf, int bufsize, const char* expected = "\r\nOK", unsigned int timeout = 1000)
+    {
+      if (cmd) xbWrite(cmd);
+      memset(buf, 0, bufsize);
+      byte ret = xbReceive(buf, bufsize, timeout, &expected, 1);
+      if (ret) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+    bool cellInit()
+    {
+      xbBegin(115200);
+      for (;;) {
+        char buf[128];
+        if (!cellSendCommand("AT\r", buf, sizeof(buf))) cellSendCommand(0, buf, sizeof(buf), "START", 5000);
+        if (cellSendCommand("ATE0\r", buf, sizeof(buf)) && cellSendCommand("ATI\r", buf, sizeof(buf), "SIM5360")) {
+          cellSendCommand("AT+CVAUXV=61\r", buf, sizeof(buf));
+          cellSendCommand("AT+CVAUXS=1\r", buf, sizeof(buf));
+          if (cellSendCommand("AT+CGPS?\r", buf, sizeof(buf), "+CGPS: 1")) return true;
+          delay(2000);
+          if (cellSendCommand("AT+CGPS=1,1\r", buf, sizeof(buf))) return true;
+        }
+        xbTogglePower();
+      }
+      return false;
+    }
+    long parseDegree(const char* s)
+    {
+      char *p;
+      unsigned long left = atol(s);
+      unsigned long tenk_minutes = (left % 100UL) * 100000UL;
+      if ((p = strchr(s, '.')))
+      {
+        unsigned long mult = 10000;
+        while (isdigit(*++p))
+        {
+          tenk_minutes += mult * (*p - '0');
+          mult /= 10;
+        }
+      }
+      return (left / 100) * 1000000 + tenk_minutes / 6;
+    }
+    bool cellGetGPSInfo(GPS_DATA& gd)
+    {
+      char *p;
+      char buf[160];
+      if (cellSendCommand("AT+CGPSINFO\r", buf, sizeof(buf), "+CGPSINFO:")) do {
+        if (!(p = strchr(buf, ':'))) break;
+        if (*(++p) == ',') break;
+        gd.lat = parseDegree(p);
+        if (!(p = strchr(p, ','))) break;
+        if (*(++p) == 'S') gd.lat = -gd.lat;
+        if (!(p = strchr(p, ','))) break;
+        gd.lng = parseDegree(++p);
+        if (!(p = strchr(p, ','))) break;
+        if (*(++p) == 'W') gd.lng = -gd.lng;
+        if (!(p = strchr(p, ','))) break;
+        gd.date = atol(++p);
+        if (!(p = strchr(p, ','))) break;
+        gd.time = atol(++p);
+        if (!(p = strchr(p, ','))) break;
+        gd.alt = atoi(++p);
+        if (!(p = strchr(p, ','))) break;
+        gd.speed = atof(++p) * 100;
+        if (!(p = strchr(p, ','))) break;
+        gd.heading = atoi(++p);
+        Serial.print("UTC:");
+        Serial.print(gd.date);
+        Serial.print(' ');
+        Serial.print(gd.time);
+        Serial.print(" LAT:");
+        Serial.print(gd.lat);
+        Serial.print(" LNG:");
+        Serial.println(gd.lng);
+        return true;
+      } while (0);
+      return false;
+    }
+#endif
     byte state;
 };
 
@@ -264,13 +351,14 @@ void setup()
 
     // change to 9600bps when using BLE
     Serial.begin(115200);
+    Serial.println("Datalogger");
     
     byte ver = one.begin();
-    Serial.print("Firmware R");
+    Serial.print("Firmware:V");
     Serial.println(ver);
 
 #if USE_MEMS
-    Serial.print("MEMS ");
+    Serial.print("MEMS:");
     if (mems.begin()) {
       one.state |= STATE_MEMS_READY;
       Serial.println("OK");
@@ -289,7 +377,7 @@ void loop()
 #if USE_GPS
       if (one.state & STATE_GPS_FOUND) {
         // GPS connected
-        one.logGPSData();
+        one.processGPS();
         if (one.state & STATE_GPS_READY) {
           uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
           if (one.openFile(dateTime)) {
@@ -346,14 +434,17 @@ void loop()
     
 #if USE_GPS
     if (one.state & STATE_GPS_FOUND) {
-      one.logGPSData();
+      one.processGPS();
+    }
+#endif
+#if USE_CELL_GPS
+    if (one.state & STATE_CELL_GPS_FOUND) {
+      one.processCellGPS();
     }
 #endif
 
 #if !ENABLE_DATA_OUT
     uint32_t t = millis();
-    Serial.print(t);
-    Serial.print(' ');
     Serial.print(one.dataCount);
     Serial.print(" samples ");
     Serial.print((float)one.dataCount * 1000 / t, 1);
