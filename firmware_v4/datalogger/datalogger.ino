@@ -268,7 +268,7 @@ public:
     bool cellInit()
     {
       xbBegin(115200);
-      for (;;) {
+      for (byte n = 0; n < 2; n++) {
         char buf[128];
         if (!cellSendCommand("AT\r", buf, sizeof(buf))) cellSendCommand(0, buf, sizeof(buf), "START", 5000);
         if (cellSendCommand("ATE0\r", buf, sizeof(buf)) && cellSendCommand("ATI\r", buf, sizeof(buf), "SIM5360")) {
@@ -351,7 +351,6 @@ void setup()
 
     // change to 9600bps when using BLE
     Serial.begin(115200);
-    Serial.println("Datalogger");
     
     byte ver = one.begin();
     Serial.print("Firmware:V");
