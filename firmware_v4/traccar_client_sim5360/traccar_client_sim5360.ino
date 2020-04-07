@@ -115,8 +115,7 @@ public:
     sendCommand("AT+CVAUXS=1\r");
     if (sendCommand("AT+CGPS?\r", 1000, "+CGPS: 1")) return true;
     delay(2000);
-    sendCommand("AT+CGPS=1\r");
-    return false;
+    return sendCommand("AT+CGPS=1\r");
   }
   long parseDegree(const char* s)
   {
@@ -229,22 +228,16 @@ public:
         return false;
       }
   }
-  bool httpSend(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0)
+  bool httpSend(const char* payload, int payloadSize)
   {
-    unsigned int headerSize = genHttpHeader(method, path, keepAlive, payload, payloadSize);
     // issue HTTP send command
-    sprintf(buffer, "AT+CHTTPSSEND=%u\r", headerSize + payloadSize);
+    sprintf(buffer, "AT+CHTTPSSEND=%u\r", payloadSize);
     if (!sendCommand(buffer, 100, ">")) {
       Serial.println(buffer);
       return false;
     }
-    // send HTTP header
-    genHttpHeader(method, path, keepAlive, payload, payloadSize);
-    sys.xbWrite(buffer);
-    // send POST payload if any
-    if (payload) sys.xbWrite(payload);
     buffer[0] = 0;
-    if (sendCommand(0, 200)) {
+    if (sendCommand(payload, 200)) {
       return true;
     }
     return false;
@@ -420,15 +413,19 @@ void loop()
 
   // arrange and send data in OsmAnd protocol
   // refer to https://www.traccar.org/osmand
-  char buf[128];
-  sprintf(buf, "/?id=%s&timestamp=%04u-%02u-%02uT%02u:%02u:%02uZ&lat=%d.%06lu&lon=%d.%06lu&altitude=%d&speed=%u.%02u&heading=%d",
+  char request[256];
+  int len = sprintf(request, "GET /?id=%s&timestamp=%04u-%02u-%02uT%02u:%02u:%02uZ&lat=%d.%06lu&lon=%d.%06lu&altitude=%d&speed=%u.%02u&heading=%d HTTP/1.1\r\n\
+Connection: keep-alive\r\n\
+Content-length: 0\r\n\r\n",
     net.IMEI,
     (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
     (unsigned int)(gd.time / 10000), (unsigned int)(gd.time % 10000) / 100, (unsigned int)(gd.time % 100),
     (int)(gd.lat / 1000000), abs(gd.lat) % 1000000, (int)(gd.lng / 1000000), abs(gd.lng) % 1000000, gd.alt, gd.speed / 100, gd.speed % 100, gd.heading);
-  Serial.println(buf + 2);
 
-  if (!net.httpSend(HTTP_GET, buf, true)) {
+  Serial.println("[REQUEST]");
+  Serial.print(request);
+
+  if (!net.httpSend(request, len)) {
     Serial.println("Error sending data");                        
     net.httpClose();
   } else if (net.state() == HTTP_CONNECTED && net.checkRecvEvent(CONN_TIMEOUT)) {
@@ -436,7 +433,8 @@ void loop()
     char *response;
     int bytes = net.httpReceive(&response);
     if (bytes > 0) {
-      Serial.println(response);
+      Serial.println("[RESPONSE]");
+      Serial.print(response);
     }
     // keep processed data
     lastutc = gd.time;
