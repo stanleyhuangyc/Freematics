@@ -210,7 +210,7 @@ public:
     }
     return false;
   }
-  bool httpOpen()
+  bool httpInit()
   {
     return sendCommand("AT+CHTTPSSTART\r", 3000);
   }
@@ -340,7 +340,7 @@ void initSIM5360()
   }
 
   Serial.print(F("Init HTTP..."));
-  if (net.httpOpen() || net.httpClose()) {
+  if (net.httpInit() || net.httpClose()) {
     Serial.println(F("OK"));
   } else {
     Serial.println(F("NO"));
@@ -369,6 +369,7 @@ void loop()
   static int long lastspeed = 0;
   static byte retries = 0;
 
+#if ENABLE_STANDBY
   if (net.state == STANDBY) {
     delay(3000);
     float v = sys.getVoltage();
@@ -378,6 +379,7 @@ void loop()
     initSIM5360();
     net.state = DISCONNECTED;
   }
+#endif
 
   // connect to HTTP server
   if (net.state != CONNECTED) {
@@ -396,7 +398,7 @@ void loop()
     }
   }
 
-  // load GPS data and wait for new one
+  // load GPS data
   GPS_DATA gd = {0};
   if (!net.loadGPSData(gd) || gd.date == 0) {
     // possibly no GPS signal
@@ -406,8 +408,8 @@ void loop()
     return;
   }
 
+  // wait for new GPS data
   if (gd.time == lastutc || (gd.lat == lastlat && gd.lng == lastlng)) {
-    // no new GPS data
     delay(200);
     return;
   }
