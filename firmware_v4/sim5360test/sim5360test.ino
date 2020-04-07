@@ -182,7 +182,7 @@ class CSIM5360 : public COBDSPI {
       if (method == HTTP_POST) {
         p += sprintf(p, "Content-length: %u\r\n", payloadSize);
       }
-      p += sprintf(p, "\r\n\r");
+      p += sprintf(p, "\r\n");
       return (unsigned int)(p - buffer);
     }
     bool httpSend(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0)
