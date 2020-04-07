@@ -15,31 +15,28 @@
 
 #include "FreematicsONE.h"
 
-#define BEE_BAUDRATE 115200L
-
 #define OPERATOR_APN "internet"
 #define TRACCAR_HOST "trackie.freematics.com"
 #define TRACCAR_PORT 5055
-#define CONN_TIMEOUT 5000
+#define CONN_TIMEOUT 5000 /* ms */
+#define SIM5360_BAUDRATE 115200L
+#define ENABLE_STANDBY 0
+#define VOLTAGE_IDLE 13.5f /* volts */
+#define VOLTAGE_START 14 /* volts */
 
 COBDSPI sys;
 
 typedef enum {
-    HTTP_DISCONNECTED = 0,
-    HTTP_CONNECTED,
-    HTTP_ERROR,
-} NET_STATES;
-
-typedef enum {
-  HTTP_GET = 0,
-  HTTP_POST,
-} HTTP_METHOD;
+    DISCONNECTED = 0,
+    CONNECTED,
+    ERROR,
+    STANDBY,
+} STATE;
 
 class SIM5360 {
 public:
-  bool init()
+  bool begin()
   {
-    sys.xbBegin(BEE_BAUDRATE);
     unsigned long t = millis();
     for (;;) {
       if (!sendCommand("AT")) sendCommand(0, 5000, "START");
@@ -56,6 +53,10 @@ public:
       sys.xbTogglePower();
     }
     return false;
+  }
+  void end()
+  {
+    sendCommand("AT+CPOF\r");
   }
   bool setup(const char* apn)
   {
@@ -133,7 +134,7 @@ public:
     }
     return (left / 100) * 1000000 + tenk_minutes / 6;
   }
-  bool getGPSInfo(GPS_DATA& gd)
+  bool loadGPSData(GPS_DATA& gd)
   {
     char *p;
     if (sendCommand("AT+CGPSINFO\r", 200, "+CGPSINFO:")) do {
@@ -165,11 +166,13 @@ public:
     uint32_t t = millis();
     char *ip = 0;
     do {
-      if (sendCommand("AT+IPADDR\r", 5000, "\r\nOK", true)) {
+      if (sendCommand("AT+IPADDR\r", 5000)) {
         char *p = strstr(buffer, "+IPADDR:");
         if (p) {
           ip = p + 9;
           if (*ip != '0') {
+            p = strchr(p, '\r');
+            if (p) *p = 0;
             break;
           }
         }
@@ -194,39 +197,38 @@ public:
   }
   bool getOperatorName()
   {
-      // display operator name
-      if (sendCommand("AT+COPS?\r") == 1) {
-          char *p = strstr(buffer, ",\"");
-          if (p) {
-              p += 2;
-              char *s = strchr(p, '\"');
-              if (s) *s = 0;
-              strcpy(buffer, p);
-              return true;
-          }
+    if (sendCommand("AT+COPS?\r") == 1) {
+      char *p = strstr(buffer, ",\"");
+      if (p) {
+          p += 2;
+          char *s = strchr(p, '\"');
+          if (s) *s = 0;
+          strcpy(buffer, p);
+          return true;
       }
-      return false;
+    }
+    return false;
   }
   bool httpOpen()
   {
-      return sendCommand("AT+CHTTPSSTART\r", 3000);
+    return sendCommand("AT+CHTTPSSTART\r", 3000);
   }
   bool httpClose()
   {
-    m_state = HTTP_DISCONNECTED;
+    state = DISCONNECTED;
     return sendCommand("AT+CHTTPSCLSE\r");
   }
   bool httpConnect(const char* host, unsigned int port)
   {
-      sprintf(buffer, "AT+CHTTPSOPSE=\"%s\",%u,%c\r", host, port, port == 443 ? '2' : '1');
-      //Serial.println(buffer);
-      if (sendCommand(buffer, CONN_TIMEOUT)) {
-        m_state = HTTP_CONNECTED;
-        return true;
-      } else {
-        m_state = HTTP_ERROR;
-        return false;
-      }
+    sprintf(buffer, "AT+CHTTPSOPSE=\"%s\",%u,%c\r", host, port, port == 443 ? '2' : '1');
+    //Serial.println(buffer);
+    if (sendCommand(buffer, CONN_TIMEOUT)) {
+      state = CONNECTED;
+      return true;
+    } else {
+      state = ERROR;
+      return false;
+    }
   }
   bool httpSend(const char* payload, int payloadSize)
   {
@@ -248,64 +250,41 @@ public:
   }
   int httpReceive(char** payload)
   {
-      int received = 0;
-      /*
-        +CHTTPSRECV:XX\r\n
-        [XX bytes from server]\r\n
-        \r\n+CHTTPSRECV: 0\r\n
-      */
-      if (sendCommand("AT+CHTTPSRECV=384\r", CONN_TIMEOUT, "\r\n+CHTTPSRECV: 0", true)) {
-        char *p = strstr(buffer, "+CHTTPSRECV:");
+    int received = 0;
+    /*
+      +CHTTPSRECV:XX\r\n
+      [XX bytes from server]\r\n
+      \r\n+CHTTPSRECV: 0\r\n
+    */
+    if (sendCommand("AT+CHTTPSRECV=256\r", CONN_TIMEOUT, "\r\n+CHTTPSRECV: 0")) {
+      char *p = strstr(buffer, "\r\n+CHTTPSRECV:");
+      if (p) {
+        p = strchr(p, ',');
         if (p) {
-          p = strchr(p, ',');
-          if (p) {
-            received = atoi(p + 1);
-            if (payload) {
-              char *q = strchr(p, '\n');
-              *payload = q ? (q + 1) : p;
-            }
+          received = atoi(p + 1);
+          if (payload) {
+            char *q = strchr(p, '\n');
+            *payload = q ? (q + 1) : p;
+            q = strstr(*payload, "\r\n+CHTTPSRECV:");
+            if (q) *q = 0;
           }
         }
       }
-      if (received == 0) {
-        m_state = HTTP_ERROR;
-      }
-      return received;
-  }
-  bool sendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK", bool terminated = false)
-  {
-    if (cmd) {
-      sys.xbWrite(cmd);
     }
+    if (received == 0) {
+      state = ERROR;
+    }
+    return received;
+  }
+  bool sendCommand(const char* cmd, unsigned int timeout = 2000, const char* expected = "\r\nOK")
+  {
+    if (cmd) sys.xbWrite(cmd);
     buffer[0] = 0;
-    byte ret = sys.xbReceive(buffer, sizeof(buffer), timeout, &expected, 1);
-    if (ret) {
-      if (terminated) {
-        char *p = strstr(buffer, expected);
-        if (p) *p = 0;
-      }
-      return true;
-    } else {
-      return false;
-    }
+    return sys.xbReceive(buffer, sizeof(buffer), timeout, &expected, 1) != 0;
   }
-  byte state() { return m_state; }
-  char buffer[384] = {0};
+  char buffer[320] = {0};
   char IMEI[16] = {0};
-private:
-  unsigned int genHttpHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
-  {
-      // generate HTTP header
-      char *p = buffer;
-      p += sprintf(p, "%s %s HTTP/1.1\r\nConnection: %s\r\n",
-        method == HTTP_GET ? "GET" : "POST", path, keepAlive ? "keep-alive" : "close");
-      if (method == HTTP_POST) {
-        p += sprintf(p, "Content-length: %u\r\n", payloadSize);
-      }
-      p += sprintf(p, "\r\n\r");
-      return (unsigned int)(p - buffer);
-  }
-  byte m_state = HTTP_DISCONNECTED;
+  STATE state = DISCONNECTED;
 };
 
 SIM5360 net;
@@ -313,9 +292,9 @@ SIM5360 net;
 void initSIM5360()
 {
   for (;;) {
-    // initialize SIM5360 xBee module (if present)
+    // initialize SIM5360 module
     Serial.print("Init...");
-    if (net.init()) {
+    if (net.begin()) {
       Serial.println("OK");
       Serial.print("IMEI:");
       Serial.println(net.IMEI);
@@ -347,7 +326,7 @@ void initSIM5360()
   Serial.print("IP address...");
   const char *ip = net.getIP();
   if (ip) {
-    Serial.print(ip);
+    Serial.println(ip);
   } else {
     Serial.println("failed");
   }
@@ -367,10 +346,18 @@ void initSIM5360()
   }
 }
 
+void standby()
+{
+  Serial.println("Standby...");
+  net.end();
+  net.state = STANDBY;
+}
+
 void setup()
 {
   Serial.begin(115200);
   sys.begin();
+  sys.xbBegin(SIM5360_BAUDRATE);
   initSIM5360();
 }
 
@@ -381,8 +368,18 @@ void loop()
   static int long lastspeed = 0;
   static byte retries = 0;
 
+  if (net.state == STANDBY) {
+    delay(3000);
+    float v = sys.getVoltage();
+    Serial.print(v);
+    Serial.println('V');
+    if (v < VOLTAGE_START) return;
+    initSIM5360();
+    net.state = DISCONNECTED;
+  }
+
   // connect to HTTP server
-  if (net.state() != HTTP_CONNECTED) {
+  if (net.state != CONNECTED) {
     Serial.print("Connecting server...");
     if (!net.httpConnect(TRACCAR_HOST, TRACCAR_PORT)) {
       Serial.println();
@@ -398,25 +395,40 @@ void loop()
     }
   }
 
+  // load GPS data and wait for new one
   GPS_DATA gd = {0};
-  if (!net.getGPSInfo(gd) || gd.time == lastutc || gd.date == 0 || (gd.lat == lastlat && gd.lng == lastlng)) {
+  if (!net.loadGPSData(gd) || gd.date == 0) {
+    // possibly no GPS signal
+#if ENABLE_STANDBY
+    if (sys.getVoltage() < VOLTAGE_IDLE) standby();
+#endif
+    return;
+  }
+
+  if (gd.time == lastutc || (gd.lat == lastlat && gd.lng == lastlng)) {
+    // no new GPS data
     delay(200);
     return;
   }
 
-  // reduce data when speed is 0
+  // reduce data rate when speed is 0
   for (byte n = 0; (gd.speed == 0 && lastspeed == 0) && n < 10; n++) {
     delay(1000);
-    net.getGPSInfo(gd);
+#if ENABLE_STANDBY
+    if (sys.getVoltage() < VOLTAGE_IDLE) {
+      standby();
+      return;
+    }
+#endif
+    // load new data
+    net.loadGPSData(gd);
     lastspeed = gd.speed;
   }
 
-  // arrange and send data in OsmAnd protocol
-  // refer to https://www.traccar.org/osmand
+  // generate HTTP request
+  // refer to https://www.traccar.org/osmand for URL format
   char request[256];
-  int len = sprintf(request, "GET /?id=%s&timestamp=%04u-%02u-%02uT%02u:%02u:%02uZ&lat=%d.%06lu&lon=%d.%06lu&altitude=%d&speed=%u.%02u&heading=%d HTTP/1.1\r\n\
-Connection: keep-alive\r\n\
-Content-length: 0\r\n\r\n",
+  int len = sprintf(request, "GET /?id=%s&timestamp=%04u-%02u-%02uT%02u:%02u:%02uZ&lat=%d.%06lu&lon=%d.%06lu&altitude=%d&speed=%u.%02u&heading=%d HTTP/1.1\r\nConnection: keep-alive\r\nContent-length: 0\r\n\r\n",
     net.IMEI,
     (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
     (unsigned int)(gd.time / 10000), (unsigned int)(gd.time % 10000) / 100, (unsigned int)(gd.time % 100),
@@ -425,10 +437,11 @@ Content-length: 0\r\n\r\n",
   Serial.println("[REQUEST]");
   Serial.print(request);
 
+  // send HTTP request containing data
   if (!net.httpSend(request, len)) {
     Serial.println("Error sending data");                        
     net.httpClose();
-  } else if (net.state() == HTTP_CONNECTED && net.checkRecvEvent(CONN_TIMEOUT)) {
+  } else if (net.state == CONNECTED && net.checkRecvEvent(CONN_TIMEOUT)) {
     // get and output server response
     char *response;
     int bytes = net.httpReceive(&response);
