@@ -13,6 +13,7 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
+#include <Arduino.h>
 #include "FreematicsONE.h"
 
 #define OPERATOR_APN "internet"
@@ -220,7 +221,7 @@ public:
   }
   bool httpConnect(const char* host, unsigned int port)
   {
-    sprintf(buffer, "AT+CHTTPSOPSE=\"%s\",%u,%c\r", host, port, port == 443 ? '2' : '1');
+    sprintf_P(buffer, PSTR("AT+CHTTPSOPSE=\"%s\",%u,%c\r"), host, port, port == 443 ? '2' : '1');
     //Serial.println(buffer);
     if (sendCommand(buffer, CONN_TIMEOUT)) {
       state = CONNECTED;
@@ -233,7 +234,7 @@ public:
   bool httpSend(const char* payload, int payloadSize)
   {
     // issue HTTP send command
-    sprintf(buffer, "AT+CHTTPSSEND=%u\r", payloadSize);
+    sprintf_P(buffer, PSTR("AT+CHTTPSSEND=%u\r"), payloadSize);
     if (!sendCommand(buffer, 100, ">")) {
       Serial.println(buffer);
       return false;
@@ -257,7 +258,7 @@ public:
       \r\n+CHTTPSRECV: 0\r\n
     */
     if (sendCommand("AT+CHTTPSRECV=256\r", CONN_TIMEOUT, "\r\n+CHTTPSRECV: 0")) {
-      char *p = strstr(buffer, "\r\n+CHTTPSRECV:");
+      char *p = strstr_P(buffer, PSTR("\r\n+CHTTPSRECV:"));
       if (p) {
         p = strchr(p, ',');
         if (p) {
@@ -265,7 +266,7 @@ public:
           if (payload) {
             char *q = strchr(p, '\n');
             *payload = q ? (q + 1) : p;
-            q = strstr(*payload, "\r\n+CHTTPSRECV:");
+            q = strstr_P(*payload, PSTR("\r\n+CHTTPSRECV:"));
             if (q) *q = 0;
           }
         }
@@ -293,62 +294,62 @@ void initSIM5360()
 {
   for (;;) {
     // initialize SIM5360 module
-    Serial.print("Init...");
+    Serial.print(F("Init..."));
     if (net.begin()) {
-      Serial.println("OK");
-      Serial.print("IMEI:");
+      Serial.println(F("OK"));
+      Serial.print(F("IMEI:"));
       Serial.println(net.IMEI);
     } else {
-      Serial.println("NO");
+      Serial.println(F("NO"));
       continue;
     }
 
-    Serial.print("Searching network...");
+    Serial.print(F("Searching network..."));
     if (net.setup(OPERATOR_APN)) {
       if (net.getOperatorName()) {
         Serial.println(net.buffer);
       } else {
-        Serial.println("OK");
+        Serial.println(F("OK"));
       }
       break;
     } else {
-      Serial.println("NO");
+      Serial.println(F("NO"));
     }
   }
 
-  Serial.print("Starting GPS...");
+  Serial.print(F("Starting GPS..."));
   if (net.startGPS()) {
-    Serial.println("OK");
+    Serial.println(F("OK"));
   } else {
-    Serial.println("NO");
+    Serial.println(F("NO"));
   }
 
-  Serial.print("IP address...");
+  Serial.print(F("IP address..."));
   const char *ip = net.getIP();
   if (ip) {
     Serial.println(ip);
   } else {
-    Serial.println("failed");
+    Serial.println(F("failed"));
   }
 
   int signal = net.getSignal();
   if (signal > 0) {
-    Serial.print("RSSI:");
+    Serial.print(F("RSSI:"));
     Serial.print((float)signal / 10, 1);
-    Serial.println("dBm");
+    Serial.println(F("dBm"));
   }
 
-  Serial.print("Init HTTP...");
+  Serial.print(F("Init HTTP..."));
   if (net.httpOpen() || net.httpClose()) {
-    Serial.println("OK");
+    Serial.println(F("OK"));
   } else {
-    Serial.println("NO");
+    Serial.println(F("NO"));
   }
 }
 
 void standby()
 {
-  Serial.println("Standby...");
+  Serial.println(F("Standby..."));
   net.end();
   net.state = STANDBY;
 }
@@ -380,7 +381,7 @@ void loop()
 
   // connect to HTTP server
   if (net.state != CONNECTED) {
-    Serial.print("Connecting server...");
+    Serial.print(F("Connecting server..."));
     if (!net.httpConnect(TRACCAR_HOST, TRACCAR_PORT)) {
       Serial.println();
       Serial.println(net.buffer);
@@ -391,7 +392,7 @@ void loop()
       }
       return;
     } else {
-      Serial.println("OK");
+      Serial.println(F("OK"));
     }
   }
 
@@ -428,25 +429,25 @@ void loop()
   // generate HTTP request
   // refer to https://www.traccar.org/osmand for URL format
   char request[256];
-  int len = sprintf(request, "GET /?id=%s&timestamp=%04u-%02u-%02uT%02u:%02u:%02uZ&lat=%d.%06lu&lon=%d.%06lu&altitude=%d&speed=%u.%02u&heading=%d HTTP/1.1\r\nConnection: keep-alive\r\nContent-length: 0\r\n\r\n",
+  int len = sprintf_P(request, PSTR("GET /?id=%s&timestamp=%04u-%02u-%02uT%02u:%02u:%02uZ&lat=%d.%06lu&lon=%d.%06lu&altitude=%d&speed=%u.%02u&heading=%d HTTP/1.1\r\nConnection: keep-alive\r\nContent-length: 0\r\n\r\n"),
     net.IMEI,
     (unsigned int)(gd.date % 100) + 2000, (unsigned int)(gd.date / 100) % 100, (unsigned int)(gd.date / 10000),
     (unsigned int)(gd.time / 10000), (unsigned int)(gd.time % 10000) / 100, (unsigned int)(gd.time % 100),
     (int)(gd.lat / 1000000), abs(gd.lat) % 1000000, (int)(gd.lng / 1000000), abs(gd.lng) % 1000000, gd.alt, gd.speed / 100, gd.speed % 100, gd.heading);
 
-  Serial.println("[REQUEST]");
+  Serial.println(F("[REQUEST]"));
   Serial.print(request);
 
   // send HTTP request containing data
   if (!net.httpSend(request, len)) {
-    Serial.println("Error sending data");                        
+    Serial.println(F("Error sending data"));
     net.httpClose();
   } else if (net.state == CONNECTED && net.checkRecvEvent(CONN_TIMEOUT)) {
     // get and output server response
     char *response;
     int bytes = net.httpReceive(&response);
     if (bytes > 0) {
-      Serial.println("[RESPONSE]");
+      Serial.println(F("[RESPONSE]"));
       Serial.print(response);
     }
     // keep processed data
