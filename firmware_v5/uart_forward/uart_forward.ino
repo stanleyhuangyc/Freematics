@@ -1,5 +1,5 @@
 /******************************************************************************
-* Simple GPS test sketch for Freematics ONE+
+* Serial UART bridge for Freematics ONE+
 * Written by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
@@ -18,8 +18,7 @@
 
 #define PIN_UART_RXD 13
 #define PIN_UART_TXD 14
-#define PIN_POWER 15
-#define PIN_POWER2 12
+#define PIN_POWER 12
 
 #define UART_BAUDRATE 115200
 
@@ -34,8 +33,6 @@ void setup()
   // set some pins
   pinMode(PIN_POWER, OUTPUT);
   digitalWrite(PIN_POWER, HIGH);
-  pinMode(PIN_POWER2, OUTPUT);
-  digitalWrite(PIN_POWER2, HIGH);
 }
 
 void loop()
