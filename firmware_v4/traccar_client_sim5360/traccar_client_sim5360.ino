@@ -1,5 +1,5 @@
 /******************************************************************************
-* Traccar client for Freematics ONE w/ SIM5360 and Trackie
+* A traccar client for Freematics ONE with SIM5360 (cellular and GNSS)
 * Written by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
@@ -16,14 +16,15 @@
 #include <Arduino.h>
 #include "FreematicsONE.h"
 
-#define OPERATOR_APN "internet"
+#define OPERATOR_APN "hologram"
+// change traccar host to your own server
 #define TRACCAR_HOST "trackie.freematics.com"
 #define TRACCAR_PORT 5055
 #define CONN_TIMEOUT 5000 /* ms */
 #define SIM5360_BAUDRATE 115200L
 #define ENABLE_STANDBY 0
-#define VOLTAGE_IDLE 13.5f /* volts */
-#define VOLTAGE_START 14 /* volts */
+#define VOLTAGE_IDLE 12.5f /* volts */
+#define VOLTAGE_START 13.5f /* volts */
 
 COBDSPI sys;
 
@@ -40,7 +41,7 @@ public:
   {
     unsigned long t = millis();
     for (;;) {
-      if (!sendCommand("AT")) sendCommand(0, 5000, "START");
+      if (!sendCommand("AT")) sendCommand(0, 3000, "START");
       if (sendCommand("ATE0\r") && sendCommand("ATI\r", 1000, "IMEI:")) {
         char *p = strstr_P(buffer, PSTR("IMEI:"));
         if (p) {
@@ -52,6 +53,7 @@ public:
       }
       if (millis() - t >= 30000) break;
       sys.xbTogglePower();
+      delay(3000);
     }
     return false;
   }
@@ -212,7 +214,7 @@ public:
   }
   bool httpInit()
   {
-    return sendCommand("AT+CHTTPSSTART\r", 3000);
+    return sendCommand("AT+CHTTPSSTART\r", 1000);
   }
   bool httpClose()
   {
