@@ -349,24 +349,6 @@ void processMEMS(CBuffer* buffer)
 #else
   if (!mems->read(acc, gyr, mag, &temp)) return;
 #endif
-  Serial.print("ACC:");
-  Serial.print(acc[0]);
-  Serial.print('/');
-  Serial.print(acc[1]);
-  Serial.print('/');
-  Serial.print(acc[2]);
-  Serial.print(" GYRO:");
-  Serial.print(gyr[0]);
-  Serial.print('/');
-  Serial.print(gyr[1]);
-  Serial.print('/');
-  Serial.print(gyr[2]);
-  Serial.print(" MAG:");
-  Serial.print(mag[0]);
-  Serial.print('/');
-  Serial.print(mag[1]);
-  Serial.print('/');
-  Serial.println(mag[2]);
 
   accSum[0] += acc[0];
   accSum[1] += acc[1];
