@@ -678,7 +678,7 @@ bool waitMotion(long timeout)
       // calculate relative movement
       float motion = 0;
       float acc[3];
-      mems->read(acc);
+      if (!mems->read(acc)) continue;
       if (accCount == 10) {
         accCount = 0;
         accSum[0] = 0;
