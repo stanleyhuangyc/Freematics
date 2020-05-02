@@ -23,6 +23,8 @@
 #include "datalogger.h"
 #include "config.h"
 
+void initMesh();
+
 // states
 #define STATE_STORE_READY 0x1
 #define STATE_OBD_READY 0x2
@@ -63,7 +65,7 @@ PID_POLLING_INFO obdData[]= {
   {PID_INTAKE_TEMP, 3},
 };
 
-#if MEMS_MODE
+#if USE_MEMS
 float acc[3] = {0};
 float gyr[3] = {0};
 float mag[3] = {0};
@@ -104,14 +106,8 @@ SPIFFSLogger store(new DataOutputter);
 DataOutputter store;
 #endif
 
-#if MEMS_MODE
-#if MEMS_MODE == MEMS_ACC
-MPU9250_ACC mems;
-#elif MEMS_MODE == MEMS_9DOF
-MPU9250_9DOF mems;
-#elif MEMS_MODE == MEMS_DMP
-MPU9250_DMP mems;
-#endif
+#if USE_MEMS
+MEMS_I2C* mems = 0;
 
 void calibrateMEMS()
 {
@@ -122,7 +118,7 @@ void calibrateMEMS()
     int n;
     for (n = 0; n < 100; n++) {
       float acc[3] = {0};
-      mems.read(acc);
+      mems->read(acc);
       accBias[0] += acc[0];
       accBias[1] += acc[1];
       accBias[2] += acc[2];
@@ -152,14 +148,14 @@ int handlerLiveData(UrlHandlerParam* param)
     }
     n--;
     n += snprintf(buf + n, bufsize - n, "]}");
-#if MEMS_MODE
+#if USE_MEMS
     n += snprintf(buf + n, bufsize - n, ",\"mems\":{\"acc\":[%d,%d,%d]",
         (int)((acc[0] - accBias[0]) * 100), (int)((acc[1] - accBias[1]) * 100), (int)((acc[2] - accBias[2]) * 100));
-#if MEMS_MODE == MEMS_9DOF || MEMS_MODE == MEMS_DMP
+#if USE_MEMS == MEMS_9DOF || USE_MEMS == MEMS_DMP
     n += snprintf(buf + n, bufsize - n, ",\"gyro\":[%d,%d,%d]",
         (int)(gyr[0] * 100), (int)(gyr[1] * 100), (int)(gyr[2] * 100));
 #endif
-#if MEMS_MODE == MEMS_9DOF
+#if USE_MEMS == MEMS_9DOF
     n += snprintf(buf + n, bufsize - n, ",\"mag\":[%d,%d,%d]",
         (int)(mag[0] * 10000), (int)(mag[1] * 10000), (int)(mag[2] * 10000));
 #endif
@@ -235,6 +231,20 @@ class DataLogger
 public:
     void init()
     {
+#if USE_GPS
+        if (!checkState(STATE_GPS_FOUND)) {
+            Serial.print("GPS...");
+            if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
+                setState(STATE_GPS_FOUND);
+                Serial.println("OK");
+                //waitGPS();
+            } else {
+                sys.gpsEnd();
+                Serial.println("NO");
+            }
+        }
+#endif
+
 #if USE_OBD
         Serial.print("OBD...");
         if (obd.init()) {
@@ -252,20 +262,6 @@ public:
             setState(STATE_OBD_READY);
         } else {
             Serial.println("NO");
-        }
-#endif
-
-#if USE_GPS
-        if (!checkState(STATE_GPS_FOUND)) {
-            Serial.print("GPS...");
-            if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
-                setState(STATE_GPS_FOUND);
-                Serial.println("OK");
-                //waitGPS();
-            } else {
-                sys.gpsEnd();
-                Serial.println("NO");
-            }
         }
 #endif
 
@@ -346,14 +342,14 @@ public:
         clearState(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
         setState(STATE_STANDBY);
         Serial.println("Standby"); 
-#if MEMS_MODE
+#if USE_MEMS
         if (checkState(STATE_MEMS_READY)) {
         calibrateMEMS();
         while (checkState(STATE_STANDBY)) {
             // calculate relative movement
             float motion = 0;
             for (byte n = 0; n < 10; n++) {
-            mems.read(acc);
+            mems->read(acc);
             for (byte i = 0; i < 3; i++) {
                 float m = (acc[i] - accBias[i]);
                 motion += m * m;
@@ -439,7 +435,7 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
 
-    if (sys.begin()) {
+    if (sys.begin(true, false)) {
         Serial.print("Firmware: V");
         Serial.println(sys.version);
     }
@@ -447,16 +443,28 @@ void setup()
     obd.begin(sys.link);
 #endif
 
-#if MEMS_MODE
-    Serial.print("MEMS...");
-    byte ret = mems.begin(ENABLE_ORIENTATION);
-    if (ret) {
-      logger.setState(STATE_MEMS_READY);
-      if (ret == 2) Serial.print("9-DOF ");
-      Serial.println("OK");
-      calibrateMEMS();
-    } else {
-      Serial.println("NO");
+    //initMesh();
+
+#if USE_MEMS
+    if (!logger.checkState(STATE_MEMS_READY)) {
+        Serial.print("MEMS:");
+        mems = new MPU9250;
+        byte ret = mems->begin(ENABLE_ORIENTATION);
+        if (ret) {
+            logger.setState(STATE_MEMS_READY);
+            Serial.println("MPU-9250");
+        } else {
+            mems->end();
+            delete mems;
+            mems = new ICM_20948_I2C;
+            ret = mems->begin(ENABLE_ORIENTATION);
+            if (ret) {
+                logger.setState(STATE_MEMS_READY);
+                Serial.println("ICM-20948");
+            } else {
+                Serial.println("NO");
+            }
+        }
     }
 #endif
 
@@ -523,9 +531,16 @@ void executeCommand()
 
 void loop()
 {
-    if (!logger.checkState(STATE_OBD_READY) && !obd.init()) {
+    if (!logger.checkState(STATE_OBD_READY)) {
         logger.standby();
-        return;
+        Serial.print("OBD...");
+        if (!obd.init()) {
+            Serial.println("NO");
+            return;
+        }
+        logger.setState(STATE_OBD_READY);
+        Serial.println("OK");
+        startTime = millis();
     }
 
     // if file not opened, create a new file
@@ -582,11 +597,11 @@ void loop()
     }
 #endif
 
-#if MEMS_MODE
+#if USE_MEMS
     if (logger.checkState(STATE_MEMS_READY)) {
       bool updated;
 #if ENABLE_ORIENTATION
-      updated = mems.read(acc, gyr, mag, 0, &ori);
+      updated = mems->read(acc, gyr, mag, 0, &ori);
       if (updated) {
         Serial.print("Orientation: ");
         Serial.print(ori.yaw, 2);
@@ -595,12 +610,14 @@ void loop()
         Serial.print(' ');
         Serial.println(ori.roll, 2);
         store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+        store.log(PID_GYRO, (int16_t)(gyr[0] * 100), (int16_t)(gyr[1] * 100), (int16_t)(gyr[2] * 100));
         store.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
       }
 #else
-      updated = mems.read(acc, gyr, mag);
+      updated = mems->read(acc, gyr, mag);
       if (updated) {
         store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
+        store.log(PID_GYRO, (int16_t)(gyr[0] * 100), (int16_t)(gyr[1] * 100), (int16_t)(gyr[2] * 100));
       }
 #endif
     }
@@ -613,8 +630,7 @@ void loop()
         store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
     }
     if (obd.errors >= 3) {
-        logger.standby();
-        logger.init();
+        logger.clearState(STATE_OBD_READY);
         return;
     }
 #endif

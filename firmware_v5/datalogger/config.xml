@@ -3,12 +3,7 @@
 <target board="esp32 esp32_16m" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
   <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
   <define name="Enable GPS" type="bool" const="USE_GPS" default="true"/>
-  <define name="Motion Sensor">
-    <option name="Disabled" const="MEMS_MODE=MEMS_DISABLED"/>
-    <option name="Accelerometer" const="MEMS_MODE=MEMS_ACC"/>
-    <option name="9-DOF" const="MEMS_MODE=MEMS_9DOF" default="true"/>
-    <option name="DMP" const="MEMS_MODE=MEMS_DMP"/>
-  </define>
+  <define name="Motion Sensor" type="bool" const="USE_GPS" default="true"/>
   <define name="Enable Quaternion" type="bool" const="ENABLE_ORIENTATION" default="false"/>
   <define name="Storage">
     <option name="None" const="STORAGE=STORAGE_NONE"/>

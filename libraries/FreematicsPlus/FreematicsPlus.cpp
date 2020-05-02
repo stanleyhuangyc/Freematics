@@ -676,13 +676,6 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate, int pinRx, int pinTx)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
     };
-    if (version >= 14) {
-        pinRx = PIN_BEE_UART_RXD3;
-        pinTx = PIN_BEE_UART_TXD3;
-    } else if (version == 13) {
-        pinRx = PIN_BEE_UART_RXD2;
-        pinTx = PIN_BEE_UART_TXD2;
-    }
 
 #if VERBOSE_XBEE
     Serial.print("Bee Rx:");
@@ -807,13 +800,11 @@ void FreematicsESP32::xbTogglePower()
 
 void FreematicsESP32::buzzer(int freq)
 {
-    if (version >= 14) {
-        if (freq) {
-            ledcWriteTone(0, 2000);
-            ledcWrite(0, 255);
-        } else {
-            ledcWrite(0, 0);
-        }
+    if (freq) {
+        ledcWriteTone(0, 2000);
+        ledcWrite(0, 255);
+    } else {
+        ledcWrite(0, 0);
     }
 }
 
@@ -846,7 +837,7 @@ bool FreematicsESP32::reactivateLink()
 
 void FreematicsESP32::resetLink()
 {
-    if (version >= 14) {
+    if (version >= 14 || version == 11) {
         digitalWrite(PIN_LINK_RESET, LOW);
         delay(50);
         digitalWrite(PIN_LINK_RESET, HIGH);
@@ -871,18 +862,26 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
 
     do {
         CLink_UART *linkUART = new CLink_UART;
-        if (linkUART->begin()) {
+        //linkUART->begin(115200);
+        //char buf[16];
+        // lift baudrate
+        //linkUART->sendCommand("ATBR1 3E800\r", buf, sizeof(buf), 10);
+        //linkUART->end();
+        if (linkUART->begin(115200)) {
             link = linkUART;
             for (byte n = 0; n < 3 && !(version = getVersion()); n++);
             if (version) {
-                if (version >= 14) {
+                if (version >= 13) {
                     m_flags |= GNSS_USE_LINK;
                     // set up buzzer
                     ledcSetup(0, 2000, 8);
                     ledcAttachPin(PIN_BUZZER, 0);
-                } else if (version == 13) {
+                } else if (version == 11) {
                     m_pinGPSPower = PIN_GPS_POWER2;
-                    m_flags |= GNSS_USE_LINK;
+                    m_flags |= GNSS_SOFT_SERIAL;
+                    // set up buzzer
+                    ledcSetup(0, 2000, 8);
+                    ledcAttachPin(PIN_BUZZER, 0);
                 } else {
                     m_pinGPSPower = PIN_GPS_POWER;
                     m_flags |= GNSS_SOFT_SERIAL;
@@ -912,7 +911,16 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
     } while(0);
 
     if (useCellular) {
-        xbBegin(XBEE_BAUDRATE);
+        int pinRx = PIN_BEE_UART_RXD;
+        int pinTx = PIN_BEE_UART_TXD;
+        if (version == 13) {
+            pinRx = PIN_BEE_UART_RXD2;
+            pinTx = PIN_BEE_UART_TXD2;
+        } else if (version == 11 && !(m_flags & USE_UART_LINK)) {
+            pinRx = PIN_BEE_UART_RXD3;
+            pinTx = PIN_BEE_UART_TXD3;
+        }
+        xbBegin(XBEE_BAUDRATE, pinRx, pinTx);
         m_flags |= USE_CELL;
     }
     if (useGNSS) {

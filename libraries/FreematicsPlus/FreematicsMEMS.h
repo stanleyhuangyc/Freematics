@@ -1,14 +1,12 @@
 /*************************************************************************
-* Freematics MPU-9250 helper class
+* Freematics MEMS motion sensor helper classes
 * Distributed under BSD license
 * Visit https://freematics.com for more information
-* (C)2016-2018 Stanley Huang <stanley@freematics.com.au>
+* (C)2016-2020 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
-#ifndef _MPU9250_H
-#define _MPU9250_H
-
 #include "FreematicsBase.h"
+#include "utility/ICM_20948_C.h"	// The C backbone
 
 // See also MPU-9250 Register Map and Descriptions, Revision 4.0,
 // RM-MPU-9250A-00, Rev. 1.4, 9/9/2013 for registers not listed in above
@@ -238,31 +236,32 @@ private:
   float deltat = 0.0f;
 };
 
-class MPU9250_ACC
+class MEMS_I2C
 {
 public:
-  virtual byte begin(bool fusion = false);
+  MEMS_I2C() {};
+  virtual ~MEMS_I2C() {};
+  virtual byte begin(bool fusion = false) = 0;
   virtual void end() { uninitI2C(); }
-  virtual bool read(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+  virtual bool read(float* acc, float* gyr = 0, float* mag = 0, float* temp = 0, ORIENTATION* ori = 0) = 0;
 protected:
-  bool initI2C();
+  bool initI2C(unsigned long clock);
   void uninitI2C();
-  void getAres();
-  void readAccelData(int16_t *);
-  int16_t readTempData();
-  void initMPU9250();
-  void writeByte(uint8_t, uint8_t);
-  uint8_t readByte(uint8_t);
-  bool readBytes(uint8_t, uint8_t, uint8_t *);
-  int16_t accelCount[3] = {0};
 };
 
-class MPU9250_9DOF : public MPU9250_ACC
+class MPU9250 : public MEMS_I2C
 {
 public:
   byte begin(bool fusion = false);
-  bool read(float* acc, float* gyr = 0, float* mag = 0, int16_t* temp = 0, ORIENTATION* ori = 0);
+  bool read(float* acc, float* gyr = 0, float* mag = 0, float* temp = 0, ORIENTATION* ori = 0);
 private:
+  void writeByte(uint8_t, uint8_t);
+  uint8_t readByte(uint8_t);
+  bool readBytes(uint8_t, uint8_t, uint8_t *);
+  void readAccelData(int16_t *);
+  int16_t readTempData();
+  void init();
+  void getAres();
   void getMres();
   void getGres();
   void readGyroData(int16_t *);
@@ -276,9 +275,126 @@ private:
   float gyroBias[3] = {0};
   float accelBias[3] = {0};      // Bias corrections for gyro and accelerometer
   float magCalibration[3] = {0};
+  int16_t accelCount[3] = {0};
   int16_t gyroCount[3] = {0};
   int16_t magCount[3] = {0};    // Stores the 16-bit signed magnetometer sensor output
   CQuaterion* quaterion = 0;
 };
 
-#endif
+#define ICM_20948_ARD_UNUSED_PIN 0xFF
+
+// Base
+class ICM_20948 {
+private:
+protected:
+    ICM_20948_Device_t  _device;
+    bool                _has_magnetometer;
+
+    float               getTempC            ( int16_t val );
+    float               getGyrDPS           ( int16_t axis_val );
+    float               getAccMG            ( int16_t axis_val );
+    float               getMagUT            ( int16_t axis_val );
+
+public:
+    ICM_20948() {};
+    virtual ~ICM_20948() {};
+
+    ICM_20948_AGMT_t    agmt;                                                               // Acceleometer, Gyroscope, Magenetometer, and Temperature data
+    ICM_20948_AGMT_t    getAGMT             ( void );                                        // Updates the agmt field in the object and also returns a copy directly
+
+    float               magX                ( void );// micro teslas
+    float               magY                ( void );// micro teslas
+    float               magZ                ( void );// micro teslas
+
+    float               accX                ( void );// milli g's
+    float               accY                ( void );// milli g's
+    float               accZ                ( void );// milli g's
+
+    float               gyrX                ( void );// degrees per second
+    float               gyrY                ( void );// degrees per second
+    float               gyrZ                ( void );// degrees per second
+
+    float               temp                ( void );// degrees celsius
+
+
+    ICM_20948_Status_e  status;                                                                 // Status from latest operation
+    const char*         statusString        ( ICM_20948_Status_e stat = ICM_20948_Stat_NUM );   // Returns a human-readable status message. Defaults to status member, but prints string for supplied status if supplied                                            
+
+    // Device Level
+    ICM_20948_Status_e	setBank			    ( uint8_t bank );					            // Sets the bank
+    ICM_20948_Status_e	swReset			    ( void );							            // Performs a SW reset
+    ICM_20948_Status_e	sleep			    ( bool on = false );					        // Set sleep mode for the chip
+    ICM_20948_Status_e	lowPower		    ( bool on = true );							    // Set low power mode for the chip
+    ICM_20948_Status_e	setClockSource	    ( ICM_20948_PWR_MGMT_1_CLKSEL_e source );       // Choose clock source
+    ICM_20948_Status_e	checkID			    ( void );								        // Return 'ICM_20948_Stat_Ok' if whoami matches ICM_20948_WHOAMI
+    
+    bool	            dataReady		    ( void );				                        // Returns 'true' if data is ready
+    uint8_t             getWhoAmI		    ( void );								        // Return whoami in out prarmeter
+    bool                isConnected         ( void );                                       // Returns true if communications with the device are sucessful
+
+
+    // Internal Sensor Options
+    ICM_20948_Status_e	setSampleMode	    ( uint8_t sensor_id_bm, uint8_t lp_config_cycle_mode );	// Use to set accel, gyro, and I2C master into cycled or continuous modes
+    ICM_20948_Status_e	setFullScale 	    ( uint8_t sensor_id_bm, ICM_20948_fss_t fss );
+    ICM_20948_Status_e	setDLPFcfg		    ( uint8_t sensor_id_bm, ICM_20948_dlpcfg_t cfg );			
+    ICM_20948_Status_e	enableDLPF		    ( uint8_t sensor_id_bm, bool enable );
+    ICM_20948_Status_e	setSampleRate	    ( uint8_t sensor_id_bm, ICM_20948_smplrt_t smplrt );
+
+    // Interrupts on INT and FSYNC Pins
+    ICM_20948_Status_e  clearInterrupts         ( void );                                   
+
+    ICM_20948_Status_e  cfgIntActiveLow         ( bool active_low );
+    ICM_20948_Status_e  cfgIntOpenDrain         ( bool open_drain );
+    ICM_20948_Status_e  cfgIntLatch             ( bool latching );                          // If not latching then the interrupt is a 50 us pulse
+    ICM_20948_Status_e  cfgIntAnyReadToClear    ( bool enabled );                           // If enabled, *ANY* read will clear the INT_STATUS register. So if you have multiple interrupt sources enabled be sure to read INT_STATUS first
+    ICM_20948_Status_e  cfgFsyncActiveLow       ( bool active_low );
+    ICM_20948_Status_e  cfgFsyncIntMode         ( bool interrupt_mode );                    // Can ue FSYNC as an interrupt input that sets the I2C Master Status register's PASS_THROUGH bit
+
+    ICM_20948_Status_e	intEnableI2C            ( bool enable );
+    ICM_20948_Status_e	intEnableDMP            ( bool enable );
+    ICM_20948_Status_e	intEnablePLL            ( bool enable );
+    ICM_20948_Status_e	intEnableWOM            ( bool enable );
+    ICM_20948_Status_e	intEnableWOF            ( bool enable );
+    ICM_20948_Status_e	intEnableRawDataReady   ( bool enable );
+    ICM_20948_Status_e	intEnableOverflowFIFO   ( uint8_t bm_enable );
+    ICM_20948_Status_e	intEnableWatermarkFIFO  ( uint8_t bm_enable );
+
+    // Interface Options
+    ICM_20948_Status_e	i2cMasterPassthrough 	( bool passthrough = true );
+    ICM_20948_Status_e	i2cMasterEnable         ( bool enable = true );
+    ICM_20948_Status_e	i2cMasterConfigureSlave ( uint8_t slave, uint8_t addr, uint8_t reg, uint8_t len, bool Rw = true, bool enable = true, bool data_only = false, bool grp = false, bool swap = false );
+
+    ICM_20948_Status_e 	i2cMasterSLV4Transaction( uint8_t addr, uint8_t reg, uint8_t* data, uint8_t len, bool Rw, bool send_reg_addr = true );
+    ICM_20948_Status_e	i2cMasterSingleW        ( uint8_t addr, uint8_t reg, uint8_t data );
+    uint8_t 	        i2cMasterSingleR        ( uint8_t addr, uint8_t reg );
+
+
+    // Default Setup
+    ICM_20948_Status_e          startupDefault          ( void );
+    virtual ICM_20948_Status_e  startupMagnetometer     ( void );
+    virtual ICM_20948_Status_e  getMagnetometerData     ( ICM_20948_AGMT_t* pagmt );
+
+
+    // direct read/write
+    ICM_20948_Status_e  read                ( uint8_t reg, uint8_t* pdata, uint32_t len);
+    ICM_20948_Status_e  write               ( uint8_t reg, uint8_t* pdata, uint32_t len);
+};
+
+class ICM_20948_I2C : public MEMS_I2C, public ICM_20948 {
+public:
+    uint8_t                 _addr;
+    uint8_t                 _ad0;
+    bool                    _ad0val;
+    ICM_20948_Serif_t       _serif;
+
+    virtual ICM_20948_Status_e  readMag( uint8_t reg, uint8_t* pdata, uint8_t len );
+    virtual ICM_20948_Status_e  writeMag( uint8_t reg, uint8_t* pdata, uint8_t len );
+
+    byte begin(bool fusion = false);
+    bool read(float* acc, float* gyr = 0, float* mag = 0, float* tmp = 0, ORIENTATION* ori = 0);
+
+    ICM_20948_Status_e  startupMagnetometer( void );
+    ICM_20948_Status_e  magWhoIAm( void );
+    bool                magIsConnected( void );
+    ICM_20948_Status_e  getMagnetometerData     ( ICM_20948_AGMT_t* pagmt );
+};
