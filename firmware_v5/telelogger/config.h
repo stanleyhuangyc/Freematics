@@ -18,11 +18,6 @@
 #define NET_WIFI_MESH 5
 #define NET_SERIAL 6
 
-#define MEMS_DISABLED 0
-#define MEMS_ACC 1
-#define MEMS_9DOF 2
-#define MEMS_DMP 3
-
 #define STORAGE_NONE 0
 #define STORAGE_SPIFFS 1
 #define STORAGE_SD 2
@@ -108,8 +103,8 @@
 * MEMS sensors
 **************************************/
 #define ENABLE_ORIENTATION 0
-#ifndef MEMS_MODE
-#define MEMS_MODE MEMS_9DOF
+#ifndef ENABLE_MEMS
+#define ENABLE_MEMS 1
 #endif
 
 /**************************************
@@ -125,7 +120,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 1
+#define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage

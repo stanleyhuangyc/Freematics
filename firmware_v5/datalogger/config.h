@@ -42,8 +42,8 @@
 #define USE_OBD 1
 // enable(1)/disable(0) GPS module
 #define USE_GPS 1
-// specify MEMS mode
-#define MEMS_MODE MEMS_9DOF
+// enable(1)/disable(0) MEMS motion sensor
+#define USE_MEMS 1
 // enable(1)/disable(0) quaternion calculation to get orientation
 #define ENABLE_ORIENTATION 0
 #endif

@@ -15,7 +15,6 @@
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
 #include "FreematicsMEMS.h"
-#include "FreematicsDMP.h"
 #include "FreematicsOBD.h"
 
 #define PIN_LED 4
@@ -33,12 +32,12 @@
 #define PIN_LINK_RESET 15
 
 #define PIN_BEE_PWR 27
-#define PIN_BEE_UART_RXD 16
-#define PIN_BEE_UART_TXD 17
+#define PIN_BEE_UART_RXD 35
+#define PIN_BEE_UART_TXD 2
 #define PIN_BEE_UART_RXD2 32
 #define PIN_BEE_UART_TXD2 33
-#define PIN_BEE_UART_RXD3 35
-#define PIN_BEE_UART_TXD3 2
+#define PIN_BEE_UART_RXD3 16
+#define PIN_BEE_UART_TXD3 17
 #define BEE_UART_NUM UART_NUM_1
 #define BEE_BAUDRATE 115200L
 
@@ -52,6 +51,7 @@
 #define PIN_BUZZER 25
 #define PIN_MOLEX_2 34
 #define PIN_MOLEX_4 26
+#define PIN_MOLEX_VCC 12
 
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
