@@ -1388,27 +1388,30 @@ ICM_20948_Status_e ICM_20948_I2C::writeMag( uint8_t reg, uint8_t* pdata, uint8_t
 
 bool ICM_20948_I2C::read(float* acc, float* gyr, float* mag, float* tmp, ORIENTATION* ori)
 {
-  if( dataReady() ){
-    getAGMT();                // The values are only updated when you call 'getAGMT'
-    if (acc) {
-      acc[0] = accX() / 1000;
-      acc[1] = accY() / 1000;
-      acc[2] = accZ() / 1000;
-    }
-    if (gyr) {
-      gyr[0] = gyrX();
-      gyr[1] = gyrY();
-      gyr[2] = gyrZ();
-    }
-    if (mag) {
-      mag[0] = magX();
-      mag[1] = magY();
-      mag[2] = magZ();
-    }
-    if (tmp) {
-      *tmp = temp();
-    }
-    return true;
+  if(!dataReady() || ICM_20948_get_agmt( &_device, &agmt ) != ICM_20948_Stat_Ok){
+    return false;
   }
-  return false;
+  if( _has_magnetometer ){
+    getMagnetometerData( &agmt );
+  }
+  if (acc) {
+    acc[0] = accX() / 1000;
+    acc[1] = accY() / 1000;
+    acc[2] = accZ() / 1000;
+    if (acc[0] == 0 && acc[1] == 0 && acc[2] == 0) return false;
+  }
+  if (gyr) {
+    gyr[0] = gyrX();
+    gyr[1] = gyrY();
+    gyr[2] = gyrZ();
+  }
+  if (mag) {
+    mag[0] = magX();
+    mag[1] = magY();
+    mag[2] = magZ();
+  }
+  if (tmp) {
+    *tmp = temp();
+  }
+  return true;
 }
