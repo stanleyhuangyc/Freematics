@@ -120,6 +120,7 @@ protected:
 #if ENABLE_MEMS
     processMEMS(0);
 #endif
+    delay(5);
   }
 };
 
@@ -380,6 +381,23 @@ void processMEMS(CBuffer* buffer)
       }
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         lastMotionTime = millis();
+        Serial.print(acc[0]);
+        Serial.print('/');
+        Serial.print(acc[1]);
+        Serial.print('/');
+        Serial.print(acc[2]);
+        Serial.print(' ');
+        Serial.print(gyr[0]);
+        Serial.print('/');
+        Serial.print(gyr[1]);
+        Serial.print('/');
+        Serial.print(gyr[2]);
+        Serial.print(' ');
+        Serial.print(mag[0]);
+        Serial.print('/');
+        Serial.print(mag[1]);
+        Serial.print('/');
+        Serial.println(mag[2]);
       }
     }
     accSum[0] = 0;
@@ -398,8 +416,8 @@ void calibrateMEMS()
     int n;
     unsigned long t = millis();
     for (n = 0; millis() - t < 1000; n++) {
-      float acc[3] = {0};
-      mems->read(acc);
+      float acc[3];
+      if (!mems->read(acc)) continue;
       accBias[0] += acc[0];
       accBias[1] += acc[1];
       accBias[2] += acc[2];
@@ -438,6 +456,8 @@ void printTime()
 *******************************************************************************/
 void initialize()
 {
+  bufman.purge();
+
 #if ENABLE_MEMS
   if (state.check(STATE_MEMS_READY)) {
     calibrateMEMS();
@@ -498,8 +518,6 @@ void initialize()
     fileid = logger.begin();
   }
 #endif
-
-
 
   // re-try OBD if connection not established
 #if ENABLE_OBD
