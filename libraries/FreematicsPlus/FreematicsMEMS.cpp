@@ -1272,7 +1272,7 @@ byte ICM_20948_I2C::begin(bool fusion){
     // Set pins to default positions
 	if(_ad0 != ICM_20948_ARD_UNUSED_PIN){ digitalWrite(_ad0, _ad0val); }
 
-    initI2C(400000);
+    if (!initI2C(100000)) return 0;
     
     // Set up the serif
     _serif.write = ICM_20948_write_I2C;
@@ -1398,7 +1398,6 @@ bool ICM_20948_I2C::read(float* acc, float* gyr, float* mag, float* tmp, ORIENTA
     acc[0] = accX() / 1000;
     acc[1] = accY() / 1000;
     acc[2] = accZ() / 1000;
-    if (acc[0] == 0 && acc[1] == 0 && acc[2] == 0) return false;
   }
   if (gyr) {
     gyr[0] = gyrX();
