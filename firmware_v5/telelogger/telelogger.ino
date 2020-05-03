@@ -373,31 +373,15 @@ void processMEMS(CBuffer* buffer)
         deviceTemp = temp;
         buffer->add(PID_DEVICE_TEMP, (int)(temp * 10));
       }
-      // calculate instant motion
+      // calculate motion
       float motion = 0;
       for (byte i = 0; i < 3; i++) {
-        float m = (acc[i] - accBias[i]);
-        motion += m * m;
+        motion += value[i] * value[i];
       }
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         lastMotionTime = millis();
-        Serial.print(acc[0]);
-        Serial.print('/');
-        Serial.print(acc[1]);
-        Serial.print('/');
-        Serial.print(acc[2]);
-        Serial.print(' ');
-        Serial.print(gyr[0]);
-        Serial.print('/');
-        Serial.print(gyr[1]);
-        Serial.print('/');
-        Serial.print(gyr[2]);
-        Serial.print(' ');
-        Serial.print(mag[0]);
-        Serial.print('/');
-        Serial.print(mag[1]);
-        Serial.print('/');
-        Serial.println(mag[2]);
+        Serial.print("Motion:");
+        Serial.println(motion);
       }
     }
     accSum[0] = 0;
