@@ -252,7 +252,6 @@ bool TeleClientUDP::connect()
     if (!notify(event)) {
       net.close();
       Serial.println("Server timeout");
-      delay(1000);
       continue;
     }
     success = true;

@@ -81,12 +81,13 @@ char isoTime[26] = {0};
 uint32_t lastMotionTime = 0;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
+uint32_t lastStatsTime = 0;
 
 uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
 
 #if STORAGE != STORAGE_NONE
 int fileid = 0;
-static uint16_t lastSizeKB = 0;
+uint16_t lastSizeKB = 0;
 #endif
 
 uint32_t lastCmdToken = 0;
@@ -741,7 +742,7 @@ void process()
 
 #if ENABLE_OBD
   if (sys.version > 12) {
-    batteryVoltage = (float)(analogRead(A0) * 11 * 370) / 4095;
+    batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
   } else {
     batteryVoltage = obd.getVoltage() * 100;
   }
@@ -768,6 +769,12 @@ void process()
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;
 
+  // display file buffer stats
+  if (startTime - lastStatsTime >= 3000) {
+    bufman.printStats();
+    lastStatsTime = startTime;
+  }
+
 #if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
     buffer->serialize(logger);
@@ -781,13 +788,6 @@ void process()
     }
   }
 #endif
-
-  // display file buffer stats
-  static uint32_t lastm = 0;
-  if (millis() - lastm >= 1000) {
-    bufman.printStats();
-    lastm = millis();
-  }
 
 #if DATASET_INTERVAL
   long t = (long)DATASET_INTERVAL - (millis() - startTime);

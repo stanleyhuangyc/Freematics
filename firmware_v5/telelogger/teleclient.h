@@ -45,6 +45,10 @@ public:
     {
         for (int n = 0; n < BUFFER_SLOTS; n++) buffers[n] = new CBuffer;
     }
+    void purge()
+    {
+        for (int n = 0; n < BUFFER_SLOTS; n++) buffers[n]->state = BUFFER_STATE_EMPTY;
+    }
     CBuffer* get(byte state = BUFFER_STATE_EMPTY)
     {
         for (int n = 0; n < BUFFER_SLOTS; n++) {
