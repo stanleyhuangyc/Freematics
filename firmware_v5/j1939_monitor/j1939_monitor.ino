@@ -1,5 +1,5 @@
 /******************************************************************************
-* J1939 broadcast data monitor for Freematics ONE+ (Model HD only)
+* J1939 broadcast data monitor for Freematics ONE+ (Model H only)
 * Written by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
