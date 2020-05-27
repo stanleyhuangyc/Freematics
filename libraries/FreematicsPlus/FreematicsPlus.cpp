@@ -273,13 +273,14 @@ int CLink_UART::receive(char* buffer, int bufsize, unsigned int timeout)
 	return n;
 }
 
-void CLink_UART::send(const char* str)
+bool CLink_UART::send(const char* str)
 {
 #if VERBOSE_LINK
 	Serial.print("[UART SEND]");
 	Serial.println(str);
 #endif
-	uart_write_bytes(LINK_UART_NUM, str, strlen(str));
+    int len = strlen(str);
+	return uart_write_bytes(LINK_UART_NUM, str, len) == len;
 }
 
 int CLink_UART::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
@@ -315,6 +316,10 @@ bool CLink_SPI::begin(unsigned int freq, int rxPin, int txPin)
 	pinMode(PIN_LINK_SPI_READY, INPUT);
 	pinMode(PIN_LINK_SPI_CS, OUTPUT);
 	digitalWrite(PIN_LINK_SPI_CS, HIGH);
+    delay(50);
+    for (uint32_t t = millis(); millis() - t < 50; ) {
+        if (digitalRead(PIN_LINK_SPI_READY) == LOW) return false;
+    }
 	SPI.begin();
 	SPI.setFrequency(freq);
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
@@ -341,6 +346,9 @@ int CLink_SPI::receive(char* buffer, int bufsize, unsigned int timeout)
 			if (millis() - t > 3000) return -1;
             delay(1);
 		}
+#if VERBOSE_LINK
+    	Serial.println("[SPI RECV]");
+#endif
 		portENTER_CRITICAL(&m);
 		digitalWrite(PIN_LINK_SPI_CS, LOW);
 		while (digitalRead(PIN_LINK_SPI_READY) == LOW && millis() - t < timeout) {
@@ -397,8 +405,14 @@ int CLink_SPI::receive(char* buffer, int bufsize, unsigned int timeout)
 	return n;
 }
 
-void CLink_SPI::send(const char* str)
+bool CLink_SPI::send(const char* str)
 {
+    if (digitalRead(PIN_LINK_SPI_READY) == LOW) {
+#if VERBOSE_LINK
+    	Serial.println("[SPI NOT READY]");
+#endif
+        return false;
+    }
 	portMUX_TYPE m = portMUX_INITIALIZER_UNLOCKED;
 #if VERBOSE_LINK
 	Serial.print("[SPI SEND]");
@@ -415,6 +429,7 @@ void CLink_SPI::send(const char* str)
 	delay(1);
 	digitalWrite(PIN_LINK_SPI_CS, HIGH);
 	portEXIT_CRITICAL(&m);
+    return true;
 }
 
 int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int timeout)
@@ -422,7 +437,10 @@ int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int
 	uint32_t t = millis();
 	int n = 0;
 	for (byte i = 0; i < 30 && millis() - t < timeout; i++) {
-		send(cmd);
+		if (!send(cmd)) {
+            delay(50);
+            continue;
+        }
 		n = receive(buf, bufsize, timeout);
 		if (n == -1) {
 			Serial.print('_');
@@ -442,9 +460,9 @@ int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int
 void FreematicsESP32::gpsEnd()
 {
     // uninitialize
-    if (!(m_flags & GNSS_USE_LINK)) {
+    if (!(m_flags & FLAG_GNSS_USE_LINK)) {
         taskGPS.destroy();
-        if (!(m_flags & GNSS_SOFT_SERIAL)) uart_driver_delete(GPS_UART_NUM);
+        if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) uart_driver_delete(GPS_UART_NUM);
         if (nmeaBuffer) {
             nmeaBufferMutex.lock();
             delete nmeaBuffer;
@@ -457,22 +475,17 @@ void FreematicsESP32::gpsEnd()
         digitalWrite(m_pinGPSPower, LOW);
     } else if (link) {
         char buf[16];
-        link->sendCommand("ATGPSOFF", buf, sizeof(buf), 500);
+        link->sendCommand("ATGPSOFF", buf, sizeof(buf), 100);
     }
 }
 
-bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
+bool FreematicsESP32::gpsBegin(int baudrate)
 {
     if (m_pinGPSPower) pinMode(m_pinGPSPower, OUTPUT);
-    if (m_flags & GNSS_USE_LINK) {
-        if (m_pinGPSPower) {
-            digitalWrite(m_pinGPSPower, HIGH);
-            delay(100);
-        } else if (link) {
-            char buf[16];
-            link->sendCommand("ATGPSON", buf, sizeof(buf), 500);
-        } 
-    } else if (!(m_flags & GNSS_SOFT_SERIAL)) {
+    if (m_flags & FLAG_GNSS_USE_LINK) {
+        char buf[16];
+        link->sendCommand("ATGPSON", buf, sizeof(buf), 100);
+    } else if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) {
         uart_config_t uart_config = {
             .baud_rate = baudrate,
             .data_bits = UART_DATA_8_BITS,
@@ -481,10 +494,11 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
             .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
             .rx_flow_ctrl_thresh = 122,
         };
+        bool legacy = version <= 11 && !(m_flags & FLAG_USE_UART_LINK);
         // configure UART parameters
         uart_param_config(GPS_UART_NUM, &uart_config);
         // set UART pins
-        uart_set_pin(GPS_UART_NUM, PIN_GPS_UART_TXD, PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        uart_set_pin(GPS_UART_NUM, legacy ? PIN_GPS_UART_TXD : PIN_GPS_UART_TXD2, legacy ? PIN_GPS_UART_RXD : PIN_GPS_UART_RXD2, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
         // install UART driver
         uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
         // turn on GPS power
@@ -507,12 +521,12 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
         taskGPS.create(gps_soft_decode_task, "GPS", 1);
     }
 
-    if (!(m_flags & GNSS_USE_LINK)) {
+    if ((m_flags & FLAG_GNSS_SOFT_SERIAL)) {
         // test run for a while to see if there is data decoded
         uint16_t s1 = 0, s2 = 0;
         gps.stats(&s1, 0);
         for (int i = 0; i < 10; i++) {
-            if (m_flags & GNSS_SOFT_SERIAL) {
+            if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
                 // switch M8030 GNSS to 38400bps
                 const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
                 const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
@@ -527,9 +541,7 @@ bool FreematicsESP32::gpsBegin(int baudrate, bool buffered)
                 // data is coming in
                 if (!gpsData) gpsData = new GPS_DATA;
                 memset(gpsData, 0, sizeof(GPS_DATA));
-                if (buffered) {
-                    if (!nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
-                } 
+                if (!nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
                 nmeaBytes = 0;
                 return true;
             }
@@ -561,7 +573,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
     if (!gpsData) return false;
     if (pgd) *pgd = gpsData;
-    if (m_flags & GNSS_USE_LINK) {
+    if (m_flags & FLAG_GNSS_USE_LINK) {
         char buf[160];
         if (link->sendCommand("ATGPS\r", buf, sizeof(buf), 100) == 0) {
             return false;
@@ -596,7 +608,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             if (!(s = strchr(s, ','))) break;
             gpsData->hdop = atoi(++s);
         } while(0);
-        if (good && (gpsData->lat || gpsData->lng)) {
+        if (good && (gpsData->lat || gpsData->lng || gpsData->alt)) {
             // filter out invalid coordinates
             good = (abs(lat * 1000000 - gpsData->lat * 1000000) < 100000 && abs(lng * 1000000 - gpsData->lng * 1000000) < 100000);
         }
@@ -637,7 +649,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 
 int FreematicsESP32::gpsGetNMEA(char* buffer, int bufsize)
 {
-    if (m_flags & GNSS_USE_LINK) {
+    if (m_flags & FLAG_GNSS_USE_LINK) {
         return link->sendCommand("ATGRR\r", buffer, bufsize, 200);
     } else {
         int bytes = 0;
@@ -862,31 +874,31 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
 
     do {
         CLink_UART *linkUART = new CLink_UART;
-        //linkUART->begin(115200);
-        //char buf[16];
+        linkUART->begin(115200);
+        char buf[16];
         // lift baudrate
-        //linkUART->sendCommand("ATBR1 3E800\r", buf, sizeof(buf), 10);
-        //linkUART->end();
-        if (linkUART->begin(115200)) {
+        linkUART->sendCommand("ATBR1 3E800\r", buf, sizeof(buf), 50);
+        linkUART->end();
+        if (linkUART->begin(256000)) {
             link = linkUART;
             for (byte n = 0; n < 3 && !(version = getVersion()); n++);
             if (version) {
                 if (version >= 13) {
-                    m_flags |= GNSS_USE_LINK;
+                    m_flags |= FLAG_GNSS_USE_LINK;
                     // set up buzzer
                     ledcSetup(0, 2000, 8);
                     ledcAttachPin(PIN_BUZZER, 0);
                 } else if (version == 11) {
-                    m_pinGPSPower = PIN_GPS_POWER2;
-                    m_flags |= GNSS_SOFT_SERIAL;
+                    m_pinGPSPower = PIN_GPS_POWER;
+                    //m_flags |= GNSS_SOFT_SERIAL;
                     // set up buzzer
                     ledcSetup(0, 2000, 8);
                     ledcAttachPin(PIN_BUZZER, 0);
                 } else {
-                    m_pinGPSPower = PIN_GPS_POWER;
-                    m_flags |= GNSS_SOFT_SERIAL;
+                    m_pinGPSPower = PIN_GPS_POWER2;
+                    m_flags |= FLAG_GNSS_SOFT_SERIAL;
                 }
-                m_flags |= USE_UART_LINK;
+                m_flags |= FLAG_USE_UART_LINK;
                 break;
             }
             link = 0;
@@ -897,9 +909,9 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
         CLink_SPI *linkSPI = new CLink_SPI;
         if (linkSPI->begin()) {
             link = linkSPI;
-            for (byte n = 0; n < 30 && !(version = getVersion()); n++);
-            if (version >= 11) {
-                m_pinGPSPower = PIN_GPS_POWER;
+            for (byte n = 0; n < 10 && !(version = getVersion()); n++);
+            if (version) {
+                m_pinGPSPower = PIN_GPS_POWER2;
                 break;
             }
             link = 0;
@@ -907,7 +919,6 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
         }
         delete linkSPI;
         linkSPI = 0;
-        return false;
     } while(0);
 
     if (useCellular) {
@@ -916,15 +927,15 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
         if (version == 13) {
             pinRx = PIN_BEE_UART_RXD2;
             pinTx = PIN_BEE_UART_TXD2;
-        } else if (version == 11 && !(m_flags & USE_UART_LINK)) {
+        } else if ((version == 11 && !(m_flags & FLAG_USE_UART_LINK)) || version == 0) {
             pinRx = PIN_BEE_UART_RXD3;
             pinTx = PIN_BEE_UART_TXD3;
         }
         xbBegin(XBEE_BAUDRATE, pinRx, pinTx);
-        m_flags |= USE_CELL;
+        m_flags |= FLAG_USE_CELL;
     }
     if (useGNSS) {
-        m_flags |= USE_GNSS;
+        m_flags |= FLAG_USE_GNSS;
     }
-    return true;
+    return version != 0;
 }
