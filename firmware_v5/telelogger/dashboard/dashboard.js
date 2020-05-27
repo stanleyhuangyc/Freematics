@@ -49,6 +49,9 @@ function processInput(data)
 		if (ret = checkData(con, "DEVICE ID:")) {
 			document.getElementById("devid").value = ret;
 		}
+		if (ret = checkData(con, "RTC:")) {
+			document.getElementById("rtc").innerText = ret;
+		}
 		if (ret = checkData(con, "SD:")) {
 			document.getElementById("sd_size").innerHTML = ret;
 		}
@@ -62,7 +65,7 @@ function processInput(data)
 			document.getElementById("obd").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
 		}
 		if (ret = checkData(con, "MEMS:")) {
-			document.getElementById("mems").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
+			document.getElementById("mems").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : (imgTick + " " + ret);
 		}
 		if (ret = checkData(con, "HTTPD:")) {
 			document.getElementById("wifi").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
