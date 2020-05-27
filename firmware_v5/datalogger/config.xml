@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
 <target board="esp32 esp32_16m" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
+  <define name="GNSS Mode">
+    <option name="Disabled" const="USE_GNSS=0"/>
+    <option name="Standalone GNSS" const="USE_GNSS=1" default="true"/>
+    <option name="Cellular Module GNSS" const="USE_GNSS=2"/>
+  </define>
   <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
-  <define name="Enable GPS" type="bool" const="USE_GPS" default="true"/>
   <define name="Enable Motion Sensor" type="bool" const="USE_MEMS" default="true"/>
   <define name="Enable Quaternion" type="bool" const="ENABLE_ORIENTATION" default="false"/>
   <define name="Storage">
