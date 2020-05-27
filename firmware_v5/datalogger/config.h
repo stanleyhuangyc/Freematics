@@ -39,9 +39,9 @@
 **************************************/
 #ifndef HAVE_CONFIG
 // enable(1)/disable(0) OBD-II reading
-#define USE_OBD 1
-// enable(1)/disable(0) GPS module
-#define USE_GPS 1
+#define USE_OBD 0
+// GNSS option: disable(0)/standalone(1)/cellular module(2)
+#define USE_GNSS 1
 // enable(1)/disable(0) MEMS motion sensor
 #define USE_MEMS 1
 // enable(1)/disable(0) quaternion calculation to get orientation
@@ -53,4 +53,4 @@
 // motion detection
 #define WAKEUP_MOTION_THRESHOLD 0.5 /* G */
 // minimum loop time
-#define MIN_LOOP_TIME 100 /* ms */
+#define MIN_LOOP_TIME 100 /* ms */ 
