@@ -41,10 +41,12 @@
 #define BEE_UART_NUM UART_NUM_1
 #define BEE_BAUDRATE 115200L
 
-#define PIN_GPS_POWER 15
-#define PIN_GPS_POWER2 12
+#define PIN_GPS_POWER 12
+#define PIN_GPS_POWER2 15
 #define PIN_GPS_UART_RXD 32
 #define PIN_GPS_UART_TXD 33
+#define PIN_GPS_UART_RXD2 34
+#define PIN_GPS_UART_TXD2 26
 #define GPS_UART_NUM UART_NUM_2
 #define GPS_SOFT_BAUDRATE 38400L
 
@@ -56,11 +58,11 @@
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
 
-#define USE_GNSS 0x1
-#define USE_CELL 0x2
-#define USE_UART_LINK 0x4
-#define GNSS_SOFT_SERIAL 0x8
-#define GNSS_USE_LINK 0x10
+#define FLAG_USE_GNSS 0x1
+#define FLAG_USE_CELL 0x2
+#define FLAG_USE_UART_LINK 0x4
+#define FLAG_GNSS_SOFT_SERIAL 0x8
+#define FLAG_GNSS_USE_LINK 0x10
 
 int readChipTemperature();
 int readChipHallSensor();
@@ -69,14 +71,14 @@ uint16_t getFlashSize(); /* KB */
 class Task
 {
 public:
-	bool create(void (*task)(void*), const char* name, int priority = 0, int stacksize = 1024);
+  bool create(void (*task)(void*), const char* name, int priority = 0, int stacksize = 1024);
   void destroy();
   void suspend();
   void resume();
   bool running();
   void sleep(uint32_t ms);
 private:
-	void* xHandle = 0;
+  void* xHandle = 0;
 };
 
 class Mutex
@@ -98,7 +100,7 @@ public:
 	// receive data from  UART
 	int receive(char* buffer, int bufsize, unsigned int timeout);
 	// write data to UART
-	void send(const char* str);
+	bool send(const char* str);
   // read one byte from UART
   int read();
   // change serial baudrate
@@ -114,7 +116,7 @@ public:
 	// receive data from SPI
 	int receive(char* buffer, int bufsize, unsigned int timeout);
 	// write data to SPI
-	void send(const char* str);
+	bool send(const char* str);
 private:
 	const uint8_t header[4] = {0x24, 0x4f, 0x42, 0x44};
 };
@@ -124,7 +126,7 @@ class FreematicsESP32 : public CFreematics
 public:
   bool begin(bool useGNSS = true, bool useCellular = true);
   // start GPS
-  bool gpsBegin(int baudrate = 115200, bool buffered = false);
+  bool gpsBegin(int baudrate = 115200);
   // turn off GPS
   void gpsEnd();
   // get parsed GPS data (returns the number of data parsed since last invoke)
