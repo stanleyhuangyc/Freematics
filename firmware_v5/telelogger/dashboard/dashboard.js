@@ -37,14 +37,23 @@ function processInput(data)
 	if (con.length > 1024) con = con.substr(512);
 	con += data;
 	if (!inited) {
-		if (ret = checkData(con, "Flash:")) {
+		if (ret = checkData(con, "FLASH:")) {
 			document.getElementById("flash_size").innerText = ret;
 		}
 		if (ret = checkData(con, "PSRAM:")) {
 			document.getElementById("psram_size").innerText = ret.substr(0, 2) == "E " ? "N/A" : ret;
 		}
-		if (ret = checkData(con, "Firmware:")) {
-			document.getElementById("firmware").innerText = ret;
+		if (ret = checkData(con, "TYPE:")) {
+			var type = parseInt(ret);
+			var typeName = "Unknown";
+			if (type == 11 || type == 16) {
+				typeName = "Freematics ONE+ Model A";
+			} else if (type >= 12 && type <= 14) {
+				typeName = "Freematics ONE+ Model B";
+			} else if (type == 15) {
+				typeName = "Freematics ONE+ Model H";
+			}
+			document.getElementById("devtype").innerText = typeName;
 		}
 		if (ret = checkData(con, "DEVICE ID:")) {
 			document.getElementById("devid").value = ret;

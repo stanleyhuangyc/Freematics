@@ -374,6 +374,7 @@ void processMEMS(CBuffer* buffer)
         deviceTemp = temp;
         buffer->add(PID_DEVICE_TEMP, (int)temp);
       }
+#if 0
       // calculate motion
       float motion = 0;
       for (byte i = 0; i < 3; i++) {
@@ -384,6 +385,7 @@ void processMEMS(CBuffer* buffer)
         Serial.print("Motion:");
         Serial.println(motion);
       }
+#endif
     }
     accSum[0] = 0;
     accSum[1] = 0;
@@ -450,7 +452,7 @@ void initialize()
 #endif
 
 #if ENABLE_GPS
-  // start serial communication with GPS receiver
+  // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
       state.set(STATE_GPS_READY);
@@ -741,7 +743,7 @@ void process()
 #endif
 
 #if ENABLE_OBD
-  if (sys.version > 12) {
+  if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
   } else {
     batteryVoltage = obd.getVoltage() * 100;
@@ -1146,7 +1148,7 @@ void showSysInfo()
 {
   Serial.print("CPU:");
   Serial.print(ESP.getCpuFreqMHz());
-  Serial.print("MHz Flash:");
+  Serial.print("MHz FLASH:");
   Serial.print(getFlashSize() >> 10);
   Serial.println("MB");
 #ifdef BOARD_HAS_PSRAM
@@ -1277,8 +1279,8 @@ void setup()
     showSysInfo();
 
     if (sys.begin()) {
-      Serial.print("Firmware:R");
-      Serial.println(sys.version);
+      Serial.print("TYPE:");
+      Serial.println(sys.devType);
     }
 
 #if ENABLE_OBD
@@ -1334,6 +1336,11 @@ void setup()
     initialize();
 
     digitalWrite(PIN_LED, LOW);
+
+    pinMode(26, OUTPUT);
+    pinMode(34, INPUT);
+    pinMode(PIN_GPS_POWER, OUTPUT);
+    digitalWrite(PIN_GPS_POWER, HIGH);
 }
 
 void loop()
@@ -1363,4 +1370,6 @@ void loop()
       serialCommand += c;
     }
   }
+
+  digitalWrite(26, digitalRead(34));
 }

@@ -43,10 +43,10 @@
 
 #define PIN_GPS_POWER 12
 #define PIN_GPS_POWER2 15
-#define PIN_GPS_UART_RXD 32
-#define PIN_GPS_UART_TXD 33
-#define PIN_GPS_UART_RXD2 34
-#define PIN_GPS_UART_TXD2 26
+#define PIN_GPS_UART_RXD 34
+#define PIN_GPS_UART_TXD 26
+#define PIN_GPS_UART_RXD2 32
+#define PIN_GPS_UART_TXD2 33
 #define GPS_UART_NUM UART_NUM_2
 #define GPS_SOFT_BAUDRATE 38400L
 
@@ -156,10 +156,10 @@ public:
   void resetLink();
   // reactivate co-processor
   bool reactivateLink();
-	// get co-processor version
-	byte getVersion();
+	// get device type
+	byte getDeviceType();
 	// co-processor firmware version number
-	byte version = 0;
+	byte devType = 0;
 	// co-processor link
 	CLink *link = 0;
 private:
