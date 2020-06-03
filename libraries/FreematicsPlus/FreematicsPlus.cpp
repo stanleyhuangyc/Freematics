@@ -490,6 +490,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
     // try co-processor GPS link
     char buf[128];
     link->sendCommand("ATGPSON", buf, sizeof(buf), 100);
+    m_flags |= FLAG_GNSS_USE_LINK;
     uint32_t t = millis();
     bool success = false;
     do {
@@ -501,11 +502,11 @@ bool FreematicsESP32::gpsBegin(int baudrate)
     if (success) {
         gpsData = new GPS_DATA;
         memset(gpsData, 0, sizeof(GPS_DATA));
-        m_flags |= FLAG_GNSS_USE_LINK;
         m_pinGPSPower = 0;
         return true;
     }
     link->sendCommand("ATGPSOFF", buf, sizeof(buf), 100);
+    m_flags &= ~FLAG_GNSS_USE_LINK;
     // try GPS receiver on molex connector
     if (m_pinGPSPower) pinMode(m_pinGPSPower, OUTPUT);
     if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) {
