@@ -120,9 +120,9 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 0
+#define RESET_AFTER_WAKEUP 1
 // motion threshold for waking up
-#define MOTION_THRESHOLD 0.3f /* moving vehicle motion threshold in G */
+#define MOTION_THRESHOLD 0.4f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 
@@ -133,9 +133,9 @@
 #define ENABLE_OLED 0
 #define CONFIG_MODE_TIMEOUT 0
 
-#define PIN_SENSOR1 35
-#define PIN_SENSOR2 36
+#define PIN_SENSOR1 34
+#define PIN_SENSOR2 26
 
-#define COOLING_DOWN_TEMP 65 /* celsius degrees */
+#define COOLING_DOWN_TEMP 70 /* celsius degrees */
 
 #endif // CONFIG_H_INCLUDED

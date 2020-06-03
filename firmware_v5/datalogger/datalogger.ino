@@ -569,8 +569,8 @@ void setup()
     pinMode(PIN_LED, HIGH);
 
     if (sys.begin(USE_GNSS == 1, USE_GNSS == 2)) {
-        Serial.print("Firmware: V");
-        Serial.println(sys.version);
+        Serial.print("TYPE:");
+        Serial.println(sys.devType);
     }
 #if USE_OBD
     obd.begin(sys.link);
