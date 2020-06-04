@@ -348,11 +348,12 @@ public:
 #elif USE_GNSS == 2
     void processCellGPS()
     {
+        /*
         char buf[320];
         if (cellRead(buf, sizeof(buf)) > 0) {
             Serial.print(buf);
         }
-        return;
+        */
         if (cellGetGPSInfo(gd)) {
             logLocationData(gd);
         }
@@ -448,8 +449,8 @@ public:
             }
             sys.xbTogglePower();
         }
-        cellSendCommand("AT+CGPSNMEARATE=1\r", buf, sizeof(buf));
-        cellSendCommand("AT+CGPSINFOCFG=1,31\r", buf, sizeof(buf));
+        //cellSendCommand("AT+CGPSNMEARATE=1\r", buf, sizeof(buf));
+        //cellSendCommand("AT+CGPSINFOCFG=1,31\r", buf, sizeof(buf));
         return success;
     }
     long parseDegree(const char* s)
