@@ -32,8 +32,6 @@ void setup() {
 
   // initializations
   while (!sys.begin());
-  Serial.print("Firmware: V");
-  Serial.println(sys.version);
   obd.begin(sys.link);
 }
 
