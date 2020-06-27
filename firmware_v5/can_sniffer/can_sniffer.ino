@@ -25,8 +25,6 @@ void setup()
 
   // initialize co-processor link
   while (!sys.begin());
-  Serial.print("Firmware: R");
-  Serial.println(sys.version);
   // initialize OBD library
   obd.begin(sys.link);
 
