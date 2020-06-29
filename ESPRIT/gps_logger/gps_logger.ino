@@ -437,8 +437,6 @@ void setup()
     initDisplay();
 #endif
 
-    delay(1000);
-
     // initialize USB serial
     Serial.begin(115200);
     Serial.print("ESP32 ");
@@ -446,6 +444,8 @@ void setup()
     Serial.print("MHz ");
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
+
+    sys.begin(true, false, false);
 
 #if STORAGE == STORAGE_SD
     Serial.print("SD...");
@@ -496,7 +496,7 @@ void setup()
 #endif
 
     Serial.print("GPS...");
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE, ENABLE_NMEA_SERVER ? true : false)) {
+    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
         logger.setState(STATE_GPS_FOUND);
         lcd.println("GPS Receiver OK");
         Serial.println("OK");

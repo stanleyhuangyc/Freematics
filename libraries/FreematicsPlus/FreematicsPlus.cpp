@@ -488,25 +488,27 @@ void FreematicsESP32::gpsEnd()
 bool FreematicsESP32::gpsBegin(int baudrate)
 {
     // try co-processor GPS link
-    char buf[128];
-    link->sendCommand("ATGPSON", buf, sizeof(buf), 100);
-    m_flags |= FLAG_GNSS_USE_LINK;
-    uint32_t t = millis();
-    bool success = false;
-    do {
-        if (gpsGetNMEA(buf, sizeof(buf)) > 0 && strstr(buf, ("$G"))) {
-            success = true;
-            break;
+    if (m_flags & FLAG_USE_COPROC) {
+        char buf[128];
+        link->sendCommand("ATGPSON", buf, sizeof(buf), 100);
+        m_flags |= FLAG_GNSS_USE_LINK;
+        uint32_t t = millis();
+        bool success = false;
+        do {
+            if (gpsGetNMEA(buf, sizeof(buf)) > 0 && strstr(buf, ("$G"))) {
+                success = true;
+                break;
+            }
+        } while (millis() - t < 1000);
+        if (success) {
+            gpsData = new GPS_DATA;
+            memset(gpsData, 0, sizeof(GPS_DATA));
+            m_pinGPSPower = 0;
+            return true;
         }
-    } while (millis() - t < 1000);
-    if (success) {
-        gpsData = new GPS_DATA;
-        memset(gpsData, 0, sizeof(GPS_DATA));
-        m_pinGPSPower = 0;
-        return true;
+        link->sendCommand("ATGPSOFF", buf, sizeof(buf), 100);
+        m_flags &= ~FLAG_GNSS_USE_LINK;
     }
-    link->sendCommand("ATGPSOFF", buf, sizeof(buf), 100);
-    m_flags &= ~FLAG_GNSS_USE_LINK;
     // try GPS receiver on molex connector
     if (m_pinGPSPower) pinMode(m_pinGPSPower, OUTPUT);
     if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) {
@@ -862,7 +864,7 @@ void FreematicsESP32::resetLink()
     }
 }
 
-bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
+bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
 {
     if (link) return false;
 
@@ -875,7 +877,7 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
     m_flags = 0;
     m_pinGPSPower = PIN_GPS_POWER;
 
-    do {
+    if (useCoProc) do {
         CLink_UART *linkUART = new CLink_UART;
         //linkUART->begin(115200);
         //char buf[16];
@@ -893,7 +895,7 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
                 } else {
                     m_pinGPSPower = PIN_GPS_POWER2;
                 }
-                m_flags |= (FLAG_USE_UART_LINK | FLAG_GNSS_SOFT_SERIAL);
+                m_flags |= (FLAG_USE_UART_LINK | FLAG_GNSS_SOFT_SERIAL | FLAG_USE_COPROC);
                 break;
             }
             link = 0;
@@ -907,6 +909,7 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular)
             for (byte n = 0; n < 10 && !getDeviceType(); n++);
             if (devType) {
                 m_pinGPSPower = PIN_GPS_POWER2;
+                m_flags |= FLAG_USE_COPROC;
                 break;
             }
             link = 0;
