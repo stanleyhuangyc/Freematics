@@ -63,6 +63,7 @@
 #define FLAG_USE_UART_LINK 0x4
 #define FLAG_GNSS_SOFT_SERIAL 0x8
 #define FLAG_GNSS_USE_LINK 0x10
+#define FLAG_USE_COPROC 0x20
 
 int readChipTemperature();
 int readChipHallSensor();
@@ -124,7 +125,7 @@ private:
 class FreematicsESP32 : public CFreematics
 {
 public:
-  bool begin(bool useGNSS = true, bool useCellular = true);
+  bool begin(bool useGNSS = true, bool useCellular = true, bool useCoProc = true);
   // start GPS
   bool gpsBegin(int baudrate = 115200);
   // turn off GPS
