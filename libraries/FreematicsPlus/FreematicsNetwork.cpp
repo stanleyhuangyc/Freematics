@@ -478,6 +478,7 @@ bool ClientSIM5360::begin(CFreematics* device)
     for (byte m = 0; m < 5; m++) {
       if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         // retrieve module info
+        //Serial.print(m_buffer);
         char *p = strstr(m_buffer, "Model:");
         if (p) p = strchr(p, '_');
         if (p++) {
@@ -1034,19 +1035,15 @@ bool HTTPClientSIM7600::open(const char* host, uint16_t port)
 {
   if (!host) {
     close();
-    for (int i = 0; i < 30; i++) {
-      sendCommand("AT+CHTTPSSTOP\r");
-      if (sendCommand("AT+CHTTPSSTART\r", 1000, "+CHTTPSSTART: 0")) {
-        return true;
-      }
-    }
-    return false;
+    sendCommand("AT+CHTTPSSTOP\r");
+    sendCommand("AT+CHTTPSSTART\r");
+    return true;
   }
 
   memset(m_buffer, 0, sizeof(m_buffer));
   sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,%u\r", host, port, port == 443 ? 2: 1);
   if (sendCommand(m_buffer, 1000)) {
-    if (sendCommand(0, HTTP_CONN_TIMEOUT, "+CHTTPSOPSE: 0")) {
+    if (sendCommand(0, HTTP_CONN_TIMEOUT, "+CHTTPSOPSE:")) {
       m_state = HTTP_CONNECTED;
       m_host = host;
       checkGPS();
@@ -1077,12 +1074,12 @@ bool HTTPClientSIM7600::send(HTTP_METHOD method, const char* path, bool keepAliv
   // send HTTP header
   m_device->xbWrite(header.c_str());
   // send POST payload if any
-  if (payload) m_device->xbWrite(payload);
-  if (sendCommand(0, 200, "+CHTTPSSEND: 0")) {
+  if (payload) m_device->xbWrite(payload, payloadSize);
+  if (sendCommand(0, 200, "+CHTTPSSEND:")) {
     m_state = HTTP_SENT;
     return true;
   }
-  //Serial.println(m_buffer);
+  Serial.println(m_buffer);
   m_state = HTTP_ERROR;
   return false;
 }
@@ -1093,22 +1090,32 @@ char* HTTPClientSIM7600::receive(int* pbytes, unsigned int timeout)
   int received = 0;
   char* payload = 0;
 
-  // wait for RECV EVENT
-  if (!sendCommand(0, timeout, "\r\n+CHTTPS: RECV EVENT")) {
+  // wait for +CHTTPS:RECV EVENT
+  if (!sendCommand(0, timeout, "RECV EVENT")) {
     checkGPS();
     return 0;
   }
+  
+  bool legacy = false;
+  char *p = strstr(m_buffer, "RECV EVENT");
+  if (p) {
+    if (*(p - 1) == ' ')
+      legacy = true;
+    else if (*(p - 1) != ':')
+      return 0;
+  }
+
   checkGPS();
 
   /*
-    +CHTTPSRECV:XX\r\n
+    +CHTTPSRECV: DATA,XX\r\n
     [XX bytes from server]\r\n
-    +CHTTPSRECV: 0\r\n
+    +CHTTPSRECV:0\r\n
   */
   // TODO: implement for multiple chunks of data
   // only deals with first chunk now
   sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", sizeof(m_buffer) - 36);
-  if (sendCommand(m_buffer, timeout, "\r\n+CHTTPSRECV: 0")) {
+  if (sendCommand(m_buffer, timeout, legacy ? "\r\n+CHTTPSRECV: 0" : "\r\n+CHTTPSRECV:0")) {
     char *p = strstr(m_buffer, "\r\n+CHTTPSRECV: DATA");
     if (p) {
       if ((p = strchr(p, ','))) {
