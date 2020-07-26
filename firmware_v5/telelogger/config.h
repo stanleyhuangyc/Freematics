@@ -22,6 +22,10 @@
 #define STORAGE_SPIFFS 1
 #define STORAGE_SD 2
 
+#define GNSS_NONE 0
+#define GNSS_EXTERNAL 1
+#define GNSS_CELLULAR 2
+
 #define PROTOCOL_UDP 1
 #define PROTOCOL_HTTPS 2
 
@@ -87,8 +91,8 @@
 #define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
 // data interval configurations
 #define STATIONARY_TIME_TABLE {30, 60, 180} /* seconds */
-#define SENDING_INTERVAL_TABLE {0, 2000, 5000} /* ms */
-#define DATASET_INTERVAL 200
+#define SENDING_INTERVAL_TABLE {200, 2000, 5000} /* ms */
+#define DATASET_INTERVAL 500
 #define PING_BACK_INTERVAL 900 /* seconds */
 
 /**************************************
@@ -110,9 +114,9 @@
 /**************************************
 * GPS
 **************************************/
-#ifndef ENABLE_GPS
-// change the following line to enable (1)/disable (0) GPS
-#define ENABLE_GPS 1
+#ifndef GNSS
+// change the following line to change GNSS setting
+#define GNSS GNSS_EXTERNAL
 #endif
 #define GPS_SERIAL_BAUDRATE 115200L
 #define GPS_MOTION_TIMEOUT 180 /* seconds */

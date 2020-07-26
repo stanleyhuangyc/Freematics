@@ -451,7 +451,7 @@ void initialize()
   }
 #endif
 
-#if ENABLE_GPS
+#if GNSS == GNSS_EXTERNAL
   // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
@@ -849,7 +849,6 @@ bool initNetwork()
   Serial.print("IMEI:");
   Serial.println(teleClient.net.IMEI);
   if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
-    bool extGPS = state.check(STATE_GPS_READY);
     if (teleClient.net.setup(CELL_APN)) {
       String op = teleClient.net.getOperatorName();
       if (op.length()) {
@@ -860,9 +859,11 @@ bool initNetwork()
 #endif
       }
 
-      if (!extGPS && teleClient.net.setGPS(true)) {
+#if GNSS == GNSS_CELLULAR
+      if (teleClient.net.setGPS(true)) {
         Serial.println("CELL GNSS:OK");
       }
+#endif
 
       String ip = teleClient.net.getIP();
       if (ip.length()) {
@@ -927,7 +928,7 @@ void telemetry(void* inst)
       state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
       teleClient.reset();
 
-#if ENABLE_GPS
+#if GNSS == GNSS_EXTERNAL
       if (state.check(STATE_GPS_READY)) {
         Serial.println("GNSS OFF");
         sys.gpsEnd();
@@ -943,7 +944,7 @@ void telemetry(void* inst)
       if (state.check(STATE_STANDBY)) {
         // start ping
         Serial.print("Ping...");
-#if ENABLE_GPS
+#if GNSS == GNSS_EXTERNAL
         if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
           state.set(STATE_GPS_READY);
           for (uint32_t t = millis(); millis() - t < 120000; ) {
@@ -1023,7 +1024,7 @@ void telemetry(void* inst)
 
       store.purge();
 
-#if ENABLE_OBD || ENABLE_GPS || ENABLE_MEMS
+#if ENABLE_OBD || ENABLE_MEMS || GNSS
       // motion adaptive data transmission interval control
       unsigned int motionless = (millis() - lastMotionTime) / 1000;
       int sendingInterval = -1;
