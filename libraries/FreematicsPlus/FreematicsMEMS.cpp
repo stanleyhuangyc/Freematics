@@ -1287,6 +1287,11 @@ byte ICM_20948_I2C::begin(bool fusion){
     if( status != ICM_20948_Stat_Ok ){
         return 0;
     }
+
+  if (fusion && !quaterion) {
+    quaterion = new CQuaterion;
+  }
+
     return 2;
 }
 
@@ -1411,6 +1416,10 @@ bool ICM_20948_I2C::read(float* acc, float* gyr, float* mag, float* tmp, ORIENTA
   }
   if (tmp) {
     *tmp = temp();
+  }
+  if (quaterion && acc && gyr && mag) {
+    quaterion->MadgwickQuaternionUpdate(acc[0], acc[1], acc[2], gyr[0]*PI/180.0f, gyr[1]*PI/180.0f, gyr[2]*PI/180.0f,  mag[0],  mag[1], mag[2]);
+    quaterion->getOrientation(ori);
   }
   return true;
 }
