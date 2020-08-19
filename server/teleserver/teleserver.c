@@ -1145,7 +1145,7 @@ int main(int argc,char* argv[])
 
 	//fill in default settings
 	char path[256];
-	GetFullPath(path, argv[0], "app/htdocs");
+	GetFullPath(path, argv[0], "htdocs");
 	mwInitParam(&httpParam, 0, path, FLAG_DISABLE_RANGE, 0, 0);
 	httpParam.maxClients = 256;
 	httpParam.maxClientsPerIP = 16;
