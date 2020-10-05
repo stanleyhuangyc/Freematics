@@ -509,7 +509,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
         link->sendCommand("ATGPSOFF", buf, sizeof(buf), 100);
         m_flags &= ~FLAG_GNSS_USE_LINK;
     }
-    // try GPS receiver on molex connector
+    // switch on GNSS power
     if (m_pinGPSPower) pinMode(m_pinGPSPower, OUTPUT);
     if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) {
         uart_config_t uart_config = {
@@ -888,14 +888,16 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
             link = linkUART;
             for (byte n = 0; n < 3 && !getDeviceType(); n++);
             if (devType) {
+                m_flags = FLAG_USE_UART_LINK;
                 if (devType == 11 || devType >= 13) {
+                    m_flags |= FLAG_USE_COPROC;
                     // set up buzzer
                     ledcSetup(0, 2000, 8);
                     ledcAttachPin(PIN_BUZZER, 0);
                 } else {
                     m_pinGPSPower = PIN_GPS_POWER2;
+                    m_flags |= FLAG_GNSS_SOFT_SERIAL;
                 }
-                m_flags |= (FLAG_USE_UART_LINK | FLAG_GNSS_SOFT_SERIAL | FLAG_USE_COPROC);
                 break;
             }
             link = 0;
@@ -925,7 +927,7 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
         if (devType == 13) {
             pinRx = PIN_BEE_UART_RXD2;
             pinTx = PIN_BEE_UART_TXD2;
-        } else if ((devType == 11 && !(m_flags & FLAG_USE_UART_LINK)) || devType == 0) {
+        } else if ((devType == 11 && !(m_flags & FLAG_USE_UART_LINK)) || devType == 12 || devType == 0) {
             pinRx = PIN_BEE_UART_RXD3;
             pinTx = PIN_BEE_UART_TXD3;
         }
