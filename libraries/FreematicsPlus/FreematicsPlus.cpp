@@ -877,6 +877,10 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
     m_flags = 0;
     m_pinGPSPower = PIN_GPS_POWER;
 
+    // set up buzzer
+    ledcSetup(0, 2000, 8);
+    ledcAttachPin(PIN_BUZZER, 0);
+
     if (useCoProc) do {
         CLink_UART *linkUART = new CLink_UART;
         //linkUART->begin(115200);
@@ -889,14 +893,10 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
             for (byte n = 0; n < 3 && !getDeviceType(); n++);
             if (devType) {
                 m_flags = FLAG_USE_UART_LINK;
-                if (devType == 11 || devType >= 13) {
+                if (devType == 13 || devType == 14 || devType == 15) {
                     m_flags |= FLAG_USE_COPROC;
-                    // set up buzzer
-                    ledcSetup(0, 2000, 8);
-                    ledcAttachPin(PIN_BUZZER, 0);
-                } else {
+                } else if (devType == 12) {
                     m_pinGPSPower = PIN_GPS_POWER2;
-                    m_flags |= FLAG_GNSS_SOFT_SERIAL;
                 }
                 break;
             }
@@ -911,7 +911,6 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
             for (byte n = 0; n < 10 && !getDeviceType(); n++);
             if (devType) {
                 m_pinGPSPower = PIN_GPS_POWER2;
-                m_flags |= FLAG_USE_COPROC;
                 break;
             }
             link = 0;
@@ -933,9 +932,14 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
         }
         xbBegin(XBEE_BAUDRATE, pinRx, pinTx);
         m_flags |= FLAG_USE_CELL;
+        if (devType == 12 || devType == 16) {
+            m_flags |= FLAG_GNSS_SOFT_SERIAL;
+        }
     }
     if (useGNSS) {
         m_flags |= FLAG_USE_GNSS;
     }
+    Serial.print("GPS PWR:");
+    Serial.println(m_pinGPSPower);
     return devType != 0;
 }
