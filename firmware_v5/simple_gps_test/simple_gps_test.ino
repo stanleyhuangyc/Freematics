@@ -18,19 +18,16 @@
 #include "esp_task_wdt.h"
 
 #define PIN_LED 4
-#define PIN_GPS_POWER 15
-#define PIN_GPS_UART_RXD 32
-#define PIN_GPS_UART_TXD 33
+#define PIN_GPS_POWER 12
+#define PIN_GPS_UART_RXD 34
+#define PIN_GPS_UART_TXD 26
 
 #define USE_SOFT_SERIAL 0
 #define GPS_BAUDRATE 115200
 
 TinyGPS gps;
-#if !USE_SOFT_SERIAL
-HardwareSerial Serial1(1);
-#endif
-
 TaskHandle_t xThread;
+bool locked = false;
 
 unsigned int updates = 0;
 
@@ -78,6 +75,7 @@ void IRAM_ATTR taskGPS(void* arg)
   for (;;) {
     if (Serial1.available()) {
       char c = Serial1.read();
+      if (!locked) Serial.print(c);
       if (c && gps.encode(c)) {
         updates++;
       }
@@ -100,7 +98,7 @@ void setup()
 #if USE_SOFT_SERIAL
   pinMode(PIN_GPS_UART_RXD, INPUT);
 #else
-  Serial1.begin(115200, SERIAL_8N1, PIN_GPS_UART_RXD, PIN_GPS_UART_TXD);
+  Serial1.begin(GPS_BAUDRATE, SERIAL_8N1, PIN_GPS_UART_RXD, PIN_GPS_UART_TXD);
 #endif
   // turn on GPS power
   pinMode(PIN_GPS_POWER, OUTPUT);
@@ -116,6 +114,7 @@ void setup()
 void loop()
 {
   if (updates) {
+    locked = true;
     updates = 0;
     static unsigned long lastutc = 0;
     unsigned long utcdate, utctime;
@@ -143,13 +142,10 @@ void loop()
       Serial.println(sats);
 #if USE_SOFT_SERIAL
       static unsigned long start = 0;
-      unsigned long chars;
       unsigned short good, bad;
-      gps.stats(&chars, &good, &bad);
+      gps.stats(&good, &bad);
       if (good == 0) start = millis() - 1;
       Serial.print("Stats: ");
-      Serial.print(chars);
-      Serial.print(' ');
       Serial.print(good);
       Serial.print(' ');
       Serial.print((float)(good * 1000) / (millis() - start), 1);
