@@ -28,6 +28,8 @@
 #define BEE_BAUDRATE 115200L
 
 #define OPERATOR_APN "mdata.net.au"
+#define APN_USERNAME ""
+#define APN_PASSWORD ""
 #define TRACCAR_HOST "YOUR_TRACCAR_SERVER"
 #define TRACCAR_PORT 5055
 #define TRACCAR_DEV_ID "YOUR_DEV_ID"
@@ -103,7 +105,7 @@ public:
       } while (!success && millis() - t < 30000);
       if (!success) break;
 
-      //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
+      sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
 
       success = sendCommand("AT+CSOCKSETPN=1\r");
       if (!success) break;
