@@ -1,5 +1,6 @@
 /******************************************************************************
 * Traccar client for Freematics ONE+ and Freematics Esprit w/ SIM5360
+* This sketch does not use SIM5360's internal GNSS and external GNSS is used
 * Written by Stanley Huang <stanley@freematics.com.au>
 * Distributed under BSD license
 * Visit https://freematics.com/products for hardware information
@@ -17,20 +18,26 @@
 #include <TinyGPS.h>
 
 #define PIN_LED 4
-#define PIN_GPS_POWER 15
-#define PIN_GPS_UART_RXD 32
-#define PIN_GPS_UART_TXD 33
-#define GPS_BAUDRATE 115200
 
+// GPS receiver pins
+#define PIN_GPS_POWER 12
+#define PIN_GPS_UART_RXD 34
+#define PIN_GPS_UART_TXD 26
+
+// SIM5360 pins
 #define PIN_SIM_POWER 27
-#define PIN_SIM_UART_RXD 16
-#define PIN_SIM_UART_TXD 17
-#define BEE_BAUDRATE 115200L
+#define PIN_SIM_UART_RXD 35
+#define PIN_SIM_UART_TXD 2
 
+// baudrates
+#define GPS_BAUDRATE 115200
+#define BEE_BAUDRATE 115200
+
+// network
 #define OPERATOR_APN "mdata.net.au"
 #define TRACCAR_HOST "YOUR_TRACCAR_SERVER"
 #define TRACCAR_PORT 5055
-#define TRACCAR_DEV_ID "YOUR_DEV_ID"
+#define TRACCAR_DEV_ID "YOUR_DEVICE_ID"
 #define CONN_TIMEOUT 5000
 
 HardwareSerial xbSerial(1);
