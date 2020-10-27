@@ -939,7 +939,5 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
     if (useGNSS) {
         m_flags |= FLAG_USE_GNSS;
     }
-    Serial.print("GPS PWR:");
-    Serial.println(m_pinGPSPower);
     return devType != 0;
 }

@@ -1079,7 +1079,7 @@ bool HTTPClientSIM7600::send(HTTP_METHOD method, const char* path, bool keepAliv
     m_state = HTTP_SENT;
     return true;
   }
-  Serial.println(m_buffer);
+  //Serial.println(m_buffer);
   m_state = HTTP_ERROR;
   return false;
 }
