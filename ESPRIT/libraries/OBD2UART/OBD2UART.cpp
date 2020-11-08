@@ -1,8 +1,8 @@
 /*************************************************************************
 * Arduino Library for Freematics OBD-II UART Adapter
 * Distributed under BSD License
-* Visit http://freematics.com for more information
-* (C)2012-2016 Stanley Huang <stanleyhuangyc@gmail.com>
+* Visit https://freematics.com for more information
+* (C)2012-2020 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include "OBD2UART.h"
@@ -319,8 +319,6 @@ bool COBD::getVIN(char* buffer, byte bufsize)
 
 bool COBD::isValidPID(byte pid)
 {
-	if (pid >= 0x7f)
-		return true;
 	pid--;
 	byte i = pid >> 3;
 	byte b = 0x80 >> (pid & 0x7);
@@ -417,7 +415,6 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 	byte stage;
 
 	m_state = OBD_DISCONNECTED;
-
 	for (byte n = 0; n < 2; n++) {
 		stage = 0;
 		if (n != 0) reset();
@@ -442,38 +439,26 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 		}
 		stage = 3;
 		// load pid map
-		memset(pidmap, 0, sizeof(pidmap));
-		bool success = false;
-		for (byte i = 0; i < 4; i++) {
+		memset(pidmap, 0xff, sizeof(pidmap));
+		for (byte i = 0; i < 8; i++) {
 			byte pid = i * 0x20;
 			sprintf(buffer, "%02X%02X\r", dataMode, pid);
-			delay(10);
 			write(buffer);
-			if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0) {
-				if (checkErrorMessage(buffer)) {
-					break;
-				}
-				char *p = buffer;
-				while ((p = strstr(p, "41 "))) {
-					p += 3;
-					if (hex2uint8(p) == pid) {
-						p += 2;
-						for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
-							pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
-						}
-						success = true;
+			delay(10);
+			if (!receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) break;
+			for (char *p = buffer; (p = strstr(p, "41 ")); ) {
+				p += 3;
+				if (hex2uint8(p) == pid) {
+					p += 2;
+					for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
+						pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 					}
 				}
-			} else {
-				break;
 			}
 		}
-		if (success) {
-			stage = 0xff;
-			break;
-		}
+		break;
 	}
-	if (stage == 0xff) {
+	if (stage == 3) {
 		m_state = OBD_CONNECTED;
 		errors = 0;
 		return true;
@@ -496,7 +481,7 @@ void COBD::end()
 bool COBD::setBaudRate(unsigned long baudrate)
 {
     OBDUART.print("ATBR1 ");
-    OBDUART.print(baudrate);
+    OBDUART.print(baudrate, HEX);
     OBDUART.print('\r');
     delay(50);
     OBDUART.end();

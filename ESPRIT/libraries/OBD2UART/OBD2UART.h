@@ -1,8 +1,8 @@
 /*************************************************************************
 * Arduino Library for Freematics OBD-II UART Adapter
 * Distributed under BSD License
-* Visit http://freematics.com for more information
-* (C)2012-2016 Stanley Huang <stanleyhuangyc@gmail.com>
+* Visit https://freematics.com for more information
+* (C)2012-2020 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include <Arduino.h>
@@ -156,7 +156,7 @@ public:
 	// occurrence of errors
 	byte errors = 0;
 	// bit map of supported PIDs
-	byte pidmap[4 * 4] = {0};
+	byte pidmap[4 * 8] = {0};
 protected:
 	virtual char* getResponse(byte& pid, char* buffer, byte bufsize);
 	virtual int receive(char* buffer, int bufsize, unsigned int timeout = OBD_TIMEOUT_SHORT);
