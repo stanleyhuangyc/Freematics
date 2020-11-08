@@ -330,8 +330,6 @@ bool COBD::getVIN(char* buffer, byte bufsize)
 
 bool COBD::isValidPID(byte pid)
 {
-	if (pid >= 0x7f)
-		return true;
 	pid--;
 	byte i = pid >> 3;
 	byte b = 0x80 >> (pid & 0x7);
@@ -384,12 +382,11 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 
 	// load pid map
 	memset(pidmap, 0xff, sizeof(pidmap));
-	for (byte i = 0; i < 4; i++) {
+	for (byte i = 0; i < 8; i++) {
 		byte pid = i * 0x20;
 		sprintf(buffer, "%02X%02X\r", dataMode, pid);
 		link->send(buffer);
 		if (!link->receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
-			Serial.print("NO PID MAP ");
 			break;
 		}
 		for (char *p = buffer; (p = strstr(p, "41 ")); ) {

@@ -61,7 +61,7 @@ public:
 	// occurrence of errors
 	byte errors = 0;
 	// bit map of supported PIDs
-	byte pidmap[4 * 4] = {0};
+	byte pidmap[4 * 8] = {0};
 	// link object pointer
 	CLink* link = 0;
 protected:
