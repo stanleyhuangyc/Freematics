@@ -603,7 +603,7 @@ void setup()
 #endif
 
 #if STORAGE == STORAGE_SD
-    Serial.print("SD...");
+    Serial.print("SD:");
     int volsize = store.begin();
     if (volsize > 0) {
       Serial.print(volsize);
@@ -668,7 +668,7 @@ void loop()
 #if USE_OBD
     if (!logger.checkState(STATE_OBD_READY)) {
         logger.standby();
-        Serial.print("OBD...");
+        Serial.print("OBD:");
         if (!obd.init()) {
             Serial.println("NO");
             return;
@@ -716,7 +716,9 @@ void loop()
             store.log((uint16_t)pid | 0x100, value);
         } else {
             pidErrors++;
-            Serial.print("PID Errors: ");
+            Serial.print("PID ");
+            Serial.print((int)pid | 0x100, HEX);
+            Serial.print(" Error #");
             Serial.println(pidErrors);
             break;
         }
