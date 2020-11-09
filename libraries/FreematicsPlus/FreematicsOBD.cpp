@@ -482,12 +482,25 @@ int COBD::receiveData(byte* buf, int len)
 		if (c == -1 || c == '\r') break;
 		buf[n++] = c;
 	}
+	if (n == 0) return 0;
+	int bytes = 0;
 	len = n;
-	int m = 0;
-	for (n = 0; n < len; m++) {
-		buf[m] = hex2uint8((const char*)buf + n);
-		n += 2;
-		if (buf[n++] != ' ') break;
+	//buf[n] = 0;
+	//Serial.println((char*)buf);
+	if (!memcmp(buf, "$MON,", 5)) {
+		for (n = 4; n < len && buf[n] == ','; bytes++) {
+			byte d1 = hex2uint8((const char*)buf + n + 1);
+			byte d2 = hex2uint8((const char*)buf + n + 3);
+			if (d1 != d2) break;
+			buf[bytes] = d1;
+			n += 5;
+		}
+	} else {
+		for (n = 0; n < len; bytes++) {
+			buf[bytes] = hex2uint8((const char*)buf + n);
+			n += 2;
+			if (buf[n++] != ' ') break;
+		}
 	}
-	return m;
+	return bytes;
 }
