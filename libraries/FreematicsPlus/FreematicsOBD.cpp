@@ -485,15 +485,16 @@ int COBD::receiveData(byte* buf, int len)
 	if (n == 0) return 0;
 	int bytes = 0;
 	len = n;
-	//buf[n] = 0;
-	//Serial.println((char*)buf);
-	if (!memcmp(buf, "$MON,", 5)) {
-		for (n = 4; n < len && buf[n] == ','; bytes++) {
-			byte d1 = hex2uint8((const char*)buf + n + 1);
-			byte d2 = hex2uint8((const char*)buf + n + 3);
-			if (d1 != d2) break;
-			buf[bytes] = d1;
-			n += 5;
+	if (buf[0] == '$') {
+		for (n = 1; n < len && buf[n] != ','; n++);
+		for (; n < len && buf[n] == ','; bytes++) {
+			byte d = hex2uint8((const char*)buf + n + 1);
+			n += 3;
+			if (buf[n] != ',' && buf[n] != '\r') {
+				if (d != hex2uint8((const char*)buf + n)) break;
+				n += 2;
+			}
+			buf[bytes] = d;
 		}
 	} else {
 		for (n = 0; n < len; bytes++) {
