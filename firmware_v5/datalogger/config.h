@@ -39,7 +39,7 @@
 **************************************/
 #ifndef HAVE_CONFIG
 // enable(1)/disable(0) OBD-II reading
-#define USE_OBD 0
+#define USE_OBD 1
 // GNSS option: disable(0)/standalone(1)/cellular module(2)
 #define USE_GNSS 1
 // enable(1)/disable(0) MEMS motion sensor
