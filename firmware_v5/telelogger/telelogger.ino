@@ -927,6 +927,7 @@ void telemetry(void* inst)
       }
       state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
       teleClient.reset();
+      bufman.purge();
 
 #if GNSS == GNSS_EXTERNAL
       if (state.check(STATE_GPS_READY)) {
@@ -1024,7 +1025,7 @@ void telemetry(void* inst)
 
       store.purge();
 
-#if ENABLE_OBD || ENABLE_MEMS || GNSS
+#if ENABLE_OBD || ENABLE_MEMS
       // motion adaptive data transmission interval control
       unsigned int motionless = (millis() - lastMotionTime) / 1000;
       int sendingInterval = -1;
