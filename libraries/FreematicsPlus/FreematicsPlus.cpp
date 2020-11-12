@@ -932,7 +932,7 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
         }
         xbBegin(XBEE_BAUDRATE, pinRx, pinTx);
         m_flags |= FLAG_USE_CELL;
-        if (devType == 12 || devType == 16) {
+        if ((m_flags & FLAG_USE_UART_LINK) && (devType == 11 || devType == 12 || devType == 16)) {
             m_flags |= FLAG_GNSS_SOFT_SERIAL;
         }
     }
