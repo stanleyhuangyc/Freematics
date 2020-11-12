@@ -854,13 +854,12 @@ bool FreematicsESP32::reactivateLink()
 
 void FreematicsESP32::resetLink()
 {
-    if (devType >= 14) {
+    char buf[16];
+    if (link) link->sendCommand("ATR\r", buf, sizeof(buf), 100);
+    if (devType == 11 || devType >= 14) {
         digitalWrite(PIN_LINK_RESET, LOW);
         delay(50);
         digitalWrite(PIN_LINK_RESET, HIGH);
-    } else {
-        char buf[16];
-        if (link) link->sendCommand("ATR\r", buf, sizeof(buf), 100);
     }
 }
 
@@ -918,7 +917,7 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
         }
         delete linkSPI;
         linkSPI = 0;
-    } while(0);
+    } while(1);
 
     if (useCellular) {
         int pinRx = PIN_BEE_UART_RXD;
