@@ -24,7 +24,7 @@ public:
     virtual void log(uint16_t pid, float value)
     {
         char buf[24];
-        byte len = sprintf(buf, "%X%c%f", pid, m_delimiter, value);
+        byte len = sprintf(buf, "%X%c%.2f", pid, m_delimiter, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, float value[])
