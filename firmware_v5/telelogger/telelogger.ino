@@ -1092,7 +1092,7 @@ void standby()
   state.clear(STATE_OBD_READY | STATE_STORAGE_READY);
   state.set(STATE_STANDBY);
   // this will put co-processor into a delayed sleep
-  sys.resetLink();
+  obd.enterLowPowerMode();
 #if ENABLE_OLED
   oled.print("STANDBY");
   delay(1000);
@@ -1119,7 +1119,8 @@ void standby()
 #endif  
   state.clear(STATE_STANDBY);
   // this will wake up co-processor
-  sys.reactivateLink();
+  sys.resetLink();
+  delay(200);
 }
 
 /*******************************************************************************
