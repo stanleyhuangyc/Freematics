@@ -329,7 +329,10 @@ bool waitMotionGPS(int timeout)
   unsigned long t = millis();
   lastMotionTime = 0;
   do {
-    delay(200);
+    if (timeout == -1)
+      esp_light_sleep_start();
+    else
+      serverProcess(100);
     if (!processGPS(0)) continue;
     if (lastMotionTime) return true;
   } while (millis() - t < timeout);
@@ -680,7 +683,10 @@ bool waitMotion(long timeout)
   unsigned long t = millis();
   if (state.check(STATE_MEMS_READY)) {
     do {
-      serverProcess(100);
+      if (timeout == -1)
+        esp_light_sleep_start();
+      else
+        serverProcess(100);
       // calculate relative movement
       float motion = 0;
       float acc[3];
@@ -1079,7 +1085,7 @@ void standby()
 #endif
   state.clear(STATE_OBD_READY | STATE_STORAGE_READY);
   state.set(STATE_STANDBY);
-  // this will put co-processor into a delayed sleep
+  // this will put co-processor into sleep mode
   obd.enterLowPowerMode();
 #if ENABLE_OLED
   oled.print("STANDBY");
@@ -1244,7 +1250,7 @@ void configMode()
 
 void setup()
 {
-    delay(500);
+    delay(100);
 
 #if ENABLE_OLED
     oled.begin();
@@ -1265,6 +1271,8 @@ void setup()
     pinMode(PIN_SENSOR1, INPUT);
     pinMode(PIN_SENSOR2, INPUT);
 #endif
+
+    esp_sleep_enable_timer_wakeup(100000);
 
     // show system information
     showSysInfo();
@@ -1327,11 +1335,6 @@ void setup()
     initialize();
 
     digitalWrite(PIN_LED, LOW);
-
-    pinMode(26, OUTPUT);
-    pinMode(34, INPUT);
-    pinMode(PIN_GPS_POWER, OUTPUT);
-    digitalWrite(PIN_GPS_POWER, HIGH);
 }
 
 void loop()
