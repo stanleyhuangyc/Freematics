@@ -83,7 +83,8 @@ uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 uint32_t lastStatsTime = 0;
 
-uint32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
+int32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
+int32_t dataInterval = 1000;
 
 #if STORAGE != STORAGE_NONE
 int fileid = 0;
@@ -451,7 +452,7 @@ void initialize()
   }
 #endif
 
-#if GNSS == GNSS_EXTERNAL
+#if GNSS == GNSS_STANDALONE
   // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
     if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
@@ -791,10 +792,29 @@ void process()
   }
 #endif
 
-#if DATASET_INTERVAL
-  long t = (long)DATASET_INTERVAL - (millis() - startTime);
-  if (t > 0 && t < DATASET_INTERVAL) delay(t);
+#if ENABLE_OBD || ENABLE_MEMS
+  // motion adaptive data interval control
+  const uint16_t stationaryTime[] = STATIONARY_TIME_TABLE;
+  const int dataIntervals[] = DATA_INTERVAL_TABLE;
+  unsigned int motionless = (millis() - lastMotionTime) / 1000;
+  int interval = -1;
+  for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
+    if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
+      interval = dataIntervals[i];
+      break;
+    }
+  }
+  if (interval == -1) {
+    // stationery timeout, trip ended
+    Serial.print("Stationary for ");
+    Serial.print(motionless);
+    Serial.println(" secs");
+    state.clear(STATE_WORKING);
+  }
+  dataInterval = interval;
 #endif
+  long t = dataInterval - (millis() - startTime);
+  if (t > 0 && t < dataInterval) delay(t);
 }
 
 bool initNetwork()
@@ -914,8 +934,6 @@ bool initNetwork()
 void telemetry(void* inst)
 {
   uint8_t connErrors = 0;
-  const uint16_t stationaryTime[] = STATIONARY_TIME_TABLE;
-  const int sendingIntervals[] = SENDING_INTERVAL_TABLE;
   CStorageRAM store;
   store.init(SERIALIZE_BUFFER_SIZE);
   teleClient.reset();
@@ -929,7 +947,7 @@ void telemetry(void* inst)
       teleClient.reset();
       bufman.purge();
 
-#if GNSS == GNSS_EXTERNAL
+#if GNSS == GNSS_STANDALONE
       if (state.check(STATE_GPS_READY)) {
         Serial.println("GNSS OFF");
         sys.gpsEnd();
@@ -945,7 +963,7 @@ void telemetry(void* inst)
       if (state.check(STATE_STANDBY)) {
         // start ping
         Serial.print("Ping...");
-#if GNSS == GNSS_EXTERNAL
+#if GNSS == GNSS_STANDALONE
         if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
           state.set(STATE_GPS_READY);
           for (uint32_t t = millis(); millis() - t < 120000; ) {
@@ -993,11 +1011,10 @@ void telemetry(void* inst)
       CBuffer* buffer = bufman.getNewest();
       if (!buffer) {
         if (!state.check(STATE_WORKING)) break;
-        delay(20);
+        delay(50);
         continue;
       }
 
-      uint32_t startTime = millis();
       buffer->state = BUFFER_STATE_LOCKED;
 #if SERVER_PROTOCOL == PROTOCOL_UDP
       store.header(devid);
@@ -1025,36 +1042,7 @@ void telemetry(void* inst)
 
       store.purge();
 
-#if ENABLE_OBD || ENABLE_MEMS
-      // motion adaptive data transmission interval control
-      unsigned int motionless = (millis() - lastMotionTime) / 1000;
-      int sendingInterval = -1;
-      for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
-        if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
-          sendingInterval = sendingIntervals[i];
-          break;
-        }
-      }
-      if (sendingInterval == -1) {
-        // stationery timeout, trip ended
-        Serial.print("Stationary for ");
-        Serial.print(motionless);
-        Serial.println(" secs");
-        //teleClient.reset();
-        state.clear(STATE_WORKING);
-        break;
-      }
-      while (state.check(STATE_WORKING)) {
-        // network inbound reception
-        teleClient.inbound();
-        // maintain interval
-        int n = startTime + sendingInterval - millis();
-        if (n <= 0) break;
-        waitMotion(min(n, 1000));
-      }
-#else
       teleClient.inbound();
-#endif
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
         Serial.println("Instable connection");
         connErrors++;

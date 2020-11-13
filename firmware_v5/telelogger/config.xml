@@ -5,7 +5,7 @@
   <define name="Enable Motion Sensor" type="bool" const="ENABLE_MEMS" default="true"/>
   <define name="GNSS">
     <option name="None" const="GNSS=GNSS_NONE"/>
-    <option name="External GNSS" const="GNSS=GNSS_EXTERNAL" default="true"/>
+    <option name="Standalone GNSS" const="GNSS=GNSS_STANDALONE" default="true"/>
     <option name="Cellular GNSS" const="GNSS=GNSS_CELLULAR"/>
   </define>
   <define name="Storage">

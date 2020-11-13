@@ -23,7 +23,7 @@
 #define STORAGE_SD 2
 
 #define GNSS_NONE 0
-#define GNSS_EXTERNAL 1
+#define GNSS_STANDALONE 1
 #define GNSS_CELLULAR 2
 
 #define PROTOCOL_UDP 1
@@ -89,10 +89,9 @@
 #define DATA_RECEIVING_TIMEOUT 5000 /* ms */
 // expected maximum server sync signal interval
 #define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
-// data interval configurations
+// data interval settings
 #define STATIONARY_TIME_TABLE {30, 60, 180} /* seconds */
-#define SENDING_INTERVAL_TABLE {500, 2000, 5000} /* ms */
-#define DATASET_INTERVAL 1000
+#define DATA_INTERVAL_TABLE {1000, 2000, 5000} /* ms */
 #define PING_BACK_INTERVAL 900 /* seconds */
 
 /**************************************
@@ -116,7 +115,7 @@
 **************************************/
 #ifndef GNSS
 // change the following line to change GNSS setting
-#define GNSS GNSS_CELLULAR
+#define GNSS GNSS_STANDALONE
 #endif
 #define GPS_SERIAL_BAUDRATE 115200L
 #define GPS_MOTION_TIMEOUT 180 /* seconds */
