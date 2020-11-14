@@ -329,9 +329,6 @@ bool waitMotionGPS(int timeout)
   unsigned long t = millis();
   lastMotionTime = 0;
   do {
-    if (timeout == -1)
-      esp_light_sleep_start();
-    else
       serverProcess(100);
     if (!processGPS(0)) continue;
     if (lastMotionTime) return true;
@@ -683,10 +680,7 @@ bool waitMotion(long timeout)
   unsigned long t = millis();
   if (state.check(STATE_MEMS_READY)) {
     do {
-      if (timeout == -1)
-        esp_light_sleep_start();
-      else
-        serverProcess(100);
+      serverProcess(100);
       // calculate relative movement
       float motion = 0;
       float acc[3];
@@ -829,14 +823,16 @@ bool initNetwork()
 #if ENABLE_OLED
   oled.print("Connecting WiFi...");
 #endif
-  for (byte attempts = 0; attempts < 10; attempts++) {
+  for (byte attempts = 0; attempts < 3; attempts++) {
+    Serial.print("Joining ");
+    Serial.println(WIFI_SSID);
     teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
     if (teleClient.net.setup()) {
       state.set(STATE_NET_READY);
       String ip = teleClient.net.getIP();
       if (ip.length()) {
         state.set(STATE_NET_CONNECTED);
-        Serial.print("WiFi IP:");
+        Serial.print("IP:");
         Serial.println(ip);
 #if ENABLE_OLED
         oled.println(ip);
@@ -845,7 +841,6 @@ bool initNetwork()
       }
     } else {
       Serial.println("No WiFi");
-      return false;
     }
   }
 #else
@@ -945,7 +940,7 @@ void telemetry(void* inst)
   teleClient.reset();
 
   for (;;) {
-    if (!state.check(STATE_WORKING)) {
+    if (state.check(STATE_STANDBY)) {
       if (state.check(STATE_NET_READY)) {
         teleClient.shutdown();
       }
@@ -968,7 +963,6 @@ void telemetry(void* inst)
       } while (state.check(STATE_STANDBY) && millis() - t < 1000L * PING_BACK_INTERVAL);
       if (state.check(STATE_STANDBY)) {
         // start ping
-        Serial.print("Ping...");
 #if GNSS == GNSS_STANDALONE
         if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
           state.set(STATE_GPS_READY);
@@ -979,24 +973,13 @@ void telemetry(void* inst)
           }
         }
 #endif
-#if NET_DEVICE == NET_WIFI
-        if (!teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD) || !teleClient.net.setup()) {
-          Serial.println("No WiFi");
-          continue;
+        if (initNetwork()) {
+          Serial.print("Ping...");
+          bool success = teleClient.ping();
+          Serial.println(success ? "OK" : "NO");
         }
-        Serial.print(teleClient.net.getIP());
-#elif NET_DEVICE == SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-        if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN)) {
-          Serial.println("No network");
-          continue;
-        }
-        Serial.print(teleClient.net.getIP());
-#endif
-        state.set(STATE_NET_READY);
-        if (teleClient.ping()) {
-          Serial.print(" OK");
-        }
-        Serial.println();   
+        teleClient.shutdown();
+        state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
       }
       continue;
     }
@@ -1083,16 +1066,16 @@ void standby()
     logger.end();
   }
 #endif
-  state.clear(STATE_OBD_READY | STATE_STORAGE_READY);
+  state.clear(STATE_WORKING | STATE_OBD_READY | STATE_STORAGE_READY);
   state.set(STATE_STANDBY);
   // this will put co-processor into sleep mode
-  obd.enterLowPowerMode();
 #if ENABLE_OLED
   oled.print("STANDBY");
   delay(1000);
   oled.clear();
 #endif
   Serial.println("STANDBY");
+  obd.enterLowPowerMode();
 #if ENABLE_MEMS
   calibrateMEMS();
   waitMotion(-1);
@@ -1271,8 +1254,6 @@ void setup()
     pinMode(PIN_SENSOR1, INPUT);
     pinMode(PIN_SENSOR2, INPUT);
 #endif
-
-    esp_sleep_enable_timer_wakeup(100000);
 
     // show system information
     showSysInfo();
