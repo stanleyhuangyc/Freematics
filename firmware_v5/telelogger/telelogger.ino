@@ -275,9 +275,11 @@ bool processGPS(CBuffer* buffer)
 #endif
   }
 
-  if (!gd || lastGPStime == gd->time || gd->date == 0) return false;
+  if (!gd || lastGPStime == gd->time || gd->date == 0 || (gd->lng == 0 && gd->lat == 0)) return false;
 
-  float kph = gd->speed * 1.852f;
+  float kph = (float)((int)(gd->speed * 1.852f * 10)) / 10;
+  if (kph >= 300) return false;
+
   if (kph >= 2) lastMotionTime = millis();
 
   if (buffer) {
