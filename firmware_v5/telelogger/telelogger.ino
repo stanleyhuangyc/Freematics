@@ -72,7 +72,6 @@ char vin[18] = {0};
 uint16_t dtc[6] = {0};
 int16_t batteryVoltage = 0;
 GPS_DATA* gd = 0;
-uint32_t lastGPStime = 0;
 
 char devid[12] = {0};
 char isoTime[26] = {0};
@@ -262,6 +261,15 @@ void processOBD(CBuffer* buffer)
 
 bool processGPS(CBuffer* buffer)
 {
+  static uint32_t lastGPStime = 0;
+  static float lastGPSLat = 0;
+  static float lastGPSLng = 0;
+
+  if (!gd) {
+    lastGPStime = 0;
+    lastGPSLat = 0;
+    lastGPSLng = 0;
+  }
   if (state.check(STATE_GPS_READY)) {
     // read parsed GPS data
     if (!sys.gpsGetData(&gd)) {
@@ -277,9 +285,16 @@ bool processGPS(CBuffer* buffer)
 
   if (!gd || lastGPStime == gd->time || gd->date == 0 || (gd->lng == 0 && gd->lat == 0)) return false;
 
+  if (lastGPSLat != 0 && lastGPSLng != 0 && (abs(gd->lat - lastGPSLat) > 0.01 || abs(gd->lng - lastGPSLng > 0.01))) {
+    // invalid coordinates data
+    lastGPSLat = 0;
+    lastGPSLng = 0;
+    return false;
+  }
+  lastGPSLat = gd->lat;
+  lastGPSLng = gd->lng;
+  
   float kph = (float)((int)(gd->speed * 1.852f * 10)) / 10;
-  if (kph >= 300) return false;
-
   if (kph >= 2) lastMotionTime = millis();
 
   if (buffer) {
