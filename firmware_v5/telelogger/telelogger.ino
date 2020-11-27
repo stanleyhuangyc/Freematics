@@ -285,7 +285,7 @@ bool processGPS(CBuffer* buffer)
 
   if (!gd || lastGPStime == gd->time || gd->date == 0 || (gd->lng == 0 && gd->lat == 0)) return false;
 
-  if (lastGPSLat != 0 && lastGPSLng != 0 && (abs(gd->lat - lastGPSLat) > 0.01 || abs(gd->lng - lastGPSLng > 0.01))) {
+  if ((lastGPSLat || lastGPSLng) && (abs(gd->lat - lastGPSLat) > 0.001 || abs(gd->lng - lastGPSLng > 0.001))) {
     // invalid coordinates data
     lastGPSLat = 0;
     lastGPSLng = 0;
@@ -461,6 +461,13 @@ void printTime()
 *******************************************************************************/
 void initialize()
 {
+    // turn on buzzer at 2000Hz frequency 
+  sys.buzzer(2000);
+  delay(100);
+  // turn off buzzer
+  sys.buzzer(0);
+
+  // dump buffer data
   bufman.purge();
 
 #if ENABLE_MEMS
@@ -751,9 +758,11 @@ void process()
   if (state.check(STATE_OBD_READY)) {
     processOBD(buffer);
     if (obd.errors >= MAX_OBD_ERRORS) {
-      Serial.println("ECU OFF");
-      state.clear(STATE_OBD_READY | STATE_WORKING);
-      return;
+      if (!obd.init()) {
+        Serial.println("ECU OFF");
+        state.clear(STATE_OBD_READY | STATE_WORKING);
+        return;
+      }
     }
   }
 #else
@@ -814,21 +823,22 @@ void process()
   const uint16_t stationaryTime[] = STATIONARY_TIME_TABLE;
   const int dataIntervals[] = DATA_INTERVAL_TABLE;
   unsigned int motionless = (millis() - lastMotionTime) / 1000;
-  int interval = -1;
+  bool stationary = true;
   for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
+    dataInterval = dataIntervals[i];
     if (motionless < stationaryTime[i] || stationaryTime[i] == 0) {
-      interval = dataIntervals[i];
+      stationary = false;
       break;
     }
   }
-  if (interval == -1) {
-    // stationery timeout, trip ended
+  if (stationary) {
+    // stationery timeout
     Serial.print("Stationary for ");
     Serial.print(motionless);
     Serial.println(" secs");
-    state.clear(STATE_WORKING);
+    // trip ended if OBD is not available
+    if (!state.check(STATE_OBD_READY)) state.clear(STATE_WORKING);
   }
-  dataInterval = interval;
 #endif
   long t = dataInterval - (millis() - startTime);
   if (t > 0 && t < dataInterval) delay(t);
@@ -1283,12 +1293,6 @@ void setup()
 #if ENABLE_OBD
     obd.begin(sys.link);
 #endif
-
-  // turn on buzzer at 2000Hz frequency 
-  sys.buzzer(2000);
-  delay(200);
-  // turn off buzzer
-  sys.buzzer(0);
 
 #if ENABLE_MEMS
   if (!state.check(STATE_MEMS_READY)) {
