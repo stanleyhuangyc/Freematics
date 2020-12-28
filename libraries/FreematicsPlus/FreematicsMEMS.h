@@ -5,6 +5,9 @@
 * (C)2016-2020 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
+#ifndef FREEMATICS_MEMS
+#define FREEMATICS_MEMS
+
 #include "FreematicsBase.h"
 #include "utility/ICM_20948_C.h"	// The C backbone
 
@@ -400,3 +403,4 @@ public:
     bool                magIsConnected( void );
     ICM_20948_Status_e  getMagnetometerData     ( ICM_20948_AGMT_t* pagmt );
 };
+#endif

@@ -4,6 +4,8 @@
 * Visit https://freematics.com for more information
 * (C)2017-2019 Developed by Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
+#ifndef FREEMATICS_PLUS
+#define FREEMATICS_PLUS
 
 #include <Arduino.h>
 #include "esp_system.h"
@@ -167,3 +169,4 @@ private:
   byte m_flags = 0;
   byte m_pinGPSPower = 0;
 };
+#endif

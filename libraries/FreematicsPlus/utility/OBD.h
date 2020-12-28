@@ -1,3 +1,6 @@
+#ifndef OBD
+#define OBD
+
 // Mode 1 PIDs
 #define PID_ENGINE_LOAD 0x04
 #define PID_COOLANT_TEMP 0x05
@@ -70,3 +73,4 @@ typedef enum {
     OBD_CONNECTED = 2,
     OBD_FAILED = 3
 } OBD_STATES;
+#endif

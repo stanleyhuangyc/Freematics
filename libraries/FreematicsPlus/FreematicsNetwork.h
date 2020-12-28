@@ -4,6 +4,9 @@
 * Developed by Stanley Huang https://www.facebook.com/stanleyhuangyc
 *************************************************************************/
 
+#ifndef FREEMATICS_NETWORK
+#define FREEMATICS_NETWORK
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -221,3 +224,5 @@ public:
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };
+
+#endif
