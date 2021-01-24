@@ -1015,7 +1015,7 @@ void telemetry(void* inst)
       if (!initNetwork() || !teleClient.connect()) {
         teleClient.shutdown();
         state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-        delay(3000);
+        delay(10000);
         continue;
       }
     }
