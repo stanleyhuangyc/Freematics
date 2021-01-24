@@ -503,8 +503,8 @@ void initialize()
 #endif
     } else {
       Serial.println("OBD:NO");
-      state.clear(STATE_WORKING);
-      return;
+      //state.clear(STATE_WORKING);
+      //return;
     }
   }
 #endif
@@ -1077,6 +1077,7 @@ void telemetry(void* inst)
         // device too hot, cool down by pause transmission
         Serial.println("Overheat");
         delay(10000);
+        bufman.purge();
       }
 
     }
@@ -1260,7 +1261,7 @@ void configMode()
 
 void setup()
 {
-    delay(100);
+    delay(500);
 
 #if ENABLE_OLED
     oled.begin();
