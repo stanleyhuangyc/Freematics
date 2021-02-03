@@ -58,12 +58,10 @@
 #define UART_BUF_SIZE 256
 #define NMEA_BUF_SIZE 512
 
-#define FLAG_USE_GNSS 0x1
 #define FLAG_USE_CELL 0x2
 #define FLAG_USE_UART_LINK 0x4
 #define FLAG_GNSS_SOFT_SERIAL 0x8
 #define FLAG_GNSS_USE_LINK 0x10
-#define FLAG_USE_COPROC 0x20
 
 int readChipTemperature();
 int readChipHallSensor();
@@ -125,7 +123,7 @@ private:
 class FreematicsESP32 : public CFreematics
 {
 public:
-  bool begin(bool useGNSS = true, bool useCellular = true, bool useCoProc = true);
+  bool begin(bool useCoProc = true, bool useCellular = true);
   // start GPS
   bool gpsBegin(int baudrate = 115200);
   // turn off GPS

@@ -29,10 +29,8 @@
 #define VERBOSE_XBEE 0
 
 static TinyGPS gps;
-static byte gpsPendingData = 0;
-static char* nmeaBuffer = 0;
-static int nmeaBytes = 0;
-Mutex nmeaBufferMutex;
+static bool gpsHasDecodedData = false;
+static uart_port_t gpsUARTNum = GPS_UART_NUM;
 static Task taskGPS;
 static GPS_DATA* gpsData = 0;
 
@@ -56,15 +54,11 @@ static void gps_decode_task(void* inst)
 {
     for (;;) {
         uint8_t c = 0;
-        int len = uart_read_bytes(GPS_UART_NUM, &c, 1, 60000 / portTICK_RATE_MS);
+        int len = uart_read_bytes(gpsUARTNum, &c, 1, 60000 / portTICK_RATE_MS);
         if (len != 1) continue;
-        if (nmeaBuffer && nmeaBytes < NMEA_BUF_SIZE) {
-            nmeaBufferMutex.lock();
-            nmeaBuffer[nmeaBytes++] = c;
-            nmeaBufferMutex.unlock();
-        }
+        //Serial.print((char)c);
         if (gps.encode(c)) {
-            gpsPendingData++;
+            gpsHasDecodedData = true;
         }
     }
 }
@@ -118,13 +112,8 @@ static void gps_soft_decode_task(void* inst)
             while (getCycleCount() - start < i * F_CPU / GPS_SOFT_BAUDRATE + F_CPU / GPS_SOFT_BAUDRATE / 3);
             c = (c | readRxPin()) >> 1;
         }
-        if (nmeaBuffer && nmeaBytes < NMEA_BUF_SIZE) {
-            //nmeaBufferMutex.lock();
-            nmeaBuffer[nmeaBytes++] = c;
-            //nmeaBufferMutex.unlock();
-        }
         if (gps.encode(c)) {
-            gpsPendingData++;
+            gpsHasDecodedData = true;
         }
         do {
             taskYIELD();
@@ -466,21 +455,11 @@ void FreematicsESP32::gpsEnd()
 {
     // uninitialize
     if ((m_flags & FLAG_GNSS_USE_LINK)) {
-        if (link) {
-            char buf[16];
-            link->sendCommand("ATGPSOFF", buf, sizeof(buf), 0);
-        }
+        char buf[16];
+        link->sendCommand("ATGPSOFF", buf, sizeof(buf), 0);
     } else {
         taskGPS.destroy();
-        if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) uart_driver_delete(GPS_UART_NUM);
-        /*
-        if (nmeaBuffer) {
-            nmeaBufferMutex.lock();
-            delete nmeaBuffer;
-            nmeaBuffer = 0;
-            nmeaBufferMutex.unlock();
-        }
-        */
+        if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) uart_driver_delete(gpsUARTNum);
         digitalWrite(m_pinGPSPower, LOW);
     }
 }
@@ -488,7 +467,7 @@ void FreematicsESP32::gpsEnd()
 bool FreematicsESP32::gpsBegin(int baudrate)
 {
     // try co-processor GPS link
-    if (m_flags & FLAG_USE_COPROC) {
+    if (m_flags & FLAG_GNSS_USE_LINK) {
         char buf[128];
         link->sendCommand("ATGPSON", buf, sizeof(buf), 100);
         m_flags |= FLAG_GNSS_USE_LINK;
@@ -522,11 +501,11 @@ bool FreematicsESP32::gpsBegin(int baudrate)
         };
         bool legacy = devType <= 13;
         // configure UART parameters
-        uart_param_config(GPS_UART_NUM, &uart_config);
+        uart_param_config(gpsUARTNum, &uart_config);
         // set UART pins
-        uart_set_pin(GPS_UART_NUM, legacy ? PIN_GPS_UART_TXD2 : PIN_GPS_UART_TXD, legacy ? PIN_GPS_UART_RXD2 : PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        uart_set_pin(gpsUARTNum, legacy ? PIN_GPS_UART_TXD2 : PIN_GPS_UART_TXD, legacy ? PIN_GPS_UART_RXD2 : PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
         // install UART driver
-        uart_driver_install(GPS_UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
+        uart_driver_install(gpsUARTNum, UART_BUF_SIZE, 0, 0, NULL, 0);
         // turn on GPS power
         if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
         delay(100);
@@ -555,7 +534,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
             const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
             const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
             for (int i = 0; i < sizeof(packet1); i++) softSerialTx(baudrate, packet1[i]);
-            delay(10);
+            delay(20);
             for (int i = 0; i < sizeof(packet2); i++) softSerialTx(baudrate, packet2[i]);
         }
         delay(200);
@@ -564,8 +543,6 @@ bool FreematicsESP32::gpsBegin(int baudrate)
             // data is coming in
             if (!gpsData) gpsData = new GPS_DATA;
             memset(gpsData, 0, sizeof(GPS_DATA));
-            if (!nmeaBuffer) nmeaBuffer = new char[NMEA_BUF_SIZE];
-            nmeaBytes = 0;
             return true;
         }
     }
@@ -624,7 +601,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         return true;
     } else {
         gps.stats(&gpsData->sentences, &gpsData->errors);
-        if (!gpsPendingData) return false;
+        if (!gpsHasDecodedData) return false;
         long lat, lng;
         bool good = true;
         gps.get_position(&lat, &lng, 0);
@@ -647,7 +624,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData->sat = sat;
         unsigned long hdop = gps.hdop();
         gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
-        gpsPendingData = 0;
+        gpsHasDecodedData = false;
         return true;
     }
 }
@@ -657,21 +634,7 @@ int FreematicsESP32::gpsGetNMEA(char* buffer, int bufsize)
     if (m_flags & FLAG_GNSS_USE_LINK) {
         return link->sendCommand("ATGRR\r", buffer, bufsize, 200);
     } else {
-        int bytes = 0;
-        if (nmeaBytes > 0) {
-            if (bufsize < nmeaBytes) {
-                nmeaBufferMutex.lock();
-                memcpy(buffer, nmeaBuffer, bytes = bufsize);
-                memmove(nmeaBuffer, nmeaBuffer + bufsize, nmeaBytes -= bufsize);
-                nmeaBufferMutex.unlock();
-            } else {
-                nmeaBufferMutex.lock();
-                memcpy(buffer, nmeaBuffer, bytes = nmeaBytes);
-                nmeaBytes = 0;
-                nmeaBufferMutex.unlock();
-            }
-        }
-        return bytes;
+        return 0;
     }
 }
 
@@ -679,7 +642,7 @@ void FreematicsESP32::gpsSendCommand(const char* string, int len)
 {
 #if !GPS_SOFT_SERIAL
     if (taskGPS.running())
-        uart_write_bytes(GPS_UART_NUM, string, len);
+        uart_write_bytes(gpsUARTNum, string, len);
 #endif
 }
 
@@ -863,7 +826,7 @@ void FreematicsESP32::resetLink()
     }
 }
 
-bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
+bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
 {
     if (link) return false;
 
@@ -893,7 +856,7 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
             if (devType) {
                 m_flags = FLAG_USE_UART_LINK;
                 if (devType == 13 || devType == 14 || devType == 15) {
-                    m_flags |= FLAG_USE_COPROC;
+                    m_flags |= FLAG_GNSS_USE_LINK;
                 } else if (devType == 12) {
                     m_pinGPSPower = PIN_GPS_POWER2;
                 }
@@ -904,6 +867,7 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
         }
         delete linkUART;
         linkUART = 0;
+#if 0
         CLink_SPI *linkSPI = new CLink_SPI;
         if (linkSPI->begin()) {
             link = linkSPI;
@@ -917,7 +881,9 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
         }
         delete linkSPI;
         linkSPI = 0;
-    } while(1);
+#endif
+        useCoProc = false;
+    } while(0);
 
     if (useCellular) {
         int pinRx = PIN_BEE_UART_RXD;
@@ -935,8 +901,6 @@ bool FreematicsESP32::begin(bool useGNSS, bool useCellular, bool useCoProc)
             m_flags |= FLAG_GNSS_SOFT_SERIAL;
         }
     }
-    if (useGNSS) {
-        m_flags |= FLAG_USE_GNSS;
-    }
+    gpsUARTNum = useCoProc ? GPS_UART_NUM : LINK_UART_NUM;
     return devType != 0;
 }

@@ -56,7 +56,7 @@ class ClientWIFI
 public:
     bool begin(const char* ssid, const char* password);
     void end();
-    bool setup(unsigned int timeout = 15000);
+    bool setup(unsigned int timeout = 5000);
     String getIP();
     int getSignal() { return 0; }
     const char* deviceName() { return "WiFi"; }
