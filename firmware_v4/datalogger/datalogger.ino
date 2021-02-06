@@ -159,6 +159,8 @@ public:
         unsigned int DDMM = gd->date / 100;
         UTC = gd->time;
         MMDD = (DDMM % 100) * 100 + (DDMM / 100);
+        // set GPS ready flag
+        state |= STATE_GPS_READY;
       }
     }
 #if USE_GPS
@@ -168,8 +170,6 @@ public:
         GPS_DATA gd = {0};
         if (gpsGetData(&gd)) {
           logLocationData(&gd);
-          // set GPS ready flag
-          state |= STATE_GPS_READY;
         }
     }
 #endif
@@ -179,7 +179,6 @@ public:
       GPS_DATA gd;
       if (cellGetGPSInfo(gd)) {
         logLocationData(&gd);
-        state |= STATE_GPS_READY;
       }
     }
 #endif
@@ -353,7 +352,7 @@ void setup()
     Serial.begin(115200);
     
     byte ver = one.begin();
-    Serial.print("Firmware:V");
+    Serial.print("FW:R");
     Serial.println(ver);
 
 #if USE_MEMS
@@ -367,6 +366,15 @@ void setup()
 #endif
 
     one.setup();
+
+#if !USE_GPS
+    if (one.ioConfig(1, IO_PIN_OUTPUT)) {
+      one.ioConfig(2, IO_PIN_OUTPUT); 
+      one.ioWrite(1, 0);
+      one.ioWrite(2, 0);
+      Serial.println("IO:OK");
+    }
+#endif
 }
 
 void loop()

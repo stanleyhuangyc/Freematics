@@ -276,17 +276,13 @@ void processOBD()
 #if ENABLE_GPS
 void processGPS()
 {
-  static uint8_t lastGPSDay = 0;
   GPS_DATA gd = {0};
   // read parsed GPS data
   if (sys.gpsGetData(&gd) && gd.sat >= 3) {
-    if (gd.date && UTC != (uint16_t)gd.time) {
+    if (gd.date && UTC != (uint16_t)gd.time && gd.date != 0) {
       byte day = gd.date / 10000;
+      cache.log(PID_GPS_DATE, gd.date);
       cache.log(PID_GPS_TIME, gd.time);
-      if (lastGPSDay != day) {
-        cache.log(PID_GPS_DATE, gd.date);
-        lastGPSDay = day;
-      }
       unsigned int kph = (unsigned long)gd.speed  * 1852 / 100000;
       if (kph >= 2) lastMotionTime = millis();
       if (gd.lat || gd.lng || gd.alt) {
@@ -310,16 +306,17 @@ void processGPS()
       Serial.print(" SAT:");
       Serial.println((unsigned int)gd.sat);
       UTC = (uint16_t)gd.time;
+      state.set(STATE_LOCATION_READY);
     }
   }
 }
 #endif
 
-void processLocation()
+bool processLocation()
 {
   GPS_DATA* gd = net.getLocation();
   // read parsed GPS data
-  if (gd && UTC != (uint16_t)gd->time) {
+  if (gd && UTC != (uint16_t)gd->time && gd->date != 0) {
     cache.log(PID_GPS_DATE, gd->date);
     cache.log(PID_GPS_TIME, gd->time);
     cache.logCoordinate(PID_GPS_LATITUDE, gd->lat);
@@ -327,7 +324,7 @@ void processLocation()
     cache.log(PID_GPS_ALTITUDE, gd->alt);
     unsigned int kph = (unsigned long)gd->speed * 1852 / 100000;
     cache.log(PID_GPS_SPEED, kph);
-    if (kph >= 1) lastMotionTime = millis();
+    if (kph >= 2) lastMotionTime = millis();
     cache.log(PID_GPS_HEADING, gd->heading);
     Serial.print("[GPS] ");
     Serial.print(gd->lat);
@@ -340,7 +337,10 @@ void processLocation()
     Serial.print("kph UTC:");
     Serial.println(gd->time);
     UTC = (uint16_t)gd->time;
+    state.set(STATE_LOCATION_READY);
+    return true;
   }
+  return false;
 }
 
 #if MEMS_MODE
@@ -515,15 +515,14 @@ bool initialize()
   }
 #else
   Serial.print("SIM:");
-  bool hasSIM = net.checkSIM();
-  if (hasSIM) {
+  if (net.checkSIM()) {
     Serial.println(F("OK"));
   } else {
     Serial.println(F("NO"));
   }
 
   Serial.print(F("NET.."));
-  if (net.setup(CELL_APN, hasSIM ? 30000 : 1000, !state.check(STATE_GPS_READY))) {
+  if (net.setup(CELL_APN, 30000)) {
     String op = net.getOperatorName();
     if (op.length()) {
       Serial.println(op);
@@ -534,7 +533,7 @@ bool initialize()
     login();
   } else {
     Serial.println(F("NO"));
-    if (hasSIM) return false;
+    return false;
   }
 
   if (!state.check(STATE_GPS_READY)) {
@@ -549,7 +548,6 @@ bool initialize()
   }
 #endif
 
-#if 0
   Serial.print(F("IP:"));
   String ip = net.getIP();
   if (ip.length()) {
@@ -557,7 +555,6 @@ bool initialize()
   } else {
     Serial.println(F("NO"));
   }
-#endif
 
   txCount = 0;
 
@@ -717,27 +714,49 @@ void standby()
     // start ping
     Serial.print(F("Ping..."));
     net.begin(&sys, true);
-    cache.header(devid);
-    cache.timestamp(millis());
-    cache.log(PID_DEVICE_TEMP, deviceTemp);
-    cache.log(PID_BATTERY_VOLTAGE, (uint16_t)(volts * 100));
-    cache.tailer();
 #if NET_DEVICE == NET_WIFI
     if (!net.setup(WIFI_SSID, WIFI_PASSWORD))
 #else
-    if (!net.begin(&sys) || !net.setup(CELL_APN, 15000, false))
+    if (!net.begin(&sys) || !net.setup(CELL_APN, 10000))
 #endif
     {
       Serial.println(F("NO"));
       continue;
     }
+    // activate GNSS if location was previously available
+    // this intends to keep satellite info up to date during standby
+    if (state.check(STATE_LOCATION_READY)) net.startGPS();
     Serial.println(net.getIP());
     state.set(STATE_NET_READY);
-    if (ping()) {
-      state.set(STATE_SERVER_CONNECTED);
-      // ping back data
-      transmit();
+    if (!ping()) {
+      continue;
     }
+    state.set(STATE_SERVER_CONNECTED);
+    // wait GNSS signal ready and get GPS data
+    bool motion = false;
+    cache.header(devid);
+    cache.timestamp(millis());
+    if (state.check(STATE_LOCATION_READY)) {
+      state.clear(STATE_LOCATION_READY);
+      for (uint32_t t = millis(); millis() - t < PING_BACK_GPS_WAIT_TIME * 1000 && !motion; ) {
+        Serial.print('.');
+        int len;
+        net.receive(&len, 100);
+        cache.timestamp(millis());
+        if (processLocation()) {
+          state.set(STATE_LOCATION_READY);
+          break;
+        }
+        motion = waitMotion(1000);
+      }
+    }
+    // additional data
+    cache.log(PID_DEVICE_TEMP, deviceTemp);
+    cache.log(PID_BATTERY_VOLTAGE, (uint16_t)(volts * 100));
+    cache.tailer();
+    // ping back data
+    transmit();
+    if (motion) break;
   }
 #if RESET_AFTER_WAKEUP
   delay(100);

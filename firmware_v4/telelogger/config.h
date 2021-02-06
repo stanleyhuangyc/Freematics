@@ -47,6 +47,7 @@
 #define STATIONARY_TIME_TABLE {10, 30, 180} /* seconds */
 #define SENDING_INTERVAL_TABLE {2, 5, 10} /* seconds */
 #define PING_BACK_INTERVAL 900 /* seconds */
+#define PING_BACK_GPS_WAIT_TIME 180 /* seconds */
 
 /**************************************
 * MEMS motion sensors
@@ -60,7 +61,7 @@
 * GPS
 **************************************/
 #ifndef ENABLE_GPS
-// change the following line to enable (1)/disable (0) GPS
+// change the following line to enable (1)/disable (0) external GPS receiver
 #define ENABLE_GPS 0
 #endif
 #define GPS_SERIAL_BAUDRATE 115200L
@@ -69,7 +70,7 @@
 * Standby/wakeup
 **************************************/
 #define CHARGING_VOLTAGE 14.0f /* V */
-#define BATTERY_LOW_VOLTAGE 11.5f /* V */
+#define BATTERY_LOW_VOLTAGE 11.2f /* V */
 #define RESET_AFTER_WAKEUP 0
 
 #endif // CONFIG_H_INCLUDED
