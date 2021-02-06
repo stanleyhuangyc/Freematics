@@ -71,7 +71,7 @@ class UDPClientSIM5360 : public NullClient
 public:
     bool begin(CFreematics* device, bool nocheck = false);
     void end();
-    bool setup(const char* apn, unsigned int timeout = 30000, bool gps = false, const char* pin = 0);
+    bool setup(const char* apn, unsigned int timeout = 30000, const char* pin = 0);
     String getIP();
     int getSignal();
     String getOperatorName();

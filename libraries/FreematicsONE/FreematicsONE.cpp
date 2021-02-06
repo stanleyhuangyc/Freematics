@@ -515,6 +515,31 @@ byte COBDSPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int 
 	return n;
 }
 
+bool COBDSPI::ioConfig(byte pin, IO_PIN_MODE mode)
+{
+	// mode: 0: digital input, 1: digial output
+	char buf[32];
+	sprintf_P(buf, PSTR("ATMXCFG %u,%u\r"), pin, mode);
+	return sendCommand(buf, buf, sizeof(buf), 100) && strstr_P(buf, PSTR("OK"));
+}
+
+bool  COBDSPI::ioWrite(byte pin, byte level)
+{
+	char buf[32];
+	sprintf_P(buf, PSTR("ATMXSET %u,%u\r"), pin, level);
+	return sendCommand(buf, buf, sizeof(buf), 100) && strstr_P(buf, PSTR("OK"));
+}
+
+byte COBDSPI::ioRead()
+{
+	char buf[32];
+	sprintf_P(buf, PSTR("ATMXGET\r"));
+	sendCommand(buf, buf, sizeof(buf), 50);
+	char *p = strstr_P(buf, PSTR("MX:"));
+	if (!p || *(p + 4) != ',') return -1;
+	return (*(p + 3) - '0') | (*(p + 5) - '0') << 1;
+}
+
 bool COBDSPI::gpsInit(unsigned long baudrate)
 {
 	bool success = false;

@@ -89,6 +89,12 @@ typedef enum {
 	OBD_FAILED = 3
 } OBD_STATES;
 
+// IO PIN modes
+typedef enum {
+	IO_PIN_INPUT = 0,
+	IO_PIN_OUTPUT = 1
+} IO_PIN_MODE;
+
 uint16_t hex2uint16(const char *p);
 uint8_t hex2uint8(const char *p);
 
@@ -134,6 +140,12 @@ public:
 	void xbPurge();
 	// toggle xBee module power
 	void xbTogglePower();
+	// set I/O pin mode (pin: 1/2, mode: input/output)
+	bool ioConfig(byte pin, IO_PIN_MODE mode);
+	// set I/O pin level (pin: 1/2, level: 0/1)
+	bool ioWrite(byte pin, byte level);
+	// get I/O pin level (bit 0 for pin 1, bit 1 for pin 2)
+	byte ioRead();
 	// get connection state
 	OBD_STATES getState() { return m_state; }
 	// read diagnostic trouble codes (return number of DTCs read)
