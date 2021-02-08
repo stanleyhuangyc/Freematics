@@ -5,6 +5,9 @@
 * (C)2012-2017 Stanley Huang <support@freematics.com.au
 *************************************************************************/
 
+#ifndef FREEMATICS_OBD
+#define FREEMATICS_OBD
+
 #include "utility/OBD.h"
 
 #define OBD_TIMEOUT_SHORT 1000 /* ms */
@@ -77,3 +80,4 @@ protected:
 	OBD_STATES m_state = OBD_DISCONNECTED;
 };
 
+#endif
