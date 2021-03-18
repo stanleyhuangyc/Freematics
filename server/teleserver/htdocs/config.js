@@ -10,4 +10,9 @@ const DEVICE_OFFLINE_TIMEOUT = 910000;
 const MAP_CENTERING_INTERVAL = 5000;
 const STOP_TIME_MIN = 30; /* seconds */
 
-const serverURL = window.location.href.substr(0, 7) == "file://" ? "http://localhost:8080/api/" : (window.location.href.indexOf("localhost") > 0 ? "/api/" : "/hub/api/");
+const serverURL =
+  window.location.href.substr(0, 7) == 'file://'
+    ? 'http://localhost:8080/api/'
+    : window.location.href.indexOf('localhost') > 0
+    ? '/api/'
+    : '/hub/api/';
