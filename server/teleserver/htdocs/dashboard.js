@@ -261,8 +261,19 @@ var DASH = {
         this.curLocation[0] != lat ||
         this.curLocation[1] != lng
       ) {
+        var url =
+          'https://api.opencagedata.com/geocode/v1/json?q=' +
+          lat +
+          ',' +
+          lng +
+          '&no_annotations=1&key=' +
+          OPENCAGE_API_KEY;
+        var geocodeResult = transport.getJSON(url);
+        // geocodeResult success or error ?
+        var address = geocodeResult.results[0].formatted;
         this.curLocation = [lat, lng];
         OSMAP.setMarker(0, this.curLocation);
+        OSMAP.popupMarker(0, address);
         OSMAP.setCenter(this.curLocation);
       }
     }
