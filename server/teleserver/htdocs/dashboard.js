@@ -276,11 +276,35 @@ var DASH = {
 
           // geocodeResult success or error ?
           var geocodeResult = transport.getJSON(url);
-          if (geocodeResult && Array.isArray(geocodeResult.results)) {
+          if (
+            geocodeResult &&
+            Array.isArray(geocodeResult.results) &&
+            geocodeResult.results.length > 0
+          ) {
             var address = geocodeResult.results[0].formatted;
             OSMAP.popupMarker(0, address);
+          } else if (geocodeResult && geocodeResult.status) {
+            if (geocodeResult.status.code == 402) {
+              OSMAP.popupMarker(
+                0,
+                'Quota Exceeded - Become a customer : <a href="https://opencagedata.com/pricing" target="_blank">check pricing</a>'
+              );
+              // prevent further API requests:
+              OPENCAGE_API_KEY = '';
+            }
+            if (geocodeResult.status.code == 403) {
+              OSMAP.popupMarker(
+                0,
+                '403 - API Key : ' + geocodeResult.status.message
+              );
+              // prevent further API requests:
+              OPENCAGE_API_KEY = '';
+            }
+            if (geocodeResult.status.code == 429) {
+              OSMAP.popupMarker(0, geocodeResult.status.message);
+            }
           }
-        }
+        } // end Opencage integration
       }
     }
   },

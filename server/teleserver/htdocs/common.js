@@ -15,6 +15,19 @@
     this.xhr.open('GET', url, false);
     this.xhr.overrideMimeType('application/json');
     this.xhr.send(null);
+
+    if (
+      url.startsWith('https://api.opencagedata.com/geocode') &&
+      (this.xhr.status == 402 ||
+        this.xhr.status == 403 ||
+        this.xhr.status == 429)
+    ) {
+      var status = JSON.parse(this.xhr.responseText).status;
+      return {
+        results: [],
+        status,
+      };
+    }
     return this.xhr.status == 200 ? JSON.parse(this.xhr.responseText) : null;
   },
 };

@@ -9,7 +9,8 @@ const TRIP_END_TIMEOUT = 120000;
 const DEVICE_OFFLINE_TIMEOUT = 910000;
 const MAP_CENTERING_INTERVAL = 5000;
 const STOP_TIME_MIN = 30; /* seconds */
-const OPENCAGE_API_KEY = '';
+// var (not const) then it can be overwrite on errors
+var OPENCAGE_API_KEY = '';
 
 const serverURL =
   window.location.href.substr(0, 7) == 'file://'
