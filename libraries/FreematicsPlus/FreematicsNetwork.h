@@ -19,7 +19,9 @@
 #include "FreematicsBase.h"
 
 #define XBEE_BAUDRATE 115200
-#define HTTP_CONN_TIMEOUT 10000
+#define HTTP_CONN_TIMEOUT 15000
+
+#define RECV_BUF_SIZE 384
 
 typedef enum {
   METHOD_GET = 0,
@@ -48,9 +50,11 @@ class HTTPClient
 {
 public:
     HTTP_STATES state() { return m_state; }
+    byte code() { return m_code; }
 protected:
     String genHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize);
     HTTP_STATES m_state = HTTP_DISCONNECTED;
+    byte m_code = 0;
     String m_host;
 };
 
@@ -65,7 +69,7 @@ public:
     const char* deviceName() { return "WiFi"; }
     void listAPs();
 protected:
-    char m_buffer[256] = {0};
+    char m_buffer[RECV_BUF_SIZE] = {0};
 };
 
 class UDPClientWIFI : public ClientWIFI
@@ -111,7 +115,7 @@ public:
     const char* IMEI = "N/A";
 protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
-    char m_buffer[256] = {0};
+    char m_buffer[RECV_BUF_SIZE] = {0};
     CFreematics* m_device = 0;
 };
 
@@ -145,12 +149,12 @@ public:
     virtual void end();
     virtual bool setup(const char* apn, unsigned int timeout = 30000);
     virtual bool setGPS(bool on);
-    String getIP();
+    virtual String getIP();
     int getSignal();
     String getOperatorName();
     bool checkSIM(const char* pin = 0);
-    String queryIP(const char* host);
-    bool getLocation(GPS_DATA** pgd)
+    virtual String queryIP(const char* host);
+    virtual bool getLocation(GPS_DATA** pgd)
     {
         if (m_gps) {
             if (pgd) *pgd = m_gps;
@@ -164,10 +168,10 @@ public:
     char IMEI[16] = {0};
 protected:
     // send command and check for expected response
-    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK\r\n");
-    void checkGPS();
+    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = 0);
+    virtual void checkGPS();
     float parseDegree(const char* s);
-    char m_buffer[384] = {0};
+    char m_buffer[RECV_BUF_SIZE] = {0};
     char m_model[12] = {0};
     CFreematics* m_device = 0;
     GPS_DATA* m_gps = 0;
@@ -217,6 +221,41 @@ protected:
 };
 
 class HTTPClientSIM7600 : public HTTPClient, public ClientSIM7600
+{
+public:
+    bool open(const char* host = 0, uint16_t port = 0);
+    void close();
+    bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
+};
+
+class ClientSIM7070 : public ClientSIM5360
+{
+public:
+    bool begin(CFreematics* device);
+    void end();
+    bool setup(const char* apn, unsigned int timeout = 30000);
+    bool setGPS(bool on);
+    void checkGPS();
+    String getIP();
+    String queryIP(const char* host);
+};
+
+class UDPClientSIM7070 : public ClientSIM7070
+{
+public:
+    bool open(const char* host, uint16_t port);
+    void close();
+    bool send(const char* data, unsigned int len);
+    char* receive(int* pbytes = 0, unsigned int timeout = 5000);
+protected:
+    char* checkIncoming(int* pbytes);
+    String udpIP;
+    uint16_t udpPort = 0;
+};
+
+
+class HTTPClientSIM7070 : public HTTPClient, public ClientSIM7070
 {
 public:
     bool open(const char* host = 0, uint16_t port = 0);
