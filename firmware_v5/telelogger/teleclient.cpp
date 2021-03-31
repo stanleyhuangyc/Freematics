@@ -331,11 +331,8 @@ void TeleClientUDP::shutdown()
   }
   net.close();
   net.end();
-  Serial.print(net.deviceName());
-  Serial.println(" OFF");
+  Serial.println("CELL OFF");
 }
-
-#if NET_DEVICE == NET_WIFI || NET_DEVICE == NET_SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
 
 bool TeleClientHTTP::notify(byte event, const char* payload)
 {
@@ -356,7 +353,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   }
 
   char url[256];
-  bool success;
+  bool success = false;
   int len;
 #if SERVER_METHOD == PROTOCOL_METHOD_GET
   if (gd && gd->ts) {
@@ -369,6 +366,8 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   success = net.send(METHOD_GET, url, true);
 #else
   len = snprintf(url, sizeof(url), "%s/post/%s", SERVER_PATH, devid);
+  Serial.print("URL:");
+  Serial.println(url);
   success = net.send(METHOD_POST, url, true, packetBuffer, packetSize);
   len += packetSize;
 #endif
@@ -391,7 +390,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
     return false;
   }
   Serial.println(response);
-  if (strstr(response, " 200 ")) {
+  if (net.code() == 200) {
     // successful
     lastSyncTime = millis();
     rxBytes += bytes;
@@ -403,13 +402,17 @@ bool TeleClientHTTP::connect()
 {
   if (!started) {
     started = net.open();
-    Serial.println("HTTPS stack started");
   }
 
   // connect to HTTP server
   bool success = false;
-  for (byte attempts = 0; !success && attempts < 5; attempts++) {
+
+  for (byte attempts = 0; !success && attempts < 3; attempts++) {
     success = net.open(SERVER_HOST, SERVER_PORT);
+    if (!success) {
+      net.close();
+      delay(1000);
+    }
   }
   if (!success) {
     Serial.println("Error connecting to server");
@@ -447,5 +450,3 @@ void TeleClientHTTP::shutdown()
   Serial.println(" OFF");
   started = false;
 }
-
-#endif

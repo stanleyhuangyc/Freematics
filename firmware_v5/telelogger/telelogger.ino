@@ -74,7 +74,7 @@ int16_t batteryVoltage = 0;
 GPS_DATA* gd = 0;
 
 char devid[12] = {0};
-char isoTime[26] = {0};
+char isoTime[32] = {0};
 
 // stats data
 uint32_t lastMotionTime = 0;
@@ -270,18 +270,18 @@ bool processGPS(CBuffer* buffer)
     lastGPSLat = 0;
     lastGPSLng = 0;
   }
+#if GNSS == GNSS_STANDALONE
   if (state.check(STATE_GPS_READY)) {
     // read parsed GPS data
     if (!sys.gpsGetData(&gd)) {
       return false;
     }
-  } else {
-#if NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+  }
+#elif NET_DEVICE >= NET_SIM5360
     if (!teleClient.net.getLocation(&gd)) {
       return false;
     }
 #endif
-  }
 
   if (!gd || lastGPStime == gd->time || gd->date == 0 || (gd->lng == 0 && gd->lat == 0)) return false;
 
@@ -476,10 +476,15 @@ void initialize()
   }
 #endif
 
-#if GNSS == GNSS_STANDALONE
+#if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
   // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
+#if GNSS == GNSS_EXTERNAL
+    if (sys.gpsBegin())
+#else
+    if (sys.gpsBegin(0))
+#endif
+    {
       state.set(STATE_GPS_READY);
       Serial.println("GNSS:OK");
 #if ENABLE_OLED
@@ -818,10 +823,10 @@ void process()
   }
 #endif
 
+  const int dataIntervals[] = DATA_INTERVAL_TABLE;
 #if ENABLE_OBD || ENABLE_MEMS
   // motion adaptive data interval control
   const uint16_t stationaryTime[] = STATIONARY_TIME_TABLE;
-  const int dataIntervals[] = DATA_INTERVAL_TABLE;
   unsigned int motionless = (millis() - lastMotionTime) / 1000;
   bool stationary = true;
   for (byte i = 0; i < sizeof(stationaryTime) / sizeof(stationaryTime[0]); i++) {
@@ -839,6 +844,8 @@ void process()
     // trip ended if OBD is not available
     if (!state.check(STATE_OBD_READY)) state.clear(STATE_WORKING);
   }
+#else
+  dataInterval = dataIntervals[0];
 #endif
   long t = dataInterval - (millis() - startTime);
   if (t > 0 && t < dataInterval) delay(t);
@@ -881,7 +888,7 @@ bool initNetwork()
 #endif
     return false;
   }
-#if NET_DEVICE == SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
+#if NET_DEVICE >= SIM800
 #if ENABLE_OLED
     oled.print(teleClient.net.deviceName());
     oled.println(" OK\r");
@@ -990,10 +997,15 @@ void telemetry(void* inst)
       } while (state.check(STATE_STANDBY) && millis() - t < 1000L * PING_BACK_INTERVAL);
       if (state.check(STATE_STANDBY)) {
         // start ping
-#if GNSS == GNSS_STANDALONE
-        if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
+#if GNSS == GNSS_EXTERNAL || GNSS == GNSS_INTERNAL
+#if GNSS == GNSS_EXTERNAL
+        if (sys.gpsBegin())
+#else
+        if (sys.gpsBegin(0))
+#endif
+        {
           state.set(STATE_GPS_READY);
-          for (uint32_t t = millis(); millis() - t < 120000; ) {
+          for (uint32_t t = millis(); millis() - t < 60000; ) {
             if (sys.gpsGetData(&gd)) {
               break;
             }
@@ -1038,9 +1050,7 @@ void telemetry(void* inst)
       store.timestamp(buffer->timestamp);
       buffer->serialize(store);
       buffer->purge();
-#if SERVER_PROTOCOL == PROTOCOL_UDP
       store.tailer();
-#endif
       //Serial.println(store.buffer());
 
       // start transmission
@@ -1221,13 +1231,11 @@ void showSysInfo()
   oled.println("MB Flash");
 #endif
 
-    // generate unique device ID
-    genDeviceID(devid);
-    Serial.print("DEVICE ID:");
-    Serial.println(devid);
+  Serial.print("DEVICE ID:");
+  Serial.println(devid);
 #if ENABLE_OLED
-    oled.print("DEVICE ID:");
-    oled.println(devid);
+  oled.print("DEVICE ID:");
+  oled.println(devid);
 #endif
 }
 
@@ -1273,6 +1281,9 @@ void setup()
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, HIGH);
+
+    // generate unique device ID
+    genDeviceID(devid);
 
 #if CONFIG_MODE_TIMEOUT
     configMode();
@@ -1368,5 +1379,5 @@ void loop()
     }
   }
 
-  digitalWrite(26, digitalRead(34));
+  //digitalWrite(26, digitalRead(34));
 }

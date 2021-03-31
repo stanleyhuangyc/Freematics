@@ -12,22 +12,25 @@
 * Configuration Definitions
 **************************************/
 #define NET_WIFI 1
-#define NET_SIM800 2
-#define NET_SIM5360 3
-#define NET_SIM7600 4
-#define NET_WIFI_MESH 5
-#define NET_SERIAL 6
+#define NET_WIFI_MESH 2
+#define NET_SERIAL 3
+#define NET_SIM800 4
+#define NET_SIM5360 5
+#define NET_SIM7600 6
+#define NET_SIM7070 7
 
 #define STORAGE_NONE 0
 #define STORAGE_SPIFFS 1
 #define STORAGE_SD 2
 
 #define GNSS_NONE 0
-#define GNSS_STANDALONE 1
-#define GNSS_CELLULAR 2
+#define GNSS_INTERNAL 1
+#define GNSS_EXTERNAL 2
+#define GNSS_CELLULAR 3
 
 #define PROTOCOL_UDP 1
-#define PROTOCOL_HTTPS 2
+#define PROTOCOL_HTTP 2
+#define PROTOCOL_HTTPS 3
 
 #define PROTOCOL_METHOD_GET 0
 #define PROTOCOL_METHOD_POST 1
@@ -52,10 +55,10 @@
 #define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
 // cellular network settings
-#define CELL_APN ""
+#define CELL_APN "hologram"
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
-#define SERVER_PROTOCOL PROTOCOL_UDP
+#define SERVER_PROTOCOL PROTOCOL_HTTP
 #endif 
 
 // SIM card setting
@@ -68,6 +71,8 @@
 #if !SERVER_PORT
 #if SERVER_PROTOCOL == PROTOCOL_UDP
 #define SERVER_PORT 8081
+#elif SERVER_PROTOCOL == PROTOCOL_HTTP
+#define SERVER_PORT 80
 #elif SERVER_PROTOCOL == PROTOCOL_HTTPS
 #define SERVER_PORT 443
 #endif
@@ -81,7 +86,7 @@
 #define WIFI_AP_SSID "TELELOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
 
-// maximum consecutive communication errors before reconnecting
+// maximum consecutive communication errors before resetting network
 #define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
@@ -115,9 +120,8 @@
 **************************************/
 #ifndef GNSS
 // change the following line to change GNSS setting
-#define GNSS GNSS_STANDALONE
+#define GNSS GNSS_EXTERNAL
 #endif
-#define GPS_SERIAL_BAUDRATE 115200L
 #define GPS_MOTION_TIMEOUT 180 /* seconds */
 
 /**************************************
