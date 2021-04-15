@@ -270,7 +270,7 @@ bool processGPS(CBuffer* buffer)
     lastGPSLat = 0;
     lastGPSLng = 0;
   }
-#if GNSS == GNSS_STANDALONE
+#if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
   if (state.check(STATE_GPS_READY)) {
     // read parsed GPS data
     if (!sys.gpsGetData(&gd)) {
@@ -982,7 +982,7 @@ void telemetry(void* inst)
       teleClient.reset();
       bufman.purge();
 
-#if GNSS == GNSS_STANDALONE
+#if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
       if (state.check(STATE_GPS_READY)) {
         Serial.println("GNSS OFF");
         sys.gpsEnd();
