@@ -108,12 +108,12 @@ static void gps_soft_decode_task(void* inst)
     for (;;) {
         uint8_t c = 0;
         do {
-            taskYIELD();
+            //taskYIELD();
         } while (readRxPin());
         uint32_t start = getCycleCount();
         uint32_t duration;
         for (uint32_t i = 1; i <= 7; i++) {
-            taskYIELD();
+            //taskYIELD();
             duration = i * F_CPU / GPS_SOFT_BAUDRATE + F_CPU / GPS_SOFT_BAUDRATE / 3;
             while (getCycleCount() - start < duration);
             c = (c | readRxPin()) >> 1;
@@ -536,7 +536,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
     }
 
     // try co-processor GNSS
-    if (m_flags & FLAG_GNSS_USE_LINK) {
+    if (link) {
         char buf[128];
         link->sendCommand("ATGPSON", buf, sizeof(buf), 100);
         m_flags |= FLAG_GNSS_USE_LINK;
@@ -866,9 +866,7 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
             for (byte n = 0; n < 3 && !getDeviceType(); n++);
             if (devType) {
                 m_flags |= FLAG_USE_UART_LINK;
-                if (devType == 13 || devType == 14 || devType == 15) {
-                    m_flags |= FLAG_GNSS_USE_LINK;
-                } else if (devType == 12) {
+                if (devType == 12) {
                     m_pinGPSPower = PIN_GPS_POWER2;
                 }
                 break;
