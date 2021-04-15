@@ -1302,7 +1302,6 @@ void ClientSIM7070::checkGPS()
 
 String ClientSIM7070::getIP()
 {
-  uint32_t t = millis();
   for (int i = 0; i < 10; i++) {
     delay(500);
     if (sendCommand("AT+CNACT?\r", 1000)) {
