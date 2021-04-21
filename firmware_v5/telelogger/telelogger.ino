@@ -536,7 +536,7 @@ void initialize()
   }
 #endif
 
-  // re-try OBD if connection not established
+  // get VIN and DTCs from ECU
 #if ENABLE_OBD
   if (state.check(STATE_OBD_READY)) {
     char buf[128];
@@ -767,6 +767,22 @@ void process()
         Serial.println("ECU OFF");
         state.clear(STATE_OBD_READY | STATE_WORKING);
         return;
+      }
+    }
+  }else {
+    //Attempt to re-initialise the OBD. This is an attempt at fixing the bug where the device fails to reconnect to the vehicle OBD after standby.
+    if (!state.check(STATE_OBD_READY)) {
+      timeoutsOBD = 0;
+      if (obd.init()) {
+        Serial.println("OBD:OK");
+        state.set(STATE_OBD_READY);
+      #if ENABLE_OLED
+            oled.println("OBD OK");
+      #endif
+      } else {
+        Serial.println("OBD:NO");
+        //state.clear(STATE_WORKING);
+        //return;
       }
     }
   }
@@ -1134,8 +1150,9 @@ void standby()
 #endif  
   state.clear(STATE_STANDBY);
   // this will wake up co-processor
-  sys.resetLink();
-  delay(200);
+  //sys.resetLink();                //The co-processor is failing to re-initialise using this function
+  obd.leaveLowPowerMode();
+  delay(2000);
 }
 
 /*******************************************************************************
