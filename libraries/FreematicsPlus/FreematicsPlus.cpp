@@ -554,7 +554,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
             m_pinGPSPower = 0;
             return true;
         }
-        link->sendCommand("ATGPSOFF", buf, sizeof(buf), 100);
+        gpsEnd();
         m_flags &= ~FLAG_GNSS_USE_LINK;
     }
 
