@@ -47,6 +47,7 @@ uint32_t fileid = 0;
 // live data
 char vin[18] = {0};
 int16_t batteryVoltage = 0;
+uint32_t lastMEMSMotionTime = 0;
 
 typedef struct {
   byte pid;
@@ -58,12 +59,15 @@ typedef struct {
 PID_POLLING_INFO obdData[]= {
   {PID_SPEED, 1},
   {PID_RPM, 1},
-  {PID_THROTTLE, 1},
+  {PID_RELATIVE_THROTTLE_POS, 1},
   {PID_ENGINE_LOAD, 1},
-  {PID_FUEL_PRESSURE, 2},
-  {PID_TIMING_ADVANCE, 2},
+  {PID_INTAKE_MAP, 1},
+  {PID_MAF_FLOW, 1},
+  {PID_COMMANDED_EGR, 2},
+  {PID_EGR_ERROR, 2},
   {PID_COOLANT_TEMP, 3},
   {PID_INTAKE_TEMP, 3},
+  {PID_BAROMETRIC, 3},
 };
 
 #if USE_MEMS
@@ -279,6 +283,7 @@ public:
 #endif
         startTime = millis();
     }
+ #if USE_GNSS   
     void logLocationData(GPS_DATA* gd)
     {
         if (lastGPStime == gd->time) return;
@@ -318,6 +323,8 @@ public:
         lastGPStime = gd->time;
         setState(STATE_GPS_READY);
     }
+#endif
+
 #if USE_GNSS == 1
     void processGPSData()
     {
@@ -400,9 +407,17 @@ public:
             }
             // check movement
             if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
-                Serial.print("Motion:");
-                Serial.println(motion);
-                break;
+                //Serial.print("Motion:");
+                //Serial.println(motion);
+                //break;
+                batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
+                Serial.print("Battery Voltage: ");
+                Serial.println(batteryVoltage);
+                if (millis() - lastMEMSMotionTime < 1500 || batteryVoltage > JUMPSTART_VOLTAGE * 100) break;
+                Serial.print("lastMEMSMotionTime: ");
+                Serial.println(millis() - lastMEMSMotionTime);
+                lastMEMSMotionTime = millis();
+                delay(200);
             }
             executeCommand();
         }
@@ -709,7 +724,7 @@ void loop()
             }
         }
         byte pid = obdData[i].pid;
-        if (!obd.isValidPID(pid)) continue;
+        //if (!obd.isValidPID(pid)) continue;
         int value;
         if (obd.readPID(pid, value)) {
             obdData[i].ts = millis();

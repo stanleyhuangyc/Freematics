@@ -36,7 +36,7 @@ void setup()
   
   // we are interested in CAN messages with header 7E*
   obd.setHeaderFilter(0x7E0);
-  obd.setHeaderMask(0xFFFFFFF0);
+  //obd.setHeaderMask(0xFFFFFFF0);
 
   // start CAN bus sniffing
   obd.sniff();

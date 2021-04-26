@@ -22,7 +22,7 @@ class COBD
 public:
 	void begin(CLink* link) { this->link = link; }
 	// initialize OBD-II connection
-	bool init(OBD_PROTOCOLS protocol = PROTO_AUTO);
+	bool init(OBD_PROTOCOLS protocol = PROTO_CAN_11B_500K);
 	// reset OBD-II connection
 	void reset();
 	// un-initialize OBD-II connection
