@@ -55,10 +55,10 @@
 #define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
 // cellular network settings
-#define CELL_APN "mdata.net.au"
+#define CELL_APN "hologram"
 // Freematics Hub server settings
-#define SERVER_HOST "wally2511.asuscomm.com"
-#define SERVER_PROTOCOL PROTOCOL_UDP
+#define SERVER_HOST "hub.freematics.com"
+#define SERVER_PROTOCOL PROTOCOL_HTTP
 #endif 
 
 // SIM card setting
@@ -66,7 +66,7 @@
 
 // HTTPS settings
 #define SERVER_METHOD PROTOCOL_METHOD_POST
-#define SERVER_PATH "/api"
+#define SERVER_PATH "/hub/api"
 
 #if !SERVER_PORT
 #if SERVER_PROTOCOL == PROTOCOL_UDP
@@ -87,7 +87,7 @@
 #define WIFI_AP_PASSWORD "PASSWORD"
 
 // maximum consecutive communication errors before resetting network
-#define MAX_CONN_ERRORS_RECONNECT 100
+#define MAX_CONN_ERRORS_RECONNECT 3
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
 // data receiving timeout
@@ -96,7 +96,7 @@
 #define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
 // data interval settings
 #define STATIONARY_TIME_TABLE {30, 60, 180} /* seconds */
-#define DATA_INTERVAL_TABLE {1000, 2000, 3000} /* ms */
+#define DATA_INTERVAL_TABLE {1000, 2000, 5000} /* ms */
 #define PING_BACK_INTERVAL 900 /* seconds */
 
 /**************************************
@@ -120,7 +120,7 @@
 **************************************/
 #ifndef GNSS
 // change the following line to change GNSS setting
-#define GNSS GNSS_NONE
+#define GNSS GNSS_INTERNAL
 #endif
 #define GPS_MOTION_TIMEOUT 180 /* seconds */
 
@@ -129,7 +129,7 @@
 **************************************/
 #define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
-#define MOTION_THRESHOLD 0.4f /* moving vehicle motion threshold in G */
+#define MOTION_THRESHOLD 0.5f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 14 /* V */
 

@@ -81,7 +81,6 @@ char isoTime[32] = {0};
 
 // stats data
 uint32_t lastMotionTime = 0;
-uint32_t lastMEMSMotionTime = 0;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 uint32_t lastStatsTime = 0;
@@ -734,13 +733,8 @@ bool waitMotion(long timeout)
       }
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
-        batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
-        Serial.println(batteryVoltage);
-        if (millis() - lastMEMSMotionTime < 500 && batteryVoltage > JUMPSTART_VOLTAGE * 100) return true;
-        Serial.print("lastMotionTime: ");
-        Serial.println(millis() - lastMEMSMotionTime);
-        lastMEMSMotionTime = millis();
-        //delay(50);
+        //lastMotionTime = millis();
+        return true;
       }
     } while ((long)(millis() - t) < timeout || timeout == -1);
     return false;
