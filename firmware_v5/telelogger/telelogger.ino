@@ -48,12 +48,15 @@ typedef struct {
 PID_POLLING_INFO obdData[]= {
   {PID_SPEED, 1},
   {PID_RPM, 1},
-  {PID_THROTTLE, 1},
+  {PID_RELATIVE_THROTTLE_POS, 1},
   {PID_ENGINE_LOAD, 1},
-  {PID_FUEL_PRESSURE, 2},
-  {PID_TIMING_ADVANCE, 2},
+  {PID_INTAKE_MAP, 1},
+  {PID_MAF_FLOW, 1},
+  {PID_COMMANDED_EGR, 2},
+  {PID_EGR_ERROR, 2},
   {PID_COOLANT_TEMP, 3},
   {PID_INTAKE_TEMP, 3},
+  {PID_BAROMETRIC, 3},
 };
 
 CBufferManager bufman;
@@ -242,7 +245,7 @@ void processOBD(CBuffer* buffer)
         }
     }
     byte pid = obdData[i].pid;
-    if (!obd.isValidPID(pid)) continue;
+    //if (!obd.isValidPID(pid)) continue;
     int value;
     if (obd.readPID(pid, value)) {
         obdData[i].ts = millis();
@@ -800,7 +803,8 @@ void process()
   if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
   } else {
-    batteryVoltage = obd.getVoltage() * 100;
+    //batteryVoltage = obd.getVoltage() * 100;    //when enabled this is causing the device boot loop
+    batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
   }
   if (batteryVoltage) {
     buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage);
@@ -1365,11 +1369,16 @@ void setup()
     }
 #endif
 
+delay(2000);
+
     state.set(STATE_WORKING);
     // initialize network and maintain connection
     subtask.create(telemetry, "telemetry", 2, 8192);
+    
+    delay(2000);
     // initialize components
     initialize();
+    delay(2000);
 
     digitalWrite(PIN_LED, LOW);
 }
