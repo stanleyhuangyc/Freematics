@@ -236,6 +236,12 @@ int COBD::normalizeData(byte pid, char* data)
 	case PID_AIR_FUEL_EQUIV_RATIO: // 0~200
 		result = (long)getLargeValue(data) * 200 / 65536;
 		break;
+	case PID_ODOMETER:
+		if (strlen(data) < 11)
+			result = -1;
+		else
+			result = (uint32_t)hex2uint8(data) << 24 | (uint32_t)hex2uint8(data + 3) << 16 | (uint32_t)hex2uint8(data + 6) << 8 | hex2uint8(data + 9);
+		break;
 	default:
 		result = getSmallValue(data);
 	}
