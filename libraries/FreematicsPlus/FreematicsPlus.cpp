@@ -833,6 +833,7 @@ void FreematicsESP32::resetLink()
         digitalWrite(PIN_LINK_RESET, LOW);
         delay(50);
         digitalWrite(PIN_LINK_RESET, HIGH);
+        delay(2000);
     }
 }
 
@@ -855,13 +856,15 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
 
     if (useCoProc) do {
         CLink_UART *linkUART = new CLink_UART;
+#if 0
         linkUART->begin(115200);
         char buf[16];
         // lift baudrate to 512Kbps
         linkUART->sendCommand("ATBR1 7D000\r", buf, sizeof(buf), 50);
         linkUART->end();
         delay(50);
-        if (linkUART->begin(512000)) {
+#endif
+        if (linkUART->begin(115200)) {
             link = linkUART;
             for (byte n = 0; n < 3 && !getDeviceType(); n++);
             if (devType) {
