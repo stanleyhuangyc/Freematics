@@ -778,7 +778,7 @@ void FreematicsESP32::xbTogglePower()
 	Serial.println("xBee power pin set to low");
 #endif
 	digitalWrite(PIN_BEE_PWR, LOW);
-	delay(1010);
+	delay(2000);
 #if VERBOSE_XBEE
 	Serial.println("xBee power pin set to high");
 #endif

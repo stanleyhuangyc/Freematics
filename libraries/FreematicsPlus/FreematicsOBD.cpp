@@ -400,7 +400,7 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 			if (hex2uint8(p) == pid) {
 				p += 2;
 				for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
-					pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
+					pidmap[i * 4 + n] |= hex2uint8(p + n * 3 + 1);
 				}
 			}
 		}
