@@ -48,12 +48,15 @@ typedef struct {
 PID_POLLING_INFO obdData[]= {
   {PID_SPEED, 1},
   {PID_RPM, 1},
-  {PID_THROTTLE, 1},
+  {PID_RELATIVE_THROTTLE_POS, 1},
   {PID_ENGINE_LOAD, 1},
-  {PID_FUEL_PRESSURE, 2},
-  {PID_TIMING_ADVANCE, 2},
+  {PID_INTAKE_MAP, 1},
+  {PID_MAF_FLOW, 1},
+  {PID_COMMANDED_EGR, 2},
+  {PID_EGR_ERROR, 2},
   {PID_COOLANT_TEMP, 3},
   {PID_INTAKE_TEMP, 3},
+  {PID_BAROMETRIC, 3},
 };
 
 CBufferManager bufman;
@@ -241,7 +244,7 @@ void processOBD(CBuffer* buffer)
         }
     }
     byte pid = obdData[i].pid;
-    if (!obd.isValidPID(pid)) continue;
+    //if (!obd.isValidPID(pid)) continue;
     int value;
     if (obd.readPID(pid, value)) {
         obdData[i].ts = millis();
@@ -536,7 +539,7 @@ void initialize()
   }
 #endif
 
-  // re-try OBD if connection not established
+  // get VIN and DTCs from ECU
 #if ENABLE_OBD
   if (state.check(STATE_OBD_READY)) {
     char buf[128];
@@ -769,6 +772,22 @@ void process()
         return;
       }
     }
+  }else {
+    //Attempt to re-initialise the OBD. This is an attempt at fixing the bug where the device fails to reconnect to the vehicle OBD after standby.
+    if (!state.check(STATE_OBD_READY)) {
+      timeoutsOBD = 0;
+      if (obd.init()) {
+        Serial.println("OBD:OK");
+        state.set(STATE_OBD_READY);
+      #if ENABLE_OLED
+            oled.println("OBD OK");
+      #endif
+      } else {
+        Serial.println("OBD:NO");
+        //state.clear(STATE_WORKING);
+        //return;
+      }
+    }
   }
 #else
   buffer->add(PID_DEVICE_HALL, readChipHallSensor() / 200);
@@ -778,7 +797,8 @@ void process()
   if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
   } else {
-    batteryVoltage = obd.getVoltage() * 100;
+    //batteryVoltage = obd.getVoltage() * 100;    //when enabled this is causing the device boot loop
+    batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
   }
   if (batteryVoltage) {
     buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage);
@@ -1134,8 +1154,9 @@ void standby()
 #endif  
   state.clear(STATE_STANDBY);
   // this will wake up co-processor
-  sys.resetLink();
-  delay(200);
+  //sys.resetLink();                //The co-processor is failing to re-initialise using this function
+  obd.leaveLowPowerMode();
+  delay(2000);
 }
 
 /*******************************************************************************
@@ -1342,11 +1363,16 @@ void setup()
     }
 #endif
 
+delay(2000);
+
     state.set(STATE_WORKING);
     // initialize network and maintain connection
     subtask.create(telemetry, "telemetry", 2, 8192);
+    
+    delay(2000);
     // initialize components
     initialize();
+    delay(2000);
 
     digitalWrite(PIN_LED, LOW);
 }
