@@ -445,7 +445,7 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
-    sys.begin(true, false, false);
+    sys.begin(false, false);
 
 #if STORAGE == STORAGE_SD
     Serial.print("SD...");
