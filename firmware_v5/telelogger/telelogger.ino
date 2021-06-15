@@ -255,7 +255,7 @@ void processOBD(CBuffer* buffer)
     if (tier > 1) break;
   }
   int kph = obdData[0].value;
-  if (kph >= 1) lastMotionTime = millis();
+  if (kph >= 2) lastMotionTime = millis();
 }
 #endif
 
@@ -1027,7 +1027,7 @@ void telemetry(void* inst)
       if (!initNetwork() || !teleClient.connect()) {
         teleClient.shutdown();
         state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-        delay(10000);
+        delay(30000);
         continue;
       }
     }
@@ -1135,7 +1135,6 @@ void standby()
   state.clear(STATE_STANDBY);
   // this will wake up co-processor
   sys.resetLink();
-  delay(200);
 }
 
 /*******************************************************************************
@@ -1297,13 +1296,14 @@ void setup()
     // show system information
     showSysInfo();
 
+#if ENABLE_OBD
     if (sys.begin()) {
       Serial.print("TYPE:");
       Serial.println(sys.devType);
+      obd.begin(sys.link);
     }
-
-#if ENABLE_OBD
-    obd.begin(sys.link);
+#else
+    sys.begin(false, true);
 #endif
 
 #if ENABLE_MEMS
