@@ -19,6 +19,8 @@
 #define SERVER_PORT 443
 #define SERVER_PATH "/test"
 #define CELL_APN ""
+#define APN_USERNAME ""
+#define APN_PASSWORD ""
 #define CONN_TIMEOUT 5000
 
 FreematicsESP32 sys;
@@ -45,7 +47,7 @@ bool init_net()
     }
 
     Serial.print("Registering on network...");
-    if (net.setup(CELL_APN)) {
+    if (net.setup(CELL_APN,APN_USERNAME,APN_PASSWORD)) {
       Serial.println("OK");
     } else {
       Serial.println("NO");
