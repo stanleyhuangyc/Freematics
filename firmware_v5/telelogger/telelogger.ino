@@ -50,6 +50,7 @@ PID_POLLING_INFO obdData[]= {
   {PID_RPM, 1},
   {PID_THROTTLE, 1},
   {PID_ENGINE_LOAD, 1},
+  {PID_FUEL_LEVEL, 1},
   {PID_FUEL_PRESSURE, 2},
   {PID_TIMING_ADVANCE, 2},
   {PID_COOLANT_TEMP, 3},
@@ -782,6 +783,11 @@ void process()
   }
   if (batteryVoltage) {
     buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage);
+    if (batteryVoltage > JUMPSTART_VOLTAGE * 100) {
+      buffer->add(PID_IGNITION, (int) 1);
+    } else {
+      buffer->add(PID_IGNITION, (int) 0);
+    }
   }
 #endif
 

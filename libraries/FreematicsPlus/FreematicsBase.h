@@ -34,6 +34,7 @@
 #define PID_DEVICE_HALL 0x83
 #define PID_EXT_SENSOR1 0x90
 #define PID_EXT_SENSOR2 0x91
+#define PID_IGNITION 0x92
 
 typedef struct {
 	float pitch;
