@@ -213,7 +213,7 @@ void ClientSIM800::end()
   sendCommand("AT+CPOWD=1\r");
 }
 
-bool ClientSIM800::setup(const char* apn, bool gps, unsigned int timeout)
+bool ClientSIM800::setup(const char* apn, const char* user, const char* password, bool gps, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -225,7 +225,7 @@ bool ClientSIM800::setup(const char* apn, bool gps, unsigned int timeout)
   do {
     success = sendCommand("AT+CGATT?\r", 3000, "+CGATT: 1");
   } while (!success && millis() - t < timeout);
-  sprintf(m_buffer, "AT+CSTT=\"%s\"\r", apn);
+  sprintf(m_buffer, "AT+CSTT=\"%s\",\"%s\",\"%s\"\r", apn, user, password);
   if (!sendCommand(m_buffer)) {
     return false;
   }
@@ -503,7 +503,7 @@ void ClientSIM5360::end()
   sendCommand("AT+CPOF\r");
 }
 
-bool ClientSIM5360::setup(const char* apn, unsigned int timeout)
+bool ClientSIM5360::setup(const char* apn, const char* user, const char* password, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -543,12 +543,16 @@ bool ClientSIM5360::setup(const char* apn, unsigned int timeout)
     if (!success) break;
 
     if (apn && *apn) {
+      success = false;
       sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
-      sendCommand(m_buffer);
+      success = sendCommand(m_buffer);
+      if (success && user && *user && password && *password) {
+        success = false;
+        sprintf(m_buffer, "AT+CSOCKAUTH=1,1,\"%s\",\"%s\"\r", password, user);
+        success = sendCommand(m_buffer);
+      }
+      if (!success) break;
     }
-    if (!success) break;
-
-    //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
 
     sendCommand("AT+CSOCKSETPN=1\r");
     sendCommand("AT+CIPMODE=0\r");
@@ -880,6 +884,10 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
   }
 }
 
+/*******************************************************************************
+  Implementation for SIM7600
+*******************************************************************************/
+
 void ClientSIM7600::end()
 {
   sendCommand("AT+CRESET\r");
@@ -888,7 +896,7 @@ void ClientSIM7600::end()
   sendCommand("AT+CPOF\r");
 }
 
-bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
+bool ClientSIM7600::setup(const char* apn, const char* user, const char* password, unsigned int timeout)
 {
   uint32_t t = millis();
   bool success = false;
@@ -929,13 +937,18 @@ bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
     if (!success) break;
 
     if (apn && *apn) {
+      success = false;
       sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
-      sendCommand(m_buffer);
+      success = sendCommand(m_buffer);
+      if (success && user && *user && password && *password) {
+        success = false;
+        sprintf(m_buffer, "AT+CSOCKAUTH=1,1,\"%s\",\"%s\"\r", password, user);
+        success = sendCommand(m_buffer);
+      }
+      if (!success) break;
     }
-    if (!success) break;
 
-    //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
-
+    
     sendCommand("AT+CSOCKSETPN=1\r");
     sendCommand("AT+CIPMODE=0\r");
     sendCommand("AT+NETOPEN\r");
