@@ -96,7 +96,7 @@ class ClientSIM800
 public:
     bool begin(CFreematics* device);
     void end();
-    bool setup(const char* apn, const char* user, const char* password, bool gps = false, unsigned int timeout = 60000);
+    bool setup(const char* apn, bool gps = false, unsigned int timeout = 60000);
     String getIP();
     int getSignal();
     String getOperatorName();
@@ -140,7 +140,7 @@ class ClientSIM5360
 public:
     virtual bool begin(CFreematics* device);
     virtual void end();
-    virtual bool setup(const char* apn, const char* user, const char* password, unsigned int timeout = 30000);
+    virtual bool setup(const char* apn, unsigned int timeout = 30000);
     virtual bool setGPS(bool on);
     String getIP();
     int getSignal();
@@ -195,7 +195,7 @@ public:
 class ClientSIM7600 : public ClientSIM5360
 {
 public:
-    bool setup(const char* apn, const char* user, const char* password, unsigned int timeout = 30000);
+    bool setup(const char* apn, unsigned int timeout = 30000);
     void end();
     bool setGPS(bool on);
 };

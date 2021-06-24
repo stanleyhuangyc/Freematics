@@ -378,8 +378,6 @@ public:
     // direct read/write
     ICM_20948_Status_e  read                ( uint8_t reg, uint8_t* pdata, uint32_t len);
     ICM_20948_Status_e  write               ( uint8_t reg, uint8_t* pdata, uint32_t len);
-
-    CQuaterion* quaterion = 0;
 };
 
 class ICM_20948_I2C : public MEMS_I2C, public ICM_20948 {

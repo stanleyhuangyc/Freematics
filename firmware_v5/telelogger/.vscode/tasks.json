@@ -1,0 +1,28 @@
+{
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "C/C++: xtensa-esp32-elf-gcc Aktive Datei kompilieren",
+            "command": "/home/gauner/.platformio/packages/toolchain-xtensa32/bin/xtensa-esp32-elf-gcc",
+            "args": [
+                "-g",
+                "${file}",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}",
+                "-mlongcalls"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Vom Debugger generierte Aufgabe."
+        }
+    ],
+    "version": "2.0.0"
+}

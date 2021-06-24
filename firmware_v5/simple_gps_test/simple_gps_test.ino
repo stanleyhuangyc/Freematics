@@ -22,7 +22,7 @@
 #define PIN_GPS_UART_RXD 32
 #define PIN_GPS_UART_TXD 33
 
-#define USE_SOFT_SERIAL 0
+#define USE_SOFT_SERIAL 1
 #define GPS_BAUDRATE 115200
 
 TinyGPS gps;
