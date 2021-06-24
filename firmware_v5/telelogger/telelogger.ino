@@ -841,8 +841,8 @@ void process()
     Serial.print("Stationary for ");
     Serial.print(motionless);
     Serial.println(" secs");
-    // trip ended if OBD is not available
-    if (!state.check(STATE_OBD_READY)) state.clear(STATE_WORKING);
+    // trip ended, go into standby
+    state.clear(STATE_WORKING);
   }
 #else
   dataInterval = dataIntervals[0];
