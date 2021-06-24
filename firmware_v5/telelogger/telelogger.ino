@@ -1165,10 +1165,8 @@ bool initNetwork()
   }
   Serial.print("IMEI:");
   Serial.println(teleClient.net.IMEI);
-  if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED))
-  {
-    if (teleClient.net.setup(CELL_APN, APN_USERNAME, APN_PASSWORD))
-    {
+  if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
+    if (teleClient.net.setup(CELL_APN,APN_USERNAME,APN_PASSWORD)) {
       String op = teleClient.net.getOperatorName();
       if (op.length())
       {
@@ -1300,8 +1298,7 @@ void telemetry(void *inst)
         }
         Serial.print(teleClient.net.getIP());
 #elif NET_DEVICE == SIM800 || NET_DEVICE == NET_SIM5360 || NET_DEVICE == NET_SIM7600
-        if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN, APN_USERNAME, APN_PASSWORD))
-        {
+        if (!teleClient.net.begin(&sys) || !teleClient.net.setup(CELL_APN,APN_USERNAME,APN_PASSWORD)) {
           Serial.println("No network");
           continue;
         }
