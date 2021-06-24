@@ -29,7 +29,7 @@
   </define>
   <define name="WiFi SSID" const="WIFI_SSID" type="string" default="SSID" dep="NET_WIFI"/>
   <define name="WiFi Password" const="WIFI_PASSWORD" type="string" default="PASSWORD" dep="NET_WIFI"/>
-  <define name="Cellular Network APN" const="CELL_APN" type="string" dep="NET_SIM7600 NET_SIM5360 NET_SIM800"/>
+  <define name="Cellular Network APN" const="CELL_APN" type="string" dep="NET_SIM7600 NET_SIM5360 NET_SIM800" default="hologram"/>
   <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
   <define name="Server Port (0 for auto)" const="SERVER_PORT" type="number" default="0"/>
   <define name="Transport Protocol">
