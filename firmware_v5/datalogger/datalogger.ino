@@ -234,19 +234,18 @@ public:
     {
 #if USE_GNSS == 1
         if (!checkState(STATE_GPS_FOUND)) {
-            Serial.print("GPS:");
+            Serial.print("GNSS:");
             if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
                 setState(STATE_GPS_FOUND);
                 Serial.println("OK");
                 //waitGPS();
             } else {
-                sys.gpsEnd();
                 Serial.println("NO");
             }
         }
-#elif USE_GNSS == 2
+#elif USE_GNSS >= 2
       if (!checkState(STATE_GPS_FOUND)) {
-        Serial.print("CELL GPS:");
+        Serial.print("CELL GNSS:");
         if (cellInit()) {
           Serial.println("OK");
           if (!gd) gd = new GPS_DATA;
@@ -255,6 +254,7 @@ public:
         } else {
           Serial.println("NO");
         }
+        sys.gpsBegin();
       }
 #endif
 
@@ -279,6 +279,7 @@ public:
 #endif
         startTime = millis();
     }
+#if USE_GNSS
     void logLocationData(GPS_DATA* gd)
     {
         if (lastGPStime == gd->time) return;
@@ -318,6 +319,7 @@ public:
         lastGPStime = gd->time;
         setState(STATE_GPS_READY);
     }
+#endif
 #if USE_GNSS == 1
     void processGPSData()
     {
@@ -345,7 +347,7 @@ public:
           }
         }
     }
-#elif USE_GNSS == 2
+#elif USE_GNSS >= 2
     void processCellGPS()
     {
         /*
@@ -368,7 +370,7 @@ public:
             sys.gpsEnd(); // turn off GPS power
             Serial.println("OFF");
         }
-#elif USE_GNSS == 2
+#elif USE_GNSS >= 2
         Serial.print("GNSS:");
         cellUninit();
         Serial.println("OFF");
@@ -415,43 +417,112 @@ public:
         sys.reactivateLink();
         //ESP.restart();
     }
-#if USE_GNSS == 2
+#if USE_GNSS >= 2
     bool cellSendCommand(const char* cmd, char* buf, int bufsize, const char* expected = "\r\nOK", unsigned int timeout = 1000)
     {
         if (cmd) sys.xbWrite(cmd);
         memset(buf, 0, bufsize);
         return sys.xbReceive(buf, bufsize, timeout, &expected, 1) != 0;
     }
-    void cellUninit()
-    {
-        char buf[32];
-        cellSendCommand("AT+CPOF\r", buf, sizeof(buf));
-    }
+#if USE_GNSS == 3
     bool cellInit()
     {
         char buf[320];
         bool success = false;
-        for (byte n = 0; n < 2; n++) {
-            if (!cellSendCommand("AT\r", buf, sizeof(buf))) cellSendCommand(0, buf, sizeof(buf), "START", 5000);
-            if (cellSendCommand("ATE0\r", buf, sizeof(buf)) && cellSendCommand("ATI\r", buf, sizeof(buf))) {
+        for (byte n = 0; n < 5; n++) {
+            if (!cellSendCommand("ATZ\r", buf, sizeof(buf))) {
+                sys.xbTogglePower();
+                cellSendCommand("AT\r", buf, sizeof(buf), "+CFUN:", 3000);
+            }
+            cellSendCommand("ATE0\r", buf, sizeof(buf));
+            if (cellSendCommand("ATI\r", buf, sizeof(buf))) {
                 Serial.println(buf);
-                cellSendCommand("AT+CVAUXV=61\r", buf, sizeof(buf));
-                cellSendCommand("AT+CVAUXS=1\r", buf, sizeof(buf));
-                if (cellSendCommand("AT+CGPS?\r", buf, sizeof(buf), "+CGPS: 1")) {
+                //cellSendCommand("AT+SGNSCFG=\"NMEAOUTPORT\",2,115200\r", buf, sizeof(buf));
+                //Serial.println(buf);
+                cellSendCommand("AT+CGNSPWR=1\r", buf, sizeof(buf));
+                Serial.println(buf);
+                cellSendCommand("AT+CGNSMOD=1,1,0,0,0\r", buf, sizeof(buf));
+                Serial.println(buf);
+                if (cellSendCommand("AT+CGNSINF\r", buf, sizeof(buf), "+CGNSINF:")) {
+                    Serial.println(buf);
                     success = true;
                     break;
                 }
-                delay(2000);
-                if (cellSendCommand("AT+CGPS=1,1\r", buf, sizeof(buf))) {
+                Serial.println(buf);
+            }
+        }
+        return success;
+        
+    }
+    void cellUninit()
+    {
+        char buf[32];
+        cellSendCommand("AT+CGNSPWR=0\r", buf, sizeof(buf));
+    }
+    bool cellGetGPSInfo(GPS_DATA* gd)
+    {
+      char *p;
+      char buf[160];
+      if (cellSendCommand("AT+CGNSINF\r", buf, sizeof(buf), "+CGNSINF:")) do {
+        Serial.print(buf);
+        if (!(p = strchr(buf, ':'))) break;
+        p += 2;
+        if (strncmp(p, "1,1,", 4)) break;
+        p += 4;
+        gd->time = atol(p + 8);
+        *(p + 8) = 0;
+        gd->date = atol(p);
+        if (!(p = strchr(p + 9, ','))) break;
+        gd->lat = atof(++p);
+        if (!(p = strchr(p, ','))) break;
+        gd->lng = atof(++p);
+        if (!(p = strchr(p, ','))) break;
+        gd->alt = atof(++p);
+        if (!(p = strchr(p, ','))) break;
+        gd->speed = atof(++p) * 1000 / 1852;
+        if (!(p = strchr(p, ','))) break;
+        gd->heading = atoi(++p);
+        Serial.print("UTC:");
+        Serial.print(gd->date);
+        Serial.print(' ');
+        Serial.print(gd->time);
+        Serial.print(" LAT:");
+        Serial.print(gd->lat);
+        Serial.print(" LNG:");
+        Serial.println(gd->lng);
+        return true;
+      } while (0);
+      return false;
+    }
+#else
+    bool cellInit()
+    {
+        char buf[320];
+        bool success = false;
+        for (byte n = 0; n < 3 && !success; n++) {
+            // try turning on module
+            sys.xbTogglePower();
+            // discard any stale data
+            sys.xbPurge();
+            delay(3000);
+            for (byte m = 0; m < 5; m++) {
+                if (cellSendCommand("AT\r", buf, sizeof(buf)) && cellSendCommand("ATE0\r", buf, sizeof(buf)) && cellSendCommand("ATI\r", buf, sizeof(buf))) {
+                    // retrieve module info
+                    Serial.print(buf);
+                    cellSendCommand("AT+CGPS=1,1\r", buf, sizeof(buf));
                     success = true;
                     break;
                 }
             }
-            sys.xbTogglePower();
         }
         //cellSendCommand("AT+CGPSNMEARATE=1\r", buf, sizeof(buf));
-        //cellSendCommand("AT+CGPSINFOCFG=1,31\r", buf, sizeof(buf));
+        //cellSendCommand("AT+CGPSINFOCFG=10,31\r", buf, sizeof(buf));
         return success;
+    }
+    void cellUninit()
+    {
+        char buf[32];
+        cellSendCommand("AT+CPOF\r", buf, sizeof(buf));
     }
     long parseDegree(const char* s)
     {
@@ -513,6 +584,7 @@ public:
       return false;
     }
 #endif
+#endif
     bool checkState(byte flags) { return (m_state & flags) == flags; }
     void setState(byte flags) { m_state |= flags; }
     void clearState(byte flags) { m_state &= ~flags; }
@@ -569,7 +641,7 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
 
-    if (sys.begin(USE_GNSS == 1, USE_GNSS == 2)) {
+    if (sys.begin(true, USE_GNSS >= 2)) {
         Serial.print("TYPE:");
         Serial.println(sys.devType);
     }
@@ -735,7 +807,7 @@ void loop()
     if (logger.checkState(STATE_GPS_FOUND)) {
         logger.processGPSData();
     }
-#elif USE_GNSS == 2
+#elif USE_GNSS >= 2
     if (logger.checkState(STATE_CELL_GPS_FOUND)) {
       logger.processCellGPS();
     }

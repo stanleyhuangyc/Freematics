@@ -145,8 +145,6 @@ int handlerLogFile(UrlHandlerParam* param)
     }
     param->contentLength = ctx->file.readBytes(param->pucBuffer, param->bufSize);
     param->contentType = HTTPFILETYPE_TEXT;
-    Serial.print(param->contentLength);
-    Serial.println(" bytes read");
     return FLAG_DATA_STREAM;
 }
 
