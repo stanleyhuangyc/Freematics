@@ -328,8 +328,8 @@ void TeleClientUDP::shutdown()
   if (login) {
     notify(EVENT_LOGOUT);
     login = false;
+    net.close();
   }
-  net.close();
   net.end();
   Serial.println("CELL OFF");
 }
