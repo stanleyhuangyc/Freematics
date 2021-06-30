@@ -793,6 +793,13 @@ void process()
   processExtInputs(buffer);
 #endif
 
+#if NET_DEVICE >= SIM800
+  rssi = teleClient.net.getSignal();
+  if (rssi) {
+    buffer->add(PID_CSQ, rssi);
+  }
+#endif
+
 #if ENABLE_MEMS
   processMEMS(buffer);
 #endif
