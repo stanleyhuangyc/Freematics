@@ -878,7 +878,7 @@ bool initNetwork()
       String ip = teleClient.net.getIP();
       if (ip.length()) {
         state.set(STATE_NET_CONNECTED);
-        Serial.print("IP:");
+        Serial.print("WiFi IP:");
         Serial.println(ip);
 #if ENABLE_OLED
         oled.println(ip);
