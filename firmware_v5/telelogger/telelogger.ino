@@ -389,10 +389,8 @@ void processMEMS(CBuffer* buffer)
       value[2] = ori.roll;
       buffer->add(PID_ORIENTATION, value);
 #endif
-      if (temp != deviceTemp) {
-        deviceTemp = temp;
-        buffer->add(PID_DEVICE_TEMP, (int)temp);
-      }
+      deviceTemp = temp;
+      buffer->add(PID_MEMS_TEMP, (int) (temp * 10));
 #if 0
       // calculate motion
       float motion = 0;
@@ -801,11 +799,12 @@ void process()
 
   processGPS(buffer);
 
+  float cpuTemp = readChipTemperature();
+  buffer->add(PID_CPU_TEMP, (int) (cpuTemp * 10));
   if (!state.check(STATE_MEMS_READY)) {
-    deviceTemp = readChipTemperature();
-    buffer->add(PID_DEVICE_TEMP, deviceTemp);
+    deviceTemp = cpuTemp;
   }
-
+  
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;
 

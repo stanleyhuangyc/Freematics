@@ -23,6 +23,7 @@
 #define PID_ACC 0x20
 #define PID_GYRO 0x21
 #define PID_COMPASS 0x22
+#define PID_MEMS_TEMP 0x23
 #define PID_BATTERY_VOLTAGE 0x24
 #define PID_ORIENTATION 0x25
 
@@ -30,7 +31,7 @@
 #define PID_TRIP_DISTANCE 0x30
 #define PID_DATA_SIZE 0x80
 #define PID_CSQ 0x81
-#define PID_DEVICE_TEMP 0x82
+#define PID_CPU_TEMP 0x82
 #define PID_DEVICE_HALL 0x83
 #define PID_EXT_SENSOR1 0x90
 #define PID_EXT_SENSOR2 0x91
