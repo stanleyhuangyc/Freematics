@@ -49,6 +49,7 @@ typedef struct {
   uint32_t ts;
 } PID_POLLING_INFO;
 
+#define MAX_POLLING_TIER 3
 PID_POLLING_INFO obdData[]= {
   {PID_SPEED, 1},
   {PID_RPM, 1},
@@ -249,39 +250,60 @@ int handlerControl(UrlHandlerParam* param)
 #if ENABLE_OBD
 void processOBD(CBuffer* buffer)
 {
-  static int idx[2] = {0, 0};
-  int tier = 1;
-  for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
-    if (obdData[i].tier > tier) {
-        // reset previous tier index
-        idx[tier - 2] = 0;
-        // keep new tier number
-        tier = obdData[i].tier;
-        // move up current tier index
-        i += idx[tier - 2]++;
-        // check if into next tier
-        if (obdData[i].tier != tier) {
-            idx[tier - 2]= 0;
-            i--;
-            continue;
-        }
+  static int tierCache[MAX_POLLING_TIER-1] = {};
+
+  uint8_t tier = 1;
+  uint8_t obdCount = sizeof(obdData) / sizeof(obdData[0]);
+
+  for (uint8_t idx = 0; idx < obdCount; idx++) {
+    if (obdData[idx].tier > tier) {
+      // reset previous tier index
+      if (tier > 1) {
+        tierCache[tier - 2] = 0;
+      }
+
+      // keep new tier number
+      tier = obdData[idx].tier;
+
+      // move up current tier index
+      idx += tierCache[tier - 2]++;
+
+      // check if into next tier
+      if (idx == obdCount - 1) {
+        tierCache[tier - 2] = 0;
+      }
+      else if (obdData[idx].tier != tier) {
+        tierCache[tier - 2] = 0;
+        idx--;
+        continue;
+      }
     }
-    byte pid = obdData[i].pid;
-    if (!obd.isValidPID(pid)) continue;
+
+    uint8_t pid = obdData[idx].pid;
+    if (!obd.isValidPID(pid)) {
+      continue;
+    }
+
     int value;
     if (obd.readPID(pid, value)) {
-        obdData[i].ts = millis();
-        obdData[i].value = value;
+        obdData[idx].ts = millis();
+        obdData[idx].value = value;
         buffer->add((uint16_t)pid | 0x100, value);
     } else {
         timeoutsOBD++;
         printTimeoutStats();
         break;
     }
-    if (tier > 1) break;
+
+    if (tier > 1) {
+      break;
+    }
   }
+
   int kph = obdData[0].value;
-  if (kph >= 2) lastMotionTime = millis();
+  if (kph >= 2) {
+    lastMotionTime = millis();
+  }
 }
 #endif
 
