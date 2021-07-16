@@ -78,6 +78,7 @@ char isoTime[32] = {0};
 
 // stats data
 uint32_t lastMotionTime = 0;
+uint32_t lastMEMSMotionTime = 0;
 uint32_t timeoutsOBD = 0;
 uint32_t timeoutsNet = 0;
 uint32_t lastStatsTime = 0;
@@ -536,7 +537,7 @@ void initialize()
   }
 #endif
 
-  // re-try OBD if connection not established
+  // get VIN and DTCs from ECU
 #if ENABLE_OBD
   if (state.check(STATE_OBD_READY)) {
     char buf[128];
@@ -730,8 +731,13 @@ bool waitMotion(long timeout)
       }
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
-        //lastMotionTime = millis();
-        return true;
+        batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
+        Serial.println(batteryVoltage);
+        if (millis() - lastMEMSMotionTime < 500 && batteryVoltage > JUMPSTART_VOLTAGE * 100) return true;
+        Serial.print("lastMotionTime: ");
+        Serial.println(millis() - lastMEMSMotionTime);
+        lastMEMSMotionTime = millis();
+        //delay(50);
       }
     } while ((long)(millis() - t) < timeout || timeout == -1);
     return false;
