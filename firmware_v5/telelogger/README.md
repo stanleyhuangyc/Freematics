@@ -16,14 +16,15 @@ Data Transmissions
 ------------------
 
 Data transmission over UDP and HTTP protocols are implemented with following hardware.
-
 * WiFi (ESP32 built-in)
 * WiFi Mesh (ESP-MDF for ESP32)
 * GSM/GPRS (SIM800)
 * 3G WCDMA (SIM5360)
 * 4G LTE (SIM7600)
 
-UDP mode implements a client for [Freematics Hub](https://freematics.com/hub/). HTTP mode implements a client for [Traccar](https://www.traccar.org) under [OsmAnd](https://www.traccar.org/osmand/) protocol.
+There two ways of sending data:
+1. UDP mode implements a `freematics` protocol client for [Freematics Hub](https://freematics.com/hub/) or [Traccar](https://www.traccar.org) (sends more data, [protocol's API](https://freematics.com/pages/hub/api/), uses 5170 port).
+2. HTTP/HTTPS mode implements a `osmand` protocol client for Traccar (sends only location data, [protocol's API](https://www.traccar.org/osmand/), uses 5055 port) 
 
 Data Storage
 ------------
