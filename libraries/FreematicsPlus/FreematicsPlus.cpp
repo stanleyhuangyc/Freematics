@@ -682,7 +682,7 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate, int pinRx, int pinTx)
 
 #ifdef PIN_BEE_PWR
 	pinMode(PIN_BEE_PWR, OUTPUT);
-	digitalWrite(PIN_BEE_PWR, LOW);
+	digitalWrite(PIN_BEE_PWR, HIGH);
 #endif
     return true;
 }
@@ -690,7 +690,6 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate, int pinRx, int pinTx)
 void FreematicsESP32::xbEnd()
 {
     uart_driver_delete(BEE_UART_NUM);
-    digitalWrite(PIN_BEE_PWR, LOW);
 }
 
 void FreematicsESP32::xbWrite(const char* cmd)
@@ -778,14 +777,14 @@ void FreematicsESP32::xbTogglePower()
 	Serial.println("xBee power pin set to low");
 #endif
 	digitalWrite(PIN_BEE_PWR, LOW);
-	delay(2000);
+	delay(200);
 #if VERBOSE_XBEE
 	Serial.println("xBee power pin set to high");
 #endif
     digitalWrite(PIN_BEE_PWR, HIGH);
-#endif
     delay(100);
     digitalWrite(PIN_BEE_PWR, LOW);
+#endif
 }
 
 void FreematicsESP32::buzzer(int freq)
