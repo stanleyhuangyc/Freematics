@@ -895,11 +895,8 @@ char* HTTPClientSIM5360::receive(int* pbytes, unsigned int timeout)
 void ClientSIM7600::end()
 {
   setGPS(false);
-  if (sendCommand("AT+CRESET\r")) {
-    m_device->xbTogglePower();
-  } else {
-    sendCommand("AT+CPOF\r");
-  }
+  sendCommand("AT+CPOF\r");
+  delay(3000);
 }
 
 bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
@@ -1219,7 +1216,7 @@ bool ClientSIM7070::setup(const char* apn, unsigned int timeout)
         }
       } while (!success && millis() - t < timeout);
       if (!success) break;
-      success = sendCommand("AT+CGACT?\r", 1000, "+CGACT: 1,1");
+      success = sendCommand("AT+CGACT?\r", 1000, "+CGACT: 1,");
       break;
     } while (millis() - t < timeout);
     if (!success) break;
