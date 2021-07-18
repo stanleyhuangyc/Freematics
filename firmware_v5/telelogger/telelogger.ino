@@ -1044,6 +1044,14 @@ void telemetry(void* inst)
           bool success = teleClient.ping();
           bool successData = teleClient.transmit(latestLocationStore.buffer(), latestLocationStore.length());
           Serial.println(success ? "OK" : "NO");
+          #if ENABLE_OBD
+            float bV = obd.getVoltage();
+            if (bV < LOW_BATTERY_VOLTAGE) {
+              if (teleClient.notify(EVENT_LOW_BATTERY, "")) {
+                Serial.println("EVENT_LOW_BATTERY sent");
+              }
+            }
+          #endif
         }
         teleClient.shutdown();
         state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
