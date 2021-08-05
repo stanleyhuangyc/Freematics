@@ -12,26 +12,26 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <FreematicsCell.h>
-
-#define PIN_BEE_UART_RXD 16
-#define PIN_BEE_UART_TXD 17
-#define PIN_BEE_PWR 27
+#include <FreematicsPlus.h>
 
 // testing URL: https://hub.freematics.com/test
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PORT 443
 #define SERVER_PATH "/test"
-#define CELL_APN ""
+#define CELL_APN "internet"
 #define CONN_TIMEOUT 5000
 
+#define RUNTIME 180 // seconds
+
+FreematicsESP32 sys;
 HTTPClientSIM7600 net;
 int errors = 0;
+uint32_t startTime = 0;
 
 bool init_net()
 {
     Serial.print("Init cellular module...");
-    if (net.begin()) {
+    if (net.begin(&sys)) {
       Serial.print(net.deviceName());
       Serial.println(" OK");
     } else {
@@ -45,6 +45,10 @@ bool init_net()
       Serial.println("SIM Card OK");
     } else {
       Serial.println("No SIM Card");
+    }
+
+    if (net.setGPS(true)) {
+      Serial.println("Cellular GNSS On");
     }
 
     Serial.print("Registering on network...");
@@ -77,11 +81,8 @@ bool init_net()
     }
 
     Serial.print("Init HTTPS stack...");
-    if (net.open()) {
-      Serial.println("OK");
-    } else {
-      Serial.println("NO");
-    }
+    net.open();
+    Serial.println("OK");
     return true;
 }
 
@@ -89,8 +90,7 @@ void setup()
 {
   Serial.begin(115200);
 
-  // start serial communication with cellular module
-  net.xbBegin(115200, PIN_BEE_UART_RXD, PIN_BEE_UART_TXD);
+  sys.begin(false, true);
 
   // initialize cellular module
   while (!init_net());
@@ -124,9 +124,47 @@ void loop()
     }
   }
 
+  // get GNSS data
+  char isoTime[26] = {0};
+  GPS_DATA* gd = 0;
+  if (net.getLocation(&gd) && gd && gd->date) {
+    // generate ISO time string
+    char *p = isoTime + sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u",
+        (unsigned int)(gd->date % 100) + 2000, (unsigned int)(gd->date / 100) % 100, (unsigned int)(gd->date / 10000),
+        (unsigned int)(gd->time / 1000000), (unsigned int)(gd->time % 1000000) / 10000, (unsigned int)(gd->time % 10000) / 100);
+    unsigned char tenth = (gd->time % 100) / 10;
+    if (tenth) p += sprintf(p, ".%c00", '0' + tenth);
+    *p = 'Z';
+    *(p + 1) = 0;
+
+    Serial.print(isoTime);
+    Serial.print(" LAT:");
+    Serial.print(gd->lat, 6);
+    Serial.print(" LNG:");
+    Serial.print(gd->lng, 6);
+    Serial.print(" ALT:");
+    Serial.print((int)gd->alt);
+    Serial.print("m ");
+    Serial.print(gd->speed * 1.852f, 1);
+    Serial.print("km/h");
+    Serial.print(" Course:");
+    Serial.println(gd->heading);
+  }
+
+  // form up HTTP request path
+  char path[384];
+  if (gd && gd->date) {
+    sprintf(path, "%s/?timestamp=%s&lat=%f&lon=%f&altitude=%d&speed=%f&heading=%d",
+      SERVER_PATH, isoTime, gd->lat, gd->lng, (int)gd->alt, gd->speed, (int)gd->heading);
+  } else {
+    strcpy(path, SERVER_PATH);
+  }
+  Serial.print("Request path: ");
+  Serial.println(path);
+
   // send HTTP request
   Serial.print("Sending request...");
-  if (!net.send(METHOD_GET, SERVER_PATH, true)) {
+  if (!net.send(METHOD_GET, path, true)) {
     Serial.println("failed");
     net.close();
     errors++;
@@ -152,6 +190,10 @@ void loop()
     errors++;
   }
 
+  if (millis() - startTime > RUNTIME) {
+    // 
+  }
+  
   Serial.println("Waiting 5 seconds...");
-  delay(5000);
+  delay(15000);
 }
