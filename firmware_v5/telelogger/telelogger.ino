@@ -826,6 +826,13 @@ void process()
     deviceTemp = cpuTemp;
   }
 
+  // format device time
+  struct timeval timeval1;
+  gettimeofday(&timeval1, NULL);
+  uint32_t timestampSec = timeval1.tv_sec;
+  uint32_t timestampMs = timeval1.tv_usec / 1000;
+  buffer->add(PID_DEVICE_TIME_SEC, timestampSec);
+  buffer->add(PID_DEVICE_TIME_MS, timestampMs);
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;
 

@@ -11,6 +11,8 @@
 #include <Arduino.h>
 
 // non-OBD/custom PIDs (no mode number)
+#define PID_DEVICE_TIME_SEC 0x1
+#define PID_DEVICE_TIME_MS 0x2
 #define PID_GPS_LATITUDE 0xA
 #define PID_GPS_LONGITUDE 0xB
 #define PID_GPS_ALTITUDE 0xC

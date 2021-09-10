@@ -160,7 +160,13 @@ bool TeleClientUDP::notify(byte event, const char* payload)
   netbuf.init(128);
   netbuf.header(devid);
   netbuf.dispatch(buf, sprintf(buf, "EV=%X", (unsigned int)event));
+  // ticker time in milliseconds
   netbuf.dispatch(buf, sprintf(buf, "TS=%lu", millis()));
+  // local device time in seconds
+  struct timeval timeval1;
+  gettimeofday(&timeval1, NULL);
+  uint32_t timestampSec = timeval1.tv_sec;
+  netbuf.dispatch(buf, sprintf(buf, "TSS=%lu", timestampSec));
   netbuf.dispatch(buf, sprintf(buf, "ID=%s", devid));
   if (rssi) {
     netbuf.dispatch(buf, sprintf(buf, "SSI=%d", (int)rssi));
