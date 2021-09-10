@@ -12,11 +12,7 @@
 * THE SOFTWARE.
 ******************************************************************************/
 
-#include <FreematicsCell.h>
-
-#define PIN_BEE_UART_RXD 16
-#define PIN_BEE_UART_TXD 17
-#define PIN_BEE_PWR 27
+#include <FreematicsPlus.h>
 
 // testing URL: https://hub.freematics.com/test
 #define SERVER_HOST "hub.freematics.com"
@@ -25,13 +21,14 @@
 #define CELL_APN ""
 #define CONN_TIMEOUT 5000
 
+FreematicsESP32 sys;
 HTTPClientSIM5360 net;
 int errors = 0;
 
 bool init_net()
 {
     Serial.print("Init cellular module...");
-    if (net.begin()) {
+    if (net.begin(&sys)) {
       Serial.print(net.deviceName());
       Serial.println(" OK");
     } else {
@@ -89,8 +86,7 @@ void setup()
 {
   Serial.begin(115200);
 
-  // start serial communication with cellular module
-  net.xbBegin(115200, PIN_BEE_UART_RXD, PIN_BEE_UART_TXD);
+  sys.begin(false, true);
 
   // initialize cellular module
   while (!init_net());

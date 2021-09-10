@@ -38,15 +38,6 @@
 #define WIFI_TIMEOUT 5000
 #define PIN_LED 4
 
-#ifdef ESP32
-extern "C"
-{
-uint8_t temprature_sens_read();
-uint32_t hall_sens_read();
-}
-
-#endif
-
 HttpParam httpParam;
 
 int handlerRoot(UrlHandlerParam* param)
@@ -233,10 +224,6 @@ int handlerInfo(UrlHandlerParam* param)
       timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   }
-
-  int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
-  bytes += snprintf(buf + bytes, bufsize - bytes, "\"temperature\":%d,", deviceTemp);
-  bytes += snprintf(buf + bytes, bufsize - bytes, "\"magnetic\":%d", hall_sens_read());
 #endif
   if (bytes < bufsize - 1) buf[bytes++] = '}';
 

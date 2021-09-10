@@ -58,7 +58,7 @@
 #define CELL_APN "hologram"
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
-#define SERVER_PROTOCOL PROTOCOL_HTTP
+#define SERVER_PROTOCOL PROTOCOL_UDP
 #endif 
 
 // SIM card setting
@@ -127,7 +127,7 @@
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 0
+#define RESET_AFTER_WAKEUP 1
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.4f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
