@@ -23,9 +23,9 @@
   <define name="Networking">
     <option name="WiFi" const="NET_DEVICE=NET_WIFI"/>
     <option name="WiFi Mesh" const="NET_DEVICE=NET_WIFI_MESH"/>
-    <option name="GSM/GPRS (SIM800)" const="NET_DEVICE=NET_SIM800"/>
-    <option name="3G WCDMA (SIM5360)" const="NET_DEVICE=NET_SIM5360"/>
-    <option name="4G LTE (SIM7600)" const="NET_DEVICE=NET_SIM7600" default="true"/>
+    <option name="WCDMA (SIM5360)" const="NET_DEVICE=NET_SIM5360"/>
+    <option name="LTE-M (SIM7070)" const="NET_DEVICE=NET_SIM7070"/>
+    <option name="LTE (SIM7600)" const="NET_DEVICE=NET_SIM7600" default="true"/>
   </define>
   <define name="WiFi SSID" const="WIFI_SSID" type="string" default="SSID" dep="NET_WIFI"/>
   <define name="WiFi Password" const="WIFI_PASSWORD" type="string" default="PASSWORD" dep="NET_WIFI"/>
