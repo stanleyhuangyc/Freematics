@@ -71,6 +71,7 @@ float deviceTemp = 0;
 int16_t rssi = 0;
 char vin[18] = {0};
 uint16_t dtc[6] = {0};
+// value 1440 means, that voltage is 14.4V
 int16_t batteryVoltage = 0;
 GPS_DATA* gd = 0;
 
@@ -810,7 +811,16 @@ void process()
 #if NET_DEVICE >= SIM800
   rssi = teleClient.net.getSignal();
   if (rssi) {
-    buffer->add(PID_CSQ, rssi);
+      buffer->add(PID_CELL_RSSI, rssi);
+  }
+#endif
+
+#if NET_DEVICE == NET_SIM7600
+  if (teleClient.net.cellTower->mcc != 0) {
+    buffer->add(PID_CELL_MCC, teleClient.net.cellTower->mcc);
+    buffer->add(PID_CELL_MNC, teleClient.net.cellTower->mnc);
+    buffer->add(PID_CELL_LAC, (uint32_t) teleClient.net.cellTower->lac);
+    buffer->add(PID_CELL_CID, (uint32_t) teleClient.net.cellTower->cellid);
   }
 #endif
 
@@ -829,10 +839,8 @@ void process()
   // format device time
   struct timeval timeval1;
   gettimeofday(&timeval1, NULL);
-  uint32_t timestampSec = timeval1.tv_sec;
-  uint32_t timestampMs = timeval1.tv_usec / 1000;
-  buffer->add(PID_DEVICE_TIME_SEC, timestampSec);
-  buffer->add(PID_DEVICE_TIME_MS, timestampMs);
+  buffer->add(PID_DEVICE_TIME_SEC, (uint32_t) timeval1.tv_sec);
+  buffer->add(PID_DEVICE_TIME_MCS, (uint32_t) timeval1.tv_usec);
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;
 
@@ -871,7 +879,7 @@ void process()
     }
   }
   if (stationary) {
-    // stationery timeout
+    // stationary timeout
     Serial.print("Stationary for ");
     Serial.print(motionless);
     Serial.println(" secs");

@@ -249,6 +249,7 @@ String ClientSIM800::getIP()
   return "";
 }
 
+// converts CSQ into dBm
 int ClientSIM800::getSignal()
 {
   if (sendCommand("AT+CSQ\r", 500)) {
@@ -917,9 +918,25 @@ bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
         if (!strstr(m_buffer, "NO SERVICE")) break;
         success = false;
       }
+      cellTower->mcc = 0;
       delay(100);
     } while (millis() - t < timeout);
     if (!success) break;
+
+    // save cellular base station location
+    // https://simcom.ee/documents/SIM7600E/SIM7500_SIM7600%20Series_AT%20Command%20Manual%20_V1.10.pdf
+    // +CPSI: WCDMA,Online,276-03,0x0141,247079,WCDMA IMT 2000,275,10739,0,13.5,99,9,15,500
+    // +CPSI: <System  Mode>,<Operation  Mode>,<MCC>-<MNC>,<LAC>,<Cell ID>...
+    char *p_start = strstr(m_buffer, "+CPSI:") + 7;
+    cellTower->radiotype = strtok(p_start, ",");
+    cellTower->status = strtok(NULL, ",");
+    char *mccmnc = strtok(NULL, ",");
+    char* p1 = strchr(mccmnc, '-');
+    if (p1) *p1 = 0;
+    cellTower->mcc = atoi(mccmnc);
+    cellTower->mnc = atoi(p1+1);
+    cellTower->lac = strtol(strtok(NULL, ","), &p1, 16);
+    cellTower->cellid = atol(strtok(NULL, ","));
 
     success = false;
     do {

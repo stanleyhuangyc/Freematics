@@ -46,6 +46,15 @@ typedef struct {
     uint8_t second;
 } NET_LOCATION;
 
+typedef struct {
+    char* radiotype;
+    char* status;
+    int mcc;
+    int mnc;
+    long lac; // 16 bit number
+    long cellid; // A valid CID ranges from 0 to 65535 (216 − 1) on GSM and CDMA networks and from 0 to 268,435,455 (228 − 1) on UMTS and LTE networks.
+} CELL_TOWER;
+
 class HTTPClient
 {
 public:
@@ -204,6 +213,8 @@ public:
     bool setup(const char* apn, unsigned int timeout = 30000);
     void end();
     bool setGPS(bool on);
+    int readCellTowerData(int &mcc, int &mnc, long &lac, long &cellid);
+    CELL_TOWER* cellTower = new CELL_TOWER;
 };
 
 class UDPClientSIM7600 : public ClientSIM7600

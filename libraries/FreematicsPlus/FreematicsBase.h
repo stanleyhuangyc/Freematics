@@ -10,9 +10,12 @@
 
 #include <Arduino.h>
 
-// non-OBD/custom PIDs (no mode number)
+// time values
+#define PID_TICKER 0x0
 #define PID_DEVICE_TIME_SEC 0x1
-#define PID_DEVICE_TIME_MS 0x2
+#define PID_DEVICE_TIME_MCS 0x2
+
+// non-OBD/custom PIDs (no mode number)
 #define PID_GPS_LATITUDE 0xA
 #define PID_GPS_LONGITUDE 0xB
 #define PID_GPS_ALTITUDE 0xC
@@ -29,10 +32,16 @@
 #define PID_BATTERY_VOLTAGE 0x24
 #define PID_ORIENTATION 0x25
 
+// cell tower info
+#define PID_CELL_RSSI 0x40 // dBm
+#define PID_CELL_MCC 0x41
+#define PID_CELL_MNC 0x42
+#define PID_CELL_LAC 0x43
+#define PID_CELL_CID 0x44
+
 // custom PIDs for calculated data
 #define PID_TRIP_DISTANCE 0x30
 #define PID_DATA_SIZE 0x80
-#define PID_CSQ 0x81
 #define PID_CPU_TEMP 0x82
 #define PID_DEVICE_HALL 0x83
 #define PID_EXT_SENSOR1 0x90
