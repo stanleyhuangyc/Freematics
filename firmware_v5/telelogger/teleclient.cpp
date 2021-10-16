@@ -168,9 +168,6 @@ bool TeleClientUDP::notify(byte event, const char* payload)
   uint32_t timestampSec = timeval1.tv_sec;
   netbuf.dispatch(buf, sprintf(buf, "TM=%lu", timestampSec));
   netbuf.dispatch(buf, sprintf(buf, "ID=%s", devid));
-  if (rssi) {
-    netbuf.dispatch(buf, sprintf(buf, "SSI=%d", (int)rssi));
-  }
   if (vin[0]) {
     netbuf.dispatch(buf, sprintf(buf, "VIN=%s", vin));
   }
