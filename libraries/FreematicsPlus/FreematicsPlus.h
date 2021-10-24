@@ -26,7 +26,7 @@
 #define PIN_LINK_SPI_READY 13
 #define SPI_FREQ 1000000
 
-#ifndef ARDUINO_ESP32C3_DEV
+#if !CONFIG_IDF_TARGET_ESP32C3
 // ESP32 variants with 3 hardware serial UART
 #define LINK_UART_NUM UART_NUM_2
 #define UART_COUNT 3
