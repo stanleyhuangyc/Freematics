@@ -149,7 +149,7 @@ int32_t hall_sens_read();
 int readChipTemperature()
 {
 #if CONFIG_IDF_TARGET_ESP32C3
-    bool inited = false;
+    static bool inited = false;
     float tsens_out = 0;
     if (!inited) {
         temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
@@ -178,7 +178,11 @@ int readChipTemperature()
 
 int readChipHallSensor()
 {
-  return hall_sens_read();
+#if CONFIG_IDF_TARGET_ESP32C3
+    return 0; // FIXME
+#else
+    return hall_sens_read();
+#endif
 }
 
 uint16_t getFlashSize()
