@@ -26,26 +26,33 @@
 #define PIN_LINK_SPI_READY 13
 #define SPI_FREQ 1000000
 
-#if !CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32C3 && !defined(ARDUINO_ESP32C3_DEV)
+#define ARDUINO_ESP32C3_DEV
+#endif
+
+#ifndef ARDUINO_ESP32C3_DEV
 // ESP32 variants with 3 hardware serial UART
 #define LINK_UART_NUM UART_NUM_2
 #define UART_COUNT 3
 #define PIN_LINK_RESET 15
 #define PIN_BUZZER 25
+#define PIN_BEE_PWR 27
+#define PIN_BEE_UART_RXD 35
+#define PIN_BEE_UART_TXD 2
 #else
-// ESP32 variants with 2 hardware serial UART
+// ESP32-C3 has 2 hardware serial UART
 #define LINK_UART_NUM UART_NUM_1
 #define UART_COUNT 2
+#define PIN_BEE_PWR 8
+#define PIN_BEE_UART_RXD 18
+#define PIN_BEE_UART_TXD 19
 #endif
 #define LINK_UART_BAUDRATE 115200
 
 #define LINK_UART_BUF_SIZE 256
 #define PIN_LINK_UART_RX 13
 #define PIN_LINK_UART_TX 14
-#
-#define PIN_BEE_PWR 27
-#define PIN_BEE_UART_RXD 35
-#define PIN_BEE_UART_TXD 2
+
 #define BEE_UART_NUM UART_NUM_1
 #define BEE_BAUDRATE 115200L
 

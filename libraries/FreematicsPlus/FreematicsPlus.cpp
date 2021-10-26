@@ -21,16 +21,15 @@
 #include "esp_log.h"
 #include "soc/uart_struct.h"
 #include "soc/rtc_cntl_reg.h"
-#ifndef ARDUINO_ESP32C3_DEV
-#endif
-#if CONFIG_IDF_TARGET_ESP32C3
+
+#include "FreematicsPlus.h"
+#include "FreematicsGPS.h"
+
+#ifdef ARDUINO_ESP32C3_DEV
 #include "driver/temp_sensor.h"
 #else
 #include "soc/sens_reg.h"
 #endif
-
-#include "FreematicsPlus.h"
-#include "FreematicsGPS.h"
 
 #define VERBOSE_LINK 0
 #define VERBOSE_XBEE 0
@@ -43,7 +42,7 @@ static int pinGPSTx = PIN_GPS_UART_TXD;
 static Task taskGPS;
 static GPS_DATA* gpsData = 0;
 
-#if !CONFIG_IDF_TARGET_ESP32C3
+#ifndef ARDUINO_ESP32C3_DEV
 
 static uint32_t inline getCycleCount()
 {
@@ -148,7 +147,7 @@ int32_t hall_sens_read();
 // get chip temperature sensor
 int readChipTemperature()
 {
-#if CONFIG_IDF_TARGET_ESP32C3
+#ifdef ARDUINO_ESP32C3_DEV
     static bool inited = false;
     float tsens_out = 0;
     if (!inited) {
@@ -178,7 +177,7 @@ int readChipTemperature()
 
 int readChipHallSensor()
 {
-#if CONFIG_IDF_TARGET_ESP32C3
+#ifdef ARDUINO_ESP32C3_DEV
     return 0; // FIXME
 #else
     return hall_sens_read();
@@ -506,7 +505,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
 {
     if (baudrate) {
         if (devType <= 13) {
-#if CONFIG_IDF_TARGET_ESP32C3
+#ifdef ARDUINO_ESP32C3_DEV
             pinGPSRx = 18;
             pinGPSTx = 19;
 #else
@@ -541,7 +540,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
             // start decoding task
             taskGPS.create(gps_decode_task, "GPS", 1);
         } else {
-#if !CONFIG_IDF_TARGET_ESP32C3
+#ifndef ARDUINO_ESP32C3_DEV
             pinMode(PIN_GPS_UART_RXD, INPUT);
             pinMode(PIN_GPS_UART_TXD, OUTPUT);
             setTxPinHigh();
@@ -559,7 +558,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
         uint16_t s1 = 0, s2 = 0;
         gps.stats(&s1, 0);
         for (int i = 0; i < 10; i++) {
-#if !CONFIG_IDF_TARGET_ESP32C3
+#ifndef ARDUINO_ESP32C3_DEV
             if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
                 // switch M8030 GNSS to 38400bps
                 const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
@@ -821,12 +820,16 @@ void FreematicsESP32::xbTogglePower()
     digitalWrite(PIN_BEE_PWR, HIGH);
     delay(100);
 #if VERBOSE_XBEE
-	Serial.println("xBee power pin set to low");
+    Serial.print("Pin ");
+    Serial.print(PIN_BEE_PWR);
+	Serial.println(" set to low");
 #endif
 	digitalWrite(PIN_BEE_PWR, LOW);
 	delay(200);
 #if VERBOSE_XBEE
-	Serial.println("xBee power pin set to high");
+    Serial.print("Pin ");
+    Serial.print(PIN_BEE_PWR);
+	Serial.println(" set to high");
 #endif
     digitalWrite(PIN_BEE_PWR, HIGH);
     delay(100);
@@ -958,7 +961,7 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
             pinRx = 32;
             pinTx = 33;
         } else if ((devType == 11 && !(m_flags & FLAG_USE_UART_LINK)) || devType == 12 || devType == 0) {
-#if CONFIG_IDF_TARGET_ESP32C3
+#ifdef ARDUINO_ESP32C3_DEV
             pinRx = 18;
             pinTx = 19;
 #else
