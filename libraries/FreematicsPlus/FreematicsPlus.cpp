@@ -140,10 +140,6 @@ static void gps_decode_task(void* inst)
     }
 }
 
-extern "C" {
-int32_t hall_sens_read();
-}
-
 // get chip temperature sensor
 int readChipTemperature()
 {
@@ -177,11 +173,7 @@ int readChipTemperature()
 
 int readChipHallSensor()
 {
-#ifdef ARDUINO_ESP32C3_DEV
     return 0; // FIXME
-#else
-    return hall_sens_read();
-#endif
 }
 
 uint16_t getFlashSize()

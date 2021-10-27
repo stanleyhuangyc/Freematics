@@ -144,6 +144,7 @@ bool MEMS_I2C::initI2C(unsigned long clock)
   conf.scl_io_num = (gpio_num_t)22;
   conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
   conf.master.clk_speed = clock;
+  conf.clk_flags = 0;
   return i2c_param_config(i2c_master_port, &conf) == ESP_OK &&
     i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0) == ESP_OK;
 }
