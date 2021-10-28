@@ -21,9 +21,10 @@
 #include "telelogger.h"
 #include "telemesh.h"
 #include "teleclient.h"
-#ifdef BOARD_HAS_PSRAM
-#include "esp_himem.h"
+#if BOARD_HAS_PSRAM
+#include "esp32/himem.h"
 #endif
+#include "driver/adc.h"
 #if ENABLE_OLED
 #include "FreematicsOLED.h"
 #endif
@@ -158,15 +159,20 @@ void printTimeoutStats()
 #if LOG_EXT_SENSORS
 void processExtInputs(CBuffer* buffer)
 {
-  int pins[] = {PIN_SENSOR1, PIN_SENSOR2};
   int pids[] = {PID_EXT_SENSOR1, PID_EXT_SENSOR2};
 #if LOG_EXT_SENSORS == 1
+  int pins[] = {PIN_SENSOR1, PIN_SENSOR2};
   for (int i = 0; i < 2; i++) {
     buffer->add(pids[i], digitalRead(pins[i]));
   }
 #elif LOG_EXT_SENSORS == 2
+  int reading[] = {adc1_get_raw(ADC1_CHANNEL_0), adc1_get_raw(ADC1_CHANNEL_1)};
+  Serial.print("Sensor 1:");
+  Serial.print(reading[0]);
+  Serial.print(" Sensor 2:");
+  Serial.println(reading[1]);
   for (int i = 0; i < 2; i++) {
-    buffer->add(pids[i], analogRead(pins[i]));
+    buffer->add(pids[i], reading[i]);
   }
 #endif
 }
@@ -731,6 +737,7 @@ bool waitMotion(long timeout)
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         //lastMotionTime = millis();
+        Serial.println(motion);
         return true;
       }
     } while ((long)(millis() - t) < timeout || timeout == -1);
@@ -1168,14 +1175,13 @@ void showSysInfo()
   Serial.print("MHz FLASH:");
   Serial.print(getFlashSize() >> 10);
   Serial.println("MB");
-#ifdef BOARD_HAS_PSRAM
   Serial.print("IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
   Serial.print("KB");
-  if (psramInit()) {
-    Serial.print(" PSRAM:");
-    Serial.print((ESP.getPsramSize() + esp_himem_get_phys_size()) >> 10);
-    Serial.print("KB");
+#if BOARD_HAS_PSRAM
+  Serial.print(" PSRAM:");
+  Serial.print((ESP.getPsramSize() + esp_himem_get_phys_size()) >> 10);
+  Serial.print("KB");
 #if 0
     Serial.println();
     Serial.print("Writing PSRAM...");
@@ -1211,9 +1217,8 @@ void showSysInfo()
     }
     free(ptr);
 #endif
-  }
-  Serial.println();
 #endif
+  Serial.println();
 
   int rtc = rtc_clk_slow_freq_get();
   if (rtc) {
@@ -1288,9 +1293,13 @@ void setup()
     configMode();
 #endif
 
-#if LOG_EXT_SENSORS
+#if LOG_EXT_SENSORS == 1
     pinMode(PIN_SENSOR1, INPUT);
     pinMode(PIN_SENSOR2, INPUT);
+#elif LOG_EXT_SENSORS == 2
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
+    adc1_config_channel_atten(ADC1_CHANNEL_1, ADC_ATTEN_DB_11);
 #endif
 
     // show system information
