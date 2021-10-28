@@ -483,12 +483,16 @@ int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int
 void FreematicsESP32::gpsEnd()
 {
     // uninitialize
-    if ((m_flags & FLAG_GNSS_USE_LINK)) {
+    if (m_flags & FLAG_GNSS_USE_LINK) {
         char buf[16];
         link->sendCommand("ATGPSOFF", buf, sizeof(buf), 0);
     } else {
         taskGPS.destroy();
-        if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) uart_driver_delete(gpsUARTNum);
+        if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
+            setTxPinLow();
+        } else {
+            uart_driver_delete(gpsUARTNum);
+        }
         if (m_pinGPSPower) digitalWrite(m_pinGPSPower, LOW);
     }
 }
@@ -605,7 +609,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
     if (pgd) *pgd = gpsData;
     if (m_flags & FLAG_GNSS_USE_LINK) {
         char buf[160];
-        if (link->sendCommand("ATGPS\r", buf, sizeof(buf), 100) == 0) {
+        if (!link || link->sendCommand("ATGPS\r", buf, sizeof(buf), 100) == 0) {
             return false;
         }
         char *s = strstr(buf, "$GNIFO,");
@@ -845,7 +849,7 @@ byte FreematicsESP32::getDeviceType()
 {
     if (!link) return 0;
     char buf[32];
-    if (link->sendCommand("ATI\r", buf, sizeof(buf), 1000)) {
+    if (link && link->sendCommand("ATI\r", buf, sizeof(buf), 1000)) {
         char *p = strstr(buf, "OBD");
         if (p && (p = strchr(p, ' '))) {
             p += 2;
