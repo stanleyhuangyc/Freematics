@@ -69,6 +69,7 @@
 #define SERVER_PATH "/hub/api"
 
 #if !SERVER_PORT
+#undef SERVER_PORT
 #if SERVER_PROTOCOL == PROTOCOL_UDP
 #define SERVER_PORT 8081
 #elif SERVER_PROTOCOL == PROTOCOL_HTTP
@@ -136,8 +137,6 @@
 /**************************************
 * Additional features
 **************************************/
-#define ENABLE_HTTPD 0
-#define ENABLE_OLED 0
 #define CONFIG_MODE_TIMEOUT 0
 
 #define PIN_SENSOR1 34
