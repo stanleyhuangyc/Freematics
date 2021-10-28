@@ -167,10 +167,10 @@ void processExtInputs(CBuffer* buffer)
   }
 #elif LOG_EXT_SENSORS == 2
   int reading[] = {adc1_get_raw(ADC1_CHANNEL_0), adc1_get_raw(ADC1_CHANNEL_1)};
-  Serial.print("Sensor 1:");
-  Serial.print(reading[0]);
-  Serial.print(" Sensor 2:");
-  Serial.println(reading[1]);
+  Serial.print("GPIO0:");
+  Serial.print((float)reading[0] * 3.15 / 4095 - 0.01);
+  Serial.print(" GPIO1:");
+  Serial.println((float)reading[1] * 3.15 / 4095 - 0.01);
   for (int i = 0; i < 2; i++) {
     buffer->add(pids[i], reading[i]);
   }
@@ -547,7 +547,7 @@ void initialize()
   if (state.check(STATE_OBD_READY)) {
     char buf[128];
     if (obd.getVIN(buf, sizeof(buf))) {
-      strncpy(vin, buf, sizeof(vin) - 1);
+      memcpy(vin, buf, sizeof(vin) - 1);
       Serial.print("VIN:");
       Serial.println(vin);
     }
@@ -1004,6 +1004,7 @@ void telemetry(void* inst)
       } while (state.check(STATE_STANDBY) && millis() - t < 1000L * PING_BACK_INTERVAL);
       if (state.check(STATE_STANDBY)) {
         // start ping
+#if 0
 #if GNSS == GNSS_EXTERNAL || GNSS == GNSS_INTERNAL
 #if GNSS == GNSS_EXTERNAL
         if (sys.gpsBegin())
@@ -1018,6 +1019,7 @@ void telemetry(void* inst)
             }
           }
         }
+#endif
 #endif
         if (initNetwork()) {
           Serial.print("Ping...");
@@ -1388,5 +1390,4 @@ void loop()
     }
   }
 
-  //digitalWrite(26, digitalRead(34));
 }
