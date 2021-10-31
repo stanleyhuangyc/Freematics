@@ -489,7 +489,9 @@ void FreematicsESP32::gpsEnd()
     } else {
         taskGPS.destroy();
         if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
+#ifndef ARDUINO_ESP32C3_DEV
             setTxPinLow();
+#endif
         } else {
             uart_driver_delete(gpsUARTNum);
         }
@@ -642,7 +644,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             if (!(s = strchr(s, ','))) break;
             gpsData->hdop = atoi(++s);
         } while(0);
-        if (good && (gpsData->lat || gpsData->lng || gpsData->alt)) {
+        if (good && (gpsData->lat || gpsData->lng)) {
             // filter out invalid coordinates
             good = (abs(lat * 1000000 - gpsData->lat * 1000000) < 100000 && abs(lng * 1000000 - gpsData->lng * 1000000) < 100000);
         }
@@ -650,6 +652,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         gpsData->lat = lat;
         gpsData->lng = lng;
         gpsData->alt = alt;
+        gpsData->ts = millis();
         return true;
     } else {
         gps.stats(&gpsData->sentences, &gpsData->errors);
