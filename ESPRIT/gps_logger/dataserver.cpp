@@ -30,7 +30,6 @@
 #include <FreematicsPlus.h>
 #if defined(ESP32)
 #include <WiFi.h>
-#include <ESPmDNS.h>
 #include <SPIFFS.h>
 #include <apps/sntp/sntp.h>
 #include <esp_spi_flash.h>
@@ -43,12 +42,6 @@
 #define WIFI_TIMEOUT 5000
 
 extern uint32_t fileid;
-
-extern "C"
-{
-uint8_t temprature_sens_read();
-uint32_t hall_sens_read();
-}
 
 #if ENABLE_HTTPD
 HttpParam httpParam;
@@ -75,10 +68,6 @@ int handlerInfo(UrlHandlerParam* param)
         timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     }
-
-    int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
-    bytes += snprintf(buf + bytes, bufsize - bytes, "\"cpu\":{\"temperature\":%d,\"magnetic\":%d},\n",
-        deviceTemp, hall_sens_read());
 
 #if STORAGE == STORAGE_SPIFFS
     bytes += snprintf(buf + bytes, bufsize - bytes, "\"spiffs\":{\"total\":%u,\"used\":%u}",
@@ -335,9 +324,9 @@ bool serverCheckup(int wifiJoinPeriod)
             Serial.println(WiFi.localIP());
 
             // start mDNS responder
-            MDNS.begin("gpslogger");
-            MDNS.addService("http", "tcp", 80);
-            MDNS.addService("nmea", "tcp", NMEA_TCP_PORT);
+            //MDNS.begin("gpslogger");
+            //MDNS.addService("http", "tcp", 80);
+            //MDNS.addService("nmea", "tcp", NMEA_TCP_PORT);
 
             wifiStartTime = 0;
         }

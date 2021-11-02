@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
-<target board="esp32 esp32_16m" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
+<target board="esp32 esp32c3" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
   <define name="Storage">
     <option name="None" const="STORAGE=STORAGE_NONE"/>
     <option name="Flash (SPIFFS)" const="STORAGE=STORAGE_SPIFFS" default="true"/>
