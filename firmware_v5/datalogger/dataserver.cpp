@@ -31,7 +31,6 @@
 #include <FreematicsPlus.h>
 #if defined(ESP32)
 #include <WiFi.h>
-#include <ESPmDNS.h>
 #include <SPIFFS.h>
 #include <apps/sntp/sntp.h>
 #include <esp_spi_flash.h>
@@ -379,12 +378,6 @@ bool serverSetup()
     Serial.print("AP:");
     Serial.print(WiFi.softAPIP());
     Serial.print(' ');
-#endif
-
-    // start mDNS responder
-    MDNS.begin("datalogger");
-#if ENABLE_NMEA_SERVER
-    MDNS.addService("nmea", "tcp", NMEA_TCP_PORT);
 #endif
 
 #if ENABLE_HTTPD
