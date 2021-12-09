@@ -28,6 +28,9 @@
 #if ENABLE_OLED
 #include "FreematicsOLED.h"
 #endif
+extern "C" {
+#include "ble_spp_server.h"
+}
 
 // states
 #define STATE_STORAGE_READY 0x1
@@ -687,10 +690,14 @@ bool processCommand(char* data)
 void showStats()
 {
   uint32_t t = millis() - teleClient.startTime;
-  char timestr[24];
-  sprintf(timestr, "%02u:%02u.%c ", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
+  char buf[32];
+#if ENABLE_BLE
+  int len = sprintf(buf, "T:%u P:%u B:%u", t, teleClient.txCount, teleClient.txBytes);
+  ble_send(SPP_IDX_SPP_STATUS_VAL, buf, len);
+#endif
+  sprintf(buf, "%02u:%02u.%c ", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
   Serial.print("[NET] ");
-  Serial.print(timestr);
+  Serial.print(buf);
   Serial.print("| Packet #");
   Serial.print(teleClient.txCount);
   Serial.print(" | Out: ");
@@ -1286,7 +1293,7 @@ void setup()
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
-    digitalWrite(PIN_LED, HIGH);
+    if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
 
     // generate unique device ID
     genDeviceID(devid);
@@ -1353,9 +1360,14 @@ void setup()
     }
 #endif
 
+#if ENABLE_BLE
+    // init BLE
+    ble_init();
+#endif
+
     state.set(STATE_WORKING);
     // initialize network and maintain connection
-    subtask.create(telemetry, "telemetry", 2, 8192);
+    subtask.create(telemetry, "telemetry", 2, 4096);
     // initialize components
     initialize();
 
@@ -1367,7 +1379,7 @@ void loop()
   // error handling
   if (!state.check(STATE_WORKING)) {
     standby();
-    digitalWrite(PIN_LED, HIGH);
+    if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
     initialize();
     digitalWrite(PIN_LED, LOW);
     return;

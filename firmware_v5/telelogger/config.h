@@ -144,4 +144,5 @@
 
 #define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
+#define ENABLE_BLE 0
 #endif // CONFIG_H_INCLUDED
