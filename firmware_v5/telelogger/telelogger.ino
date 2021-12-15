@@ -791,7 +791,7 @@ void process()
 #if ENABLE_OBD
   if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
-  } else {
+  } else if (state.check(STATE_OBD_READY)) {
     batteryVoltage = obd.getVoltage() * 100;
   }
   if (batteryVoltage) {
@@ -857,6 +857,7 @@ void process()
     Serial.println(" secs");
     // trip ended, go into standby
     state.clear(STATE_WORKING);
+    return;
   }
 #else
   dataInterval = dataIntervals[0];
@@ -1115,13 +1116,13 @@ void telemetry(void* inst)
 *******************************************************************************/
 void standby()
 {
+  state.set(STATE_STANDBY);
 #if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
     logger.end();
   }
 #endif
   state.clear(STATE_WORKING | STATE_OBD_READY | STATE_STORAGE_READY);
-  state.set(STATE_STANDBY);
   // this will put co-processor into sleep mode
 #if ENABLE_OLED
   oled.print("STANDBY");
