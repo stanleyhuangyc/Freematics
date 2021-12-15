@@ -173,7 +173,7 @@ void processExtInputs(CBuffer* buffer)
   Serial.print("GPIO0:");
   Serial.print((float)reading[0] * 3.15 / 4095 - 0.01);
   Serial.print(" GPIO1:");
-  Serial.println((float)reading[1] * 3.15 / 4095 - 0.01);
+  Serial.print((float)reading[1] * 3.15 / 4095 - 0.01);
   for (int i = 0; i < 2; i++) {
     buffer->add(pids[i], reading[i]);
   }
@@ -488,6 +488,7 @@ void initialize()
 #if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
   // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
+    Serial.print("GNSS:");
 #if GNSS == GNSS_EXTERNAL
     if (sys.gpsBegin())
 #else
@@ -495,12 +496,12 @@ void initialize()
 #endif
     {
       state.set(STATE_GPS_READY);
-      Serial.println("GNSS:OK");
+      Serial.println("OK");
 #if ENABLE_OLED
       oled.println("GNSS OK");
 #endif
     } else {
-      Serial.println("GNSS:NO");
+      Serial.println("NO");
     }
   }
 #endif
@@ -519,16 +520,6 @@ void initialize()
       Serial.println("OBD:NO");
       //state.clear(STATE_WORKING);
       //return;
-    }
-  }
-#endif
-
-#if 0
-  if (!state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
-    // wait for movement from GPS when OBD not connected
-    Serial.println("Waiting...");
-    if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
-      return false;
     }
   }
 #endif
@@ -1000,7 +991,11 @@ void telemetry(void* inst)
 #if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
       if (state.check(STATE_GPS_READY)) {
         Serial.println("GNSS OFF");
-        sys.gpsEnd();
+#if GNSS_ALWAYS_ON
+        sys.gpsEnd(false);
+#else
+        sys.gpsEnd(true);
+#endif
         state.clear(STATE_GPS_READY);
       }
       gd = 0;

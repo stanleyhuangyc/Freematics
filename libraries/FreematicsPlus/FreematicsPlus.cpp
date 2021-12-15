@@ -192,9 +192,9 @@ bool Task::create(void (*task)(void*), const char* name, int priority, int stack
 void Task::destroy()
 {
     if (xHandle) {
-        void* x = xHandle;
+        TaskHandle_t x = xHandle;
         xHandle = 0;
-        vTaskDelete((TaskHandle_t)x);
+        vTaskDelete(x);
     }
 }
 
@@ -480,12 +480,13 @@ int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int
 	return n;
 }
 
-void FreematicsESP32::gpsEnd()
+void FreematicsESP32::gpsEnd(bool powerOff)
 {
-    // uninitialize
     if (m_flags & FLAG_GNSS_USE_LINK) {
-        char buf[16];
-        link->sendCommand("ATGPSOFF", buf, sizeof(buf), 0);
+        if (powerOff) {
+            char buf[16];
+            link->sendCommand("ATGPSOFF", buf, sizeof(buf), 0);
+        }
     } else {
         taskGPS.destroy();
         if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
@@ -495,7 +496,7 @@ void FreematicsESP32::gpsEnd()
         } else {
             uart_driver_delete(gpsUARTNum);
         }
-        if (m_pinGPSPower) digitalWrite(m_pinGPSPower, LOW);
+        if (powerOff && m_pinGPSPower) digitalWrite(m_pinGPSPower, LOW);
     }
 }
 
@@ -549,6 +550,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
 
             // start GPS decoding task (soft serial)
             taskGPS.create(gps_soft_decode_task, "GPS", 1);
+            delay(100);
 #endif
         }
 
@@ -574,6 +576,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
                 memset(gpsData, 0, sizeof(GPS_DATA));
                 return true;
             }
+            Serial.print('.');
         }
         // turn off GNSS power if no data in
         gpsEnd();

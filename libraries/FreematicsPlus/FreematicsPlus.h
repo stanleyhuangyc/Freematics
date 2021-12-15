@@ -141,7 +141,7 @@ public:
   // start GPS
   bool gpsBegin(int baudrate = 115200);
   // turn off GPS
-  void gpsEnd();
+  void gpsEnd(bool powerOff = true);
   // get parsed GPS data (returns the number of data parsed since last invoke)
   bool gpsGetData(GPS_DATA** pgd);
   // get buffered NMEA data
