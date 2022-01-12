@@ -294,6 +294,7 @@ bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
     txBytes += packetSize;
     txCount++;
     success = true;
+    lastSyncTime = millis();
   }
   return success;
 }
