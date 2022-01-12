@@ -1148,7 +1148,7 @@ void telemetry(void* inst)
 
       teleClient.inbound();
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
-        Serial.println("Instable connection");
+        Serial.println("Unstable connection");
         connErrors++;
         timeoutsNet++;
       }
