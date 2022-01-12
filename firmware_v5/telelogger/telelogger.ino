@@ -1057,11 +1057,11 @@ void telemetry(void* inst)
 
 #if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
       if (state.check(STATE_GPS_READY)) {
-        Serial.println("GNSS OFF");
 #if GNSS_ALWAYS_ON
         sys.gpsEnd(false);
 #else
         sys.gpsEnd(true);
+        Serial.println("GNSS OFF");
 #endif
         state.clear(STATE_GPS_READY);
       }
