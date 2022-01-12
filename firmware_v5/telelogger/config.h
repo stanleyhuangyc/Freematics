@@ -134,6 +134,7 @@
 // engine jumpstart voltage
 #define JUMPSTART_VOLTAGE 13.5f /* V */
 #define LOW_BATTERY_VOLTAGE 11.6f /* V */
+#define USB_VOLTAGE 5.0f /* V, don't consider voltages below this, assume we are debugging on USB */
 
 /**************************************
 * Additional features

@@ -775,7 +775,7 @@ bool waitMotion(long timeout)
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         updateBatteryVoltage();
-        if (millis() - lastMEMSMotionTime < 500 && batteryVoltage > JUMPSTART_VOLTAGE * 100) return true;
+        if (millis() - lastMEMSMotionTime < 500 && (batteryVoltage > JUMPSTART_VOLTAGE * 100 || batteryVoltage < USB_VOLTAGE * 100)) return true;
         Serial.print("lastMotionTime: ");
         Serial.println(millis() - lastMEMSMotionTime);
         lastMEMSMotionTime = millis();
@@ -1099,7 +1099,7 @@ void telemetry(void* inst)
 
           // check for low battery when pinging
           updateBatteryVoltage();
-          if (batteryVoltage < LOW_BATTERY_VOLTAGE * 100) {
+          if (batteryVoltage < LOW_BATTERY_VOLTAGE * 100 && batteryVoltage > USB_VOLTAGE * 100) {
             if (teleClient.notify(EVENT_LOW_BATTERY, "")) {
               Serial.println("EVENT_LOW_BATTERY sent");
             }
