@@ -132,7 +132,8 @@
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.4f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
-#define JUMPSTART_VOLTAGE 14 /* V */
+#define JUMPSTART_VOLTAGE 13.5f /* V */
+#define LOW_BATTERY_VOLTAGE 11.6f /* V */
 
 /**************************************
 * Additional features

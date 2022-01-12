@@ -160,11 +160,14 @@ bool TeleClientUDP::notify(byte event, const char* payload)
   netbuf.init(128);
   netbuf.header(devid);
   netbuf.dispatch(buf, sprintf(buf, "EV=%X", (unsigned int)event));
+  // ticker time in milliseconds
   netbuf.dispatch(buf, sprintf(buf, "TS=%lu", millis()));
+  // local device time in seconds
+  struct timeval timeval1;
+  gettimeofday(&timeval1, NULL);
+  uint32_t timestampSec = timeval1.tv_sec;
+  netbuf.dispatch(buf, sprintf(buf, "TM=%lu", timestampSec));
   netbuf.dispatch(buf, sprintf(buf, "ID=%s", devid));
-  if (rssi) {
-    netbuf.dispatch(buf, sprintf(buf, "SSI=%d", (int)rssi));
-  }
   if (vin[0]) {
     netbuf.dispatch(buf, sprintf(buf, "VIN=%s", vin));
   }
@@ -209,10 +212,18 @@ bool TeleClientUDP::notify(byte event, const char* payload)
     if (event == EVENT_LOGIN) {
       // extract info from server response
       char *p = strstr(data, "TM=");
+      unsigned long t_seconds = 0;
+      unsigned long t_microseconds = 0;
       if (p) {
+        t_seconds = atol(p + 3);
+      }
+      p = strstr(data, "TN=");
+      if (p) {
+        t_microseconds = atol(p + 3);
+      }
+      if (t_seconds > 0) {
         // set local time from server
-        unsigned long tm = atol(p + 3);
-        struct timeval tv = { .tv_sec = (time_t)tm, .tv_usec = 0 };
+        struct timeval tv = { .tv_sec = (time_t)t_seconds, .tv_usec = (time_t)t_microseconds };
         settimeofday(&tv, NULL);
       }
       p = strstr(data, "SN=");

@@ -54,6 +54,7 @@ PID_POLLING_INFO obdData[]= {
   {PID_RPM, 1},
   {PID_THROTTLE, 1},
   {PID_ENGINE_LOAD, 1},
+  {PID_FUEL_LEVEL, 1},
   {PID_FUEL_PRESSURE, 2},
   {PID_TIMING_ADVANCE, 2},
   {PID_COOLANT_TEMP, 3},
@@ -74,6 +75,7 @@ float deviceTemp = 0;
 int16_t rssi = 0;
 char vin[18] = {0};
 uint16_t dtc[6] = {0};
+// value 1440 means, that voltage is 14.4V
 int16_t batteryVoltage = 0;
 GPS_DATA* gd = 0;
 
@@ -180,6 +182,20 @@ void processExtInputs(CBuffer* buffer)
 #endif
 }
 #endif
+
+CStorageRAM latestLocationStore;
+
+void prepareData(CStorageRAM* store, CBuffer* buffer) {
+  // here we use CStorageRAM to serialize data correctly
+  store->purge();
+#if SERVER_PROTOCOL == PROTOCOL_UDP
+  store->header(devid);
+#endif
+
+  store->timestamp(buffer->timestamp);
+  buffer->serialize(*store);
+  store->tailer();
+}
 
 /*******************************************************************************
   HTTP API
@@ -397,10 +413,8 @@ void processMEMS(CBuffer* buffer)
       value[2] = ori.roll;
       buffer->add(PID_ORIENTATION, value);
 #endif
-      if (temp != deviceTemp) {
-        deviceTemp = temp;
-        buffer->add(PID_DEVICE_TEMP, (int)temp);
-      }
+      deviceTemp = temp;
+      buffer->add(PID_MEMS_TEMP, (int) (temp * 10));
 #if 0
       // calculate motion
       float motion = 0;
@@ -787,6 +801,11 @@ void process()
   }
   if (batteryVoltage) {
     buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage);
+    if (batteryVoltage > JUMPSTART_VOLTAGE * 100) {
+      buffer->add(PID_IGNITION, (int) 1);
+    } else {
+      buffer->add(PID_IGNITION, (int) 0);
+    }
   }
 #endif
 
@@ -794,17 +813,39 @@ void process()
   processExtInputs(buffer);
 #endif
 
+#if NET_DEVICE >= SIM800
+  rssi = teleClient.net.getSignal();
+  if (rssi) {
+      buffer->add(PID_CELL_RSSI, rssi);
+  }
+#endif
+
+#if NET_DEVICE == NET_SIM7600
+  if (teleClient.net.cellTower->mcc != 0) {
+    buffer->add(PID_CELL_MCC, teleClient.net.cellTower->mcc);
+    buffer->add(PID_CELL_MNC, teleClient.net.cellTower->mnc);
+    buffer->add(PID_CELL_LAC, (uint32_t) teleClient.net.cellTower->lac);
+    buffer->add(PID_CELL_CID, (uint32_t) teleClient.net.cellTower->cellid);
+  }
+#endif
+
 #if ENABLE_MEMS
   processMEMS(buffer);
 #endif
 
-  processGPS(buffer);
+  bool receivedGPS = processGPS(buffer);
 
+  float cpuTemp = readChipTemperature();
+  buffer->add(PID_CPU_TEMP, (int) (cpuTemp * 10));
   if (!state.check(STATE_MEMS_READY)) {
-    deviceTemp = readChipTemperature();
-    buffer->add(PID_DEVICE_TEMP, deviceTemp);
+    deviceTemp = cpuTemp;
   }
 
+  // format device time
+  struct timeval timeval1;
+  gettimeofday(&timeval1, NULL);
+  buffer->add(PID_DEVICE_TIME_SEC, (uint32_t) timeval1.tv_sec);
+  buffer->add(PID_DEVICE_TIME_MCS, (uint32_t) timeval1.tv_usec);
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;
 
@@ -814,9 +855,10 @@ void process()
     lastStatsTime = startTime;
   }
 
+  prepareData(&latestLocationStore, buffer);
 #if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
-    buffer->serialize(logger);
+    logger.dispatch(latestLocationStore.buffer(), latestLocationStore.length());
     uint16_t sizeKB = (uint16_t)(logger.size() >> 10);
     if (sizeKB != lastSizeKB) {
       logger.flush();
@@ -842,7 +884,7 @@ void process()
     }
   }
   if (stationary) {
-    // stationery timeout
+    // stationary timeout
     Serial.print("Stationary for ");
     Serial.print(motionless);
     Serial.println(" secs");
@@ -872,7 +914,7 @@ bool initNetwork()
       String ip = teleClient.net.getIP();
       if (ip.length()) {
         state.set(STATE_NET_CONNECTED);
-        Serial.print("IP:");
+        Serial.print("WiFi IP:");
         Serial.println(ip);
 #if ENABLE_OLED
         oled.println(ip);
@@ -1027,7 +1069,16 @@ void telemetry(void* inst)
         if (initNetwork()) {
           Serial.print("Ping...");
           bool success = teleClient.ping();
+          bool successData = teleClient.transmit(latestLocationStore.buffer(), latestLocationStore.length());
           Serial.println(success ? "OK" : "NO");
+          #if ENABLE_OBD
+            float bV = obd.getVoltage();
+            if (bV < LOW_BATTERY_VOLTAGE) {
+              if (teleClient.notify(EVENT_LOW_BATTERY, "")) {
+                Serial.println("EVENT_LOW_BATTERY sent");
+              }
+            }
+          #endif
         }
         teleClient.shutdown();
         state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
@@ -1056,17 +1107,12 @@ void telemetry(void* inst)
       }
 
       buffer->state = BUFFER_STATE_LOCKED;
-#if SERVER_PROTOCOL == PROTOCOL_UDP
-      store.header(devid);
-#endif
-      store.timestamp(buffer->timestamp);
-      buffer->serialize(store);
+      prepareData(&store, buffer);
       buffer->purge();
-      store.tailer();
-      //Serial.println(store.buffer());
 
       // start transmission
       if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+
       if (teleClient.transmit(store.buffer(), store.length())) {
         // successfully sent
         connErrors = 0;
@@ -1077,8 +1123,6 @@ void telemetry(void* inst)
         printTimeoutStats();
       }
       if (ledMode == 0) digitalWrite(PIN_LED, LOW);
-
-      store.purge();
 
       teleClient.inbound();
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
@@ -1355,6 +1399,7 @@ void setup()
       Serial.println("HTTPD:NO");
     }
 #endif
+    latestLocationStore.init(SERIALIZE_BUFFER_SIZE);
 
 #if ENABLE_BLE
     // init BLE
