@@ -143,6 +143,8 @@
 #define PIN_SENSOR1 34
 #define PIN_SENSOR2 26
 
+#define BEEP_TABLE {2000} /* Hz, each value is a 100ms cycle (use "0" to add gaps) */
+
 #define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
 #define ENABLE_BLE 0

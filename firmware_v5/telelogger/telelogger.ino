@@ -507,9 +507,12 @@ void printTime()
 *******************************************************************************/
 void initialize()
 {
-    // turn on buzzer at 2000Hz frequency 
-  sys.buzzer(2000);
-  delay(100);
+  // startup buzzer
+  const uint16_t beeps[] = BEEP_TABLE;
+  for (byte i = 0; i < sizeof(beeps) / sizeof(beeps[0]); i++) {
+    sys.buzzer(beeps[i]);
+    delay(100);
+  }
   // turn off buzzer
   sys.buzzer(0);
 
