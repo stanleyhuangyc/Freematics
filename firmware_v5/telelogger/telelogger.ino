@@ -771,8 +771,7 @@ bool waitMotion(long timeout)
       }
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
-        batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
-        Serial.println(batteryVoltage);
+        updateBatteryVoltage();
         if (millis() - lastMEMSMotionTime < 500 && batteryVoltage > JUMPSTART_VOLTAGE * 100) return true;
         Serial.print("lastMotionTime: ");
         Serial.println(millis() - lastMEMSMotionTime);
@@ -821,11 +820,7 @@ void process()
 #endif
 
 #if ENABLE_OBD
-  if (sys.devType > 12) {
-    batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
-  } else if (state.check(STATE_OBD_READY)) {
-    batteryVoltage = obd.getVoltage() * 100;
-  }
+  updateBatteryVoltage();
   if (batteryVoltage) {
     buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage);
     if (batteryVoltage > JUMPSTART_VOLTAGE * 100) {
@@ -1317,6 +1312,14 @@ void showSysInfo()
   oled.print("DEVICE ID:");
   oled.println(devid);
 #endif
+}
+
+void updateBatteryVoltage() {
+  if (state.check(STATE_OBD_READY)) {
+    batteryVoltage = obd.getVoltage() * 100;
+  } else if (sys.devType > 12) {
+    batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
+  }
 }
 
 #if CONFIG_MODE_TIMEOUT
