@@ -594,7 +594,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
                 success = true;
                 break;
             }
-        } while (millis() - t < 1000);
+        } while (millis() - t < 2000);
         if (success) {
             gpsData = new GPS_DATA;
             memset(gpsData, 0, sizeof(GPS_DATA));
