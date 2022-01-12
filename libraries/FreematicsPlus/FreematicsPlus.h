@@ -165,6 +165,7 @@ public:
   void xbTogglePower();
   // control internal buzzer (if present)
   void buzzer(int freq);
+  void buzzer(int freq, uint8_t volume);
   // reset co-processor
   void resetLink();
   // reactivate co-processor

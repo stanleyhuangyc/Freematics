@@ -841,10 +841,15 @@ void FreematicsESP32::xbTogglePower()
 
 void FreematicsESP32::buzzer(int freq)
 {
+    buzzer(freq, 255);
+}
+
+void FreematicsESP32::buzzer(int freq, uint8_t volume)
+{
 #ifdef PIN_BUZZER
     if (freq) {
         ledcWriteTone(0, freq);
-        ledcWrite(0, 255);
+        ledcWrite(0, volume);
     } else {
         ledcWrite(0, 0);
     }
