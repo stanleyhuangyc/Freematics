@@ -470,11 +470,13 @@ void printTime()
 *******************************************************************************/
 void initialize()
 {
-    // turn on buzzer at 2000Hz frequency 
+#if ENABLE_BUZZER
+  // turn on buzzer at 2000Hz frequency 
   sys.buzzer(2000);
   delay(100);
   // turn off buzzer
   sys.buzzer(0);
+#endif
 
   // dump buffer data
   bufman.purge();

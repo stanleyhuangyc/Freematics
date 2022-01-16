@@ -2,6 +2,7 @@
 <config>
 <target name="Freematics ONE+" board="esp32 esp32_16m esp32c3" monitor_baudrate="115200">
   <define name="Enable OBD" type="bool" const="ENABLE_OBD" default="true"/>
+  <define name="Enable Buzzer" type="bool" const="ENABLE_BUZZER" default="true"/>
   <define name="Enable Motion Sensor" type="bool" const="ENABLE_MEMS" default="true"/>
   <define name="GNSS">
     <option name="None" const="GNSS=GNSS_NONE"/>
