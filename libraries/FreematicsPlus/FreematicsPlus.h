@@ -26,20 +26,33 @@
 #define PIN_LINK_SPI_READY 13
 #define SPI_FREQ 1000000
 
-#define LINK_UART_BAUDRATE 115200
-#define LINK_UART_NUM UART_NUM_2
-#define LINK_UART_BUF_SIZE 256
-#define PIN_LINK_UART_RX 13
-#define PIN_LINK_UART_TX 14
-#define PIN_LINK_RESET 15
+#if CONFIG_IDF_TARGET_ESP32C3 && !defined(ARDUINO_ESP32C3_DEV)
+#define ARDUINO_ESP32C3_DEV
+#endif
 
+#ifndef ARDUINO_ESP32C3_DEV
+// ESP32 variants with 3 hardware serial UART
+#define LINK_UART_NUM UART_NUM_2
+#define UART_COUNT 3
+#define PIN_LINK_RESET 15
+#define PIN_BUZZER 25
 #define PIN_BEE_PWR 27
 #define PIN_BEE_UART_RXD 35
 #define PIN_BEE_UART_TXD 2
-#define PIN_BEE_UART_RXD2 32
-#define PIN_BEE_UART_TXD2 33
-#define PIN_BEE_UART_RXD3 16
-#define PIN_BEE_UART_TXD3 17
+#else
+// ESP32-C3 has 2 hardware serial UART
+#define LINK_UART_NUM UART_NUM_1
+#define UART_COUNT 2
+#define PIN_BEE_PWR 8
+#define PIN_BEE_UART_RXD 18
+#define PIN_BEE_UART_TXD 19
+#endif
+#define LINK_UART_BAUDRATE 115200
+
+#define LINK_UART_BUF_SIZE 256
+#define PIN_LINK_UART_RX 13
+#define PIN_LINK_UART_TX 14
+
 #define BEE_UART_NUM UART_NUM_1
 #define BEE_BAUDRATE 115200L
 
@@ -52,7 +65,6 @@
 #define GPS_UART_NUM UART_NUM_1
 #define GPS_SOFT_BAUDRATE 38400L
 
-#define PIN_BUZZER 25
 #define PIN_MOLEX_2 34
 #define PIN_MOLEX_4 26
 #define PIN_MOLEX_VCC 12
@@ -79,7 +91,7 @@ public:
   bool running();
   void sleep(uint32_t ms);
 private:
-  void* xHandle = 0;
+  TaskHandle_t xHandle;
 };
 
 class Mutex
@@ -89,7 +101,7 @@ public:
   void lock();
   void unlock();
 private:
-  void* xSemaphore;
+  QueueHandle_t xSemaphore;
 };
 
 class CLink_UART : public CLink {
@@ -129,7 +141,7 @@ public:
   // start GPS
   bool gpsBegin(int baudrate = 115200);
   // turn off GPS
-  void gpsEnd();
+  void gpsEnd(bool powerOff = true);
   // get parsed GPS data (returns the number of data parsed since last invoke)
   bool gpsGetData(GPS_DATA** pgd);
   // get buffered NMEA data

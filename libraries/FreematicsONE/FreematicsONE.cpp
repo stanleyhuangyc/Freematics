@@ -338,10 +338,9 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 	}
 	if (protocol != PROTO_AUTO) {
 		sprintf_P(buffer, PSTR("ATSP%u\r"), protocol);
-		if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr_P(buffer, PSTR("OK"))) {
-			return false;
-		}
+		sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT);
 	}
+	bool success = sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) && !checkErrorMessage(buffer);
 	// load pid map
 	memset(pidmap, 0xff, sizeof(pidmap));
 	for (byte i = 0; i < 4; i++) {
@@ -357,14 +356,14 @@ bool COBDSPI::init(OBD_PROTOCOLS protocol)
 				for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
 					pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 				}
+				success = true;
 			}
 		}
 	}
-	if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || checkErrorMessage(buffer)) {
-		return false;
+	if (success) {
+		m_state = OBD_CONNECTED;
+		errors = 0;
 	}
-	m_state = OBD_CONNECTED;
-	errors = 0;
 	return true;
 }
 

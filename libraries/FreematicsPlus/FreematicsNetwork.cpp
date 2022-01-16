@@ -425,9 +425,10 @@ bool HTTPClientSIM800::send(HTTP_METHOD method, const char* path, bool keepAlive
   } else {
     sprintf(m_buffer, "AT+HTTPDATA=%u,10000\r", payloadSize);
     if (sendCommand(m_buffer)) {
-      if (sendCommand("AT+HTTPACTION=1\r", HTTP_CONN_TIMEOUT))
+      if (sendCommand("AT+HTTPACTION=1\r", HTTP_CONN_TIMEOUT)) {
         m_state = HTTP_SENT;
         return true;
+      }
     }
   }
   m_state = HTTP_ERROR;
@@ -644,7 +645,7 @@ bool ClientSIM5360::checkSIM(const char* pin)
 {
   bool success;
   if (pin && *pin) {
-    sprintf(m_buffer, "AT+CPIN=\"%s\"\r", pin);
+    snprintf(m_buffer, sizeof(m_buffer), "AT+CPIN=\"%s\"\r", pin);
     sendCommand(m_buffer);
   }
   for (byte n = 0; n < 10 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);

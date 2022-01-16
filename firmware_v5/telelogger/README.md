@@ -18,9 +18,9 @@ Data Transmissions
 Data transmission over UDP and HTTP protocols are implemented with following hardware.
 * WiFi (ESP32 built-in)
 * WiFi Mesh (ESP-MDF for ESP32)
-* GSM/GPRS (SIM800)
 * 3G WCDMA (SIM5360)
-* 4G LTE (SIM7600)
+* 4G LTE CAT-4 (SIM7600)
+* 4G LTE CAT-M1 (SIM7070)
 
 There two ways of sending data:
 1. UDP mode implements a `freematics` protocol client for [Freematics Hub](https://freematics.com/hub/) or [Traccar](https://www.traccar.org) (sends more data, [protocol's API](https://freematics.com/pages/hub/api/), uses 5170 port).
@@ -57,6 +57,6 @@ Once the sketch is running and data is being submitted to hub.freematics.com, yo
 Prerequisites
 -------------
 
-* [Freematics ONE+](https://freematics.com/products/freematics-one-plus/) or [Freematics ONE+ Model B](https://freematics.com/products/freematics-one-plus-model-b/)
-* A micro SIM card if cellular network required
-* [PlatformIO](http://platformio.org/), [Arduino IDE](https://github.com/espressif/arduino-esp32#installation-instructions) or [Freematics Arduino Builder](https://freematics.com/software/arduino-builder) for compiling and uploading code
+* Freematics ONE+ [Model A](https://freematics.com/products/freematics-one-plus/), [Model B](https://freematics.com/products/freematics-one-plus-model-b/), [Model H](https://freematics.com/products/freematics-one-plus-model-h/)
+* A micro SIM card if cellular network connectivity required
+* [PlatformIO](http://platformio.org/), [Arduino IDE](https://github.com/espressif/arduino-esp32#installation-instructions) or [Freematics Builder](https://freematics.com/software/arduino-builder) for compiling and uploading code

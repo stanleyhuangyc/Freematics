@@ -55,7 +55,7 @@
 #define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "PASSWORD"
 // cellular network settings
-#define CELL_APN "hologram"
+#define CELL_APN ""
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PROTOCOL PROTOCOL_UDP
@@ -69,6 +69,7 @@
 #define SERVER_PATH "/hub/api"
 
 #if !SERVER_PORT
+#undef SERVER_PORT
 #if SERVER_PROTOCOL == PROTOCOL_UDP
 #define SERVER_PORT 8081
 #elif SERVER_PROTOCOL == PROTOCOL_HTTP
@@ -120,14 +121,14 @@
 **************************************/
 #ifndef GNSS
 // change the following line to change GNSS setting
-#define GNSS GNSS_INTERNAL
+#define GNSS GNSS_EXTERNAL
 #endif
-#define GPS_MOTION_TIMEOUT 180 /* seconds */
+#define GNSS_ALWAYS_ON 1
 
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 1
+#define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.4f /* moving vehicle motion threshold in G */
 // engine jumpstart voltage
@@ -137,8 +138,6 @@
 /**************************************
 * Additional features
 **************************************/
-#define ENABLE_HTTPD 0
-#define ENABLE_OLED 0
 #define CONFIG_MODE_TIMEOUT 0
 
 #define PIN_SENSOR1 34
@@ -146,4 +145,5 @@
 
 #define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
+#define ENABLE_BLE 0
 #endif // CONFIG_H_INCLUDED

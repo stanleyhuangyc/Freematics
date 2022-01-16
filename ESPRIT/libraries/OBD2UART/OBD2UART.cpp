@@ -2,7 +2,7 @@
 * Arduino Library for Freematics OBD-II UART Adapter
 * Distributed under BSD License
 * Visit https://freematics.com for more information
-* (C)2012-2020 Stanley Huang <stanley@freematics.com.au>
+* (C)2012-2021 Stanley Huang <stanley@freematics.com.au>
 *************************************************************************/
 
 #include "OBD2UART.h"
@@ -330,8 +330,10 @@ byte COBD::begin()
 	long baudrates[] = {115200, 38400};
 	byte version = 0;
 	for (byte n = 0; n < sizeof(baudrates) / sizeof(baudrates[0]); n++) {
-#ifndef ESP32
+#if !defined(ESP32)
 		OBDUART.begin(baudrates[n]);
+#elif defined(ARDUINO_ESP32C3_DEV)
+		OBDUART.begin(baudrates[n], SERIAL_8N1, 18, 19);
 #else
 		OBDUART.begin(baudrates[n], SERIAL_8N1, 16, 17);
 #endif
@@ -412,64 +414,57 @@ bool COBD::init(OBD_PROTOCOLS protocol)
 {
 	const char *initcmd[] = {"ATZ\r", "ATE0\r", "ATH0\r"};
 	char buffer[64];
-	byte stage;
+	bool success = false;
 
 	m_state = OBD_DISCONNECTED;
+	for (unsigned char i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
+		write(initcmd[i]);
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0) {
+			return false;
+		}
+	}
+	if (protocol != PROTO_AUTO) {
+		sprintf_P(buffer, PSTR("ATSP %u\r"), protocol);
+		write(buffer);
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) == 0 && !strstr(buffer, "OK")) {
+			return false;
+		}
+	}
+
 	for (byte n = 0; n < 2; n++) {
-		stage = 0;
-		if (n != 0) reset();
-		for (byte i = 0; i < sizeof(initcmd) / sizeof(initcmd[0]); i++) {
-			delay(10);
-			if (!sendCommand(initcmd[i], buffer, sizeof(buffer), OBD_TIMEOUT_SHORT)) {
-				continue;
-			}
+		int value;
+		if (readPID(PID_SPEED, value)) {
+			success = true;
+			break;
 		}
-		stage = 1;
-		if (protocol != PROTO_AUTO) {
-			sprintf(buffer, "ATSP%u\r", protocol);
-			delay(10);
-			if (!sendCommand(buffer, buffer, sizeof(buffer), OBD_TIMEOUT_SHORT) || !strstr(buffer, "OK")) {
-				continue;
-			}
-		}
-		stage = 2;
-		delay(10);
-		if (!sendCommand("010D\r", buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
-			continue;
-		}
-		stage = 3;
-		// load pid map
-		memset(pidmap, 0xff, sizeof(pidmap));
-		for (byte i = 0; i < 8; i++) {
-			byte pid = i * 0x20;
-			sprintf(buffer, "%02X%02X\r", dataMode, pid);
-			write(buffer);
-			delay(10);
-			if (!receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) break;
-			for (char *p = buffer; (p = strstr(p, "41 ")); ) {
+	}
+
+	// load pid map
+	memset(pidmap, 0xff, sizeof(pidmap));
+	for (byte i = 0; i < 4; i++) {
+		byte pid = i * 0x20;
+		sprintf_P(buffer, PSTR("%02X%02X\r"), dataMode, pid);
+		write(buffer);
+		if (receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) > 0) {
+			char *p = buffer;
+			while ((p = strstr(p, "41 "))) {
 				p += 3;
 				if (hex2uint8(p) == pid) {
 					p += 2;
 					for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
 						pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 					}
+					success = true;
 				}
 			}
 		}
-		break;
 	}
-	if (stage == 3) {
+
+	if (success) {
 		m_state = OBD_CONNECTED;
 		errors = 0;
-		return true;
-	} else {
-#ifdef DEBUG
-		Serial.print("Stage:");
-		Serial.println(stage);
-#endif
-		reset();
-		return false;
 	}
+	return success;
 }
 
 void COBD::end()
@@ -626,14 +621,3 @@ bool COBD::memsOrientation(float& yaw, float& pitch, float& roll)
 	} while (0);
 	return success;
 }
-
-#ifdef DEBUG
-void COBD::debugOutput(const char *s)
-{
-	DEBUG.print('[');
-	DEBUG.print(millis());
-	DEBUG.print(']');
-	DEBUG.print(s);
-}
-#endif
-

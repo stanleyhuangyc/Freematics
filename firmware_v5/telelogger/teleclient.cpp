@@ -451,13 +451,12 @@ bool TeleClientHTTP::ping()
 
 void TeleClientHTTP::shutdown()
 {
-  Serial.print(net.deviceName());
   if (login) {
     notify(EVENT_LOGOUT);
     login = false;
   }
   net.close();
   net.end();
-  Serial.println(" OFF");
   started = false;
+  Serial.println("CELL OFF");
 }

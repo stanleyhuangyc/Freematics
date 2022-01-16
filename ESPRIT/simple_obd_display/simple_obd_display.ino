@@ -74,17 +74,27 @@ void initScreen()
 void setup()
 {
   delay(500);
-  
+
+  Serial.begin(115200);
+
+#ifdef ARDUINO_ESP32C3_DEV
+  Wire.begin(4, 5);
+#else
+  Wire.begin();
+#endif
+
   lcd.begin();
   lcd.setFontSize(FONT_SIZE_MEDIUM);
   lcd.println("OBD DISPLAY");
-
-  delay(500);
-  obd.begin();
-
   lcd.println();
   lcd.println("Connecting...");
-  while (!obd.init());
+  for (;;) {
+    obd.begin();
+    if (obd.init()) break;
+    obd.end();
+    Serial.print('.');
+    delay(1000);
+  }
   initScreen();
 }
 

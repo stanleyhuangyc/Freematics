@@ -29,7 +29,7 @@ public:
         write(buf, len);
         m_dataCount++;
     }
-    virtual void log(uint16_t pid, unsigned int value)
+    virtual void log(uint16_t pid, uint32_t value)
     {
         char buf[24];
         byte len = sprintf(buf, "%X,%u", pid, value);
@@ -133,8 +133,8 @@ public:
         SD.mkdir("/DATA");
         char path[24];
         sprintf(path, "/DATA/%u.CSV", m_id);
-        Serial.print("File: ");
-        Serial.println(path);
+        //Serial.print("File: ");
+        //Serial.println(path);
         m_file = SD.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");
@@ -184,8 +184,8 @@ public:
         m_id = getFileID(root);
         char path[24];
         sprintf(path, "/DATA/%u.CSV", m_id);
-        Serial.print("File: ");
-        Serial.println(path);
+        //Serial.print("File: ");
+        //Serial.println(path);
         m_file = SPIFFS.open(path, FILE_WRITE);
         if (!m_file) {
             Serial.println("File error");

@@ -14,7 +14,7 @@
 * THE SOFTWARE.
 *************************************************************************/
 
-#include <SPI.h>
+#include <Wire.h>
 #include <FS.h>
 #include <SD.h>
 #include <SPIFFS.h>
@@ -282,9 +282,6 @@ public:
     }
     void logSensorData()
     {
-        int deviceTemp = (int)temprature_sens_read() * 165 / 255 - 40;
-        store.log(PID_DEVICE_TEMP, deviceTemp);
-        store.log(PID_DEVICE_HALL, hall_sens_read() / 100);
         store.log(PID_EXT_SENSOR1, analogRead(A0));
     }
     void waitGPS()
@@ -432,6 +429,12 @@ void setup()
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
 
+#ifdef ARDUINO_ESP32C3_DEV
+    Wire.begin(4, 5);
+#else
+    Wire.begin();
+#endif
+
 #if ENABLE_DISPLAY
     lcd.begin();
     initDisplay();
@@ -543,7 +546,7 @@ void setup()
     lcd.println(TRACCAR_HOST);
 #endif
 
-    Serial.print("File...");
+    Serial.print("File:");
     fileid = store.open();
     if (fileid) {
         Serial.println(fileid);
@@ -585,8 +588,9 @@ void loop()
     uint32_t ts = millis();
     
     store.setTimestamp(ts);
-    logger.logSensorData();
+    //logger.logSensorData();
     bool updated = logger.logGPSData();
+    Serial.println(gd->ts);
     if (gd && millis() - gd->ts > GPS_SIGNAL_TIMEOUT) {
 #ifdef ENABLE_WIFI_STATION
         WiFi.disconnect(false);
@@ -644,7 +648,7 @@ void loop()
 #if ENABLE_HTTPD
     serverProcess(ts < MIN_LOOP_TIME ? (MIN_LOOP_TIME - ts) : 0);
 #else
-    if (ts < MIN_LOOP_TIME) delay(MIN_LOOP_TIME - ts);
+    //if (ts < MIN_LOOP_TIME) delay(MIN_LOOP_TIME - ts);
 #endif
 #endif
 }

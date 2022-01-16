@@ -29,7 +29,6 @@
 #include <SPIFFS.h>
 #include <FreematicsPlus.h>
 #include <WiFi.h>
-#include <ESPmDNS.h>
 #include <SPIFFS.h>
 #include <apps/sntp/sntp.h>
 #include <esp_spi_flash.h>
@@ -334,10 +333,6 @@ bool serverSetup(IPAddress& ip)
     mwInitParam(&httpParam, 80, "/spiffs");
     httpParam.pxUrlHandler = urlHandlerList;
     httpParam.maxClients = 4;
-
-    // start mDNS responder
-    MDNS.begin("telelogger");
-    MDNS.addService("http", "tcp", 80);
 
     if (mwServerStart(&httpParam)) {
         return false;

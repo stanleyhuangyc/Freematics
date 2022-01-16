@@ -21,12 +21,16 @@
 #include "telelogger.h"
 #include "telemesh.h"
 #include "teleclient.h"
-#ifdef BOARD_HAS_PSRAM
-#include "esp_himem.h"
+#if BOARD_HAS_PSRAM
+#include "esp32/himem.h"
 #endif
+#include "driver/adc.h"
 #if ENABLE_OLED
 #include "FreematicsOLED.h"
 #endif
+extern "C" {
+#include "ble_spp_server.h"
+}
 
 // states
 #define STATE_STORAGE_READY 0x1
@@ -160,15 +164,20 @@ void printTimeoutStats()
 #if LOG_EXT_SENSORS
 void processExtInputs(CBuffer* buffer)
 {
-  int pins[] = {PIN_SENSOR1, PIN_SENSOR2};
   int pids[] = {PID_EXT_SENSOR1, PID_EXT_SENSOR2};
 #if LOG_EXT_SENSORS == 1
+  int pins[] = {PIN_SENSOR1, PIN_SENSOR2};
   for (int i = 0; i < 2; i++) {
     buffer->add(pids[i], digitalRead(pins[i]));
   }
 #elif LOG_EXT_SENSORS == 2
+  int reading[] = {adc1_get_raw(ADC1_CHANNEL_0), adc1_get_raw(ADC1_CHANNEL_1)};
+  Serial.print("GPIO0:");
+  Serial.print((float)reading[0] * 3.15 / 4095 - 0.01);
+  Serial.print(" GPIO1:");
+  Serial.print((float)reading[1] * 3.15 / 4095 - 0.01);
   for (int i = 0; i < 2; i++) {
-    buffer->add(pids[i], analogRead(pins[i]));
+    buffer->add(pids[i], reading[i]);
   }
 #endif
 }
@@ -493,6 +502,7 @@ void initialize()
 #if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
   // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
+    Serial.print("GNSS:");
 #if GNSS == GNSS_EXTERNAL
     if (sys.gpsBegin())
 #else
@@ -500,12 +510,12 @@ void initialize()
 #endif
     {
       state.set(STATE_GPS_READY);
-      Serial.println("GNSS:OK");
+      Serial.println("OK");
 #if ENABLE_OLED
       oled.println("GNSS OK");
 #endif
     } else {
-      Serial.println("GNSS:NO");
+      Serial.println("NO");
     }
   }
 #endif
@@ -528,16 +538,6 @@ void initialize()
   }
 #endif
 
-#if 0
-  if (!state.check(STATE_OBD_READY) && state.check(STATE_GPS_READY)) {
-    // wait for movement from GPS when OBD not connected
-    Serial.println("Waiting...");
-    if (!waitMotionGPS(GPS_MOTION_TIMEOUT * 1000)) {
-      return false;
-    }
-  }
-#endif
-
 #if STORAGE != STORAGE_NONE
   if (!state.check(STATE_STORAGE_READY)) {
     // init storage
@@ -555,7 +555,7 @@ void initialize()
   if (state.check(STATE_OBD_READY)) {
     char buf[128];
     if (obd.getVIN(buf, sizeof(buf))) {
-      strncpy(vin, buf, sizeof(vin) - 1);
+      memcpy(vin, buf, sizeof(vin) - 1);
       Serial.print("VIN:");
       Serial.println(vin);
     }
@@ -695,10 +695,14 @@ bool processCommand(char* data)
 void showStats()
 {
   uint32_t t = millis() - teleClient.startTime;
-  char timestr[24];
-  sprintf(timestr, "%02u:%02u.%c ", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
+  char buf[32];
+#if ENABLE_BLE
+  int len = sprintf(buf, "T:%u P:%u B:%u", t, teleClient.txCount, teleClient.txBytes);
+  ble_send(SPP_IDX_SPP_STATUS_VAL, buf, len);
+#endif
+  sprintf(buf, "%02u:%02u.%c ", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
   Serial.print("[NET] ");
-  Serial.print(timestr);
+  Serial.print(buf);
   Serial.print("| Packet #");
   Serial.print(teleClient.txCount);
   Serial.print(" | Out: ");
@@ -745,6 +749,7 @@ bool waitMotion(long timeout)
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         //lastMotionTime = millis();
+        Serial.println(motion);
         return true;
       }
     } while ((long)(millis() - t) < timeout || timeout == -1);
@@ -791,7 +796,7 @@ void process()
 #if ENABLE_OBD
   if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
-  } else {
+  } else if (state.check(STATE_OBD_READY)) {
     batteryVoltage = obd.getVoltage() * 100;
   }
   if (batteryVoltage) {
@@ -885,6 +890,7 @@ void process()
     Serial.println(" secs");
     // trip ended, go into standby
     state.clear(STATE_WORKING);
+    return;
   }
 #else
   dataInterval = dataIntervals[0];
@@ -1027,7 +1033,11 @@ void telemetry(void* inst)
 #if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
       if (state.check(STATE_GPS_READY)) {
         Serial.println("GNSS OFF");
-        sys.gpsEnd();
+#if GNSS_ALWAYS_ON
+        sys.gpsEnd(false);
+#else
+        sys.gpsEnd(true);
+#endif
         state.clear(STATE_GPS_READY);
       }
       gd = 0;
@@ -1039,6 +1049,7 @@ void telemetry(void* inst)
       } while (state.check(STATE_STANDBY) && millis() - t < 1000L * PING_BACK_INTERVAL);
       if (state.check(STATE_STANDBY)) {
         // start ping
+#if 0
 #if GNSS == GNSS_EXTERNAL || GNSS == GNSS_INTERNAL
 #if GNSS == GNSS_EXTERNAL
         if (sys.gpsBegin())
@@ -1053,6 +1064,7 @@ void telemetry(void* inst)
             }
           }
         }
+#endif
 #endif
         if (initNetwork()) {
           Serial.print("Ping...");
@@ -1143,13 +1155,13 @@ void telemetry(void* inst)
 *******************************************************************************/
 void standby()
 {
+  state.set(STATE_STANDBY);
 #if STORAGE != STORAGE_NONE
   if (state.check(STATE_STORAGE_READY)) {
     logger.end();
   }
 #endif
   state.clear(STATE_WORKING | STATE_OBD_READY | STATE_STORAGE_READY);
-  state.set(STATE_STANDBY);
   // this will put co-processor into sleep mode
 #if ENABLE_OLED
   oled.print("STANDBY");
@@ -1212,14 +1224,13 @@ void showSysInfo()
   Serial.print("MHz FLASH:");
   Serial.print(getFlashSize() >> 10);
   Serial.println("MB");
-#ifdef BOARD_HAS_PSRAM
   Serial.print("IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
   Serial.print("KB");
-  if (psramInit()) {
-    Serial.print(" PSRAM:");
-    Serial.print((ESP.getPsramSize() + esp_himem_get_phys_size()) >> 10);
-    Serial.print("KB");
+#if BOARD_HAS_PSRAM
+  Serial.print(" PSRAM:");
+  Serial.print((ESP.getPsramSize() + esp_himem_get_phys_size()) >> 10);
+  Serial.print("KB");
 #if 0
     Serial.println();
     Serial.print("Writing PSRAM...");
@@ -1255,9 +1266,8 @@ void showSysInfo()
     }
     free(ptr);
 #endif
-  }
-  Serial.println();
 #endif
+  Serial.println();
 
   int rtc = rtc_clk_slow_freq_get();
   if (rtc) {
@@ -1323,7 +1333,7 @@ void setup()
 
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
-    digitalWrite(PIN_LED, HIGH);
+    if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
 
     // generate unique device ID
     genDeviceID(devid);
@@ -1332,9 +1342,13 @@ void setup()
     configMode();
 #endif
 
-#if LOG_EXT_SENSORS
+#if LOG_EXT_SENSORS == 1
     pinMode(PIN_SENSOR1, INPUT);
     pinMode(PIN_SENSOR2, INPUT);
+#elif LOG_EXT_SENSORS == 2
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
+    adc1_config_channel_atten(ADC1_CHANNEL_1, ADC_ATTEN_DB_11);
 #endif
 
     // show system information
@@ -1387,9 +1401,14 @@ void setup()
 #endif
     latestLocationStore.init(SERIALIZE_BUFFER_SIZE);
 
+#if ENABLE_BLE
+    // init BLE
+    ble_init();
+#endif
+
     state.set(STATE_WORKING);
     // initialize network and maintain connection
-    subtask.create(telemetry, "telemetry", 2, 8192);
+    subtask.create(telemetry, "telemetry", 2, 4096);
     // initialize components
     initialize();
 
@@ -1401,7 +1420,7 @@ void loop()
   // error handling
   if (!state.check(STATE_WORKING)) {
     standby();
-    digitalWrite(PIN_LED, HIGH);
+    if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
     initialize();
     digitalWrite(PIN_LED, LOW);
     return;
@@ -1424,5 +1443,4 @@ void loop()
     }
   }
 
-  //digitalWrite(26, digitalRead(34));
 }

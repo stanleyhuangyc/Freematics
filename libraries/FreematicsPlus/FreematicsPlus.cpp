@@ -21,9 +21,15 @@
 #include "esp_log.h"
 #include "soc/uart_struct.h"
 #include "soc/rtc_cntl_reg.h"
-#include "soc/sens_reg.h"
+
 #include "FreematicsPlus.h"
 #include "FreematicsGPS.h"
+
+#ifdef ARDUINO_ESP32C3_DEV
+#include "driver/temp_sensor.h"
+#else
+#include "soc/sens_reg.h"
+#endif
 
 #define VERBOSE_LINK 0
 #define VERBOSE_XBEE 0
@@ -31,8 +37,12 @@
 static TinyGPS gps;
 static bool gpsHasDecodedData = false;
 static uart_port_t gpsUARTNum = GPS_UART_NUM;
+static int pinGPSRx = PIN_GPS_UART_RXD;
+static int pinGPSTx = PIN_GPS_UART_TXD;
 static Task taskGPS;
 static GPS_DATA* gpsData = 0;
+
+#ifndef ARDUINO_ESP32C3_DEV
 
 static uint32_t inline getCycleCount()
 {
@@ -48,19 +58,6 @@ static uint8_t inline readRxPin()
 #else
   return (uint8_t)(GPIO.in1.val >> (PIN_GPS_UART_RXD - 32)) << 7;
 #endif
-}
-
-static void gps_decode_task(void* inst)
-{
-    for (;;) {
-        uint8_t c = 0;
-        int len = uart_read_bytes(gpsUARTNum, &c, 1, 60000 / portTICK_RATE_MS);
-        if (len != 1) continue;
-        //Serial.print((char)c);
-        if (gps.encode(c)) {
-            gpsHasDecodedData = true;
-        }
-    }
 }
 
 static void inline setTxPinHigh()
@@ -128,14 +125,38 @@ static void gps_soft_decode_task(void* inst)
     }
 }
 
-extern "C" {
-uint8_t temprature_sens_read();
-int32_t hall_sens_read();
+#endif
+
+static void gps_decode_task(void* inst)
+{
+    for (;;) {
+        uint8_t c = 0;
+        int len = uart_read_bytes(gpsUARTNum, &c, 1, 60000 / portTICK_RATE_MS);
+        if (len != 1) continue;
+        //Serial.print((char)c);
+        if (gps.encode(c)) {
+            gpsHasDecodedData = true;
+        }
+    }
 }
 
 // get chip temperature sensor
 int readChipTemperature()
 {
+#ifdef ARDUINO_ESP32C3_DEV
+    static bool inited = false;
+    float tsens_out = 0;
+    if (!inited) {
+        temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
+        temp_sensor_get_config(&temp_sensor);
+        temp_sensor.dac_offset = TSENS_DAC_DEFAULT;
+        temp_sensor_set_config(temp_sensor);
+        temp_sensor_start();
+        inited = true;
+    }
+    temp_sensor_read_celsius(&tsens_out);
+    return tsens_out;
+#else
     SET_PERI_REG_BITS(SENS_SAR_MEAS_WAIT2_REG, SENS_FORCE_XPD_SAR, 3, SENS_FORCE_XPD_SAR_S);
     SET_PERI_REG_BITS(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_CLK_DIV, 10, SENS_TSENS_CLK_DIV_S);
     CLEAR_PERI_REG_MASK(SENS_SAR_TSENS_CTRL_REG, SENS_TSENS_POWER_UP);
@@ -147,11 +168,12 @@ int readChipTemperature()
     ets_delay_us(5);
     int res = GET_PERI_REG_BITS2(SENS_SAR_SLAVE_ADDR3_REG, SENS_TSENS_OUT, SENS_TSENS_OUT_S);
     return (res - 32) * 5 / 9;
+#endif
 }
 
 int readChipHallSensor()
 {
-  return hall_sens_read();
+    return 0; // FIXME
 }
 
 uint16_t getFlashSize()
@@ -170,9 +192,9 @@ bool Task::create(void (*task)(void*), const char* name, int priority, int stack
 void Task::destroy()
 {
     if (xHandle) {
-        void* x = xHandle;
+        TaskHandle_t x = xHandle;
         xHandle = 0;
-        vTaskDelete((TaskHandle_t)x);
+        vTaskDelete(x);
     }
 }
 
@@ -458,22 +480,42 @@ int CLink_SPI::sendCommand(const char* cmd, char* buf, int bufsize, unsigned int
 	return n;
 }
 
-void FreematicsESP32::gpsEnd()
+void FreematicsESP32::gpsEnd(bool powerOff)
 {
-    // uninitialize
-    if ((m_flags & FLAG_GNSS_USE_LINK)) {
-        char buf[16];
-        link->sendCommand("ATGPSOFF", buf, sizeof(buf), 0);
+    if (m_flags & FLAG_GNSS_USE_LINK) {
+        if (powerOff) {
+            char buf[16];
+            link->sendCommand("ATGPSOFF", buf, sizeof(buf), 0);
+        }
     } else {
         taskGPS.destroy();
-        if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) uart_driver_delete(gpsUARTNum);
-        digitalWrite(m_pinGPSPower, LOW);
+        if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
+#ifndef ARDUINO_ESP32C3_DEV
+            setTxPinLow();
+#endif
+        } else {
+            uart_driver_delete(gpsUARTNum);
+        }
+        if (powerOff && m_pinGPSPower) digitalWrite(m_pinGPSPower, LOW);
     }
 }
 
 bool FreematicsESP32::gpsBegin(int baudrate)
 {
     if (baudrate) {
+        if (devType <= 13) {
+#ifdef ARDUINO_ESP32C3_DEV
+            pinGPSRx = 18;
+            pinGPSTx = 19;
+#else
+            pinGPSRx = 32;
+            pinGPSTx = 33;
+#endif
+            m_pinGPSPower = 0;
+        } else {
+            pinGPSRx = PIN_GPS_UART_RXD;
+            pinGPSTx = PIN_GPS_UART_TXD;
+        }
         // switch on GNSS power
         if (m_pinGPSPower) pinMode(m_pinGPSPower, OUTPUT);
         if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) {
@@ -485,11 +527,10 @@ bool FreematicsESP32::gpsBegin(int baudrate)
                 .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
                 .rx_flow_ctrl_thresh = 122,
             };
-            bool legacy = devType <= 13;
             // configure UART parameters
             uart_param_config(gpsUARTNum, &uart_config);
             // set UART pins
-            uart_set_pin(gpsUARTNum, legacy ? PIN_GPS_UART_TXD2 : PIN_GPS_UART_TXD, legacy ? PIN_GPS_UART_RXD2 : PIN_GPS_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+            uart_set_pin(gpsUARTNum, pinGPSTx, pinGPSRx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
             // install UART driver
             uart_driver_install(gpsUARTNum, UART_BUF_SIZE, 0, 0, NULL, 0);
             // turn on GPS power
@@ -498,6 +539,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
             // start decoding task
             taskGPS.create(gps_decode_task, "GPS", 1);
         } else {
+#ifndef ARDUINO_ESP32C3_DEV
             pinMode(PIN_GPS_UART_RXD, INPUT);
             pinMode(PIN_GPS_UART_TXD, OUTPUT);
             setTxPinHigh();
@@ -508,12 +550,15 @@ bool FreematicsESP32::gpsBegin(int baudrate)
 
             // start GPS decoding task (soft serial)
             taskGPS.create(gps_soft_decode_task, "GPS", 1);
+            delay(100);
+#endif
         }
 
         // test run for a while to see if there is data decoded
         uint16_t s1 = 0, s2 = 0;
         gps.stats(&s1, 0);
         for (int i = 0; i < 10; i++) {
+#ifndef ARDUINO_ESP32C3_DEV
             if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
                 // switch M8030 GNSS to 38400bps
                 const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
@@ -522,6 +567,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
                 delay(20);
                 for (int i = 0; i < sizeof(packet2); i++) softSerialTx(baudrate, packet2[i]);
             }
+#endif
             delay(200);
             gps.stats(&s2, 0);
             if (s1 != s2) {
@@ -530,6 +576,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
                 memset(gpsData, 0, sizeof(GPS_DATA));
                 return true;
             }
+            Serial.print('.');
         }
         // turn off GNSS power if no data in
         gpsEnd();
@@ -567,7 +614,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
     if (pgd) *pgd = gpsData;
     if (m_flags & FLAG_GNSS_USE_LINK) {
         char buf[160];
-        if (link->sendCommand("ATGPS\r", buf, sizeof(buf), 100) == 0) {
+        if (!link || link->sendCommand("ATGPS\r", buf, sizeof(buf), 100) == 0) {
             return false;
         }
         char *s = strstr(buf, "$GNIFO,");
@@ -600,7 +647,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             if (!(s = strchr(s, ','))) break;
             gpsData->hdop = atoi(++s);
         } while(0);
-        if (good && (gpsData->lat || gpsData->lng || gpsData->alt)) {
+        if (good && (gpsData->lat || gpsData->lng)) {
             // filter out invalid coordinates
             good = (abs(lat * 1000000 - gpsData->lat * 1000000) < 100000 && abs(lng * 1000000 - gpsData->lng * 1000000) < 100000);
         }
@@ -608,6 +655,7 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
         gpsData->lat = lat;
         gpsData->lng = lng;
         gpsData->alt = alt;
+        gpsData->ts = millis();
         return true;
     } else {
         gps.stats(&gpsData->sentences, &gpsData->errors);
@@ -774,12 +822,16 @@ void FreematicsESP32::xbTogglePower()
     digitalWrite(PIN_BEE_PWR, HIGH);
     delay(100);
 #if VERBOSE_XBEE
-	Serial.println("xBee power pin set to low");
+    Serial.print("Pin ");
+    Serial.print(PIN_BEE_PWR);
+	Serial.println(" set to low");
 #endif
 	digitalWrite(PIN_BEE_PWR, LOW);
 	delay(200);
 #if VERBOSE_XBEE
-	Serial.println("xBee power pin set to high");
+    Serial.print("Pin ");
+    Serial.print(PIN_BEE_PWR);
+	Serial.println(" set to high");
 #endif
     digitalWrite(PIN_BEE_PWR, HIGH);
     delay(100);
@@ -789,19 +841,21 @@ void FreematicsESP32::xbTogglePower()
 
 void FreematicsESP32::buzzer(int freq)
 {
+#ifdef PIN_BUZZER
     if (freq) {
         ledcWriteTone(0, 2000);
         ledcWrite(0, 255);
     } else {
         ledcWrite(0, 0);
     }
+#endif
 }
 
 byte FreematicsESP32::getDeviceType()
 {
     if (!link) return 0;
     char buf[32];
-    if (link->sendCommand("ATI\r", buf, sizeof(buf), 1000)) {
+    if (link && link->sendCommand("ATI\r", buf, sizeof(buf), 1000)) {
         char *p = strstr(buf, "OBD");
         if (p && (p = strchr(p, ' '))) {
             p += 2;
@@ -828,20 +882,24 @@ void FreematicsESP32::resetLink()
 {
     char buf[16];
     if (link) link->sendCommand("ATR\r", buf, sizeof(buf), 100);
+#ifdef PIN_LINK_RESET
     if (devType == 11 || devType >= 14) {
         digitalWrite(PIN_LINK_RESET, LOW);
         delay(50);
         digitalWrite(PIN_LINK_RESET, HIGH);
         delay(2000);
     }
+#endif
 }
 
 bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
 {
     if (link) return false;
 
+#ifdef PIN_LINK_RESET
     pinMode(PIN_LINK_RESET, OUTPUT);
     digitalWrite(PIN_LINK_RESET, HIGH);
+#endif
 
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);
@@ -849,9 +907,11 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
     m_flags = 0;
     m_pinGPSPower = PIN_GPS_POWER;
 
+#if PIN_BUZZER
     // set up buzzer
     ledcSetup(0, 2000, 8);
     ledcAttachPin(PIN_BUZZER, 0);
+#endif
 
     if (useCoProc) do {
         CLink_UART *linkUART = new CLink_UART;
@@ -900,11 +960,16 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
         int pinRx = PIN_BEE_UART_RXD;
         int pinTx = PIN_BEE_UART_TXD;
         if (devType == 13) {
-            pinRx = PIN_BEE_UART_RXD2;
-            pinTx = PIN_BEE_UART_TXD2;
+            pinRx = 32;
+            pinTx = 33;
         } else if ((devType == 11 && !(m_flags & FLAG_USE_UART_LINK)) || devType == 12 || devType == 0) {
-            pinRx = PIN_BEE_UART_RXD3;
-            pinTx = PIN_BEE_UART_TXD3;
+#ifdef ARDUINO_ESP32C3_DEV
+            pinRx = 18;
+            pinTx = 19;
+#else
+            pinRx = 16;
+            pinTx = 17;
+#endif
         }
         xbBegin(XBEE_BAUDRATE, pinRx, pinTx);
         m_flags |= FLAG_USE_CELL;
