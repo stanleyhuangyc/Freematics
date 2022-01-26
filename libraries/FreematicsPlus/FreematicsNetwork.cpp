@@ -647,7 +647,7 @@ bool ClientSIM5360::checkSIM(const char* pin)
     snprintf(m_buffer, sizeof(m_buffer), "AT+CPIN=\"%s\"\r", pin);
     sendCommand(m_buffer);
   }
-  for (byte n = 0; n < 10 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);
+  for (byte n = 0; n < 20 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);
   return success;  
 }
 
