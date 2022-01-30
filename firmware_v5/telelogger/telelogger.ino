@@ -763,7 +763,7 @@ bool waitMotion(long timeout)
 /*******************************************************************************
   Collecting and processing data
 *******************************************************************************/
-void process()
+void process(bool isInStandby)
 {
   uint32_t startTime = millis();
 
@@ -870,6 +870,7 @@ void process()
   }
 #endif
 
+if (!isInStandby) {
   const int dataIntervals[] = DATA_INTERVAL_TABLE;
 #if ENABLE_OBD || ENABLE_MEMS
   // motion adaptive data interval control
@@ -897,7 +898,7 @@ void process()
 #endif
   long t = dataInterval - (millis() - startTime);
   if (t > 0 && t < dataInterval) delay(t);
-}
+}}
 
 bool initNetwork()
 {
@@ -1048,8 +1049,6 @@ void telemetry(void* inst)
         delay(1000);
       } while (state.check(STATE_STANDBY) && millis() - t < 1000L * PING_BACK_INTERVAL);
       if (state.check(STATE_STANDBY)) {
-        // start ping
-#if 0
 #if GNSS == GNSS_EXTERNAL || GNSS == GNSS_INTERNAL
 #if GNSS == GNSS_EXTERNAL
         if (sys.gpsBegin())
@@ -1058,19 +1057,20 @@ void telemetry(void* inst)
 #endif
         {
           state.set(STATE_GPS_READY);
-          for (uint32_t t = millis(); millis() - t < 60000; ) {
-            if (sys.gpsGetData(&gd)) {
-              break;
-            }
-          }
         }
 #endif
-#endif
+
+        process(true);
+
+        // start ping
         if (initNetwork()) {
           Serial.print("Ping...");
           bool success = teleClient.ping();
-          bool successData = teleClient.transmit(latestLocationStore.buffer(), latestLocationStore.length());
           Serial.println(success ? "OK" : "NO");
+          
+          Serial.print("Data upload...");
+          bool successData = teleClient.transmit(latestLocationStore.buffer(), latestLocationStore.length());
+          Serial.println(successData ? "OK" : "NO");
           #if ENABLE_OBD
             float bV = obd.getVoltage();
             if (bV < LOW_BATTERY_VOLTAGE) {
@@ -1427,7 +1427,7 @@ void loop()
   }
 
   // collect and log data
-  process();
+  process(false);
 
   // check serial input for command
   while (Serial.available()) {
