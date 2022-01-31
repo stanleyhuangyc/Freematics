@@ -7,6 +7,7 @@
 #define EVENT_COMMAND 5
 #define EVENT_ACK 6
 #define EVENT_PING 7
+#define EVENT_LOW_BATTERY 8
 
 #define BUFFER_STATE_EMPTY 0
 #define BUFFER_STATE_FILLING 1
