@@ -539,6 +539,7 @@ bool ClientSIM5360::setup(const char* apn, unsigned int timeout)
     } while (!success && millis() - t < timeout);
     if (!success) break;
 
+#if 0
     success = false;
     do {
       delay(100);
@@ -554,6 +555,7 @@ bool ClientSIM5360::setup(const char* apn, unsigned int timeout)
       sendCommand(m_buffer);
     }
     if (!success) break;
+#endif
 
     //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
 
