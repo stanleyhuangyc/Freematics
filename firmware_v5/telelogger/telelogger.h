@@ -157,15 +157,13 @@ protected:
             File file;
             int id = 0;
             while(file = root.openNextFile()) {
-                Serial.println(file.name());
-                if (!strncmp(file.name(), "/DATA/", 6)) {
-                    unsigned int n = atoi(file.name() + 6);
-                    if (n > id) id = n;
-                }
+                char *p = strrchr(file.name(), '/');
+                unsigned int n = atoi(p ? p + 1 : file.name());
+                if (n > id) id = n;
             }
             return id + 1;
         } else {
-            return 1;
+            return 0;
         }
     }
     uint32_t m_dataTime = 0;
@@ -198,7 +196,10 @@ public:
     {
         File root = SD.open("/DATA");
         m_id = getFileID(root);
-        SD.mkdir("/DATA");
+        if (m_id == 0) {
+            SD.mkdir("/DATA");
+            m_id = 1;
+        }
         char path[24];
         sprintf(path, "/DATA/%u.CSV", m_id);
         Serial.print("File: ");

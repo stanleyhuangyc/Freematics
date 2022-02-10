@@ -28,7 +28,7 @@ public:
         write(buf, len);
         m_dataCount++;
     }
-    virtual void log(uint16_t pid, unsigned int value)
+    virtual void log(uint16_t pid, uint32_t value)
     {
         char buf[24];
         byte len = sprintf(buf, "%X,%u", pid, value);
@@ -91,20 +91,20 @@ public:
 protected:
     int getFileID(File& root)
     {
-        int id = 1;
         m_dataCount = 0;
         if (root) {
+            int id = 0;
             File file;
             while(file = root.openNextFile()) {
                 Serial.println(file.name());
-                if (!strncmp(file.name(), "/DATA/", 6)) {
-                    unsigned int n = atoi(file.name() + 6);
-                    if (n > id) id = n;
-                }
+                char *p = strrchr(file.name(), '/');
+                unsigned int n = atoi(p ? p + 1 : file.name());
+                if (n > id) id = n;
             }
-            id++;
+            Serial.println(id);
+            return id + 1;
         }
-        return id;
+        return 0;
     }
     uint32_t m_dataTime = 0;
     uint32_t m_dataCount = 0;
@@ -129,7 +129,10 @@ public:
     {
         File root = SD.open("/DATA");
         m_id = getFileID(root);
-        SD.mkdir("/DATA");
+        if (m_id == 0) {
+            SD.mkdir("/DATA");
+            m_id = 1;
+        }
         char path[24];
         sprintf(path, "/DATA/%u.CSV", m_id);
         Serial.print("File: ");
