@@ -1,22 +1,14 @@
 #ifndef CONFIG_H_INCLUDED
 #define CONFIG_H_INCLUDED
 
-/**************************************
-* Data logging/streaming out
-**************************************/
+// enable(1)/disable(0) command line interface (for serial control or Freematics App via BLE)
+#define ENABLE_CLI 1
 
 // enable(1)/disable(0) data logging (if SD card is present)
 #define ENABLE_DATA_LOG 1
 
-// enable(1)/disable(0) data streaming
-#define ENABLE_DATA_OUT 0
-
 // file size limit
 #define MAX_DATA_FILE_SIZE 1024 /* KB */
-
-/**************************************
-* Hardware setup
-**************************************/
 
 // enable(1)/disable(0) MEMS sensor
 #define USE_MEMS 1
@@ -25,7 +17,7 @@
 #define USE_GPS 1
 
 // enable(1)/disable(0) cellular module (SIM5360) internal GPS
-#define USE_CELL_GPS 1
+#define USE_CELL_GPS 0
 
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L

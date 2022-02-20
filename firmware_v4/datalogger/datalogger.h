@@ -19,13 +19,6 @@ public:
         sdfile.write((uint8_t*)buf, len);
         sdfile.write('\n');
 #endif
-#if ENABLE_DATA_OUT
-        // skip timestamp
-        char *p = strchr(buf, ',');
-        if (p++) {
-          Serial.println(p);
-        }
-#endif
         dataCount++;
     }
     void log(uint16_t pid, int value)

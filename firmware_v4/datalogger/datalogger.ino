@@ -30,14 +30,23 @@
 #define STATE_MEMS_READY 0x20
 #define STATE_FILE_READY 0x40
 
+void cmdline(bool nonblocking);
+
+char VIN[18] = {0};
 uint16_t MMDD = 0;
 uint32_t UTC = 0;
+byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
+int values[4] = {0};
+float voltage = 0;
+bool sleeping = false;
 
 #if USE_MEMS
 MPU9250_ACC mems;
-float acc[3];
-float accBias[3];
-bool memsUpdated = false;
+float acc[3] = {0};
+float accBias[3] = {0};
+int16_t temp = 0;
+
+GPS_DATA gd = {0};
 
 void calibrateMEMS()
 {
@@ -136,6 +145,7 @@ public:
         if (getVIN(buffer, sizeof(buffer))) {
           Serial.print("VIN:");
           Serial.println(buffer);
+          strncpy(VIN, buffer, sizeof(VIN) - 1);
         }
       }
 
@@ -167,7 +177,6 @@ public:
     void processGPS()
     {
         // issue the command to get parsed GPS data
-        GPS_DATA gd = {0};
         if (gpsGetData(&gd)) {
           logLocationData(&gd);
         }
@@ -176,7 +185,6 @@ public:
 #if USE_CELL_GPS
     void processCellGPS()
     {
-      GPS_DATA gd;
       if (cellGetGPSInfo(gd)) {
         logLocationData(&gd);
       }
@@ -200,6 +208,47 @@ public:
         }
     }
 #endif
+    void standby()
+    {
+      Serial.println("Standby");
+      lowPowerMode();
+      sleeping = true;
+#if USE_MEMS
+      if (state & STATE_MEMS_READY) {
+        byte count = 0;
+        calibrateMEMS();
+        while (sleeping) {
+          cmdline(false);
+          delay(100);
+          // calculate relative movement
+          float motion = 0;
+          mems.read(acc, 0, 0, &temp);
+          for (byte i = 0; i < 3; i++) {
+            float m = (acc[i] - accBias[i]);
+            motion += m * m;
+          }
+          //Serial.println(motion);
+          // check movement
+          if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+            break;
+          }
+          // read voltage at an interval
+          if (!count++) {
+              voltage = getVoltage();
+          }
+        }
+      }
+#else
+      while (sleeping) {
+        cmdline(false);
+        sleep(WDTO_2S);
+        voltage = getVoltage();
+        Serial.println(v);
+        if (voltage >= JUMPSTART_VOLTAGE) break;
+      }
+#endif
+      Serial.println("Wakeup");
+    }
     void reconnect()
     {
         Serial.println("Reconnect");
@@ -214,43 +263,15 @@ public:
 #endif
         state &= ~(STATE_OBD_READY | STATE_GPS_READY | STATE_FILE_READY);
         end();
-        Serial.println("Standby");
-#if USE_MEMS
-        if (state & STATE_MEMS_READY) {
-          calibrateMEMS();
-          for (;;) {
-            delay(100);
-            // calculate relative movement
-            float motion = 0;
-            float acc[3];
-            mems.read(acc);
-            for (byte i = 0; i < 3; i++) {
-              float m = (acc[i] - accBias[i]);
-              motion += m * m;
-            }
-            //Serial.println(motion);
-            // check movement
-            if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
-              break;
-            }
-          }
-        }
-#else
-        for (;;) {
-          sleep(WDTO_4S);
-          float v = getVoltage();
-          Serial.println(v);
-          if (v >= JUMPSTART_VOLTAGE) break;
-        }
-#endif
-        Serial.println("Wakeup");
+        standby();
         delay(100);
         resetMCU();
     }
     // library idle callback from sleep()
     void idleTasks()
     {
-      memsUpdated = mems.read(acc);
+      mems.read(acc, 0, 0, &temp);
+      cmdline(true);
     }
 #if USE_CELL_GPS
     bool cellSendCommand(const char* cmd, char* buf, int bufsize, const char* expected = "\r\nOK", unsigned int timeout = 1000)
@@ -377,93 +398,179 @@ void setup()
 #endif
 }
 
+void cmdline(bool nonblocking)
+{
+#if ENABLE_CLI
+  static char cmd[16] = {0};
+  static byte cmdlen = 0;
+  static bool echo = true;
+  static char c = 0;
+
+  if (c != '\r') {
+    while (Serial.available() && c != '\r') {
+      c = Serial.read();
+      if (c >= 32 && cmdlen < sizeof(cmd) - 1) {
+        cmd[cmdlen++] = c;
+      }
+    }
+    if (c != '\r') return;
+    if (echo) Serial.println(cmd);
+  }
+
+  if (!strcmp(cmd, "VIN")) {
+    Serial.println(VIN[0] ? VIN : "N/A");
+  } else if (!strcmp(cmd, "BATT")) {
+    Serial.println(voltage, 1);
+  } else if (!strcmp(cmd, "ON?")) {
+    Serial.println(sleeping ? 0 : 1);
+  } else if (!strcmp(cmd, "ON")) {
+    sleeping = false;
+    Serial.println("OK");
+  } else if (!strcmp(cmd, "OFF")) {
+    sleeping = true;
+    Serial.println("OK");
+  } else if (!strcmp(cmd, "UPTIME")) {
+    Serial.println(millis());
+  } else if (!memcmp(cmd, "01", 2)) {
+    byte pid = hex2uint8(cmd + 2);
+    for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
+      if (pids[i] == pid) {
+        Serial.println(values[i]);
+        pid = 0;
+        break;
+      }
+    }
+    if (pid) {
+      if (nonblocking) return;
+      int value;
+      if (one.readPID(pid, value)) {
+        Serial.println(value);
+      } else {
+        Serial.println("N/A");
+      }
+    }
+  } else if (!strcmp(cmd, "TEMP")) {
+    Serial.println(temp / 10);
+  } else if (!strcmp(cmd, "ACC")) {
+    Serial.print(acc[0], 2);
+    Serial.print('/');
+    Serial.print(acc[1], 2);
+    Serial.print('/');
+    Serial.println(acc[2], 2);
+  } else if (!strcmp(cmd, "GF")) {
+    Serial.println(sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
+  } else if (!strcmp(cmd, "FS")) {
+    Serial.println(sdfile.size());
+  } else if (!strcmp(cmd, "LAT")) {
+    Serial.println((float)gd.lat / 1000000, 6);
+  } else if (!strcmp(cmd, "LNG")) {
+    Serial.println((float)gd.lng / 1000000, 6);
+  } else if (!strcmp(cmd, "ALT")) {
+    Serial.println(gd.alt);
+  } else if (!strcmp(cmd, "SAT")) {
+    Serial.println(gd.sat);
+  } else if (!strcmp(cmd, "SPD")) {
+    Serial.println((float)gd.speed * 1852 / 100000, 1);
+  } else if (!strcmp(cmd, "CRS")) {
+    Serial.println(gd.heading / 100);
+  } else if (!strcmp(cmd, "ATE0")) {
+    echo = false;
+    Serial.println("OK");
+  } else if (!strcmp(cmd, "ATE1")) {
+    echo = true;
+    Serial.println("OK");
+  } else {
+    Serial.print("ERROR:");
+    Serial.println(cmd);
+  }
+  cmdlen = 0;
+  memset(cmd, 0, sizeof(cmd));
+  c = 0;
+#endif
+}
+
 void loop()
 {
 #if ENABLE_DATA_LOG
-    if (!(one.state & STATE_FILE_READY) && (one.state & STATE_SD_READY)) {
+  if (!(one.state & STATE_FILE_READY) && (one.state & STATE_SD_READY)) {
 #if USE_GPS
-      if (one.state & STATE_GPS_FOUND) {
-        // GPS connected
-        one.processGPS();
-        if (one.state & STATE_GPS_READY) {
-          uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
-          if (one.openFile(dateTime)) {
-            MMDD = 0;
-            one.state |= STATE_FILE_READY;
-          }
-        } else {
-          Serial.println("Waiting for GPS...");
-        }
-      }
-      else
-#endif
-      {
-        // no GPS connected
-        if (one.openFile(0)) {
+    if (one.state & STATE_GPS_FOUND) {
+      // GPS connected
+      one.processGPS();
+      if (one.state & STATE_GPS_READY) {
+        uint32_t dateTime = (uint32_t)MMDD * 10000 + UTC / 10000;
+        if (one.openFile(dateTime)) {
+          MMDD = 0;
           one.state |= STATE_FILE_READY;
         }
       }
-      delay(1000);
-      return;
     }
+    else
 #endif
-    if (one.state & STATE_OBD_READY) {
-        byte pids[]= {PID_RPM, PID_SPEED, PID_THROTTLE, PID_ENGINE_LOAD};
-        one.dataTime = millis();
-        for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
-          int value;
-          byte pid = pids[i];
-          if (one.readPID(pid, value)) {
-            one.log((uint16_t)pids[i] | 0x100, value);
-          }
-#if USE_MEMS
-          if (memsUpdated) {
-            one.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
-            memsUpdated = false;
-          }
-#endif
-        }
-        if (one.errors >= 3) {
-            one.reset();
-            one.reconnect();
-        }
-    } else {
-      if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000L) {
-        if (one.init()) {
-            one.state |= STATE_OBD_READY;
-        }
+    {
+      // no GPS connected
+      if (one.openFile(0)) {
+        one.state |= STATE_FILE_READY;
       }
     }
+    delay(1000);
+    return;
+  }
+#endif
+  cmdline(false);
+  if (sleeping) one.standby();
 
-    // log battery voltage (from voltmeter), data in 0.01v
-    int v = one.getVoltage() * 100;
-    one.log(PID_BATTERY_VOLTAGE, v);
-    
-#if USE_GPS
-    if (one.state & STATE_GPS_FOUND) {
-      one.processGPS();
+  if (one.state & STATE_OBD_READY) {
+      one.dataTime = millis();
+      for (byte i = 0; i < sizeof(pids) / sizeof(pids[0]); i++) {
+        if (one.readPID(pids[i], values[i])) {
+          one.log((uint16_t)pids[i] | 0x100, values[i]);
+        }
+#if USE_MEMS
+        one.log(PID_ACC, (int16_t)((acc[0] - accBias[0]) * 100), (int16_t)((acc[1] - accBias[1]) * 100), (int16_t)((acc[2] - accBias[2]) * 100));
+#endif
+      }
+      if (one.errors >= 3) {
+          one.reset();
+          one.reconnect();
+      }
+  } else {
+    if (!OBD_ATTEMPT_TIME || millis() < OBD_ATTEMPT_TIME * 1000L) {
+      if (one.init()) {
+          one.state |= STATE_OBD_READY;
+      }
     }
+  }
+
+  // log battery voltage (from voltmeter), data in 0.01v
+  voltage = one.getVoltage();
+  one.log(PID_BATTERY_VOLTAGE, (int)(voltage * 100));
+  
+#if USE_GPS
+  if (one.state & STATE_GPS_FOUND) {
+    one.processGPS();
+  }
 #endif
 #if USE_CELL_GPS
-    if (one.state & STATE_CELL_GPS_FOUND) {
-      one.processCellGPS();
-    }
+  if (one.state & STATE_CELL_GPS_FOUND) {
+    one.processCellGPS();
+  }
 #endif
 
-#if !ENABLE_DATA_OUT
-    uint32_t t = millis();
-    Serial.print(one.dataCount);
-    Serial.print(" samples ");
-    Serial.print((float)one.dataCount * 1000 / t, 1);
-    Serial.print(" sps ");
+#if !ENABLE_CLI
+  uint32_t t = millis();
+  Serial.print(one.dataCount);
+  Serial.print(" samples ");
+  Serial.print((float)one.dataCount * 1000 / t, 1);
+  Serial.print(" sps ");
 #if ENABLE_DATA_LOG
-    if (one.state & STATE_FILE_READY) {
-      uint32_t fileSize = sdfile.size();
-      one.flushData(fileSize);
-      Serial.print(fileSize);
-      Serial.print(" bytes");
-    }
+  if (one.state & STATE_FILE_READY) {
+    uint32_t fileSize = sdfile.size();
+    one.flushData(fileSize);
+    Serial.print(fileSize);
+    Serial.print(" bytes");
+  }
 #endif
-    Serial.println();
+  Serial.println();
 #endif
 }
