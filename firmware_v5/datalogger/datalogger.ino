@@ -23,8 +23,6 @@
 #include "datalogger.h"
 #include "config.h"
 
-void initMesh();
-
 // states
 #define STATE_STORE_READY 0x1
 #define STATE_OBD_READY 0x2
@@ -38,11 +36,11 @@ void initMesh();
 void serverProcess(int timeout);
 bool serverSetup();
 bool serverCheckup(int wifiJoinPeriod = WIFI_JOIN_TIMEOUT);
-void executeCommand();
+void processCommand(int timeout);
+void initMesh();
 
 uint32_t startTime = 0;
 uint32_t pidErrors = 0;
-float accBias[3];
 uint32_t fileid = 0;
 // live data
 char vin[18] = {0};
@@ -51,7 +49,7 @@ int16_t batteryVoltage = 0;
 typedef struct {
   byte pid;
   byte tier;
-  int16_t value;
+  int value;
   uint32_t ts;
 } PID_POLLING_INFO;
 
@@ -70,6 +68,8 @@ PID_POLLING_INFO obdData[]= {
 float acc[3] = {0};
 float gyr[3] = {0};
 float mag[3] = {0};
+float accBias[3];
+float temp = 0;
 ORIENTATION ori = {0};
 #endif
 
@@ -77,8 +77,6 @@ ORIENTATION ori = {0};
 GPS_DATA* gd = 0;
 uint32_t lastGPStime = 0;
 #endif
-
-char command[16] = {0};
 
 FreematicsESP32 sys;
 
@@ -118,7 +116,6 @@ void calibrateMEMS()
     accBias[2] = 0;
     int n;
     for (n = 0; n < 100; n++) {
-      float acc[3] = {0};
       mems->read(acc);
       accBias[0] += acc[0];
       accBias[1] += acc[1];
@@ -177,22 +174,6 @@ int handlerLiveData(UrlHandlerParam* param)
 #endif
     buf[n++] = '}';
     param->contentLength = n;
-    param->contentType=HTTPFILETYPE_JSON;
-    return FLAG_DATA_RAW;
-}
-
-int handlerControl(UrlHandlerParam* param)
-{
-    char *cmd = mwGetVarValue(param->pxVars, "cmd", 0);
-    if (!cmd) return 0;
-    char *buf = param->pucBuffer;
-    int bufsize = param->bufSize;
-    if (command[0]) {
-        param->contentLength = snprintf(buf, bufsize, "{\"result\":\"pending\"}");
-    } else {
-        strncpy(command, cmd, sizeof(command) - 1);
-        param->contentLength = snprintf(buf, bufsize, "{\"result\":\"OK\"}");
-    }
     param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
@@ -296,12 +277,17 @@ public:
         // set GPS ready flag
         setState(STATE_GPS_READY);
 
-        Serial.print("[GPS] ");
+        Serial.print("[GNSS] ");
 
         char buf[32];
-        sprintf(buf, "%02u:%02u:%02u.%c",
+        int len = sprintf(buf, "%02u:%02u:%02u.%c",
             gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, '0' + (gd->time % 100) / 10);
         Serial.print(buf);
+#if ENABLE_BLE
+        ble_send(SPP_IDX_SPP_DATA_NTY_VAL, buf, len);
+        len = sprintf(buf, "%f,%f", gd->lat, gd->lng);
+        ble_send(SPP_IDX_SPP_DATA_NTY_VAL, buf, len);
+#endif
 
         Serial.print(' ');
         Serial.print(gd->lat, 6);
@@ -382,32 +368,31 @@ public:
         Serial.println("Standby"); 
 #if USE_MEMS
         if (checkState(STATE_MEMS_READY)) {
-        calibrateMEMS();
-        while (checkState(STATE_STANDBY)) {
-            // calculate relative movement
-            float motion = 0;
-            for (byte n = 0; n < 10; n++) {
-            mems->read(acc);
-            for (byte i = 0; i < 3; i++) {
-                float m = (acc[i] - accBias[i]);
-                motion += m * m;
-            }
-            
+            calibrateMEMS();
+            while (checkState(STATE_STANDBY)) {
+                // calculate relative movement
+                float motion = 0;
+                unsigned int n = 0;
+                for (uint32_t t = millis(); millis() - t < 1000; n++) {
+                    mems->read(acc, 0, 0, &temp);
+                    for (byte i = 0; i < 3; i++) {
+                        float m = (acc[i] - accBias[i]);
+                        motion += m * m;
+                    }
 #if (ENABLE_WIFI_STATION || ENABLE_WIFI_AP)
-            serverCheckup(WIFI_JOIN_TIMEOUT * 4);
-            serverProcess(100);
+                    serverCheckup(WIFI_JOIN_TIMEOUT * 4);
+                    serverProcess(100);
 #else
-            delay(100);
+                    processCommand(100);
 #endif
+                }
+                // check movement
+                if (motion / n >= WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+                    Serial.print("Motion:");
+                    Serial.println(motion / n);
+                    break;
+                }
             }
-            // check movement
-            if (motion > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
-                Serial.print("Motion:");
-                Serial.println(motion);
-                break;
-            }
-            executeCommand();
-        }
         }
 #else
         while (!obd.init()) Serial.print('.');
@@ -416,6 +401,7 @@ public:
         // this will wake up co-processor
         sys.reactivateLink();
         //ESP.restart();
+        clearState(STATE_STANDBY);
     }
 #if USE_GNSS >= 2
     bool cellSendCommand(const char* cmd, char* buf, int bufsize, const char* expected = "\r\nOK", unsigned int timeout = 1000)
@@ -515,8 +501,7 @@ public:
                 }
             }
         }
-        //cellSendCommand("AT+CGPSNMEARATE=1\r", buf, sizeof(buf));
-        //cellSendCommand("AT+CGPSINFOCFG=10,31\r", buf, sizeof(buf));
+        cellSendCommand("AT+CGPSNMEARATE=10\r", buf, sizeof(buf));
         return success;
     }
     void cellUninit()
@@ -550,6 +535,7 @@ public:
     {
       char *p;
       char buf[160];
+      cellSendCommand("AT+CGPSINFOCFG=1,31\r", buf, sizeof(buf));
       if (cellSendCommand("AT+CGPSINFO\r", buf, sizeof(buf), "+CGPSINFO:")) do {
         Serial.print(buf);
         if (!(p = strchr(buf, ':'))) break;
@@ -601,9 +587,13 @@ void showStats()
     // calculate samples per second
     float sps = (float)dataCount * 1000 / t;
     // output to serial monitor
-    char timestr[24];
-    sprintf(timestr, "%02u:%02u.%c", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
-    Serial.print(timestr);
+    char buf[32];
+#if ENABLE_BLE
+    int len = sprintf(buf, "T:%u D:%u S:%.1f", t, dataCount, sps);
+    ble_send(SPP_IDX_SPP_STATUS_VAL, buf, len);
+#endif
+    sprintf(buf, "%02u:%02u.%c", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
+    Serial.print(buf);
     Serial.print(" | ");
     Serial.print(dataCount);
     Serial.print(" samples | ");
@@ -624,11 +614,106 @@ void showStats()
     }
     Serial.println();
 }
+ 
+void processCommand(int timeout)
+{
+#if ENABLE_BLE
+    static byte echo = 0;
+    char* cmd;
+    if (!(cmd = ble_recv_command(timeout))) {
+        return;
+    }
+
+    char *p = strchr(cmd, '\r');
+    if (p) *p = 0;
+    char buf[48];
+    int bufsize = sizeof(buf);
+    int n = 0;
+    if (echo) n += snprintf(buf + n, bufsize - n, "%s\r", cmd);
+    Serial.print("[BLE] ");
+    Serial.print(cmd);
+    if (!strcmp(cmd, "UPTIME") || !strcmp(cmd, "TICK")) {
+        n += snprintf(buf + n, bufsize - n, "%u", millis());
+    } else if (!strcmp(cmd, "BATT")) {
+        n += snprintf(buf + n, bufsize - n, "%.2f", (float)(analogRead(A0) * 42) / 4095);
+    } else if (!strcmp(cmd, "RESET")) {
+        store.close();
+        ESP.restart();
+        // never reach here
+    } else if (!strcmp(cmd, "OFF")) {
+        logger.setState(STATE_STANDBY);
+        n += snprintf(buf + n, bufsize - n, "OK");
+    } else if (!strcmp(cmd, "ON")) {
+        logger.clearState(STATE_STANDBY);
+        n += snprintf(buf + n, bufsize - n, "OK");
+    } else if (!strcmp(cmd, "ON?")) {
+        n += snprintf(buf + n, bufsize - n, "%u", logger.checkState(STATE_STANDBY) ? 0 : 1);
+    } else if (!strcmp(cmd, "TEMP")) {
+        n += snprintf(buf + n, bufsize - n, "%d", (int)temp);
+    } else if (!strcmp(cmd, "ACC")) {
+        n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", acc[0], acc[1], acc[2]);
+    } else if (!strcmp(cmd, "GYRO")) {
+        n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", gyr[0], gyr[1], gyr[2]);
+    } else if (!strcmp(cmd, "GF")) {
+        n += snprintf(buf + n, bufsize - n, "%f", (float)sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
+    } else if (!strcmp(cmd, "ATE0")) {
+        echo = 0;
+        n += snprintf(buf + n, bufsize - n, "OK");
+    } else if (!strcmp(cmd, "ATE1")) {
+        echo = 1;
+        n += snprintf(buf + n, bufsize - n, "OK");
+    } else if (!strcmp(cmd, "FS")) {
+        n += snprintf(buf + n, bufsize - n, "%u", store.size());
+    } else if (!memcmp(cmd, "01", 2)) {
+        byte pid = hex2uint8(cmd + 2);
+        for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
+            if (obdData[i].pid == pid) {
+                n += snprintf(buf + n, bufsize - n, "%d", obdData[i].value);
+                pid = 0;
+                break;
+            }
+        }
+        if (pid) {
+            int value;
+            if (obd.readPID(pid, value)) {
+                n += snprintf(buf + n, bufsize - n, "%d", value);
+            } else {
+                n += snprintf(buf + n, bufsize - n, "N/A");
+            }
+        }
+    } else if (!strcmp(cmd, "VIN")) {
+        n += snprintf(buf + n, bufsize - n, "%s", vin[0] ? vin : "N/A");
+    } else if (!strcmp(cmd, "LAT") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%f", gd->lat);
+    } else if (!strcmp(cmd, "LNG") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%f", gd->lng);
+    } else if (!strcmp(cmd, "ALT") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%d", (int)gd->alt);
+    } else if (!strcmp(cmd, "SAT") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%u", (unsigned int)gd->sat);
+    } else if (!strcmp(cmd, "SPD") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%d", (int)(gd->speed * 1852 / 1000));
+    } else if (!strcmp(cmd, "CRS") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%u", (unsigned int)gd->heading);
+    } else {
+        n += snprintf(buf + n, bufsize - n, "ERROR");
+    }
+    Serial.print(" -> ");
+    Serial.println((p = strchr(buf, '\r')) ? p + 1 : buf);
+    if (n < bufsize - 1) {
+        buf[n++] = '\r';
+    } else {
+        n = bufsize - 1;
+    }
+    buf[n] = 0;
+    ble_send_response(buf, n, cmd);
+#endif
+}
 
 void setup()
 {
-    delay(1000);
-
+    delay(500);
+ 
     // initialize USB serial
     Serial.begin(115200);
     Serial.print("ESP32 ");
@@ -637,9 +722,15 @@ void setup()
     Serial.print(getFlashSize() >> 10);
     Serial.println("MB Flash");
 
+#ifdef PIN_LED
     // init LED pin
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_LED, HIGH);
+#endif
+
+#if ENABLE_BLE
+    ble_init();
+#endif
 
     if (sys.begin(true, USE_GNSS >= 2)) {
         Serial.print("TYPE:");
@@ -712,33 +803,17 @@ void setup()
 #endif
 #endif
 
+#ifdef PIN_LED
     pinMode(PIN_LED, LOW);
+#endif
 
     logger.init();
-}
-
-void executeCommand()
-{
-    if (!command[0]) return;
-    if (!strcmp(command, "reset")) {
-        store.close();
-        ESP.restart();
-        // never reach here
-    } else if (!strcmp(command, "standby")) {
-        command[0] = 0;
-        if (!logger.checkState(STATE_STANDBY)) {
-            logger.standby();
-        }
-    } else if (!strcmp(command, "wakeup")) {
-        logger.clearState(STATE_STANDBY);
-    }
-    command[0] = 0;
 }
 
 void loop()
 {
 #if USE_OBD
-    if (!logger.checkState(STATE_OBD_READY)) {
+    if (!logger.checkState(STATE_OBD_READY) || logger.checkState(STATE_STANDBY)) {
         logger.standby();
         Serial.print("OBD:");
         if (!obd.init()) {
@@ -760,6 +835,17 @@ void loop()
     }
 
     uint32_t ts = millis();
+
+#if USE_GNSS == 1
+    if (logger.checkState(STATE_GPS_FOUND)) {
+        logger.processGPSData();
+    }
+#elif USE_GNSS >= 2
+    if (logger.checkState(STATE_CELL_GPS_FOUND)) {
+      logger.processCellGPS();
+    }
+#endif
+
     // poll and log OBD data
     store.setTimestamp(ts);
 #if USE_OBD
@@ -782,10 +868,9 @@ void loop()
         }
         byte pid = obdData[i].pid;
         if (!obd.isValidPID(pid)) continue;
-        int value;
-        if (obd.readPID(pid, value)) {
+        if (obd.readPID(pid, obdData[i].value)) {
             obdData[i].ts = millis();
-            store.log((uint16_t)pid | 0x100, value);
+            store.log((uint16_t)pid | 0x100, obdData[i].value);
         } else {
             pidErrors++;
             Serial.print("PID ");
@@ -799,26 +884,16 @@ void loop()
             logger.processGPSData();
         }
 #endif
+        processCommand(0);
         if (tier > 1) break;
     }
 #endif
-
-#if USE_GNSS == 1
-    if (logger.checkState(STATE_GPS_FOUND)) {
-        logger.processGPSData();
-    }
-#elif USE_GNSS >= 2
-    if (logger.checkState(STATE_CELL_GPS_FOUND)) {
-      logger.processCellGPS();
-    }
-#endif
-
 
 #if USE_MEMS
     if (logger.checkState(STATE_MEMS_READY)) {
       bool updated;
 #if ENABLE_ORIENTATION
-      updated = mems->read(acc, gyr, mag, 0, &ori);
+      updated = mems->read(acc, gyr, mag, &temp, &ori);
       if (updated) {
         Serial.print("Orientation: ");
         Serial.print(ori.yaw, 2);
@@ -831,7 +906,7 @@ void loop()
         store.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
       }
 #else
-      updated = mems->read(acc, gyr, mag);
+      updated = mems->read(acc, gyr, mag, &temp);
       if (updated) {
         store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
         store.log(PID_GYRO, (int16_t)(gyr[0] * 100), (int16_t)(gyr[1] * 100), (int16_t)(gyr[2] * 100));
@@ -859,8 +934,6 @@ void loop()
 #if ENABLE_HTTPD
     serverProcess(0);
 #endif
-
-    executeCommand();
 
 #if ENABLE_WIFI_AP || ENABLE_WIFI_STATION
     serverCheckup();
@@ -897,4 +970,6 @@ void loop()
     if (ts < MIN_LOOP_TIME) delay(MIN_LOOP_TIME - ts);
 #endif
 #endif
+
+    processCommand(0);
 }

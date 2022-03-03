@@ -48,9 +48,11 @@
 #define ENABLE_ORIENTATION 0
 #endif
 
+#define ENABLE_BLE 0
+
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
 // motion detection
-#define WAKEUP_MOTION_THRESHOLD 0.5 /* G */
+#define WAKEUP_MOTION_THRESHOLD 0.03 /* G */
 // minimum loop time
 #define MIN_LOOP_TIME 100 /* ms */ 

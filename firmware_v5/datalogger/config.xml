@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
-<target board="esp32 esp32_16m" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
+<target board="esp32 esp32c3" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
   <define name="GNSS Mode">
     <option name="Disabled" const="USE_GNSS=0"/>
     <option name="Standalone GNSS" const="USE_GNSS=1" default="true"/>

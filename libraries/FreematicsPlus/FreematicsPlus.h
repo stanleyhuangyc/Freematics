@@ -18,6 +18,9 @@
 #include "FreematicsNetwork.h"
 #include "FreematicsMEMS.h"
 #include "FreematicsOBD.h"
+extern "C" {
+#include "utility/ble_spp_server.h"
+}
 
 #define PIN_LED 4
 #define PIN_SD_CS 5

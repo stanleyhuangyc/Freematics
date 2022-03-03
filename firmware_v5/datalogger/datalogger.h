@@ -96,12 +96,10 @@ protected:
             int id = 0;
             File file;
             while(file = root.openNextFile()) {
-                Serial.println(file.name());
                 char *p = strrchr(file.name(), '/');
                 unsigned int n = atoi(p ? p + 1 : file.name());
                 if (n > id) id = n;
             }
-            Serial.println(id);
             return id + 1;
         }
         return 0;
