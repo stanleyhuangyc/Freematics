@@ -48,6 +48,7 @@
 #define ENABLE_ORIENTATION 0
 #endif
 
+// enable(1)/disable(0) BLE SPP server (for Freematics Controller App).
 #define ENABLE_BLE 0
 
 // GPS parameters
