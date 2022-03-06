@@ -1,4 +1,4 @@
-This Arduino sketch is designed for running on [Freematics ONE+](https://freematics.com/products/freematics-one-plus/) and the [ESP32 Arduino Telematics Kit](https://freematics.com/products/freematics-esprit-obd-kit/), to collect vehicle telemetry data from OBD-II, GPS and motion sensor, store the collected data in Flash or microSD card and provide access for data through WiFi and BLE.
+This Arduino sketch is designed for running on [Freematics ONE+](https://freematics.com/products/freematics-one-plus/) to collect vehicle telemetry data from OBD-II, GPS and motion sensor, store the collected data in Flash or microSD card and provide data access through WiFi and BLE.
 
 Data Collection
 ---------------
