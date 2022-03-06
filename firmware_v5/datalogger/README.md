@@ -3,33 +3,32 @@ This Arduino sketch is designed for running on [Freematics ONE+](https://freemat
 Data Collection
 ---------------
 
-The sketch collects follow data.
+The sketch collects and logs data including following.
 
 * Vehicle OBD-II PIDs data (from OBD port)
-* Battery voltage (from OBD port)
-* Geolocation data (from connected GNSS receiver)
-* Acceleration data (from built-in motion sensor)
-* Orientation data (computed from motion sensor data fusion)
+* Vehicle battery voltage (from OBD port)
+* Geolocation data (from internal GNSS or connected GNSS receiver)
+* Acceleration data (from internal motion sensor)
 
 Geolocation
 -----------
 
-When GNSS receiver is connected and detected, geolocation data will be obtained and logged. GPS UTC time is used to sync the device's real-time clock.
+When GNSS receiver is connected and detected, geolocation data will be obtained and logged.
 
 Orientation
 -----------
 
-The device orientation (yaw, pitch roll) can be calculated from collected motion sensor data with quanterion algorithm. This normally reflects the orientation of the vehicle if the device is fixed to vehicle (e.g. firmly plugged in OBD port)  This feature consumes extra computation power and is disabled by default.
+The device orientation (yaw, pitch roll) can be calculated from collected motion sensor data with quanterion algorithm. This reflects the orientation of the vehicle if the device is firmly fixed to the vehicle. This feature consumes extra computation power and is disabled by default.
 
 Storage
 -------
 
-By default, ESP32's internal flash is used for data storage (file-based, using SPIFFS). Simple rotation logging is implemented due to limited storage size. MicroSD data logging is also supported.
+MicroSD is used as data storage by default. Alternatively ESP32's internal flash can be used for data storage with SPIFFS. Simple rotation logging is implemented due to limited storage size.
 
 HTTP Server
 -----------
 
-A multiple-connection HTTP server [HTTP server](https://github.com/stanleyhuangyc/Freematics/tree/master/libraries/httpd) runs over ESP32's WiFi (AP and/or station). A set of REST API provides remote access to device status, statistics and real-time data and logged data.
+A multiple-connection HTTP server [HTTP server](https://github.com/stanleyhuangyc/Freematics/blob/master/libraries/httpd) runs over ESP32's WiFi (AP and/or station). A set of REST API provides remote access to device status, statistics and real-time data and logged data.
 
 Implemented HTTP APIs:
 
@@ -40,15 +39,16 @@ Implemented HTTP APIs:
 * /api/delete/[file #] - delete file
 * /api/data/[file #]?pid=[PID # in HEX] - JSON array of PID data
 
-NMEA TCP Server
----------------
+BLE
+---
 
-A TCP server (default port 4000) is brought up and the NMEA data stream from GNSS receiver is redirected to a incoming TCP connection. This can be used to visualize GNSS signal with software like [u-blox u-center](https://www.u-blox.com/en/product/u-center-windows) over WiFi.
+A BLE SPP server is implemented in [FreematicsPlus](https://github.com/stanleyhuangyc/Freematics/blob/master/libraries/FreematicsPlus) library. To enable BLE support, change ENABLE_BLE to 1 [config.h](config.h). This will enable remote control and data monitoring via [Freematics Controller App](https://freematics.com/software/freematics-controller/).
+
 
 Prerequisites
 -------------
 
 * [Freematics ONE+](https://freematics.com/products/freematics-one-plus/)
-* [PlatformIO](http://platformio.org/), [Arduino IDE](https://github.com/espressif/arduino-esp32#installation-instructions) or [Freematics Arduino Builder](https://freematics.com/software/arduino-builder) for compiling and uploading code
+* [PlatformIO](http://platformio.org/), [Arduino IDE](https://github.com/espressif/arduino-esp32#installation-instructions) or [Freematics Builder](https://freematics.com/software/arduino-builder) for compiling and uploading code
 * A car with OBD-II port or [Freematics OBD-II Emulator](https://freematics.com/products/freematics-obd-emulator-mk2/)
 
