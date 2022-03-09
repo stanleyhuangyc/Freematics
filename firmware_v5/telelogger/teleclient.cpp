@@ -20,8 +20,6 @@
 #include "telemesh.h"
 #include "teleclient.h"
 
-bool processCommand(char* data);
-
 extern int16_t rssi;
 extern char devid[];
 extern char vin[];
@@ -305,9 +303,6 @@ void TeleClientUDP::inbound()
     if (!p) break;
     int eventID = atoi(p + 3);
     switch (eventID) {
-    case EVENT_COMMAND:
-      processCommand(data);
-      break;
     case EVENT_SYNC:
         {
           uint16_t id = hex2uint16(data);

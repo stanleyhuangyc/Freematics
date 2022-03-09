@@ -21,6 +21,7 @@
 #include "esp_bt_main.h"
 #include "driver/uart.h"
 #include "ble_spp_server.h"
+#include "esp32-hal-bt.h"
 
 #define GATTS_TABLE_TAG  "GATTS_SPP_SERVER"
 
@@ -135,6 +136,7 @@ static const esp_gatts_attr_db_t spp_gatt_db[SPP_IDX_NB] =
     {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&primary_service_uuid, ESP_GATT_PERM_READ,
     sizeof(spp_service_uuid), sizeof(spp_service_uuid), (uint8_t *)&spp_service_uuid}},
 
+#if 0
     //SPP -  data receive characteristic Declaration
     [SPP_IDX_SPP_DATA_RECV_CHAR]            =
     {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ,
@@ -159,6 +161,7 @@ static const esp_gatts_attr_db_t spp_gatt_db[SPP_IDX_NB] =
     [SPP_IDX_SPP_DATA_NTF_CFG]         =
     {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_client_config_uuid, ESP_GATT_PERM_READ|ESP_GATT_PERM_WRITE,
     sizeof(uint16_t),sizeof(spp_data_notify_ccc), (uint8_t *)spp_data_notify_ccc}},
+#endif
 
     //SPP -  command characteristic Declaration
     [SPP_IDX_SPP_COMMAND_CHAR]            =
@@ -392,8 +395,9 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
 void ble_init()
 {
     esp_err_t ret;
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    //esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
+#if 0
     // Initialize NVS
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -401,6 +405,7 @@ void ble_init()
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK( ret );
+#endif
 
     if(!btStarted() && !btStart()){
       ESP_LOGE(GATTS_TABLE_TAG, "%s BT init failed\n", __func__);

@@ -28,9 +28,6 @@
 #if ENABLE_OLED
 #include "FreematicsOLED.h"
 #endif
-extern "C" {
-#include "ble_spp_server.h"
-}
 
 // states
 #define STATE_STORAGE_READY 0x1
@@ -66,6 +63,10 @@ Task subtask;
 #if ENABLE_MEMS
 float accBias[3] = {0}; // calibrated reference accelerometer data
 float accSum[3] = {0};
+float temp = 0;
+float acc[3] = {0};
+float gyr[3] = {0};
+float mag[3] = {0};
 uint8_t accCount = 0;
 #endif
 float deviceTemp = 0;
@@ -101,8 +102,6 @@ byte ledMode = 0;
 
 bool serverSetup(IPAddress& ip);
 void serverProcess(int timeout);
-String executeCommand(const char* cmd);
-bool processCommand(char* data);
 void processMEMS(CBuffer* buffer);
 bool processGPS(CBuffer* buffer);
 
@@ -173,7 +172,7 @@ void processExtInputs(CBuffer* buffer)
   Serial.print("GPIO0:");
   Serial.print((float)reading[0] * 3.15 / 4095 - 0.01);
   Serial.print(" GPIO1:");
-  Serial.print((float)reading[1] * 3.15 / 4095 - 0.01);
+  Serial.println((float)reading[1] * 3.15 / 4095 - 0.01);
   for (int i = 0; i < 2; i++) {
     buffer->add(pids[i], reading[i]);
   }
@@ -210,17 +209,6 @@ int handlerLiveData(UrlHandlerParam* param)
     }
     buf[n++] = '}';
     param->contentLength = n;
-    param->contentType=HTTPFILETYPE_JSON;
-    return FLAG_DATA_RAW;
-}
-
-int handlerControl(UrlHandlerParam* param)
-{
-    char *cmd = mwGetVarValue(param->pxVars, "cmd", 0);
-    if (!cmd) return 0;
-    String result = executeCommand(cmd);
-    param->contentLength = snprintf(param->pucBuffer, param->bufSize,
-        "{\"result\":\"%s\"}", result.c_str());
     param->contentType=HTTPFILETYPE_JSON;
     return FLAG_DATA_RAW;
 }
@@ -261,6 +249,7 @@ void processOBD(CBuffer* buffer)
         printTimeoutStats();
         break;
     }
+    processBLE(0);
     if (tier > 1) break;
   }
   int kph = obdData[0].value;
@@ -368,10 +357,6 @@ void processMEMS(CBuffer* buffer)
   if (!state.check(STATE_MEMS_READY)) return;
 
   // load and store accelerometer data
-  float temp = 0;
-  float acc[3];
-  float gyr[3];
-  float mag[3];
 #if ENABLE_ORIENTATION
   ORIENTATION ori;
   if (!mems->read(acc, gyr, mag, &temp, &ori)) return;
@@ -576,115 +561,12 @@ void initialize()
 #endif
 }
 
-/*******************************************************************************
-  Executing a remote command
-*******************************************************************************/
-String executeCommand(const char* cmd)
-{
-  String result;
-  Serial.println(cmd);
-  if (!strncmp(cmd, "LED", 3) && cmd[4]) {
-    ledMode = (byte)atoi(cmd + 4);
-    digitalWrite(PIN_LED, (ledMode == 2) ? HIGH : LOW);
-    result = "OK";
-  } else if (!strcmp(cmd, "REBOOT")) {
-  #if STORAGE != STORAGE_NONE
-    if (state.check(STATE_STORAGE_READY)) {
-      logger.end();
-      state.clear(STATE_STORAGE_READY);
-    }
-  #endif
-    teleClient.shutdown();
-    ESP.restart();
-    // never reach here
-  } else if (!strcmp(cmd, "STANDBY")) {
-    state.clear(STATE_WORKING);
-    result = "OK";
-  } else if (!strcmp(cmd, "WAKEUP")) {
-    state.clear(STATE_STANDBY);
-    result = "OK";
-  } else if (!strncmp(cmd, "SET", 3) && cmd[3]) {
-    const char* subcmd = cmd + 4;
-    if (!strncmp(subcmd, "SYNC", 4) && subcmd[4]) {
-      syncInterval = atoi(subcmd + 4 + 1);
-      result = "OK";
-    } else {
-      result = "ERROR";
-    }
-  } else if (!strcmp(cmd, "STATS")) {
-    char buf[64];
-    sprintf(buf, "TX:%u OBD:%u NET:%u", teleClient.txCount, timeoutsOBD, timeoutsNet);
-    result = buf;
-#if ENABLE_OBD
-  } else if (!strncmp(cmd, "OBD", 3) && cmd[4]) {
-    // send OBD command
-    char buf[256];
-    sprintf(buf, "%s\r", cmd + 4);
-    if (obd.link && obd.link->sendCommand(buf, buf, sizeof(buf), OBD_TIMEOUT_LONG) > 0) {
-      Serial.println(buf);
-      for (int n = 0; buf[n]; n++) {
-        switch (buf[n]) {
-        case '\r':
-        case '\n':
-          result += ' ';
-          break;
-        default:
-          result += buf[n];
-        }
-      }
-    } else {
-      result = "ERROR";
-    }
-#endif
-  } else {
-    return "INVALID";
-  }
-  return result;
-}
-
-bool processCommand(char* data)
-{
-  char *p;
-  if (!(p = strstr(data, "TK="))) return false;
-  uint32_t token = atol(p + 3);
-  if (!(p = strstr(data, "CMD="))) return false;
-  char *cmd = p + 4;
-
-  if (token > lastCmdToken) {
-    // new command
-    String result = executeCommand(cmd);
-    // send command response
-    char buf[256];
-    snprintf(buf, sizeof(buf), "TK=%u,MSG=%s", token, result.c_str());
-    for (byte attempts = 0; attempts < 3; attempts++) {
-      Serial.println("ACK...");
-      if (teleClient.notify(EVENT_ACK, buf)) {
-        Serial.println("sent");
-        break;
-      }
-    }
-  } else {
-    // previously executed command
-    char buf[64];
-    snprintf(buf, sizeof(buf), "TK=%u,DUP=1", token);
-    for (byte attempts = 0; attempts < 3; attempts++) {
-      Serial.println("ACK...");
-      if (teleClient.notify(EVENT_ACK, buf)) {
-        Serial.println("sent");
-        break;
-      }
-    }
-  }
-  return true;
-}
-
 void showStats()
 {
   uint32_t t = millis() - teleClient.startTime;
   char buf[32];
 #if ENABLE_BLE
   int len = sprintf(buf, "T:%u P:%u B:%u", t, teleClient.txCount, teleClient.txBytes);
-  ble_send(SPP_IDX_SPP_STATUS_VAL, buf, len);
 #endif
   sprintf(buf, "%02u:%02u.%c ", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
   Serial.print("[NET] ");
@@ -713,7 +595,6 @@ bool waitMotion(long timeout)
   unsigned long t = millis();
   if (state.check(STATE_MEMS_READY)) {
     do {
-      serverProcess(100);
       // calculate relative movement
       float motion = 0;
       float acc[3];
@@ -732,6 +613,10 @@ bool waitMotion(long timeout)
         float m = (acc[i] - accBias[i]);
         motion += m * m;
       }
+#if ENABLE_HTTTPD
+      serverProcess(100);
+#endif
+      processBLE(100);
       // check movement
       if (motion >= MOTION_THRESHOLD * MOTION_THRESHOLD) {
         //lastMotionTime = millis();
@@ -781,7 +666,7 @@ void process()
 
 #if ENABLE_OBD
   if (sys.devType > 12) {
-    batteryVoltage = (float)(analogRead(A0) * 12 * 370) / 4095;
+    batteryVoltage = (float)(analogRead(A0) * 40) / 4095;
   } else if (state.check(STATE_OBD_READY)) {
     batteryVoltage = obd.getVoltage() * 100;
   }
@@ -853,8 +738,10 @@ void process()
 #else
   dataInterval = dataIntervals[0];
 #endif
-  long t = dataInterval - (millis() - startTime);
-  if (t > 0 && t < dataInterval) delay(t);
+  do {
+    long t = dataInterval - (millis() - startTime);
+    processBLE(t > 0 ? t : 0);
+  } while (millis() - startTime < dataInterval);
 }
 
 bool initNetwork()
@@ -905,7 +792,7 @@ bool initNetwork()
   Serial.println(teleClient.net.deviceName());
   if (!teleClient.net.checkSIM(SIM_CARD_PIN)) {
     Serial.println("NO SIM CARD");
-    return false;
+    //return false;
   }
   Serial.print("IMEI:");
   Serial.println(teleClient.net.IMEI);
@@ -1066,7 +953,9 @@ void telemetry(void* inst)
       //Serial.println(store.buffer());
 
       // start transmission
+#ifdef PIN_LED
       if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+#endif
       if (teleClient.transmit(store.buffer(), store.length())) {
         // successfully sent
         connErrors = 0;
@@ -1076,11 +965,13 @@ void telemetry(void* inst)
         timeoutsNet++;
         printTimeoutStats();
       }
+#ifdef PIN_LED
       if (ledMode == 0) digitalWrite(PIN_LED, LOW);
-
+#endif
       store.purge();
 
       teleClient.inbound();
+
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
         Serial.println("Instable connection");
         connErrors++;
@@ -1276,10 +1167,107 @@ void configMode()
 }
 #endif
 
+void processBLE(int timeout)
+{
+#if ENABLE_BLE
+    static byte echo = 0;
+    char* cmd;
+    if (!(cmd = ble_recv_command(timeout))) {
+        return;
+    }
+
+    char *p = strchr(cmd, '\r');
+    if (p) *p = 0;
+    char buf[48];
+    int bufsize = sizeof(buf);
+    int n = 0;
+    if (echo) n += snprintf(buf + n, bufsize - n, "%s\r", cmd);
+    Serial.print("[BLE] ");
+    Serial.print(cmd);
+    if (!strcmp(cmd, "UPTIME") || !strcmp(cmd, "TICK")) {
+        n += snprintf(buf + n, bufsize - n, "%u", millis());
+    } else if (!strcmp(cmd, "BATT")) {
+        n += snprintf(buf + n, bufsize - n, "%.2f", (float)(analogRead(A0) * 42) / 4095);
+    } else if (!strcmp(cmd, "RESET")) {
+        logger.end();
+        ESP.restart();
+        // never reach here
+    } else if (!strcmp(cmd, "OFF")) {
+        state.set(STATE_STANDBY);
+        n += snprintf(buf + n, bufsize - n, "OK");
+    } else if (!strcmp(cmd, "ON")) {
+        state.clear(STATE_STANDBY);
+        n += snprintf(buf + n, bufsize - n, "OK");
+    } else if (!strcmp(cmd, "ON?")) {
+        n += snprintf(buf + n, bufsize - n, "%u", state.check(STATE_STANDBY) ? 0 : 1);
+#if ENABLE_MEMS
+    } else if (!strcmp(cmd, "TEMP")) {
+        n += snprintf(buf + n, bufsize - n, "%d", (int)temp);
+    } else if (!strcmp(cmd, "ACC")) {
+        n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", acc[0], acc[1], acc[2]);
+    } else if (!strcmp(cmd, "GYRO")) {
+        n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", gyr[0], gyr[1], gyr[2]);
+    } else if (!strcmp(cmd, "GF")) {
+        n += snprintf(buf + n, bufsize - n, "%f", (float)sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
+#endif
+    } else if (!strcmp(cmd, "ATE0")) {
+        echo = 0;
+        n += snprintf(buf + n, bufsize - n, "OK");
+    } else if (!strcmp(cmd, "ATE1")) {
+        echo = 1;
+        n += snprintf(buf + n, bufsize - n, "OK");
+    } else if (!strcmp(cmd, "FS")) {
+        n += snprintf(buf + n, bufsize - n, "%u", logger.size());
+    } else if (!memcmp(cmd, "01", 2)) {
+        byte pid = hex2uint8(cmd + 2);
+        for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
+            if (obdData[i].pid == pid) {
+                n += snprintf(buf + n, bufsize - n, "%d", obdData[i].value);
+                pid = 0;
+                break;
+            }
+        }
+        if (pid) {
+            int value;
+            if (obd.readPID(pid, value)) {
+                n += snprintf(buf + n, bufsize - n, "%d", value);
+            } else {
+                n += snprintf(buf + n, bufsize - n, "N/A");
+            }
+        }
+    } else if (!strcmp(cmd, "VIN")) {
+        n += snprintf(buf + n, bufsize - n, "%s", vin[0] ? vin : "N/A");
+    } else if (!strcmp(cmd, "LAT") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%f", gd->lat);
+    } else if (!strcmp(cmd, "LNG") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%f", gd->lng);
+    } else if (!strcmp(cmd, "ALT") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%d", (int)gd->alt);
+    } else if (!strcmp(cmd, "SAT") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%u", (unsigned int)gd->sat);
+    } else if (!strcmp(cmd, "SPD") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%d", (int)(gd->speed * 1852 / 1000));
+    } else if (!strcmp(cmd, "CRS") && gd) {
+        n += snprintf(buf + n, bufsize - n, "%u", (unsigned int)gd->heading);
+    } else {
+        n += snprintf(buf + n, bufsize - n, "ERROR");
+    }
+    Serial.print(" -> ");
+    Serial.println((p = strchr(buf, '\r')) ? p + 1 : buf);
+    if (n < bufsize - 1) {
+        buf[n++] = '\r';
+    } else {
+        n = bufsize - 1;
+    }
+    buf[n] = 0;
+    ble_send_response(buf, n, cmd);
+#else
+    if (timeout) delay(timeout);
+#endif
+}
+
 void setup()
 {
-    delay(500);
-
 #if ENABLE_OLED
     oled.begin();
     oled.setFontSize(FONT_SIZE_SMALL);
@@ -1288,8 +1276,10 @@ void setup()
     Serial.begin(115200);
 
     // init LED pin
+#ifdef PIN_LED
     pinMode(PIN_LED, OUTPUT);
     if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+#endif
 
     // generate unique device ID
     genDeviceID(devid);
@@ -1356,18 +1346,21 @@ void setup()
     }
 #endif
 
+    state.set(STATE_WORKING);
+    // initialize network and maintain connection
+    subtask.create(telemetry, "telemetry", 2, 4096);
+
 #if ENABLE_BLE
     // init BLE
     ble_init();
 #endif
 
-    state.set(STATE_WORKING);
-    // initialize network and maintain connection
-    subtask.create(telemetry, "telemetry", 2, 4096);
     // initialize components
     initialize();
 
+#ifdef PIN_LED
     digitalWrite(PIN_LED, LOW);
+#endif
 }
 
 void loop()
@@ -1375,27 +1368,16 @@ void loop()
   // error handling
   if (!state.check(STATE_WORKING)) {
     standby();
+#ifdef PIN_LED
     if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+#endif
     initialize();
+#ifdef PIN_LED
     digitalWrite(PIN_LED, LOW);
+#endif
     return;
   }
 
   // collect and log data
   process();
-
-  // check serial input for command
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c == '\r' || c == '\n') {
-      if (serialCommand.length() > 0) {
-        String result = executeCommand(serialCommand.c_str());
-        serialCommand = "";
-        Serial.println(result);
-      }
-    } else if (serialCommand.length() < 32) {
-      serialCommand += c;
-    }
-  }
-
 }

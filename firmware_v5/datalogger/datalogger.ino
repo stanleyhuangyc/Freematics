@@ -36,7 +36,7 @@
 void serverProcess(int timeout);
 bool serverSetup();
 bool serverCheckup(int wifiJoinPeriod = WIFI_JOIN_TIMEOUT);
-void processCommand(int timeout);
+void processBLE(int timeout);
 void initMesh();
 
 uint32_t startTime = 0;
@@ -283,12 +283,6 @@ public:
         int len = sprintf(buf, "%02u:%02u:%02u.%c",
             gd->time / 1000000, (gd->time % 1000000) / 10000, (gd->time % 10000) / 100, '0' + (gd->time % 100) / 10);
         Serial.print(buf);
-#if ENABLE_BLE
-        ble_send(SPP_IDX_SPP_DATA_NTY_VAL, buf, len);
-        len = sprintf(buf, "%f,%f", gd->lat, gd->lng);
-        ble_send(SPP_IDX_SPP_DATA_NTY_VAL, buf, len);
-#endif
-
         Serial.print(' ');
         Serial.print(gd->lat, 6);
         Serial.print(' ');
@@ -383,7 +377,7 @@ public:
                     serverCheckup(WIFI_JOIN_TIMEOUT * 4);
                     serverProcess(100);
 #else
-                    processCommand(100);
+                    processBLE(100);
 #endif
                 }
                 // check movement
@@ -588,10 +582,6 @@ void showStats()
     float sps = (float)dataCount * 1000 / t;
     // output to serial monitor
     char buf[32];
-#if ENABLE_BLE
-    int len = sprintf(buf, "T:%u D:%u S:%.1f", t, dataCount, sps);
-    ble_send(SPP_IDX_SPP_STATUS_VAL, buf, len);
-#endif
     sprintf(buf, "%02u:%02u.%c", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
     Serial.print(buf);
     Serial.print(" | ");
@@ -615,7 +605,7 @@ void showStats()
     Serial.println();
 }
  
-void processCommand(int timeout)
+void processBLE(int timeout)
 {
 #if ENABLE_BLE
     static byte echo = 0;
@@ -648,6 +638,7 @@ void processCommand(int timeout)
         n += snprintf(buf + n, bufsize - n, "OK");
     } else if (!strcmp(cmd, "ON?")) {
         n += snprintf(buf + n, bufsize - n, "%u", logger.checkState(STATE_STANDBY) ? 0 : 1);
+#if ENABLE_MEMS
     } else if (!strcmp(cmd, "TEMP")) {
         n += snprintf(buf + n, bufsize - n, "%d", (int)temp);
     } else if (!strcmp(cmd, "ACC")) {
@@ -656,6 +647,7 @@ void processCommand(int timeout)
         n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", gyr[0], gyr[1], gyr[2]);
     } else if (!strcmp(cmd, "GF")) {
         n += snprintf(buf + n, bufsize - n, "%f", (float)sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
+#endif
     } else if (!strcmp(cmd, "ATE0")) {
         echo = 0;
         n += snprintf(buf + n, bufsize - n, "OK");
@@ -707,6 +699,8 @@ void processCommand(int timeout)
     }
     buf[n] = 0;
     ble_send_response(buf, n, cmd);
+#else
+    if (timeout) delay(timeout);
 #endif
 }
 
@@ -884,7 +878,7 @@ void loop()
             logger.processGPSData();
         }
 #endif
-        processCommand(0);
+        processBLE(0);
         if (tier > 1) break;
     }
 #endif
@@ -971,5 +965,5 @@ void loop()
 #endif
 #endif
 
-    processCommand(0);
+    processBLE(0);
 }

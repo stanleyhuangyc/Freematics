@@ -34,6 +34,7 @@
   <define name="Server Port (0 for auto)" const="SERVER_PORT" type="number" default="0"/>
   <define name="Transport Protocol">
     <option name="UDP" const="SERVER_PROTOCOL=PROTOCOL_UDP"/>
+    <option name="HTTP" const="SERVER_PROTOCOL=PROTOCOL_HTTP"/>
     <option name="HTTPS" const="SERVER_PROTOCOL=PROTOCOL_HTTPS"/>
   </define>
   <define name="Enable PSRAM" type="bool" const="BOARD_HAS_PSRAM"/>

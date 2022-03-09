@@ -123,16 +123,18 @@
 // change the following line to change GNSS setting
 #define GNSS GNSS_EXTERNAL
 #endif
-#define GNSS_ALWAYS_ON 1
+// keeping GNSS power on during standby 
+#define GNSS_ALWAYS_ON 0
 
 /**************************************
 * Standby/wakeup
 **************************************/
-#define RESET_AFTER_WAKEUP 0
 // motion threshold for waking up
 #define MOTION_THRESHOLD 0.4f /* moving vehicle motion threshold in G */
-// engine jumpstart voltage
+// engine jumpstart voltage for waking up (when MEMS unavailable) 
 #define JUMPSTART_VOLTAGE 14 /* V */
+// reset device after waking up
+#define RESET_AFTER_WAKEUP 1
 
 /**************************************
 * Additional features
@@ -144,5 +146,10 @@
 
 #define COOLING_DOWN_TEMP 65 /* celsius degrees */
 
+// enable(1)/disable(0) http server
+#define ENABLE_HTTPD 0
+
+// enable(1)/disable(0) BLE SPP server (for Freematics Controller App).
 #define ENABLE_BLE 0
+
 #endif // CONFIG_H_INCLUDED
