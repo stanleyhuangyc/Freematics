@@ -9,13 +9,12 @@ The sketch collects following data.
 * Battery voltage (from OBD port)
 * Geolocation data (from cellular module's internal GNSS or external GNSS receiver)
 * Acceleration data (from built-in MEMS sensor)
-* Orientation data (computed from motion sensor data)
 * Device temperature (from MEMS sensor or ESP32 built-in sensor)
 
 Data Transmissions
 ------------------
 
-Data transmission over UDP and HTTP protocols are implemented with following hardware.
+Data transmission over UDP and HTTP(s) protocols are implemented with following hardware.
 
 * WiFi (ESP32 built-in)
 * WiFi Mesh (ESP-MDF for ESP32)
@@ -23,7 +22,7 @@ Data transmission over UDP and HTTP protocols are implemented with following har
 * 4G LTE CAT-4 (SIM7600)
 * 4G LTE CAT-M1 (SIM7070)
 
-UDP mode implements a client for [Freematics Hub](https://freematics.com/hub/). HTTP mode implements a client for [Traccar](https://www.traccar.org) under [OsmAnd](https://www.traccar.org/osmand/) protocol.
+UDP mode implements a full telemetry client for [Freematics Hub](https://hub.freematics.com) and [Traccar](https://www.traccar.org). HTTP mode implements [OsmAnd](https://www.traccar.org/osmand/) protocol.
 
 Data Storage
 ------------
@@ -33,25 +32,10 @@ Following types of data storage are supported.
 * MicroSD card storage
 * ESP32 built-in Flash memory storage (SPIFFS)
 
-Remote Commands
----------------
+BLE
+---
 
-Commands can be sent to Freematics ONE+ for execution with results obtained, through serial terminal or by [Freematics Hub API](https://freematics.com/hub/api/) (remotely). Currently following commands are implemented.
-
-* LED [0/1/2] - setting device LED status (0:auto 1:always off 2:always on)
-* REBOOT - performing a reboot immediately
-* STANDBY - entering standby mode immediately
-* WAKEUP - waking up the device from standby mode
-* SET SYNC [interval in ms] - setting server sync checking interval
-* STATS - returning some stats
-* OBD [PID] - querying and returning specified OBD-II PID value (raw data)
-
-Viewing Trip Data
------------------
-
-Once the sketch is running and data is being submitted to hub.freematics.com, you can open https://hub.freematics.com from any of your devices and enter your device ID (displayed in serial output) to view real-time data and history trip data.
-
-![Freematics Hub Dashboard](https://freematics.com/pages/wp-content/uploads/2019/01/freematics_hub_dash-1024x576.png)
+A BLE SPP server is implemented in [FreematicsPlus](https://github.com/stanleyhuangyc/Freematics/blob/master/libraries/FreematicsPlus) library. To enable BLE support, change ENABLE_BLE to 1 [config.h](config.h). This will enable remote control and data monitoring via [Freematics Controller App](https://freematics.com/software/freematics-controller/).
 
 Prerequisites
 -------------
