@@ -1,18 +1,18 @@
-This Arduino sketch is designed for running on [Freematics ONE+](https://freematics.com/products/freematics-one-plus/) to collect vehicle telemetry data from OBD-II, GPS and motion sensor and transmit the collected data to a remote server running [Freematics Hub](https://freematics.com/hub) software in realtime. It also has a mechansim for executing and responding to commands sent from serverside.
+This Arduino sketch is designed for [Freematics ONE+](https://freematics.com/products/freematics-one-plus/) to collect vehicle telemetry data from OBD, GPS, motion sensor, to log the data in local storage and to transmit the data to a remote server in real-time.
 
 Data Collection
 ---------------
 
 The sketch collects following data.
 
-* Vehicle OBD-II PIDs data (from OBD port)
+* Vehicle OBD PIDs data (from OBD port)
 * Battery voltage (from OBD port)
 * Geolocation data (from cellular module's internal GNSS or external GNSS receiver)
 * Acceleration data (from built-in MEMS sensor)
 * Device temperature (from MEMS sensor or ESP32 built-in sensor)
 
-Data Transmissions
-------------------
+Data Transmission
+-----------------
 
 Data transmission over UDP and HTTP(s) protocols are implemented with following hardware.
 
@@ -32,8 +32,8 @@ Following types of data storage are supported.
 * MicroSD card storage
 * ESP32 built-in Flash memory storage (SPIFFS)
 
-BLE
----
+BLE & App
+---------
 
 A BLE SPP server is implemented in [FreematicsPlus](https://github.com/stanleyhuangyc/Freematics/blob/master/libraries/FreematicsPlus) library. To enable BLE support, change ENABLE_BLE to 1 [config.h](config.h). This will enable remote control and data monitoring via [Freematics Controller App](https://freematics.com/software/freematics-controller/).
 
