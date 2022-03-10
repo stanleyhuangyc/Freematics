@@ -104,6 +104,7 @@ bool serverSetup(IPAddress& ip);
 void serverProcess(int timeout);
 void processMEMS(CBuffer* buffer);
 bool processGPS(CBuffer* buffer);
+void processBLE(int timeout);
 
 class State {
 public:
