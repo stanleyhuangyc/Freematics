@@ -19,7 +19,7 @@
 #include "FreematicsBase.h"
 
 #define XBEE_BAUDRATE 115200
-#define HTTP_CONN_TIMEOUT 15000
+#define HTTP_CONN_TIMEOUT 5000
 
 #define RECV_BUF_SIZE 384
 
@@ -246,7 +246,7 @@ public:
     bool open(const char* host, uint16_t port);
     void close();
     bool send(const char* data, unsigned int len);
-    char* receive(int* pbytes = 0, unsigned int timeout = 5000);
+    char* receive(int* pbytes = 0, unsigned int timeout = 3000);
 protected:
     char* checkIncoming(int* pbytes);
     String udpIP;

@@ -1340,6 +1340,7 @@ String ClientSIM7070::queryIP(const char* host)
 
 bool UDPClientSIM7070::open(const char* host, uint16_t port)
 {
+  /*
   if (host) {
     udpIP = queryIP(host);
     if (!udpIP.length()) {
@@ -1347,7 +1348,9 @@ bool UDPClientSIM7070::open(const char* host, uint16_t port)
     }
     udpPort = port;
   }
-  sprintf(m_buffer, "AT+CAOPEN=0,0,\"UDP\",\"%s\",%u\r", udpIP.c_str(), udpPort);
+  */
+  sendCommand("AT+CACID=0\r");
+  sprintf(m_buffer, "AT+CAOPEN=0,0,\"UDP\",\"%s\",%u\r", host, port);
   if (!sendCommand(m_buffer, 3000)) {
     close();
     Serial.println(m_buffer);
@@ -1366,40 +1369,23 @@ bool UDPClientSIM7070::send(const char* data, unsigned int len)
   sprintf(m_buffer, "AT+CASEND=0,%u\r", len);
   sendCommand(m_buffer, 100, "\r\n>");
   if (sendCommand(data, 1000)) return true;
-  Serial.println("SEND FAIL");
   return false;
 }
 
 char* UDPClientSIM7070::receive(int* pbytes, unsigned int timeout)
 {
-	char *data = checkIncoming(pbytes);
-	if (data) return data;
-  if (sendCommand("AT+CARECV=0,384", timeout, "+IPD")) {
-		return checkIncoming(pbytes);
+  if (!sendCommand(0, timeout, "CADATAIND: 0")) return 0;
+  if (sendCommand("AT+CARECV=0,384\r", timeout, "+CARECV")) {
+    char *p = strchr(m_buffer, ',');
+    return p ? p + 1 : m_buffer;
   }
   return 0;
-}
-
-char* UDPClientSIM7070::checkIncoming(int* pbytes)
-{
-  char *p = strstr(m_buffer, "+IPD");
-	if (p) {
-    *p = '-'; // mark this datagram as checked
-    int len = atoi(p + 4);
-    if (pbytes) *pbytes = len;
-    p = strchr(p, '\n');
-    if (p) {
-      if (strlen(++p) > len) *(p + len) = 0;
-      return p;
-    }
-  }
-	return 0;
 }
 
 bool HTTPClientSIM7070::open(const char* host, uint16_t port)
 {
   if (!host) {
-    close();
+    //close();
     return true;
   }
 
@@ -1409,12 +1395,13 @@ bool HTTPClientSIM7070::open(const char* host, uint16_t port)
   }
   sendCommand("AT+SHCONF=\"HEADERLEN\",256\r");
   sendCommand("AT+SHCONF=\"BODYLEN\",1024\r");
-  if (sendCommand("AT+SHCONN\r", HTTP_CONN_TIMEOUT) && sendCommand("AT+SHSTATE?\r")) {
+  sendCommand("AT+SHCONN\r", HTTP_CONN_TIMEOUT);
+  if (sendCommand("AT+SHSTATE?\r")) {
     if (strstr(m_buffer, "+SHSTATE: 1")) {
       m_state = HTTP_CONNECTED;
       m_host = host;
       sendCommand("AT+SHCHEAD\r");
-      sendCommand("AT+SHAHEAD=\"User-Agent\",\"curl/7.47.0\"\r");
+      sendCommand("AT+SHAHEAD=\"User-Agent\",\"curl/7.47.0\"\r"); 
       sendCommand("AT+SHAHEAD=\"Cache-control\",\"no-cache\"\r");
       sendCommand("AT+SHAHEAD=\"Connection\",\"keep-alive\"\r");
       sendCommand("AT+SHAHEAD=\"Accept\",\"*/*\"\r");
@@ -1442,17 +1429,21 @@ bool HTTPClientSIM7070::send(HTTP_METHOD method, const char* path, bool keepAliv
     }
   }
   snprintf(m_buffer, sizeof(m_buffer), "AT+SHREQ=\"%s\",%u\r", path, method == METHOD_GET ? 1 : 3);
-  if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT, "+SHREQ:")) {
+  if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT)) {
     char *p;
-    if ((p = strstr(m_buffer, "+SHREQ:")) && (p = strchr(p, ','))) {
-      m_code = atoi(++p);
-      if ((p = strchr(p, ','))) {
-        unsigned int len = atoi(++p);
-        sprintf(m_buffer, "AT+SHREAD=0,%u\r", min(len, sizeof(m_buffer) - 16));
-        if (sendCommand(m_buffer)) {
-          m_state = HTTP_SENT;
-          return true;
-        }
+    int len = 0;
+    if (strstr(m_buffer, "+SHREQ:") || sendCommand(0, HTTP_CONN_TIMEOUT, "+SHREQ:")) {
+      if ((p = strstr(m_buffer, "+SHREQ:")) && (p = strchr(p, ','))) {
+        m_code = atoi(++p);
+        if ((p = strchr(p, ','))) len = atoi(++p);
+      }
+    }
+    if (len > 0) {
+      if (len > sizeof(m_buffer) - 16) len = sizeof(m_buffer) - 16;
+      sprintf(m_buffer, "AT+SHREAD=0,%u\r", len);
+      if (sendCommand(m_buffer)) {
+        m_state = HTTP_SENT;
+        return true;
       }
     }
   }
