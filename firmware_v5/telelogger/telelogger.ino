@@ -669,10 +669,10 @@ void process()
   if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 40) / 4095;
   } else if (state.check(STATE_OBD_READY)) {
-    batteryVoltage = obd.getVoltage() * 100;
+    batteryVoltage = obd.getVoltage();
   }
   if (batteryVoltage) {
-    buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage);
+    buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage * 100);
   }
 #endif
 
@@ -974,17 +974,18 @@ void telemetry(void* inst)
       teleClient.inbound();
 
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
-        Serial.println("Instable connection");
-        connErrors++;
+        //Serial.println("Instable connection");
         timeoutsNet++;
-      }
-      if (connErrors > MAX_CONN_ERRORS_RECONNECT) {
-        teleClient.net.close();
         if (!teleClient.connect()) {
-          teleClient.shutdown();
-          state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-          break;
+          connErrors++;
         }
+      }
+      if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
+        Serial.println("Network errors");
+        teleClient.shutdown();
+        state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
+        delay(5000);
+        break;
       }
 
       if (deviceTemp >= COOLING_DOWN_TEMP) {
