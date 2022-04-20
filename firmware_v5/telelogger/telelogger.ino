@@ -474,7 +474,6 @@ void initialize()
 #if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
   // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-    Serial.print("GNSS:");
 #if GNSS == GNSS_EXTERNAL
     if (sys.gpsBegin())
 #else
@@ -482,12 +481,12 @@ void initialize()
 #endif
     {
       state.set(STATE_GPS_READY);
-      Serial.println("OK");
+      Serial.println("GNSS:OK");
 #if ENABLE_OLED
       oled.println("GNSS OK");
 #endif
     } else {
-      Serial.println("NO");
+      Serial.println("GNSS:NO");
     }
   }
 #endif
@@ -1270,6 +1269,8 @@ void processBLE(int timeout)
 
 void setup()
 {
+    delay(500);
+    
 #if ENABLE_OLED
     oled.begin();
     oled.setFontSize(FONT_SIZE_SMALL);
