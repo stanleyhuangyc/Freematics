@@ -4,7 +4,8 @@
   <define name="GNSS Mode">
     <option name="Disabled" const="USE_GNSS=0"/>
     <option name="Standalone GNSS" const="USE_GNSS=1" default="true"/>
-    <option name="Cellular Module GNSS" const="USE_GNSS=2"/>
+    <option name="SIM7600 GNSS" const="USE_GNSS=2"/>
+    <option name="SIM7070 GNSS" const="USE_GNSS=3"/>
   </define>
   <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
   <define name="Enable Motion Sensor" type="bool" const="USE_MEMS" default="true"/>

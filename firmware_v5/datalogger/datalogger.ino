@@ -235,7 +235,6 @@ public:
         } else {
           Serial.println("NO");
         }
-        sys.gpsBegin();
       }
 #endif
 
@@ -608,7 +607,7 @@ void showStats()
 void processBLE(int timeout)
 {
 #if ENABLE_BLE
-    static byte echo = 0;
+    static byte echo = 1;
     char* cmd;
     if (!(cmd = ble_recv_command(timeout))) {
         return;
@@ -619,7 +618,10 @@ void processBLE(int timeout)
     char buf[48];
     int bufsize = sizeof(buf);
     int n = 0;
-    if (echo) n += snprintf(buf + n, bufsize - n, "%s\r", cmd);
+    if (echo) {
+        n = snprintf(buf, bufsize, "%s\r", cmd);
+    }
+
     Serial.print("[BLE] ");
     Serial.print(cmd);
     if (!strcmp(cmd, "UPTIME") || !strcmp(cmd, "TICK")) {
@@ -638,7 +640,7 @@ void processBLE(int timeout)
         n += snprintf(buf + n, bufsize - n, "OK");
     } else if (!strcmp(cmd, "ON?")) {
         n += snprintf(buf + n, bufsize - n, "%u", logger.checkState(STATE_STANDBY) ? 0 : 1);
-#if ENABLE_MEMS
+#if USE_MEMS
     } else if (!strcmp(cmd, "TEMP")) {
         n += snprintf(buf + n, bufsize - n, "%d", (int)temp);
     } else if (!strcmp(cmd, "ACC")) {
@@ -674,6 +676,8 @@ void processBLE(int timeout)
             }
         }
     } else if (!strcmp(cmd, "VIN")) {
+        ble_send_response(buf, n, 0);
+        n = 0;
         n += snprintf(buf + n, bufsize - n, "%s", vin[0] ? vin : "N/A");
     } else if (!strcmp(cmd, "LAT") && gd) {
         n += snprintf(buf + n, bufsize - n, "%f", gd->lat);
@@ -726,12 +730,14 @@ void setup()
     ble_init();
 #endif
 
+#if USE_OBD
     if (sys.begin(true, USE_GNSS >= 2)) {
         Serial.print("TYPE:");
         Serial.println(sys.devType);
     }
-#if USE_OBD
     obd.begin(sys.link);
+#else
+    sys.begin(false, USE_GNSS >= 2);
 #endif
 
     //initMesh();
