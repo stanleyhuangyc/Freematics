@@ -982,7 +982,7 @@ void telemetry(void* inst)
       if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
         Serial.println("Network errors");
         teleClient.shutdown();
-#if GNSS == GNSS_CELLULAR
+#if NET_DEVICE >= NET_SIM5360 && GNSS == GNSS_CELLULAR
         teleClient.net.setGPS(true);
 #endif
             state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
