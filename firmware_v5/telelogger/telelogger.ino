@@ -1030,6 +1030,7 @@ void standby()
 #endif
   Serial.println("Wakeup");
 
+  sys.resetLink();
 #if RESET_AFTER_WAKEUP
 #if ENABLE_MEMS
   mems->end();  
