@@ -58,7 +58,7 @@
 #define CELL_APN ""
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
-#define SERVER_PROTOCOL PROTOCOL_UDP
+#define SERVER_PROTOCOL PROTOCOL_HTTPS
 #endif 
 
 // SIM card setting
