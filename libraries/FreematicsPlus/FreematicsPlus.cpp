@@ -31,7 +31,7 @@
 #include "soc/sens_reg.h"
 #endif
 
-#define VERBOSE_LINK 1
+#define VERBOSE_LINK 0
 #define VERBOSE_XBEE 0
 
 static TinyGPS gps;
@@ -40,7 +40,7 @@ static uart_port_t gpsUARTNum = GPS_UART_NUM;
 static int pinGPSRx = PIN_GPS_UART_RXD;
 static int pinGPSTx = PIN_GPS_UART_TXD;
 static Task taskGPS;
-static GPS_DATA* gpsData = 0;
+static GPS_DATA gpsData = {0};
 
 #ifndef ARDUINO_ESP32C3_DEV
 
@@ -575,8 +575,6 @@ bool FreematicsESP32::gpsBegin(int baudrate)
             gps.stats(&s2, 0);
             if (s1 != s2) {
                 // data is coming in
-                if (!gpsData) gpsData = new GPS_DATA;
-                memset(gpsData, 0, sizeof(GPS_DATA));
                 return true;
             }
             Serial.print('.');
@@ -600,8 +598,6 @@ bool FreematicsESP32::gpsBegin(int baudrate)
             }
         } while (millis() - t < 1000);
         if (success) {
-            gpsData = malloc(sizeof(GPS_DATA));
-            memset(gpsData, 0, sizeof(GPS_DATA));
             m_pinGPSPower = 0;
             return true;
         }
@@ -614,8 +610,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
 
 bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
 {
-    if (!gpsData) return false;
-    if (pgd) *pgd = gpsData;
+    if (pgd) *pgd = &gpsData;
     if (m_flags & FLAG_GNSS_USE_LINK) {
         char buf[160];
         if (!link || link->sendCommand("ATGPS\r", buf, sizeof(buf), 100) == 0) {
@@ -634,8 +629,8 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             uint32_t time = atoi(++s);
             if (!(s = strchr(s, ','))) break;
             if (!date) break;
-            gpsData->date = date;
-            gpsData->time = time;
+            gpsData.date = date;
+            gpsData.time = time;
             lat = (float)atoi(++s) / 1000000;
             if (!(s = strchr(s, ','))) break;
             lng = (float)atoi(++s) / 1000000;
@@ -643,49 +638,49 @@ bool FreematicsESP32::gpsGetData(GPS_DATA** pgd)
             alt = (float)atoi(++s) / 100;
             good = true;
             if (!(s = strchr(s, ','))) break;
-            gpsData->speed = (float)atoi(++s) / 100;
+            gpsData.speed = (float)atoi(++s) / 100;
             if (!(s = strchr(s, ','))) break;
-            gpsData->heading = atoi(++s) / 100;
+            gpsData.heading = atoi(++s) / 100;
             if (!(s = strchr(s, ','))) break;
-            gpsData->sat = atoi(++s);
+            gpsData.sat = atoi(++s);
             if (!(s = strchr(s, ','))) break;
-            gpsData->hdop = atoi(++s);
+            gpsData.hdop = atoi(++s);
         } while(0);
-        if (good && (gpsData->lat || gpsData->lng)) {
+        if (good && (gpsData.lat || gpsData.lng)) {
             // filter out invalid coordinates
-            good = (abs(lat * 1000000 - gpsData->lat * 1000000) < 100000 && abs(lng * 1000000 - gpsData->lng * 1000000) < 100000);
+            good = (abs(lat * 1000000 - gpsData.lat * 1000000) < 100000 && abs(lng * 1000000 - gpsData.lng * 1000000) < 100000);
         }
         if (!good) return false;
-        gpsData->lat = lat;
-        gpsData->lng = lng;
-        gpsData->alt = alt;
-        gpsData->ts = millis();
+        gpsData.lat = lat;
+        gpsData.lng = lng;
+        gpsData.alt = alt;
+        gpsData.ts = millis();
         return true;
     } else {
-        gps.stats(&gpsData->sentences, &gpsData->errors);
+        gps.stats(&gpsData.sentences, &gpsData.errors);
         if (!gpsHasDecodedData) return false;
         long lat, lng;
         bool good = true;
         gps.get_position(&lat, &lng, 0);
-        if (gpsData->lat || gpsData->lng) {
+        if (gpsData.lat || gpsData.lng) {
             // filter out invalid coordinates
-            good = (abs(lat - gpsData->lat * 1000000) < 100000 && abs(lng - gpsData->lng * 1000000) < 100000);
+            good = (abs(lat - gpsData.lat * 1000000) < 100000 && abs(lng - gpsData.lng * 1000000) < 100000);
         }
         if (!good) return false;
-        gpsData->ts = millis();
-        gpsData->lat = (float)lat / 1000000;
-        gpsData->lng = (float)lng / 1000000;
-        gps.get_datetime((unsigned long*)&gpsData->date, (unsigned long*)&gpsData->time, 0);
+        gpsData.ts = millis();
+        gpsData.lat = (float)lat / 1000000;
+        gpsData.lng = (float)lng / 1000000;
+        gps.get_datetime((unsigned long*)&gpsData.date, (unsigned long*)&gpsData.time, 0);
         long alt = gps.altitude();
-        if (alt != TinyGPS::GPS_INVALID_ALTITUDE) gpsData->alt = (float)alt / 100;
+        if (alt != TinyGPS::GPS_INVALID_ALTITUDE) gpsData.alt = (float)alt / 100;
         unsigned long knot = gps.speed();
-        if (knot != TinyGPS::GPS_INVALID_SPEED) gpsData->speed = (float)knot / 100;
+        if (knot != TinyGPS::GPS_INVALID_SPEED) gpsData.speed = (float)knot / 100;
         unsigned long course = gps.course();
-        if (course < 36000) gpsData->heading = course / 100;
+        if (course < 36000) gpsData.heading = course / 100;
         unsigned short sat = gps.satellites();
-        if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData->sat = sat;
+        if (sat != TinyGPS::GPS_INVALID_SATELLITES) gpsData.sat = sat;
         unsigned long hdop = gps.hdop();
-        gpsData->hdop = hdop > 2550 ? 255 : hdop / 10;
+        gpsData.hdop = hdop > 2550 ? 255 : hdop / 10;
         gpsHasDecodedData = false;
         return true;
     }

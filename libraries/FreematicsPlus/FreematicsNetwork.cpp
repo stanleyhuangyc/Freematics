@@ -171,8 +171,8 @@ int HTTPClientWIFI::receive(char* buffer, int bufsize, unsigned int timeout)
       delay(1);
       continue;
     }
-    m_buffer[bytes++] = client.read();
-    m_buffer[bytes] = 0;
+    buffer[bytes++] = client.read();
+    buffer[bytes] = 0;
      if (strstr(buffer, "\r\n\r\n")) {
       eos = true;
       break;
@@ -183,7 +183,7 @@ int HTTPClientWIFI::receive(char* buffer, int bufsize, unsigned int timeout)
     return 0;
   }
   m_state = HTTP_CONNECTED;
-  return m_buffer;
+  return bytes;
 }
 
 /*******************************************************************************
