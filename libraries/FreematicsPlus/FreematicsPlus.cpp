@@ -31,7 +31,7 @@
 #include "soc/sens_reg.h"
 #endif
 
-#define VERBOSE_LINK 0
+#define VERBOSE_LINK 1
 #define VERBOSE_XBEE 0
 
 static TinyGPS gps;
@@ -587,12 +587,13 @@ bool FreematicsESP32::gpsBegin(int baudrate)
 
     // try co-processor GNSS
     if (link) {
-        char buf[128];
+        char buf[256];
         link->sendCommand("ATGPSON\r", buf, sizeof(buf), 100);
         m_flags |= FLAG_GNSS_USE_LINK;
         uint32_t t = millis();
         bool success = false;
         do {
+            memset(buf, 0, sizeof(buf));
             if (gpsGetNMEA(buf, sizeof(buf)) > 0 && strstr(buf, ("$G"))) {
                 success = true;
                 break;

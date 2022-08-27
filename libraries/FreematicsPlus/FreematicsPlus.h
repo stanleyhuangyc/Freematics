@@ -1,3 +1,4 @@
+@@ -1,186 +1,186 @@
 /*************************************************************************
 * Arduino library for ESP32 based Freematics ONE+ and Freematics Esprit
 * Distributed under BSD license
@@ -42,6 +43,7 @@ extern "C" {
 #define PIN_BEE_PWR 27
 #define PIN_BEE_UART_RXD 35
 #define PIN_BEE_UART_TXD 2
+#define PIN_LED 4
 #else
 // ESP32-C3 has 2 hardware serial UART
 #define LINK_UART_NUM UART_NUM_1

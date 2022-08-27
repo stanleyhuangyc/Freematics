@@ -1,3 +1,4 @@
+@@ -1,1474 +1,1208 @@
 /*************************************************************************
 * Helper classes for various network communication devices
 * Distributed under BSD license
@@ -102,6 +103,7 @@ bool UDPClientWIFI::send(const char* data, unsigned int len)
 }
 
 char* UDPClientWIFI::receive(int* pbytes, unsigned int timeout)
+int UDPClientWIFI::receive(char* buffer, int bufsize, unsigned int timeout)
 {
   uint32_t t = millis();
   do {
@@ -110,7 +112,10 @@ char* UDPClientWIFI::receive(int* pbytes, unsigned int timeout)
       bytes = udp.read(m_buffer, sizeof(m_buffer));
       if (pbytes) *pbytes = bytes;
       return m_buffer;
+      bytes = udp.read(buffer, bufsize);
+      return bytes;
     }
+    delay(1);
   } while (millis() - t < timeout);
   return 0;
 }
@@ -163,17 +168,23 @@ bool HTTPClientWIFI::send(HTTP_METHOD method, const char* path, bool keepAlive, 
 }
 
 char* HTTPClientWIFI::receive(int* pbytes, unsigned int timeout)
+int HTTPClientWIFI::receive(char* buffer, int bufsize, unsigned int timeout)
 {
   int bytes = 0;
   bool eos = false;
   for (uint32_t t = millis(); millis() - t < timeout; ) {
+  for (uint32_t t = millis(); millis() - t < timeout && bytes < bufsize; ) {
     if (!client.available()) {
       delay(50);
+      delay(1);
       continue;
     }
     m_buffer[bytes++] = client.read();
     m_buffer[bytes] = 0;
     if (strstr(m_buffer, "\r\n\r\n")) {
+    buffer[bytes++] = client.read();
+    buffer[bytes] = 0;
+    if (strstr(buffer, "\r\n\r\n")) {
       eos = true;
       break;
     }
@@ -463,6 +474,7 @@ char* HTTPClientSIM800::receive(int* pbytes, unsigned int timeout)
   }
   m_state = HTTP_ERROR;
   return 0;  
+  return bytes;
 }
 
 /*******************************************************************************
@@ -1242,6 +1254,9 @@ bool ClientSIM7070::setup(const char* apn, unsigned int timeout)
     sprintf(m_buffer, "AT+CNCFG=0,1,\"%s\"\r", apn);
     sendCommand(m_buffer);
     sendCommand("AT+CNACT=0,1\r");
+
+    sendCommand("AT+CNSMOD?\r");
+    sendCommand("AT+CSCLK=0\r");
   } while(0);
   return success;
 }
@@ -1304,6 +1319,8 @@ void ClientSIM7070::checkGPS()
 String ClientSIM7070::getIP()
 {
   for (int i = 0; i < 10; i++) {
+  sendCommand("AT+CNACT=0,1\r");
+  for (int i = 0; i < 30; i++) {
     delay(500);
     if (sendCommand("AT+CNACT?\r", 1000)) {
       char *ip = strstr(m_buffer, "+CNACT:");
@@ -1349,9 +1366,12 @@ bool UDPClientSIM7070::open(const char* host, uint16_t port)
     udpPort = port;
   }
   */
+  close();
+  sendCommand("AT+CNACT=0,1\r");
   sendCommand("AT+CACID=0\r");
   sprintf(m_buffer, "AT+CAOPEN=0,0,\"UDP\",\"%s\",%u\r", host, port);
   if (!sendCommand(m_buffer, 3000)) {
+  if (!sendCommand(m_buffer, 5000)) {
     close();
     Serial.println(m_buffer);
     return false;
@@ -1362,10 +1382,12 @@ bool UDPClientSIM7070::open(const char* host, uint16_t port)
 void UDPClientSIM7070::close()
 {
   sendCommand("AT+CACLOSE=0\r");
+  sendCommand("AT+CNACT=0,0\r");
 }
 
 bool UDPClientSIM7070::send(const char* data, unsigned int len)
 {
+  sendCommand("AT+CASTATE?\r");
   sprintf(m_buffer, "AT+CASEND=0,%u\r", len);
   sendCommand(m_buffer, 100, "\r\n>");
   if (sendCommand(data, 1000)) return true;
@@ -1375,6 +1397,9 @@ bool UDPClientSIM7070::send(const char* data, unsigned int len)
 char* UDPClientSIM7070::receive(int* pbytes, unsigned int timeout)
 {
   if (!sendCommand(0, timeout, "CADATAIND: 0")) return 0;
+  if (!strstr(m_buffer, "+CADATAIND: 0")) {
+    if (!sendCommand(0, timeout, "+CADATAIND: 0")) return 0;
+  }
   if (sendCommand("AT+CARECV=0,384\r", timeout, "+CARECV")) {
     char *p = strchr(m_buffer, ',');
     return p ? p + 1 : m_buffer;
@@ -1389,6 +1414,9 @@ bool HTTPClientSIM7070::open(const char* host, uint16_t port)
     return true;
   }
 
+  sendCommand("AT+CNACT=0,1\r");
+  sendCommand("AT+CACID=0\r");
+
   sprintf(m_buffer, "AT+SHCONF=\"URL\",\"http://%s:%u\"\r", host, port);
   if (!sendCommand(m_buffer)) {
     return false;
@@ -1396,6 +1424,7 @@ bool HTTPClientSIM7070::open(const char* host, uint16_t port)
   sendCommand("AT+SHCONF=\"HEADERLEN\",256\r");
   sendCommand("AT+SHCONF=\"BODYLEN\",1024\r");
   sendCommand("AT+SHCONN\r", HTTP_CONN_TIMEOUT);
+  sendCommand("AT+SHCONN\r", 30000);
   if (sendCommand("AT+SHSTATE?\r")) {
     if (strstr(m_buffer, "+SHSTATE: 1")) {
       m_state = HTTP_CONNECTED;
@@ -1416,6 +1445,7 @@ bool HTTPClientSIM7070::open(const char* host, uint16_t port)
 void HTTPClientSIM7070::close()
 {
   sendCommand("AT+SHDISC\r");
+  //sendCommand("AT+CNACT=0,0\r");
   m_state = HTTP_DISCONNECTED;
   checkGPS();
 }

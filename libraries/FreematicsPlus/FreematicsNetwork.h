@@ -1,3 +1,4 @@
+@@ -1,267 +1,222 @@
 /*************************************************************************
 * Telematics Data Logger Class
 * Distributed under BSD license
@@ -79,6 +80,7 @@ public:
     void close();
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
+    int receive(char* buffer, int bufsize, unsigned int timeout = 5000);
     String queryIP(const char* host);
 private:
     IPAddress udpIP;
@@ -93,6 +95,7 @@ public:
     void close();
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
+    int receive(char* buffer, int bufsize, unsigned int timeout = HTTP_CONN_TIMEOUT);
 private:
     WiFiClient client;
 };

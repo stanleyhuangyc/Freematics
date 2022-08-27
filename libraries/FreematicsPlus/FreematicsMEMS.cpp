@@ -1,3 +1,4 @@
+@@ -1,1427 +1,1559 @@
 /*************************************************************************
 * Freematics MEMS motion sensor helper classes
 * Distributed under BSD license
@@ -709,6 +710,138 @@ bool MPU9250::read(float* acc, float* gyr, float* mag, float* temp, ORIENTATION*
   if (quaterion && acc && gyr && mag) {
     quaterion->MadgwickQuaternionUpdate(acc[0], acc[1], acc[2], gyr[0]*PI/180.0f, gyr[1]*PI/180.0f, gyr[2]*PI/180.0f,  mag[0],  mag[1], mag[2]);
     quaterion->getOrientation(ori);
+  }
+  return true;
+}
+
+/*******************************************************************************
+  ICM-42627 class functions 
+*******************************************************************************/
+byte ICM_42627::begin(bool fusion)
+{
+  if (!initI2C(100000) || readByte(WHO_AM_I_ICM42627) != ICM_42627_DeviceID) return 0;
+  init();
+  return 1;
+}
+
+void ICM_42627::init()
+{
+  writeByte(PWR_MGMT0_REG, TEMP_DIS_ON | IDLE_ON | ACCEL_MODE_LN | GYRO_MODE_LN ); 
+  delay(100);
+
+  writeByte(ACCEL_CONFIG0_REG, ACCEL_ODR_1KHZ | ACCEL_FS_SEL_2G);  // Auto select clock source to be PLL gyroscope reference if ready else
+  delay(100);
+
+  writeByte(GYRO_CONFIG0_REG, GYRO_ODR_1KHZ | GYRO_FS_SEL_250dps);
+  delay(100);
+
+  writeByte(SELF_TEST_CONFIG_REG, 0x07);
+  delay(100);
+}
+
+void ICM_42627::writeByte(uint8_t subAddress, uint8_t data)
+{
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( ICM_42627_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_EN);
+  // write sub-address and data
+  uint8_t buf[2] = {subAddress, data};
+  i2c_master_write(cmd, buf, sizeof(buf), ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+}
+
+uint8_t ICM_42627::readByte(uint8_t subAddress)
+{
+  // write sub-address
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( ICM_42627_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_DIS);
+  i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  // read data
+  uint8_t data = 0;
+  cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( ICM_42627_ADDRESS << 1 ) | READ_BIT, ACK_CHECK_EN);
+  i2c_master_read_byte(cmd, &data, NACK_VAL);
+  i2c_master_stop(cmd);
+  i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  return data;
+}
+
+bool ICM_42627::readBytes(uint8_t subAddress, uint8_t count, uint8_t * dest)
+{
+  // write sub-address
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( ICM_42627_ADDRESS << 1 ) | WRITE_BIT, ACK_CHECK_DIS);
+  i2c_master_write_byte(cmd, subAddress, ACK_CHECK_EN);
+  i2c_master_stop(cmd);
+  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  if (ret != ESP_OK) return false;
+  // read data
+  cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, ( ICM_42627_ADDRESS << 1 ) | READ_BIT, ACK_CHECK_EN);
+  if (count > 1) {
+      i2c_master_read(cmd, dest, count - 1, ACK_VAL);
+  }
+  i2c_master_read_byte(cmd, dest + count - 1, NACK_VAL);
+  i2c_master_stop(cmd);
+  ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  return ret == ESP_OK;
+}
+
+void ICM_42627::readAccelData(int16_t data[])
+{
+  uint8_t rawData[6];  // x/y/z accel register data stored here
+  readBytes(ACCEL_XOUT_H_REG, 6, &rawData[0]);  // Read the six raw data registers into data array
+  data[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
+  data[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
+  data[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
+}
+
+int16_t ICM_42627::readTempData()
+{
+  uint8_t rawData[2];  // x/y/z gyro register data stored here
+  readBytes(TEMP_OUT_H_REG, 2, &rawData[0]);  // Read the two raw data registers sequentially into data array
+  return ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a 16-bit value
+}
+
+void ICM_42627::readGyroData(int16_t data[])
+{
+  uint8_t rawData[6];  // x/y/z gyro register data stored here
+  readBytes(GYRO_XOUT_H_REG, 6, &rawData[0]);  // Read the six raw data registers sequentially into data array
+  data[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
+  data[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
+  data[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
+}
+
+bool ICM_42627::read(float* acc, float* gyr, float* mag, float* temp, ORIENTATION* ori)
+{
+  if (acc) {
+    int16_t accelCount[3] = {0};
+    readAccelData(accelCount);
+    acc[0] = (float)accelCount[0]*aRes; // - accelBias[0];  // get actual g value, this depends on scale being set
+    acc[1] = (float)accelCount[1]*aRes; // - accelBias[1];
+    acc[2] = (float)accelCount[2]*aRes; // - accelBias[2];
+  }
+  if (gyr) {
+    int16_t gyroCount[3] = {0};
+    readGyroData(gyroCount);
+    gyr[0] = (float)gyroCount[0]*gRes;  // get actual gyro value, this depends on scale being set
+    gyr[1] = (float)gyroCount[1]*gRes;
+    gyr[2] = (float)gyroCount[2]*gRes;
+  }
+  if (temp) {
+    *temp = (float)readTempData() / 132.48 + 25.0;
   }
   return true;
 }

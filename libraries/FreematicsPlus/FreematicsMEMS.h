@@ -1,3 +1,4 @@
+@@ -1,407 +1,423 @@
 /*************************************************************************
 * Freematics MEMS motion sensor helper classes
 * Distributed under BSD license
@@ -10,6 +11,7 @@
 
 #include "FreematicsBase.h"
 #include "utility/ICM_20948_C.h"	// The C backbone
+#include "utility/ICM_42627.h"
 
 // See also MPU-9250 Register Map and Descriptions, Revision 4.0,
 // RM-MPU-9250A-00, Rev. 1.4, 9/9/2013 for registers not listed in above
@@ -282,6 +284,21 @@ private:
   int16_t gyroCount[3] = {0};
   int16_t magCount[3] = {0};    // Stores the 16-bit signed magnetometer sensor output
   CQuaterion* quaterion = 0;
+};
+
+class ICM_42627 : public MEMS_I2C
+{
+public:
+  byte begin(bool fusion = false);
+  bool read(float* acc, float* gyr = 0, float* mag = 0, float* temp = 0, ORIENTATION* ori = 0);
+private:
+  void writeByte(uint8_t, uint8_t);
+  uint8_t readByte(uint8_t);
+  bool readBytes(uint8_t, uint8_t, uint8_t *);
+  void init();
+  void readAccelData(int16_t data[]);
+  void readGyroData(int16_t data[]);
+  int16_t readTempData();
 };
 
 #define ICM_20948_ARD_UNUSED_PIN 0xFF
