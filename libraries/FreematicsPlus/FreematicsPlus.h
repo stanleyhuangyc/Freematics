@@ -1,4 +1,3 @@
-@@ -1,186 +1,186 @@
 /*************************************************************************
 * Arduino library for ESP32 based Freematics ONE+ and Freematics Esprit
 * Distributed under BSD license
@@ -23,7 +22,6 @@ extern "C" {
 #include "utility/ble_spp_server.h"
 }
 
-#define PIN_LED 4
 #define PIN_SD_CS 5
 
 #define PIN_LINK_SPI_CS 2

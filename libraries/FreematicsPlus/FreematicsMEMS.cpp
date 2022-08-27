@@ -1,4 +1,3 @@
-@@ -1,1427 +1,1559 @@
 /*************************************************************************
 * Freematics MEMS motion sensor helper classes
 * Distributed under BSD license

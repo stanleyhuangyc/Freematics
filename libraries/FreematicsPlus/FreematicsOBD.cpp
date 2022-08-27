@@ -1,4 +1,3 @@
-@@ -1,527 +1,531 @@
 /*************************************************************************
 * Arduino Library for Freematics ONE+
 * Distributed under BSD license
@@ -346,7 +345,6 @@ bool COBD::isValidPID(byte pid)
 	return (pidmap[i] & b) != 0;
 }
 
-bool COBD::init(OBD_PROTOCOLS protocol)
 bool COBD::init(OBD_PROTOCOLS protocol, bool quick)
 {
 	const char *initcmd[] = {"ATE0\r", "ATH0\r"};

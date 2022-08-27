@@ -1,4 +1,3 @@
-@@ -1,267 +1,222 @@
 /*************************************************************************
 * Telematics Data Logger Class
 * Distributed under BSD license
@@ -70,7 +69,6 @@ public:
     const char* deviceName() { return "WiFi"; }
     void listAPs();
 protected:
-    char m_buffer[RECV_BUF_SIZE] = {0};
 };
 
 class UDPClientWIFI : public ClientWIFI
@@ -79,7 +77,6 @@ public:
     bool open(const char* host, uint16_t port);
     void close();
     bool send(const char* data, unsigned int len);
-    char* receive(int* pbytes = 0, unsigned int timeout = 5000);
     int receive(char* buffer, int bufsize, unsigned int timeout = 5000);
     String queryIP(const char* host);
 private:
@@ -94,54 +91,9 @@ public:
     bool open(const char* host = 0, uint16_t port = 0);
     void close();
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
-    char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
     int receive(char* buffer, int bufsize, unsigned int timeout = HTTP_CONN_TIMEOUT);
 private:
     WiFiClient client;
-};
-
-class ClientSIM800
-{
-public:
-    bool begin(CFreematics* device);
-    void end();
-    bool setup(const char* apn, bool gps = false, unsigned int timeout = 60000);
-    String getIP();
-    int getSignal();
-    String getOperatorName();
-    bool checkSIM(const char* pin = 0);
-    bool getLocation(NET_LOCATION* loc);
-    String queryIP(const char* host);
-    char* getBuffer() { return m_buffer; }
-    const char* deviceName() { return "SIM800"; }
-    const char* IMEI = "N/A";
-protected:
-    bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = "\r\nOK");
-    char m_buffer[RECV_BUF_SIZE] = {0};
-    CFreematics* m_device = 0;
-};
-
-class UDPClientSIM800 : public ClientSIM800
-{
-public:
-    bool open(const char* host, uint16_t port);
-    bool send(const char* data, unsigned int len);
-    void close();
-    char* receive(int* pbytes = 0, unsigned int timeout = 5000);
-private:
-    char* checkIncoming(int* pbytes);
-};
-
-class HTTPClientSIM800 : public HTTPClient, public ClientSIM800
-{
-public:
-    bool open(const char* host, uint16_t port);
-    bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
-    char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
-    void close();
-protected:
-    String m_host;
-    uint16_t m_port;
 };
 
 class ClientSIM5360
