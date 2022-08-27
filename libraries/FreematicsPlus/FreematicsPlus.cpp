@@ -485,7 +485,7 @@ void FreematicsESP32::gpsEnd(bool powerOff)
     if (m_flags & FLAG_GNSS_USE_LINK) {
         if (powerOff) {
             char buf[16];
-            link->sendCommand("ATGPSOFF", buf, sizeof(buf), 0);
+            link->sendCommand("ATGPSOFF\r", buf, sizeof(buf), 0);
         }
     } else {
         taskGPS.destroy();
@@ -563,12 +563,15 @@ bool FreematicsESP32::gpsBegin(int baudrate)
                 // switch M8030 GNSS to 38400bps
                 const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
                 const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
+                const uint8_t packet3[] = {0xB5, 0x62, 0x06, 0x41, 0x0C, 0x0, 0x0, 0x0, 0x03, 0x1F, 0x8B, 0x81, 0x1E, 0x68, 0xFF, 0x76, 0xFF, 0xFF, 0x7A, 0x02};
                 for (int i = 0; i < sizeof(packet1); i++) softSerialTx(baudrate, packet1[i]);
                 delay(20);
                 for (int i = 0; i < sizeof(packet2); i++) softSerialTx(baudrate, packet2[i]);
+                delay(20);
+                for (int i = 0; i < sizeof(packet3); i++) softSerialTx(baudrate, packet3[i]);
             }
 #endif
-            delay(200);
+            delay(100);
             gps.stats(&s2, 0);
             if (s1 != s2) {
                 // data is coming in
@@ -585,7 +588,7 @@ bool FreematicsESP32::gpsBegin(int baudrate)
     // try co-processor GNSS
     if (link) {
         char buf[128];
-        link->sendCommand("ATGPSON", buf, sizeof(buf), 100);
+        link->sendCommand("ATGPSON\r", buf, sizeof(buf), 100);
         m_flags |= FLAG_GNSS_USE_LINK;
         uint32_t t = millis();
         bool success = false;
@@ -900,6 +903,9 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
     pinMode(PIN_LINK_RESET, OUTPUT);
     digitalWrite(PIN_LINK_RESET, HIGH);
 #endif
+
+    pinMode(PIN_BEE_PWR, OUTPUT);
+    digitalWrite(PIN_BEE_PWR, LOW);
 
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);
