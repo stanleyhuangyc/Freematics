@@ -1317,11 +1317,11 @@ void setup()
 #if ENABLE_MEMS
   if (!state.check(STATE_MEMS_READY)) {
     Serial.print("MEMS:");
-    mems = new MPU9250;
-    byte ret = mems->begin(ENABLE_ORIENTATION);
+    mems = new ICM_42627;
+    byte ret = mems->begin();
     if (ret) {
       state.set(STATE_MEMS_READY);
-      Serial.println("MPU-9250");
+      Serial.println("ICM-42627");
     } else {
       mems->end();
       delete mems;
