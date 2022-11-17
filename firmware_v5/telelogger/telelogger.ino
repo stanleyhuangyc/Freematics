@@ -961,9 +961,14 @@ void telemetry(void* inst)
         connErrors = 0;
         showStats();
       } else {
-        connErrors++;
         timeoutsNet++;
         printTimeoutStats();
+        teleClient.cell.close();
+        if (teleClient.cell.open(SERVER_HOST, SERVER_PORT)) {
+          connErrors = 0;
+        } else {
+          connErrors++;
+        }
       }
 #ifdef PIN_LED
       if (ledMode == 0) digitalWrite(PIN_LED, LOW);
