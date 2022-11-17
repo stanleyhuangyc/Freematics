@@ -736,7 +736,10 @@ bool UDPClientSIM7600::send(const char* data, unsigned int len)
   m_device->xbWrite(m_buffer, n);
   delay(10);
   m_device->xbWrite(data, len);
-  if (sendCommand(0, 500)) return true;
+	
+  const char* answers[] = {"\r\nERROR", "OK\r\n\r\n+CIPSEND:", "\r\nRECV FROM:"};
+  byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 500, answers, 3);
+  if (ret > 1) return true;
   return false;
 }
 
