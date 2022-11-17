@@ -964,7 +964,7 @@ void telemetry(void* inst)
         timeoutsNet++;
         printTimeoutStats();
         teleClient.cell.close();
-        if (teleClient.cell.open(SERVER_HOST, SERVER_PORT)) {
+        if (teleClient.cell.open(0, 0)) {
           connErrors = 0;
         } else {
           connErrors++;
