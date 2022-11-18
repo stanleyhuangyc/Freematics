@@ -176,11 +176,6 @@ int readChipHallSensor()
     return 0; // FIXME
 }
 
-uint16_t getFlashSize()
-{
-    return (spi_flash_get_chip_size() >> 10);
-}
-
 bool Task::create(void (*task)(void*), const char* name, int priority, int stacksize)
 {
     if (xHandle) return false;
@@ -729,7 +724,7 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate, int pinRx, int pinTx)
 
 #ifdef PIN_BEE_PWR
 	pinMode(PIN_BEE_PWR, OUTPUT);
-	digitalWrite(PIN_BEE_PWR, HIGH);
+	digitalWrite(PIN_BEE_PWR, LOW);
 #endif
     return true;
 }
@@ -807,7 +802,7 @@ int FreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, 
 		}
 	} while (millis() - t < timeout);
 	buffer[bytesRecv] = 0;
-	return 0;
+	return bytesRecv == 0 ? 0 : -1;
 }
 
 void FreematicsESP32::xbPurge()
@@ -819,22 +814,20 @@ void FreematicsESP32::xbTogglePower()
 {
 #ifdef PIN_BEE_PWR
     digitalWrite(PIN_BEE_PWR, HIGH);
-    delay(100);
 #if VERBOSE_XBEE
     Serial.print("Pin ");
     Serial.print(PIN_BEE_PWR);
-	Serial.println(" set to low");
+	Serial.println(" pull up");
 #endif
+    delay(2550);
 	digitalWrite(PIN_BEE_PWR, LOW);
-	delay(200);
+	//delay(500);
 #if VERBOSE_XBEE
     Serial.print("Pin ");
     Serial.print(PIN_BEE_PWR);
-	Serial.println(" set to high");
+	Serial.println(" pull down");
 #endif
-    digitalWrite(PIN_BEE_PWR, HIGH);
-    delay(100);
-    digitalWrite(PIN_BEE_PWR, LOW);
+    //digitalWrite(PIN_BEE_PWR, HIGH);
 #endif
 }
 

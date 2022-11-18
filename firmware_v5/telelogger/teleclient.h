@@ -139,48 +139,29 @@ class TeleClientUDP : public TeleClient
 {
 public:
     bool notify(byte event, const char* payload = 0);
-    bool connect();
+    bool connect(bool quick = false);
     bool transmit(const char* packetBuffer, unsigned int packetSize);
     bool ping();
     void inbound();
     bool verifyChecksum(char* data);
     void shutdown();
-#if NET_DEVICE == NET_WIFI
-    UDPClientWIFI net;
-#elif NET_DEVICE == NET_SIM800
-    UDPClientSIM800 net;
-#elif NET_DEVICE == NET_SIM5360
-    UDPClientSIM5360 net;
-#elif NET_DEVICE == NET_SIM7600
-    UDPClientSIM7600 net;
-#elif NET_DEVICE == NET_SIM7070
-    UDPClientSIM7070 net;
-#elif NET_DEVICE == NET_WIFI_MESH
-    ClientWiFiMesh net;
-#else
-    ClientSerial net;
+#if ENABLE_WIFI
+    WifiUDP wifi;
 #endif
+    CellUDP cell;
 };
 
 class TeleClientHTTP : public TeleClient
 {
 public:
     bool notify(byte event, const char* payload = 0);
-    bool connect();
+    bool connect(bool quick = false);
     bool transmit(const char* packetBuffer, unsigned int packetSize);
     bool ping();
     void shutdown();
-#if NET_DEVICE == NET_WIFI
-    HTTPClientWIFI net;
-#elif NET_DEVICE == NET_SIM800
-    HTTPClientSIM800 net;
-#elif NET_DEVICE == NET_SIM5360
-    HTTPClientSIM5360 net;
-#elif NET_DEVICE == NET_SIM7600
-    HTTPClientSIM7600 net;
-#elif NET_DEVICE == NET_SIM7070
-    HTTPClientSIM7070 net;
+#if ENABLE_WIFI
+    WifiHTTP wifi;
 #endif
-private:
+    CellHTTP cell;
     bool started = false;
 };

@@ -35,8 +35,9 @@
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
 #define STATE_NET_READY 0x10
-#define STATE_NET_CONNECTED 0x20
-#define STATE_WORKING 0x40
+#define STATE_CELL_CONNECTED 0x20
+#define STATE_WIFI_CONNECTED 0x40
+#define STATE_WORKING 0x80
 #define STATE_STANDBY 0x100
 
 typedef struct {
@@ -276,8 +277,8 @@ bool processGPS(CBuffer* buffer)
       return false;
     }
   }
-#elif NET_DEVICE >= NET_SIM5360
-    if (!teleClient.net.getLocation(&gd)) {
+#else
+    if (!teleClient.cell.getLocation(&gd)) {
       return false;
     }
 #endif
@@ -297,7 +298,7 @@ bool processGPS(CBuffer* buffer)
   if (kph >= 2) lastMotionTime = millis();
 
   if (buffer) {
-    buffer->add(PID_GPS_DATE, gd->date);
+    //buffer->add(PID_GPS_DATE, gd->date);
     buffer->add(PID_GPS_TIME, gd->time);
     if (gd->lat && gd->lng && gd->alt) {
       buffer->add(PID_GPS_LATITUDE, gd->lat);
@@ -377,6 +378,14 @@ void processMEMS(CBuffer* buffer)
       value[1] = accSum[1] / accCount - accBias[1];
       value[2] = accSum[2] / accCount - accBias[2];
       buffer->add(PID_ACC, value);
+/*
+      Serial.print("[ACC] ");
+      Serial.print(value[0]);
+      Serial.print('/');
+      Serial.print(value[1]);
+      Serial.print('/');
+      Serial.println(value[2]);
+*/
 #if ENABLE_ORIENTATION
       value[0] = ori.yaw;
       value[1] = ori.pitch;
@@ -659,6 +668,9 @@ void process()
         return;
       }
     }
+  } else if (obd.init(PROTO_AUTO, true)) {
+    state.set(STATE_OBD_READY);
+    Serial.println("ECU ON");
   }
 #else
   buffer->add(PID_DEVICE_HALL, readChipHallSensor() / 200);
@@ -666,12 +678,12 @@ void process()
 
 #if ENABLE_OBD
   if (sys.devType > 12) {
-    batteryVoltage = (float)(analogRead(A0) * 40) / 4095;
-  } else if (state.check(STATE_OBD_READY)) {
+    batteryVoltage = (float)(analogRead(A0) * 45) / 4095;
+  } else {
     batteryVoltage = obd.getVoltage();
   }
   if (batteryVoltage) {
-    buffer->add(PID_BATTERY_VOLTAGE, (int)batteryVoltage * 100);
+    buffer->add(PID_BATTERY_VOLTAGE, (int)(batteryVoltage * 100));
   }
 #endif
 
@@ -689,6 +701,8 @@ void process()
     deviceTemp = readChipTemperature();
     buffer->add(PID_DEVICE_TEMP, deviceTemp);
   }
+
+
 
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;
@@ -744,35 +758,10 @@ void process()
   } while (millis() - startTime < dataInterval);
 }
 
-bool initNetwork()
+bool initCell()
 {
-#if NET_DEVICE == NET_WIFI
-#if ENABLE_OLED
-  oled.print("Connecting WiFi...");
-#endif
-  for (byte attempts = 0; attempts < 3; attempts++) {
-    Serial.print("Joining ");
-    Serial.println(WIFI_SSID);
-    teleClient.net.begin(WIFI_SSID, WIFI_PASSWORD);
-    if (teleClient.net.setup()) {
-      state.set(STATE_NET_READY);
-      String ip = teleClient.net.getIP();
-      if (ip.length()) {
-        state.set(STATE_NET_CONNECTED);
-        Serial.print("IP:");
-        Serial.println(ip);
-#if ENABLE_OLED
-        oled.println(ip);
-#endif
-        break;
-      }
-    } else {
-      Serial.println("No WiFi");
-    }
-  }
-#else
   // power on network module
-  if (teleClient.net.begin(&sys)) {
+  if (teleClient.cell.begin(&sys)) {
     state.set(STATE_NET_READY);
   } else {
     Serial.println("CELL:NO");
@@ -781,24 +770,23 @@ bool initNetwork()
 #endif
     return false;
   }
-#if NET_DEVICE >= SIM800
 #if ENABLE_OLED
-    oled.print(teleClient.net.deviceName());
+    oled.print(teleClient.cell.deviceName());
     oled.println(" OK\r");
     oled.print("IMEI:");
-    oled.println(teleClient.net.IMEI);
+    oled.println(teleClient.cell.IMEI);
 #endif
   Serial.print("CELL:");
-  Serial.println(teleClient.net.deviceName());
-  if (!teleClient.net.checkSIM(SIM_CARD_PIN)) {
+  Serial.println(teleClient.cell.deviceName());
+  if (!teleClient.cell.checkSIM(SIM_CARD_PIN)) {
     Serial.println("NO SIM CARD");
     //return false;
   }
   Serial.print("IMEI:");
-  Serial.println(teleClient.net.IMEI);
-  if (state.check(STATE_NET_READY) && !state.check(STATE_NET_CONNECTED)) {
-    if (teleClient.net.setup(CELL_APN)) {
-      String op = teleClient.net.getOperatorName();
+  Serial.println(teleClient.cell.IMEI);
+  if (state.check(STATE_NET_READY) && !state.check(STATE_CELL_CONNECTED)) {
+    if (teleClient.cell.setup(CELL_APN)) {
+      String op = teleClient.cell.getOperatorName();
       if (op.length()) {
         Serial.print("Operator:");
         Serial.println(op);
@@ -808,12 +796,12 @@ bool initNetwork()
       }
 
 #if GNSS == GNSS_CELLULAR
-      if (teleClient.net.setGPS(true)) {
+      if (teleClient.cell.setGPS(true)) {
         Serial.println("CELL GNSS:OK");
       }
 #endif
 
-      String ip = teleClient.net.getIP();
+      String ip = teleClient.cell.getIP();
       if (ip.length()) {
         Serial.print("IP:");
         Serial.println(ip);
@@ -822,20 +810,9 @@ bool initNetwork()
         oled.println(ip);
 #endif
       }
-      rssi = teleClient.net.getSignal();
-      if (rssi) {
-        Serial.print("RSSI:");
-        Serial.print(rssi);
-        Serial.println("dBm");
-#if ENABLE_OLED
-        oled.print("RSSI:");
-        oled.print(rssi);
-        oled.println("dBm");
-#endif
-      }
-      state.set(STATE_NET_CONNECTED);
+      state.set(STATE_CELL_CONNECTED);
     } else {
-      char *p = strstr(teleClient.net.getBuffer(), "+CPSI:");
+      char *p = strstr(teleClient.cell.getBuffer(), "+CPSI:");
       if (p) {
         char *q = strchr(p, '\r');
         if (q) *q = 0;
@@ -844,16 +821,12 @@ bool initNetwork()
         oled.println(p + 7);
 #endif
       } else {
-        Serial.print(teleClient.net.getBuffer());
+        Serial.print(teleClient.cell.getBuffer());
       }
     }
     timeoutsNet = 0;
   }
-#else
-  state.set(STATE_NET_CONNECTED);
-#endif
-#endif
-  return state.check(STATE_NET_CONNECTED);
+  return state.check(STATE_CELL_CONNECTED);
 }
 
 /*******************************************************************************
@@ -861,6 +834,7 @@ bool initNetwork()
 *******************************************************************************/
 void telemetry(void* inst)
 {
+  uint32_t lastRssiTime = 0;
   uint8_t connErrors = 0;
   CStorageRAM store;
   store.init(SERIALIZE_BUFFER_SIZE);
@@ -871,7 +845,12 @@ void telemetry(void* inst)
       if (state.check(STATE_NET_READY)) {
         teleClient.shutdown();
       }
-      state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
+#if ENABLE_WIFI
+      if (state.check(STATE_WIFI_CONNECTED)) {
+        teleClient.wifi.end();
+      }
+#endif
+      state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
       teleClient.reset();
       bufman.purge();
 
@@ -911,30 +890,57 @@ void telemetry(void* inst)
         }
 #endif
 #endif
-        if (initNetwork()) {
+        if (initCell()) {
           Serial.print("Ping...");
           bool success = teleClient.ping();
           Serial.println(success ? "OK" : "NO");
         }
         teleClient.shutdown();
-        state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
+        state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
       }
       continue;
     }
     
-    if (!state.check(STATE_NET_CONNECTED)) {
-      if (!initNetwork() || !teleClient.connect()) {
+    if (!state.check(STATE_CELL_CONNECTED)) {
+      connErrors = 0;
+      if (!initCell() || !teleClient.connect()) {
         teleClient.shutdown();
-        state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-        delay(30000);
+        state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+        delay(10000);
         continue;
       }
     }
 
-    connErrors = 0;
     teleClient.startTime = millis();
 
+#if ENABLE_WIFI
+  if (!state.check(STATE_WIFI_CONNECTED)) {
+    Serial.print("WIFI SSID:");
+    Serial.println(WIFI_SSID);
+    teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
+    if (teleClient.wifi.setup()) {
+      String ip = teleClient.wifi.getIP();
+      if (ip.length()) {
+        state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
+        Serial.print("WIFI IP:");
+        Serial.println(ip);
+      }
+    }
+  }
+#endif
+
     for (;;) {
+      if (millis() - lastRssiTime > 10000) {
+        rssi = teleClient.cell.getSignal();
+        if (rssi) {
+          Serial.print("RSSI:");
+          Serial.print(rssi);
+          Serial.println("dBm");
+        }
+        lastRssiTime = millis();
+      }
+
+      // get data from buffer
       CBuffer* buffer = bufman.getNewest();
       if (!buffer) {
         if (!state.check(STATE_WORKING)) break;
@@ -956,6 +962,7 @@ void telemetry(void* inst)
 #ifdef PIN_LED
       if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
 #endif
+
       if (teleClient.transmit(store.buffer(), store.length())) {
         // successfully sent
         connErrors = 0;
@@ -963,11 +970,19 @@ void telemetry(void* inst)
       } else {
         timeoutsNet++;
         printTimeoutStats();
-        teleClient.cell.close();
-        if (teleClient.cell.open(0, 0)) {
-          connErrors = 0;
-        } else {
-          connErrors++;
+        if (!teleClient.cell.close()) {
+          if (!teleClient.cell.check()) {
+            Serial.println("CELL ERROR");
+            connErrors = MAX_CONN_ERRORS_RECONNECT;  
+          }
+        }
+        if (connErrors < MAX_CONN_ERRORS_RECONNECT) {
+          if (!teleClient.connect(true)) {
+            connErrors++;
+            delay(500);
+          } else {
+            connErrors = 0;
+          }
         }
       }
 #ifdef PIN_LED
@@ -975,21 +990,22 @@ void telemetry(void* inst)
 #endif
       store.purge();
 
+      if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
+        teleClient.shutdown();
+        state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+        delay(3000);
+        break;
+      }
+
       teleClient.inbound();
 
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
         //Serial.println("Instable connection");
         timeoutsNet++;
+        teleClient.cell.close();
         if (!teleClient.connect()) {
           connErrors++;
         }
-      }
-      if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-        Serial.println("Network errors");
-        teleClient.shutdown();
-        state.clear(STATE_NET_READY | STATE_NET_CONNECTED);
-        delay(5000);
-        break;
       }
 
       if (deviceTemp >= COOLING_DOWN_TEMP) {
@@ -1043,8 +1059,6 @@ void standby()
   ESP.restart();
 #endif  
   state.clear(STATE_STANDBY);
-  // this will wake up co-processor
-  sys.resetLink();
 }
 
 /*******************************************************************************
@@ -1076,14 +1090,16 @@ void showSysInfo()
   Serial.print("CPU:");
   Serial.print(ESP.getCpuFreqMHz());
   Serial.print("MHz FLASH:");
-  Serial.print(getFlashSize() >> 10);
+  Serial.print(ESP.getFlashChipSize() >> 20);
   Serial.println("MB");
   Serial.print("IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
   Serial.print("KB");
-#if BOARD_HAS_PSRAM
+
+#if 0
+  esp_spiram_init();
   Serial.print(" PSRAM:");
-  Serial.print((ESP.getPsramSize() + esp_himem_get_phys_size()) >> 10);
+  Serial.print((esp_spiram_get_size() + esp_himem_get_phys_size()) >> 10);
   Serial.print("KB");
 #if 0
     Serial.println();
@@ -1217,6 +1233,8 @@ void processBLE(int timeout)
     } else if (!strcmp(cmd, "GF")) {
         n += snprintf(buf + n, bufsize - n, "%f", (float)sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
 #endif
+    } else if (!strcmp(cmd, "RSSI")) {
+        n += snprintf(buf + n, bufsize - n, "%d", rssi);
     } else if (!strcmp(cmd, "ATE0")) {
         echo = 0;
         n += snprintf(buf + n, bufsize - n, "OK");
@@ -1224,7 +1242,13 @@ void processBLE(int timeout)
         echo = 1;
         n += snprintf(buf + n, bufsize - n, "OK");
     } else if (!strcmp(cmd, "FS")) {
-        n += snprintf(buf + n, bufsize - n, "%u", logger.size());
+        n += snprintf(buf + n, bufsize - n, "%u",
+#if STORAGE == STORAGE_NONE
+          0
+#else
+          logger.size()
+#endif
+        );
     } else if (!memcmp(cmd, "01", 2)) {
         byte pid = hex2uint8(cmd + 2);
         for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
@@ -1320,10 +1344,10 @@ void setup()
 #endif
 
 #if ENABLE_MEMS
-  if (!state.check(STATE_MEMS_READY)) {
+  if (!state.check(STATE_MEMS_READY)) do {
     Serial.print("MEMS:");
     mems = new ICM_42627;
-    byte ret = mems->begin();
+    byte ret = mems->begin(ENABLE_ORIENTATION);
     if (ret) {
       state.set(STATE_MEMS_READY);
       Serial.println("ICM-42627");
@@ -1339,7 +1363,7 @@ void setup()
         Serial.println("NO");
       }
     }
-  }
+  } while (0);
 #endif
 
 #if ENABLE_HTTPD

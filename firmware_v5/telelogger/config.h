@@ -11,13 +11,8 @@
 /**************************************
 * Configuration Definitions
 **************************************/
-#define NET_WIFI 1
-#define NET_WIFI_MESH 2
-#define NET_SERIAL 3
-#define NET_SIM800 4
-#define NET_SIM5360 5
-#define NET_SIM7600 6
-#define NET_SIM7070 7
+#define NET_NONE 0
+#define NET_SIMCOM 1
 
 #define STORAGE_NONE 0
 #define STORAGE_SPIFFS 1
@@ -48,17 +43,16 @@
 /**************************************
 * Networking configurations
 **************************************/
-#ifndef NET_DEVICE
-// change the following line to change network device
-#define NET_DEVICE NET_SIM7600
+#ifndef SERVER_HOST
 // WiFi settings
-#define WIFI_SSID "SSID"
-#define WIFI_PASSWORD "PASSWORD"
+#define ENABLE_WIFI 0
+#define WIFI_SSID "FREEMATICS"
+#define WIFI_PASSWORD "862150909018"
 // cellular network settings
-#define CELL_APN ""
+#define CELL_APN "internet"
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
-#define SERVER_PROTOCOL PROTOCOL_UDP
+#define SERVER_PROTOCOL PROTOCOL_HTTP
 #endif 
 
 // SIM card setting
@@ -88,7 +82,7 @@
 #define WIFI_AP_PASSWORD "PASSWORD"
 
 // maximum consecutive communication errors before resetting network
-#define MAX_CONN_ERRORS_RECONNECT 3
+#define MAX_CONN_ERRORS_RECONNECT 10
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
 // data receiving timeout
@@ -121,7 +115,7 @@
 **************************************/
 #ifndef GNSS
 // change the following line to change GNSS setting
-#define GNSS GNSS_EXTERNAL
+#define GNSS GNSS_INTERNAL
 #endif
 // keeping GNSS power on during standby 
 #define GNSS_ALWAYS_ON 0

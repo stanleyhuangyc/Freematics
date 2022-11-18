@@ -1,7 +1,7 @@
 #include "FreematicsPlus.h"
 #include "config.h"
 #include "telemesh.h"
-#if NET_DEVICE == NET_WIFI_MESH
+#if 0
 #include <mdf_common.h>
 #include <mwifi.h>
 

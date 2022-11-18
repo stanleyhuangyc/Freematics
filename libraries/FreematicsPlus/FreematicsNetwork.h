@@ -68,10 +68,11 @@ public:
     int getSignal() { return 0; }
     const char* deviceName() { return "WiFi"; }
     void listAPs();
+    bool connected() { return WiFi.isConnected(); }
 protected:
 };
 
-class UDPClientWIFI : public ClientWIFI
+class WifiUDP : public ClientWIFI
 {
 public:
     bool open(const char* host, uint16_t port);
@@ -85,7 +86,7 @@ private:
     WiFiUDP udp;
 };
 
-class HTTPClientWIFI : public HTTPClient, public ClientWIFI
+class WifiHTTP : public HTTPClient, public ClientWIFI
 {
 public:
     bool open(const char* host = 0, uint16_t port = 0);
@@ -96,9 +97,16 @@ private:
     WiFiClient client;
 };
 
-class ClientSIM5360
+typedef enum {
+    CELL_SIM7600 = 0,
+    CELL_SIM7070 = 1,
+    CELL_SIM5360 = 2
+} CELL_TYPE;
+
+class CellSIMCOM
 {
 public:
+
     virtual bool begin(CFreematics* device);
     virtual void end();
     virtual bool setup(const char* apn, unsigned int timeout = 30000);
@@ -117,6 +125,13 @@ public:
             return false;
         }
     }
+    virtual bool check()
+    {
+        for (byte m = 0; m < 3; m++) {
+            if (sendCommand("AT\r")) return true;
+        }
+        return false;
+    }
     char* getBuffer() { return m_buffer; }
     const char* deviceName() { return m_model; }
     char IMEI[16] = {0};
@@ -129,13 +144,14 @@ protected:
     char m_model[12] = {0};
     CFreematics* m_device = 0;
     GPS_DATA* m_gps = 0;
+    CELL_TYPE m_type = CELL_SIM7600;
 };
 
-class UDPClientSIM5360 : public ClientSIM5360
+class CellUDP : public CellSIMCOM
 {
 public:
     bool open(const char* host, uint16_t port);
-    void close();
+    bool close();
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
 protected:
@@ -144,16 +160,16 @@ protected:
     uint16_t udpPort = 0;
 };
 
-class HTTPClientSIM5360 : public HTTPClient, public ClientSIM5360
+class CellHTTP : public HTTPClient, public CellSIMCOM
 {
 public:
     bool open(const char* host = 0, uint16_t port = 0);
-    void close();
+    bool close();
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };
 
-class ClientSIM7600 : public ClientSIM5360
+class ClientSIM7600 : public CellSIMCOM
 {
 public:
     bool setup(const char* apn, unsigned int timeout = 30000);
@@ -165,7 +181,7 @@ class UDPClientSIM7600 : public ClientSIM7600
 {
 public:
     bool open(const char* host, uint16_t port);
-    void close();
+    bool close();
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
 protected:
@@ -178,12 +194,12 @@ class HTTPClientSIM7600 : public HTTPClient, public ClientSIM7600
 {
 public:
     bool open(const char* host = 0, uint16_t port = 0);
-    void close();
+    bool close();
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };
 
-class ClientSIM7070 : public ClientSIM5360
+class ClientSIM7070 : public CellSIMCOM
 {
 public:
     bool begin(CFreematics* device);
@@ -199,7 +215,7 @@ class UDPClientSIM7070 : public ClientSIM7070
 {
 public:
     bool open(const char* host, uint16_t port);
-    void close();
+    bool close();
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 3000);
 protected:
@@ -213,7 +229,7 @@ class HTTPClientSIM7070 : public HTTPClient, public ClientSIM7070
 {
 public:
     bool open(const char* host = 0, uint16_t port = 0);
-    void close();
+    bool close();
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };

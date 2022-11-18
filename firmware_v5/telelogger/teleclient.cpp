@@ -174,7 +174,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
   for (byte attempts = 0; attempts < 3; attempts++) {
     // send notification datagram
     //Serial.println(netbuf.buffer());
-    if (!net.send(netbuf.buffer(), netbuf.length())) {
+    if (!cell.send(netbuf.buffer(), netbuf.length())) {
       // error sending data
       break;
     }
@@ -184,7 +184,7 @@ bool TeleClientUDP::notify(byte event, const char* payload)
     // receive reply
     uint32_t t = millis();
     do {
-      if ((data = net.receive())) break;
+      if ((data = cell.receive())) break;
       // no reply yet
       delay(100);
     } while (millis() - t < DATA_RECEIVING_TIMEOUT);
@@ -230,25 +230,28 @@ bool TeleClientUDP::notify(byte event, const char* payload)
   return false;
 }
 
-bool TeleClientUDP::connect()
+bool TeleClientUDP::connect(bool quick)
 {
   byte event = login ? EVENT_RECONNECT : EVENT_LOGIN;
   bool success = false;
+  if (quick) {
+    return cell.open(0, 0);
+  }
   // connect to telematics server
-  for (byte attempts = 0; attempts < 5; attempts++) {
+  for (byte attempts = 0; attempts < 3; attempts++) {
     Serial.print(event == EVENT_LOGIN ? "LOGIN(" : "RECONNECT(");
     Serial.print(SERVER_HOST);
     Serial.print(':');
     Serial.print(SERVER_PORT);
     Serial.println(")...");
-    if (!net.open(SERVER_HOST, SERVER_PORT)) {
+    if (!cell.open(SERVER_HOST, SERVER_PORT)) {
       Serial.println("Unable to connect");
       delay(3000);
       continue;
     }
     // log in or reconnect to Freematics Hub
     if (!notify(event)) {
-      net.close();
+      cell.close();
       Serial.println("Server timeout");
       continue;
     }
@@ -266,7 +269,7 @@ bool TeleClientUDP::ping()
 {
   bool success = false;
   for (byte n = 0; n < 2 && !success; n++) {
-    success = net.open(SERVER_HOST, SERVER_PORT);
+    success = cell.open(SERVER_HOST, SERVER_PORT);
     if (success) success = notify(EVENT_PING);
   }
   if (success) lastSyncTime = millis();
@@ -275,14 +278,24 @@ bool TeleClientUDP::ping()
 
 bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
-  bool success = false;
-  // transmit data
-  if (net.send(packetBuffer, packetSize)) {
+#if ENABLE_WIFI
+  // transmit data via wifi
+  if (wifi.connected()) {
+    if (wifi.send(packetBuffer, packetSize)) {
+      txBytes += packetSize;
+      txCount++;
+      return true;
+    }
+  }
+#endif
+
+  // transmit data via cellular
+  if (cell.send(packetBuffer, packetSize)) {
     txBytes += packetSize;
     txCount++;
-    success = true;
+    return true;
   }
-  return success;
+  return false;
 }
 
 void TeleClientUDP::inbound()
@@ -290,7 +303,13 @@ void TeleClientUDP::inbound()
   // check incoming datagram
   do {
     int len = 0;
-    char *data = net.receive(&len, 0);
+    char *data;
+#if ENABLE_WIFI
+    data = cell.receive(&len, 10);
+    if (!data) data = cell.receive(&len, 10);
+#else
+    data = cell.receive(&len, 100);
+#endif
     if (!data) break;
     data[len] = 0;
     rxBytes += len;
@@ -323,9 +342,9 @@ void TeleClientUDP::shutdown()
   if (login) {
     notify(EVENT_LOGOUT);
     login = false;
-    net.close();
+    cell.close();
   }
-  net.end();
+  cell.end();
   Serial.println("CELL OFF");
 }
 
@@ -335,12 +354,12 @@ bool TeleClientHTTP::notify(byte event, const char* payload)
   snprintf(url, sizeof(url), "%s/notify/%s?EV=%u&SSI=%d&VIN=%s", SERVER_PATH, devid,
     (unsigned int)event, (int)rssi, vin);
   if (event == EVENT_LOGOUT) login = false;
-  return net.send(METHOD_GET, url, true) && net.receive();
+  return cell.send(METHOD_GET, url, true) && cell.receive();
 }
 
 bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
-  if (net.state() != HTTP_CONNECTED) {
+  if (cell.state() != HTTP_CONNECTED) {
     // reconnect if disconnected
     if (!connect()) {
       return false;
@@ -358,17 +377,17 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   } else {
     len = snprintf(url, sizeof(url), "%s/push?id=%s", SERVER_PATH, devid);
   }
-  success = net.send(METHOD_GET, url, true);
+  success = cell.send(METHOD_GET, url, true);
 #else
   len = snprintf(url, sizeof(url), "%s/post/%s", SERVER_PATH, devid);
   Serial.print("URL:");
   Serial.println(url);
-  success = net.send(METHOD_POST, url, true, packetBuffer, packetSize);
+  success = cell.send(METHOD_POST, url, true, packetBuffer, packetSize);
   len += packetSize;
 #endif
   if (!success) {
     Serial.println("Connection closed");
-    net.close();
+    cell.close();
     return false;
   } else {
     txBytes += len;
@@ -377,15 +396,15 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 
   // check response
   int bytes = 0;
-  char* response = net.receive(&bytes);
+  char* response = cell.receive(&bytes);
   if (!response) {
     // close connection on receiving timeout
     Serial.println("No HTTP response");
-    net.close();
+    cell.close();
     return false;
   }
   Serial.println(response);
-  if (net.code() == 200) {
+  if (cell.code() == 200) {
     // successful
     lastSyncTime = millis();
     rxBytes += bytes;
@@ -393,26 +412,26 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   return true;
 }
 
-bool TeleClientHTTP::connect()
+bool TeleClientHTTP::connect(bool quick)
 {
   if (!started) {
-    started = net.open();
+    started = cell.open();
   }
 
   // connect to HTTP server
   bool success = false;
 
   for (byte attempts = 0; !success && attempts < 3; attempts++) {
-    success = net.open(SERVER_HOST, SERVER_PORT);
+    success = cell.open(SERVER_HOST, SERVER_PORT);
     if (!success) {
-      net.close();
-      delay(1000);
+      cell.close();
     }
   }
   if (!success) {
     Serial.println("Error connecting to server");
     return false;
   }
+  if (quick) return true;
   if (!login) {
     Serial.print("LOGIN(");
     Serial.print(SERVER_HOST);
@@ -439,8 +458,12 @@ void TeleClientHTTP::shutdown()
     notify(EVENT_LOGOUT);
     login = false;
   }
-  net.close();
-  net.end();
+  cell.close();
+  cell.end();
+
+#if ENABLE_WIFI
+  wifi.end();
+#endif
   started = false;
   Serial.println("CELL OFF");
 }
