@@ -50,11 +50,11 @@ class HTTPClient
 {
 public:
     HTTP_STATES state() { return m_state; }
-    byte code() { return m_code; }
+    uint16_t code() { return m_code; }
 protected:
     String genHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize);
     HTTP_STATES m_state = HTTP_DISCONNECTED;
-    byte m_code = 0;
+    uint16_t m_code = 0;
     String m_host;
 };
 
@@ -125,10 +125,10 @@ public:
             return false;
         }
     }
-    virtual bool check()
+    bool check()
     {
-        for (byte m = 0; m < 3; m++) {
-            if (sendCommand("AT\r")) return true;
+        for (byte m = 0; m < 4; m++) {
+            if (sendCommand("AT\r", 500)) return true;
         }
         return false;
     }
@@ -163,6 +163,7 @@ protected:
 class CellHTTP : public HTTPClient, public CellSIMCOM
 {
 public:
+    void init();
     bool open(const char* host = 0, uint16_t port = 0);
     bool close();
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);

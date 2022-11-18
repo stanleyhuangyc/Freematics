@@ -361,7 +361,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
   if (cell.state() != HTTP_CONNECTED) {
     // reconnect if disconnected
-    if (!connect()) {
+    if (!connect(true)) {
       return false;
     }
   }
@@ -387,7 +387,6 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 #endif
   if (!success) {
     Serial.println("Connection closed");
-    cell.close();
     return false;
   } else {
     txBytes += len;
@@ -400,7 +399,6 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   if (!response) {
     // close connection on receiving timeout
     Serial.println("No HTTP response");
-    cell.close();
     return false;
   }
   Serial.println(response);
@@ -414,8 +412,8 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 
 bool TeleClientHTTP::connect(bool quick)
 {
-  if (!started) {
-    started = cell.open();
+  if (!quick) {
+    cell.init();
   }
 
   // connect to HTTP server
@@ -425,6 +423,7 @@ bool TeleClientHTTP::connect(bool quick)
     success = cell.open(SERVER_HOST, SERVER_PORT);
     if (!success) {
       cell.close();
+      cell.init();
     }
   }
   if (!success) {
@@ -464,6 +463,5 @@ void TeleClientHTTP::shutdown()
 #if ENABLE_WIFI
   wifi.end();
 #endif
-  started = false;
   Serial.println("CELL OFF");
 }

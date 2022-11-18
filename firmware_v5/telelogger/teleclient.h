@@ -163,5 +163,4 @@ public:
     WifiHTTP wifi;
 #endif
     CellHTTP cell;
-    bool started = false;
 };

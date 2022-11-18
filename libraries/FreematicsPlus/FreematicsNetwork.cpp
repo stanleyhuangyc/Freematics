@@ -663,13 +663,17 @@ char* CellUDP::checkIncoming(int* pbytes)
 	return 0;
 }
 
+void CellHTTP::init()
+{
+  if (m_type != CELL_SIM7070) {
+    sendCommand("AT+CHTTPSSTOP\r");
+    sendCommand("AT+CHTTPSSTART\r");
+  }
+}
+
 bool CellHTTP::open(const char* host, uint16_t port)
 {
   if (m_type == CELL_SIM7070) {
-    if (!host) {
-      return true;
-    }
-
     sendCommand("AT+CNACT=0,1\r");
     sendCommand("AT+CACID=0\r");
 
@@ -694,12 +698,6 @@ bool CellHTTP::open(const char* host, uint16_t port)
       }
     }
   } else {
-    if (!host) {
-      sendCommand("AT+CHTTPSSTOP\r");
-      sendCommand("AT+CHTTPSSTART\r");
-      return true;
-    }
-
     memset(m_buffer, 0, sizeof(m_buffer));
     sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,%u\r", host, port, port == 443 ? 2: 1);
     if (sendCommand(m_buffer, 1000)) {
@@ -803,6 +801,7 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
     // start receiving
     int received = 0;
     char* payload = 0;
+    bool keepalive;
 
     // wait for RECV EVENT
     if (!sendCommand(0, timeout, "RECV EVENT")) {
@@ -817,11 +816,7 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
       else if (*(p - 1) != ':')
         return 0;
     }
-    // FIXME
-    if (strstr(m_buffer, " 200 ")) {
-      m_code = 200;
-    }
-
+    
     checkGPS();
 
     /*
@@ -848,11 +843,19 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
     if (received == 0) {
       m_state = HTTP_ERROR;
       return 0;
-    } else {
-      m_state = HTTP_CONNECTED;
-      if (pbytes) *pbytes = received;
-      return payload;
     }
+
+    p = strstr(payload, "http/");
+    if (p) {
+      p = strchr(p, ' ');
+      if (p) m_code = atoi(p + 1);
+    }
+    keepalive = strstr(m_buffer, ": close\r\n") == 0;
+
+    m_state = HTTP_CONNECTED;
+    if (!keepalive) close();
+    if (pbytes) *pbytes = received;
+    return payload;
   }
 }
 
