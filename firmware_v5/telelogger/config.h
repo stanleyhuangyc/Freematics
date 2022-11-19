@@ -44,12 +44,12 @@
 // WiFi settings
 #define ENABLE_WIFI 0
 #define WIFI_SSID "FREEMATICS"
-#define WIFI_PASSWORD "862150909018"
+#define WIFI_PASSWORD "PASSWORD"
 // cellular network settings
-#define CELL_APN "internet"
+#define CELL_APN "hologram"
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
-#define SERVER_PROTOCOL PROTOCOL_HTTP
+#define SERVER_PROTOCOL PROTOCOL_UDP
 #endif 
 
 // SIM card setting

@@ -943,13 +943,14 @@ void telemetry(void* inst)
 #endif
       if (!state.check(STATE_WIFI_CONNECTED) && !state.check(STATE_CELL_CONNECTED)) {
         connErrors = 0;
+        Serial.println("[CELL] Switching on");
         if (!initCell() || !teleClient.connect()) {
           teleClient.shutdown();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
           delay(10000);
           break;
         }
-        Serial.println("[CELL] Connected");
+        Serial.println("[CELL] In service");
       }
 
       if (millis() - lastRssiTime > SIGNAL_CHECK_INTERVAL * 1000) {
