@@ -901,43 +901,80 @@ void telemetry(void* inst)
       continue;
     }
     
-    if (!state.check(STATE_CELL_CONNECTED)) {
-      connErrors = 0;
-      if (!initCell() || !teleClient.connect()) {
-        teleClient.shutdown();
-        state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
-        delay(10000);
-        continue;
+#if ENABLE_WIFI
+    if (!state.check(STATE_WIFI_CONNECTED)) {
+      Serial.print("WIFI SSID:");
+      Serial.println(WIFI_SSID);
+      teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
+      if (teleClient.wifi.setup()) {
+        String ip = teleClient.wifi.getIP();
+        if (ip.length()) {
+          Serial.print("WIFI IP:");
+          Serial.println(ip);
+        }
+        if (teleClient.connect()) {
+          state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
+        }
       }
     }
+#endif
 
     teleClient.startTime = millis();
 
-#if ENABLE_WIFI
-  if (!state.check(STATE_WIFI_CONNECTED)) {
-    Serial.print("WIFI SSID:");
-    Serial.println(WIFI_SSID);
-    teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
-    if (teleClient.wifi.setup()) {
-      String ip = teleClient.wifi.getIP();
-      if (ip.length()) {
-        state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
-        Serial.print("WIFI IP:");
-        Serial.println(ip);
-      }
-    }
-  }
-#endif
-
     for (;;) {
-      if (millis() - lastRssiTime > 10000) {
-        rssi = teleClient.cell.getSignal();
+
+#if ENABLE_WIFI
+      if (!state.check(STATE_WIFI_CONNECTED) && teleClient.wifi.connected()) {
+        connErrors = 0;
+        Serial.println("[WIFI] Connected");
+        // switch off cellular module when wifi connected
+        if (teleClient.connect()) {
+          state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
+          if (state.check(STATE_CELL_CONNECTED)) {
+            Serial.println("[CELL] Power Off");
+            teleClient.cell.end();
+            state.clear(STATE_CELL_CONNECTED);
+          }
+        }
+      } else if (state.check(STATE_WIFI_CONNECTED) && !teleClient.wifi.connected()) {
+        Serial.println("[WIFI] Disconnected");
+        state.clear(STATE_WIFI_CONNECTED);
+      }
+#endif
+      if (!state.check(STATE_WIFI_CONNECTED) && !state.check(STATE_CELL_CONNECTED)) {
+        connErrors = 0;
+        if (!initCell() || !teleClient.connect()) {
+          teleClient.shutdown();
+          state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+          delay(10000);
+          break;
+        }
+        Serial.println("[CELL] Connected");
+      }
+
+      if (millis() - lastRssiTime > SIGNAL_CHECK_INTERVAL * 1000) {
+#if ENABLE_WIFI
+        if (state.check(STATE_WIFI_CONNECTED))
+        {
+          rssi = teleClient.wifi.RSSI();
+        }
+        else
+#endif
+        {
+          rssi = teleClient.cell.RSSI();
+        }
         if (rssi) {
           Serial.print("RSSI:");
           Serial.print(rssi);
           Serial.println("dBm");
         }
         lastRssiTime = millis();
+
+#if ENABLE_WIFI
+        if (!state.check(STATE_WIFI_CONNECTED)) {
+          teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
+        }
+#endif
       }
 
       // get data from buffer
@@ -969,19 +1006,17 @@ void telemetry(void* inst)
         showStats();
       } else {
         timeoutsNet++;
+        connErrors++;
         printTimeoutStats();
         if (!teleClient.cell.close()) {
           if (!teleClient.cell.check()) {
-            Serial.println("CELL ERROR");
+            Serial.println("[CELL] Not in service");
             connErrors = MAX_CONN_ERRORS_RECONNECT;  
           }
         }
         if (connErrors < MAX_CONN_ERRORS_RECONNECT) {
           if (!teleClient.connect(true)) {
-            connErrors++;
-            delay(500);
-          } else {
-            connErrors = 0;
+            delay(3000);
           }
         }
       }
@@ -991,12 +1026,15 @@ void telemetry(void* inst)
       store.purge();
 
       if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-        teleClient.shutdown();
-        state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
-        delay(3000);
-        break;
+        if (!state.check(STATE_WIFI_CONNECTED)) {
+          Serial.println("[NET] Shutdown");
+          teleClient.shutdown();
+          state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+          delay(3000);
+          break;
+        }
       }
-
+      
       teleClient.inbound();
 
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {

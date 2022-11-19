@@ -162,10 +162,14 @@ bool WifiHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const 
   return true;
 }
 
-int WifiHTTP::receive(char* buffer, int bufsize, unsigned int timeout)
+char* WifiHTTP::receive(char* buffer, int bufsize, int* pbytes, unsigned int timeout)
 {
   int bytes = 0;
-  bool eos = false;
+  int contentBytes = 0;
+  int contentLen = 0;
+  char* content = 0;
+  bool keepAlive = true;
+
   for (uint32_t t = millis(); millis() - t < timeout && bytes < bufsize; ) {
     if (!client.available()) {
       delay(1);
@@ -173,17 +177,33 @@ int WifiHTTP::receive(char* buffer, int bufsize, unsigned int timeout)
     }
     buffer[bytes++] = client.read();
     buffer[bytes] = 0;
-     if (strstr(buffer, "\r\n\r\n")) {
-      eos = true;
-      break;
+    if (content) {
+      if (++contentBytes == contentLen) break;
+    } else if (strstr(buffer, "\r\n\r\n")) {
+      // parse HTTP header
+      char *p = strstr(buffer, "/1.1 ");
+      if (!p) p = strstr(buffer, "/1.0 ");
+      if (p) {
+        if (p) m_code = atoi(p + 5);
+      }
+      keepAlive = strstr(buffer, ": close\r\n") == 0;
+      p = strstr(buffer, "Content-Length: ");
+      if (!p) p = strstr(buffer, "Content-length: ");
+      if (p) {
+        contentLen = atoi(p + 16);
+      }
+      content = buffer + bytes;
     }
   }
-  if (!eos) {
+  if (!content) {
     m_state = HTTP_ERROR;
     return 0;
   }
+
   m_state = HTTP_CONNECTED;
-  return bytes;
+  if (pbytes) *pbytes = contentBytes;
+  if (!keepAlive) close();
+  return content;
 }
 
 /*******************************************************************************
@@ -411,7 +431,7 @@ String CellSIMCOM::getIP()
   return "";
 }
 
-int CellSIMCOM::getSignal()
+int CellSIMCOM::RSSI()
 {
   if (sendCommand("AT+CSQ\r", 500)) {
       char *p = strchr(m_buffer, ':');
@@ -845,10 +865,10 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
       return 0;
     }
 
-    p = strstr(payload, "http/");
+    p = strstr(payload, "/1.1 ");
+    if (!p) p = strstr(payload, "/1.0 ");
     if (p) {
-      p = strchr(p, ' ');
-      if (p) m_code = atoi(p + 1);
+      if (p) m_code = atoi(p + 5);
     }
     keepalive = strstr(m_buffer, ": close\r\n") == 0;
 

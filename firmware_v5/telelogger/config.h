@@ -11,9 +11,6 @@
 /**************************************
 * Configuration Definitions
 **************************************/
-#define NET_NONE 0
-#define NET_SIMCOM 1
-
 #define STORAGE_NONE 0
 #define STORAGE_SPIFFS 1
 #define STORAGE_SD 2
@@ -43,7 +40,7 @@
 /**************************************
 * Networking configurations
 **************************************/
-#ifndef SERVER_HOST
+#ifndef ENABLE_WIFI
 // WiFi settings
 #define ENABLE_WIFI 0
 #define WIFI_SSID "FREEMATICS"
@@ -82,7 +79,7 @@
 #define WIFI_AP_PASSWORD "PASSWORD"
 
 // maximum consecutive communication errors before resetting network
-#define MAX_CONN_ERRORS_RECONNECT 10
+#define MAX_CONN_ERRORS_RECONNECT 5
 // maximum allowed connecting time
 #define MAX_CONN_TIME 10000 /* ms */
 // data receiving timeout
@@ -93,6 +90,7 @@
 #define STATIONARY_TIME_TABLE {30, 60, 180} /* seconds */
 #define DATA_INTERVAL_TABLE {1000, 2000, 5000} /* ms */
 #define PING_BACK_INTERVAL 900 /* seconds */
+#define SIGNAL_CHECK_INTERVAL 10 /* seconds */
 
 /**************************************
 * Data storage configurations

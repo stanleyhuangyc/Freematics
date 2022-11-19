@@ -69,6 +69,7 @@ public:
     const char* deviceName() { return "WiFi"; }
     void listAPs();
     bool connected() { return WiFi.isConnected(); }
+    int RSSI() { return WiFi.RSSI(); }
 protected:
 };
 
@@ -78,7 +79,7 @@ public:
     bool open(const char* host, uint16_t port);
     void close();
     bool send(const char* data, unsigned int len);
-    int receive(char* buffer, int bufsize, unsigned int timeout = 5000);
+    int receive(char* buffer, int bufsize, unsigned int timeout = 100);
     String queryIP(const char* host);
 private:
     IPAddress udpIP;
@@ -92,7 +93,7 @@ public:
     bool open(const char* host = 0, uint16_t port = 0);
     void close();
     bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
-    int receive(char* buffer, int bufsize, unsigned int timeout = HTTP_CONN_TIMEOUT);
+    char* receive(char* buffer, int bufsize, int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 private:
     WiFiClient client;
 };
@@ -112,7 +113,7 @@ public:
     virtual bool setup(const char* apn, unsigned int timeout = 30000);
     virtual bool setGPS(bool on);
     virtual String getIP();
-    int getSignal();
+    int RSSI();
     String getOperatorName();
     bool checkSIM(const char* pin = 0);
     virtual String queryIP(const char* host);
