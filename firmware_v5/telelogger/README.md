@@ -14,14 +14,16 @@ The sketch collects following data.
 Data Transmission
 -----------------
 
-Data transmission over UDP and HTTP(s) protocols are implemented with following hardware.
+Data transmission over UDP and HTTP(s) protocols are implemented for the followings.
 
 * WiFi (ESP32 built-in)
 * 3G WCDMA (SIM5360)
 * 4G LTE CAT-4 (SIM7600)
-* 4G LTE CAT-M1 (SIM7070)
+* 4G LTE CAT-M (SIM7070)
 
 UDP mode implements a full telemetry client for [Freematics Hub](https://hub.freematics.com) and [Traccar](https://www.traccar.org). HTTP mode implements [OsmAnd](https://www.traccar.org/osmand/) protocol.
+
+Seamless WiFi and cellular network co-working is implemented. When defined WiFi hotspot is available, data is transmitted via WiFi and cellular module is switched off. When no WiFi hotspot can be reached, cellular module is switched on for data transmission until WiFi hotspot available again. 
 
 Data Storage
 ------------
