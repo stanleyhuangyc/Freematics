@@ -74,9 +74,10 @@ float deviceTemp = 0;
 
 // live data
 int16_t rssi = 0;
+int16_t rssiLast = 0;
 char vin[18] = {0};
 uint16_t dtc[6] = {0};
-int16_t batteryVoltage = 0;
+float batteryVoltage = 0;
 GPS_DATA* gd = 0;
 
 char devid[12] = {0};
@@ -190,7 +191,7 @@ int handlerLiveData(UrlHandlerParam* param)
 {
     char *buf = param->pucBuffer;
     int bufsize = param->bufSize;
-    int n = snprintf(buf, bufsize, "{\"obd\":{\"vin\":\"%s\",\"battery\":%.1f,\"pid\":[", vin, (float)batteryVoltage / 100);
+    int n = snprintf(buf, bufsize, "{\"obd\":{\"vin\":\"%s\",\"battery\":%.1f,\"pid\":[", vin, batteryVoltage);
     uint32_t t = millis();
     for (int i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
         n += snprintf(buf + n, bufsize - n, "{\"pid\":%u,\"value\":%d,\"age\":%u},",
@@ -676,6 +677,7 @@ void process()
   buffer->add(PID_DEVICE_HALL, readChipHallSensor() / 200);
 #endif
 
+  if (rssi != rssiLast) buffer->add(PID_CSQ, (int)(rssiLast = rssi));
 #if ENABLE_OBD
   if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 45) / 4095;
@@ -856,7 +858,7 @@ void telemetry(void* inst)
 
 #if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
       if (state.check(STATE_GPS_READY)) {
-        Serial.println("GNSS OFF");
+        Serial.println("[GPS] OFF");
 #if GNSS_ALWAYS_ON
         sys.gpsEnd(false);
 #else
@@ -890,13 +892,21 @@ void telemetry(void* inst)
         }
 #endif
 #endif
-        if (initCell()) {
-          Serial.print("Ping...");
-          bool success = teleClient.ping();
-          Serial.println(success ? "OK" : "NO");
+        Serial.println("[NET] Ping...");
+        bool success = false;
+#if ENABLE_WIFI
+        teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
+        if (teleClient.wifi.setup()) {
+          success = teleClient.ping();
+        }
+        else
+#endif
+        {
+          if (initCell()) {
+            success = teleClient.ping();
+          }
         }
         teleClient.shutdown();
-        state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
       }
       continue;
     }
@@ -943,7 +953,7 @@ void telemetry(void* inst)
 #endif
       if (!state.check(STATE_WIFI_CONNECTED) && !state.check(STATE_CELL_CONNECTED)) {
         connErrors = 0;
-        Serial.println("[CELL] Switching on");
+        Serial.println("[CELL] Initiating...");
         if (!initCell() || !teleClient.connect()) {
           teleClient.shutdown();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);

@@ -83,14 +83,14 @@ function processInput(data)
 			document.getElementById("wifi").innerHTML = imgTick + " IP:" + ret;
 		}
 		if (ret = checkData(con, "IMEI:")) {
-			document.getElementById("sim_card").innerHTML = imgTick;
+			document.getElementById("cell").innerHTML = "SIM Card " + imgTick;
 			document.getElementById("imei").innerText = "IMEI:" + ret;
 		}
 		if (ret = checkData(con, "CELL:")) {
-			document.getElementById("cell").innerHTML = ret == "NO" ? imgCross : (imgTick + " " + ret);
+			document.getElementById("cellinfo").innerHTML = ret == "NO" ? imgCross : (imgTick + " " + ret);
 		}
 		if ((ret = checkData(con, "NO SIM CARD")) != null) {
-			document.getElementById("sim_card").innerHTML = imgCross;
+			document.getElementById("cell").innerHTML = "SIM Card " + imgCross;
 		}
 		if (ret = checkData(con, "Operator:")) {
 			document.getElementById("sim_card").innerHTML = imgTick + " " + ret
@@ -114,6 +114,12 @@ function processInput(data)
 	}
 	if (ret = checkData(con, "[GPS]")) {
 		document.getElementById("gps").innerText = ret;
+	}
+	if (ret = checkData(con, "[WIFI]")) {
+		document.getElementById("wifi").innerText = ret;
+	}
+	if (ret = checkData(con, "[CELL]")) {
+		document.getElementById("cell").innerText = ret;
 	}
 	if (ret = checkData(con, "RSSI:")) {
 		document.getElementById("rssi").innerText = "RSSI:" + ret;

@@ -212,14 +212,14 @@ bool TeleClientUDP::notify(byte event, const char* payload)
     }
     // verify checksum
     if (!verifyChecksum(data)) {
-      Serial.print("Checksum mismatch:");
+      Serial.print("[UDP] Checksum mismatch:");
       Serial.println(data);
       continue;
     }
     char pattern[16];
     sprintf(pattern, "EV=%u", event);
     if (!strstr(data, pattern)) {
-      Serial.println("Invalid reply");
+      Serial.println("[UDP] Invalid reply");
       continue;
     }
     if (event == EVENT_LOGIN) {
@@ -317,7 +317,16 @@ bool TeleClientUDP::ping()
 {
   bool success = false;
   for (byte n = 0; n < 2 && !success; n++) {
-    success = cell.open(SERVER_HOST, SERVER_PORT);
+#if ENABLE_WIFI
+    if (wifi.connected())
+    {
+      success = wifi.open(SERVER_HOST, SERVER_PORT);
+    }
+    else
+#endif
+    {
+      success = cell.open(SERVER_HOST, SERVER_PORT);
+    }
     if (success) success = notify(EVENT_PING);
   }
   if (success) lastSyncTime = millis();
@@ -374,7 +383,7 @@ void TeleClientUDP::inbound()
     Serial.println(data);
     rxBytes += len;
     if (!verifyChecksum(data)) {
-      Serial.print("Checksum mismatch:");
+      Serial.print("[UDP] Checksum mismatch:");
       Serial.println(data);
       break;
     }
@@ -567,12 +576,11 @@ void TeleClientHTTP::shutdown()
   if (login) {
     notify(EVENT_LOGOUT);
     login = false;
-    Serial.println("[NET] LOGGED OFF");
+    Serial.println("[NET] LOGOUT");
   }
-  cell.close();
-  cell.end();
-
 #if ENABLE_WIFI
   wifi.end();
 #endif
+  cell.close();
+  cell.end();
 }
