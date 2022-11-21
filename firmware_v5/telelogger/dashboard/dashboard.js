@@ -90,10 +90,10 @@ function processInput(data)
 			document.getElementById("cellinfo").innerHTML = ret == "NO" ? imgCross : (imgTick + " " + ret);
 		}
 		if ((ret = checkData(con, "NO SIM CARD")) != null) {
-			document.getElementById("cell").innerHTML = "SIM Card " + imgCross;
+			document.getElementById("cell").innerHTML = imgCross + " NO SIM CARD";
 		}
 		if (ret = checkData(con, "Operator:")) {
-			document.getElementById("sim_card").innerHTML = imgTick + " " + ret
+			document.getElementById("imei").innerText = "| " + ret;
 		}
 		if (ret = checkData(con, "Unable to connect") != null) {
 			document.getElementById("server").innerHTML = imgCross;
@@ -122,6 +122,6 @@ function processInput(data)
 		document.getElementById("cell").innerText = ret;
 	}
 	if (ret = checkData(con, "RSSI:")) {
-		document.getElementById("rssi").innerText = "RSSI:" + ret;
+		document.getElementById("rssi").innerText = "| RSSI:" + ret;
 	}
 }

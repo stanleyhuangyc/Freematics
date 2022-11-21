@@ -126,11 +126,12 @@ public:
             return false;
         }
     }
-    bool check()
+    bool check(unsigned int timeout = 2000)
     {
-        for (byte m = 0; m < 4; m++) {
-            if (sendCommand("AT\r", 500)) return true;
-        }
+        uint32_t t = millis();
+        do {
+            if (sendCommand("AT\r", 250)) return true;
+        } while (millis() - t < timeout);
         return false;
     }
     char* getBuffer() { return m_buffer; }

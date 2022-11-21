@@ -212,14 +212,14 @@ char* WifiHTTP::receive(char* buffer, int bufsize, int* pbytes, unsigned int tim
 bool CellSIMCOM::begin(CFreematics* device)
 {
   m_device = device;
-  for (byte n = 0; ; n++) {
+  for (byte n = 0; n < 10; n++) {
     // try turning on module
     device->xbTogglePower();
+    delay(5000);
     // discard any stale data
     device->xbPurge();
-    delay(5000);
-    for (byte m = 0; m < 3; m++) {
-      if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("ATI\r")) {
+    if (check()) {
+      if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
         // retrieve module info
         //Serial.print(m_buffer);
         char *p = strstr(m_buffer, "Model:");

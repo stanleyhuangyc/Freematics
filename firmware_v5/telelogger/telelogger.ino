@@ -664,14 +664,14 @@ void process()
     processOBD(buffer);
     if (obd.errors >= MAX_OBD_ERRORS) {
       if (!obd.init()) {
-        Serial.println("ECU OFF");
+        Serial.println("[OBD] ECU OFF");
         state.clear(STATE_OBD_READY | STATE_WORKING);
         return;
       }
     }
   } else if (obd.init(PROTO_AUTO, true)) {
     state.set(STATE_OBD_READY);
-    Serial.println("ECU ON");
+    Serial.println("[OBD] ECU ON");
   }
 #else
   buffer->add(PID_DEVICE_HALL, readChipHallSensor() / 200);
@@ -762,6 +762,7 @@ void process()
 
 bool initCell()
 {
+  Serial.println("[CELL] Activating...");
   // power on network module
   if (teleClient.cell.begin(&sys)) {
     state.set(STATE_NET_READY);
@@ -824,6 +825,13 @@ bool initCell()
 #endif
       } else {
         Serial.print(teleClient.cell.getBuffer());
+      }
+
+      rssi = teleClient.cell.RSSI();
+      if (rssi) {
+        Serial.print("RSSI:");
+        Serial.print(rssi);
+        Serial.println("dBm");
       }
     }
     timeoutsNet = 0;
@@ -941,9 +949,9 @@ void telemetry(void* inst)
         if (teleClient.connect()) {
           state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
           if (state.check(STATE_CELL_CONNECTED)) {
-            Serial.println("[CELL] Power Off");
             teleClient.cell.end();
             state.clear(STATE_CELL_CONNECTED);
+            Serial.println("[CELL] Deactivated");
           }
         }
       } else if (state.check(STATE_WIFI_CONNECTED) && !teleClient.wifi.connected()) {
@@ -953,11 +961,8 @@ void telemetry(void* inst)
 #endif
       if (!state.check(STATE_WIFI_CONNECTED) && !state.check(STATE_CELL_CONNECTED)) {
         connErrors = 0;
-        Serial.println("[CELL] Initiating...");
         if (!initCell() || !teleClient.connect()) {
-          teleClient.shutdown();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
-          delay(10000);
           break;
         }
         Serial.println("[CELL] In service");
@@ -1022,7 +1027,8 @@ void telemetry(void* inst)
         if (!teleClient.cell.close()) {
           if (!teleClient.cell.check()) {
             Serial.println("[CELL] Not in service");
-            connErrors = MAX_CONN_ERRORS_RECONNECT;  
+            state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+            break;
           }
         }
         if (connErrors < MAX_CONN_ERRORS_RECONNECT) {
@@ -1038,10 +1044,7 @@ void telemetry(void* inst)
 
       if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
         if (!state.check(STATE_WIFI_CONNECTED)) {
-          Serial.println("[NET] Shutdown");
-          teleClient.shutdown();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
-          delay(3000);
           break;
         }
       }
@@ -1049,7 +1052,7 @@ void telemetry(void* inst)
       teleClient.inbound();
 
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
-        //Serial.println("Instable connection");
+        Serial.println("[NET] Poor connection");
         timeoutsNet++;
         teleClient.cell.close();
         if (!teleClient.connect()) {

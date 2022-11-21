@@ -263,6 +263,7 @@ bool TeleClientUDP::connect(bool quick)
       return cell.open(0, 0);
     }
   }
+
   // connect to telematics server
   for (byte attempts = 0; attempts < 3; attempts++) {
     Serial.print(event == EVENT_LOGIN ? "LOGIN(" : "RECONNECT(");
@@ -338,12 +339,13 @@ bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
 #if ENABLE_WIFI
   // transmit data via wifi
   if (wifi.connected()) {
-    Serial.print("[WIFI] ");
-    Serial.println(packetBuffer);
     if (wifi.send(packetBuffer, packetSize)) {
       txBytes += packetSize;
       txCount++;
-      return true;
+      Serial.print("[WIFI] ");
+      Serial.print(packetSize);
+      Serial.println(" bytes sent");
+      return true;  
     }
     return false;
   }
@@ -351,7 +353,8 @@ bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
 
   // transmit data via cellular
   Serial.print("[CELL] ");
-  Serial.println(packetBuffer);
+  Serial.print(packetSize);
+  Serial.println(" bytes being sent");
   if (cell.send(packetBuffer, packetSize)) {
     txBytes += packetSize;
     txCount++;
@@ -375,7 +378,7 @@ void TeleClientUDP::inbound()
     else
 #endif
     {
-      data = cell.receive(&len, 10);
+      data = cell.receive(&len, 100);
     }
     if (!data || len == 0) break;
     data[len] = 0;
@@ -392,14 +395,9 @@ void TeleClientUDP::inbound()
     int eventID = atoi(p + 3);
     switch (eventID) {
     case EVENT_SYNC:
-        {
-          uint16_t id = hex2uint16(data);
-          if (id && id != feedid) {
-            feedid = id;
-            Serial.print("FEED ID:");
-            Serial.println(feedid);
-          }
-        }
+        feedid = hex2uint16(data);
+        Serial.print("[UDP] FEED ID:");
+        Serial.println(feedid);
         break;
     }
     lastSyncTime = millis();
@@ -412,12 +410,13 @@ void TeleClientUDP::shutdown()
     notify(EVENT_LOGOUT);
     login = false;
     cell.close();
-    Serial.println("[NET] LOGOUT");
   }
 #if ENABLE_WIFI
   wifi.end();
+  Serial.println("[WIFI] Deactivated");
 #endif
   cell.end();
+  Serial.println("[CELL] Deactivated");
 }
 
 bool TeleClientHTTP::notify(byte event, const char* payload)
@@ -576,11 +575,12 @@ void TeleClientHTTP::shutdown()
   if (login) {
     notify(EVENT_LOGOUT);
     login = false;
-    Serial.println("[NET] LOGOUT");
   }
 #if ENABLE_WIFI
   wifi.end();
+  Serial.println("[WIFI] Deactivated");
 #endif
   cell.close();
   cell.end();
+  Serial.println("[CELL] Deactivated");
 }
