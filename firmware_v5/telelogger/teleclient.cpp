@@ -312,7 +312,7 @@ bool TeleClientUDP::connect(bool quick)
     success = true;
     break;
   }
-  startTime = millis();
+  if (event == EVENT_LOGIN) startTime = millis();
   if (success) {
     lastSyncTime = startTime;
   }

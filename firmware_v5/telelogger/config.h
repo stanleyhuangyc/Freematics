@@ -6,7 +6,7 @@
 **************************************/
 #define BUFFER_SLOTS 64 /* max number of buffer */
 #define BUFFER_LENGTH 128 /* bytes per slot */
-#define SERIALIZE_BUFFER_SIZE 2048 /* bytes */
+#define SERIALIZE_BUFFER_SIZE 1024 /* bytes */
 
 /**************************************
 * Configuration Definitions
