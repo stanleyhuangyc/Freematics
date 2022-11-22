@@ -485,9 +485,9 @@ void initialize()
   // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
 #if GNSS == GNSS_EXTERNAL
-    if (sys.gpsBegin())
+    if (sys.gpsBeginExt())
 #else
-    if (sys.gpsBegin(0))
+    if (sys.gpsBegin())
 #endif
     {
       state.set(STATE_GPS_READY);
@@ -767,7 +767,7 @@ bool initCell()
   if (teleClient.cell.begin(&sys)) {
     state.set(STATE_NET_READY);
   } else {
-    Serial.println("CELL:NO");
+    Serial.println("[CELL] No supported module");
 #if ENABLE_OLED
     oled.println("No Cell Module");
 #endif
@@ -788,6 +788,7 @@ bool initCell()
   Serial.print("IMEI:");
   Serial.println(teleClient.cell.IMEI);
   if (state.check(STATE_NET_READY) && !state.check(STATE_CELL_CONNECTED)) {
+    Serial.println("[CELL] Searching...");
     if (teleClient.cell.setup(CELL_APN)) {
       String op = teleClient.cell.getOperatorName();
       if (op.length()) {
@@ -806,7 +807,7 @@ bool initCell()
 
       String ip = teleClient.cell.getIP();
       if (ip.length()) {
-        Serial.print("IP:");
+        Serial.print("[CELL] IP:");
         Serial.println(ip);
 #if ENABLE_OLED
         oled.print("IP:");
@@ -819,6 +820,7 @@ bool initCell()
       if (p) {
         char *q = strchr(p, '\r');
         if (q) *q = 0;
+        Serial.print("[CELL] ");
         Serial.println(p + 7);
 #if ENABLE_OLED
         oled.println(p + 7);
@@ -827,11 +829,14 @@ bool initCell()
         Serial.print(teleClient.cell.getBuffer());
       }
 
-      rssi = teleClient.cell.RSSI();
-      if (rssi) {
-        Serial.print("RSSI:");
-        Serial.print(rssi);
-        Serial.println("dBm");
+      for (int n = 0; n < 3; n++) {
+        rssi = teleClient.cell.RSSI();
+        if (rssi) {
+          Serial.print("RSSI:");
+          Serial.print(rssi);
+          Serial.println("dBm");
+        }
+        delay(1000);
       }
     }
     timeoutsNet = 0;
@@ -883,23 +888,6 @@ void telemetry(void* inst)
       } while (state.check(STATE_STANDBY) && millis() - t < 1000L * PING_BACK_INTERVAL);
       if (state.check(STATE_STANDBY)) {
         // start ping
-#if 0
-#if GNSS == GNSS_EXTERNAL || GNSS == GNSS_INTERNAL
-#if GNSS == GNSS_EXTERNAL
-        if (sys.gpsBegin())
-#else
-        if (sys.gpsBegin(0))
-#endif
-        {
-          state.set(STATE_GPS_READY);
-          for (uint32_t t = millis(); millis() - t < 60000; ) {
-            if (sys.gpsGetData(&gd)) {
-              break;
-            }
-          }
-        }
-#endif
-#endif
         Serial.println("[NET] Ping...");
         bool success = false;
 #if ENABLE_WIFI
@@ -962,7 +950,9 @@ void telemetry(void* inst)
       if (!state.check(STATE_WIFI_CONNECTED) && !state.check(STATE_CELL_CONNECTED)) {
         connErrors = 0;
         if (!initCell() || !teleClient.connect()) {
+          teleClient.cell.end();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+          delay(15000);
           break;
         }
         Serial.println("[CELL] In service");
@@ -1044,6 +1034,7 @@ void telemetry(void* inst)
 
       if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
         if (!state.check(STATE_WIFI_CONNECTED)) {
+          teleClient.cell.end();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
           break;
         }
@@ -1062,8 +1053,8 @@ void telemetry(void* inst)
 
       if (deviceTemp >= COOLING_DOWN_TEMP) {
         // device too hot, cool down by pause transmission
-        Serial.println("Overheat");
-        delay(10000);
+        Serial.print("HIGH DEVICE TEMP: ");
+        Serial.println(deviceTemp);
         bufman.purge();
       }
 
@@ -1432,8 +1423,6 @@ void setup()
 #endif
 
     state.set(STATE_WORKING);
-    // initialize network and maintain connection
-    subtask.create(telemetry, "telemetry", 2, 4096);
 
 #if ENABLE_BLE
     // init BLE
@@ -1442,6 +1431,9 @@ void setup()
 
     // initialize components
     initialize();
+
+    // initialize network and maintain connection
+    subtask.create(telemetry, "telemetry", 2, 4096);
 
 #ifdef PIN_LED
     digitalWrite(PIN_LED, LOW);

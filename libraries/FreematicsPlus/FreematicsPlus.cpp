@@ -105,7 +105,7 @@ static void gps_soft_decode_task(void* inst)
     for (;;) {
         uint8_t c = 0;
         do {
-            //taskYIELD();
+            taskYIELD();
         } while (readRxPin());
         uint32_t start = getCycleCount();
         uint32_t duration;
@@ -495,111 +495,111 @@ void FreematicsESP32::gpsEnd(bool powerOff)
     }
 }
 
-bool FreematicsESP32::gpsBegin(int baudrate)
+bool FreematicsESP32::gpsBeginExt(int baudrate)
 {
-    if (baudrate) {
-        if (devType <= 13) {
+    if (devType <= 13) {
 #ifdef ARDUINO_ESP32C3_DEV
-            pinGPSRx = 18;
-            pinGPSTx = 19;
+        pinGPSRx = 18;
+        pinGPSTx = 19;
 #else
-            pinGPSRx = 32;
-            pinGPSTx = 33;
+        pinGPSRx = 32;
+        pinGPSTx = 33;
 #endif
-            m_pinGPSPower = 0;
-        } else {
-            pinGPSRx = PIN_GPS_UART_RXD;
-            pinGPSTx = PIN_GPS_UART_TXD;
-        }
-        // switch on GNSS power
-        if (m_pinGPSPower) pinMode(m_pinGPSPower, OUTPUT);
-        if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) {
-            uart_config_t uart_config = {
-                .baud_rate = baudrate,
-                .data_bits = UART_DATA_8_BITS,
-                .parity = UART_PARITY_DISABLE,
-                .stop_bits = UART_STOP_BITS_1,
-                .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-                .rx_flow_ctrl_thresh = 122,
-            };
-            // configure UART parameters
-            uart_param_config(gpsUARTNum, &uart_config);
-            // set UART pins
-            uart_set_pin(gpsUARTNum, pinGPSTx, pinGPSRx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-            // install UART driver
-            uart_driver_install(gpsUARTNum, UART_BUF_SIZE, 0, 0, NULL, 0);
-            // turn on GPS power
-            if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
-            delay(100);
-            // start decoding task
-            taskGPS.create(gps_decode_task, "GPS", 1);
-        } else {
+        m_pinGPSPower = 0;
+    } else {
+        pinGPSRx = PIN_GPS_UART_RXD;
+        pinGPSTx = PIN_GPS_UART_TXD;
+    }
+    // switch on GNSS power
+    if (m_pinGPSPower) pinMode(m_pinGPSPower, OUTPUT);
+    if (!(m_flags & FLAG_GNSS_SOFT_SERIAL)) {
+        uart_config_t uart_config = {
+            .baud_rate = baudrate,
+            .data_bits = UART_DATA_8_BITS,
+            .parity = UART_PARITY_DISABLE,
+            .stop_bits = UART_STOP_BITS_1,
+            .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+            .rx_flow_ctrl_thresh = 122,
+        };
+        // configure UART parameters
+        uart_param_config(gpsUARTNum, &uart_config);
+        // set UART pins
+        uart_set_pin(gpsUARTNum, pinGPSTx, pinGPSRx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        // install UART driver
+        uart_driver_install(gpsUARTNum, UART_BUF_SIZE, 0, 0, NULL, 0);
+        // turn on GPS power
+        if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
+        delay(100);
+        // start decoding task
+        taskGPS.create(gps_decode_task, "GPS", 1);
+    } else {
 #ifndef ARDUINO_ESP32C3_DEV
-            pinMode(PIN_GPS_UART_RXD, INPUT);
-            pinMode(PIN_GPS_UART_TXD, OUTPUT);
-            setTxPinHigh();
+        pinMode(PIN_GPS_UART_RXD, INPUT);
+        pinMode(PIN_GPS_UART_TXD, OUTPUT);
+        setTxPinHigh();
 
-            // turn on GPS power
-            if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
-            delay(100);
+        // turn on GPS power
+        if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
+        delay(100);
 
-            // start GPS decoding task (soft serial)
-            taskGPS.create(gps_soft_decode_task, "GPS", 1);
-            delay(100);
+        // start GPS decoding task (soft serial)
+        taskGPS.create(gps_soft_decode_task, "GPS", 1);
+        delay(100);
 #endif
-        }
-
-        // test run for a while to see if there is data decoded
-        uint16_t s1 = 0, s2 = 0;
-        gps.stats(&s1, 0);
-        for (int i = 0; i < 10; i++) {
-#ifndef ARDUINO_ESP32C3_DEV
-            if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
-                // switch M8030 GNSS to 38400bps
-                const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
-                const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
-                const uint8_t packet3[] = {0xB5, 0x62, 0x06, 0x41, 0x0C, 0x0, 0x0, 0x0, 0x03, 0x1F, 0x8B, 0x81, 0x1E, 0x68, 0xFF, 0x76, 0xFF, 0xFF, 0x7A, 0x02};
-                for (int i = 0; i < sizeof(packet1); i++) softSerialTx(baudrate, packet1[i]);
-                delay(20);
-                for (int i = 0; i < sizeof(packet2); i++) softSerialTx(baudrate, packet2[i]);
-                delay(20);
-                for (int i = 0; i < sizeof(packet3); i++) softSerialTx(baudrate, packet3[i]);
-            }
-#endif
-            delay(100);
-            gps.stats(&s2, 0);
-            if (s1 != s2) {
-                // data is coming in
-                return true;
-            }
-            Serial.print('.');
-        }
-        // turn off GNSS power if no data in
-        gpsEnd();
     }
 
-    // try co-processor GNSS
-    if (link) {
-        char buf[256];
-        link->sendCommand("ATGPSON\r", buf, sizeof(buf), 100);
-        m_flags |= FLAG_GNSS_USE_LINK;
-        uint32_t t = millis();
-        bool success = false;
-        do {
-            memset(buf, 0, sizeof(buf));
-            if (gpsGetNMEA(buf, sizeof(buf)) > 0 && strstr(buf, ("$G"))) {
-                success = true;
-                break;
-            }
-        } while (millis() - t < 1000);
-        if (success) {
-            m_pinGPSPower = 0;
+    // test run for a while to see if there is data decoded
+    uint16_t s1 = 0, s2 = 0;
+    gps.stats(&s1, 0);
+    for (int i = 0; i < 10; i++) {
+#ifndef ARDUINO_ESP32C3_DEV
+        if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
+            // switch M8030 GNSS to 38400bps
+            const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
+            const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
+            const uint8_t packet3[] = {0xB5, 0x62, 0x06, 0x41, 0x0C, 0x0, 0x0, 0x0, 0x03, 0x1F, 0x8B, 0x81, 0x1E, 0x68, 0xFF, 0x76, 0xFF, 0xFF, 0x7A, 0x02};
+            for (int i = 0; i < sizeof(packet1); i++) softSerialTx(baudrate, packet1[i]);
+            delay(20);
+            for (int i = 0; i < sizeof(packet2); i++) softSerialTx(baudrate, packet2[i]);
+            delay(20);
+            for (int i = 0; i < sizeof(packet3); i++) softSerialTx(baudrate, packet3[i]);
+        }
+#endif
+        delay(100);
+        gps.stats(&s2, 0);
+        if (s1 != s2) {
+            // data is coming in
             return true;
         }
-        gpsEnd();
-        m_flags &= ~FLAG_GNSS_USE_LINK;
+        Serial.print('.');
     }
+    // turn off GNSS power if no data in
+    gpsEnd();
+    return false;
+}
 
+bool FreematicsESP32::gpsBegin()
+{
+    if (!link) return false;
+    
+    char buf[256];
+    link->sendCommand("ATGPSON\r", buf, sizeof(buf), 100);
+    m_flags |= FLAG_GNSS_USE_LINK;
+    uint32_t t = millis();
+    bool success = false;
+    do {
+        memset(buf, 0, sizeof(buf));
+        if (gpsGetNMEA(buf, sizeof(buf)) > 0 && strstr(buf, ("$G"))) {
+            success = true;
+            break;
+        }
+    } while (millis() - t < 1000);
+    if (success) {
+        m_pinGPSPower = 0;
+        return true;
+    }
+    gpsEnd();
+    m_flags &= ~FLAG_GNSS_USE_LINK;
     return false;
 }
 
@@ -810,7 +810,7 @@ void FreematicsESP32::xbPurge()
     uart_flush(BEE_UART_NUM);
 }
 
-void FreematicsESP32::xbTogglePower()
+void FreematicsESP32::xbTogglePower(unsigned int duration)
 {
 #ifdef PIN_BEE_PWR
     digitalWrite(PIN_BEE_PWR, HIGH);
@@ -819,15 +819,13 @@ void FreematicsESP32::xbTogglePower()
     Serial.print(PIN_BEE_PWR);
 	Serial.println(" pull up");
 #endif
-    delay(2550);
+    delay(duration);
 	digitalWrite(PIN_BEE_PWR, LOW);
-	//delay(500);
 #if VERBOSE_XBEE
     Serial.print("Pin ");
     Serial.print(PIN_BEE_PWR);
 	Serial.println(" pull down");
 #endif
-    //digitalWrite(PIN_BEE_PWR, HIGH);
 #endif
 }
 

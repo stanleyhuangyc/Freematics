@@ -213,45 +213,45 @@ bool CellSIMCOM::begin(CFreematics* device)
 {
   m_device = device;
   for (byte n = 0; n < 10; n++) {
-    // try turning on module
-    device->xbTogglePower();
-    delay(5000);
-    // discard any stale data
-    device->xbPurge();
-    if (check()) {
-      if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
-        // retrieve module info
-        //Serial.print(m_buffer);
-        char *p = strstr(m_buffer, "Model:");
-        if (!p) {
-          sendCommand("AT+SIMCOMATI\r");
-          p = strstr(m_buffer, "QCN:");
-          if (p) {
-            char *q = strchr(p += 4, '_');
-            if (q) {
-              int l = q - p;
-              if (l >= sizeof(m_model)) l = sizeof(m_model) - 1;
-              memcpy(m_model, p, l);
-              m_model[l] = 0;
-            }
+    bool on = check(0);
+    if (!on) {
+      device->xbTogglePower(n == 0 ? 2510 : 500);
+      delay(3000);
+      device->xbPurge();
+    }
+    if (!on && !check(5000)) continue;
+    if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
+      // retrieve module info
+      //Serial.print(m_buffer);
+      char *p = strstr(m_buffer, "Model:");
+      if (!p) {
+        sendCommand("AT+SIMCOMATI\r");
+        p = strstr(m_buffer, "QCN:");
+        if (p) {
+          char *q = strchr(p += 4, '_');
+          if (q) {
+            int l = q - p;
+            if (l >= sizeof(m_model)) l = sizeof(m_model) - 1;
+            memcpy(m_model, p, l);
+            m_model[l] = 0;
           }
-          m_type = CELL_SIM7070;
-        } else {
-          p = strchr(p, '_');
-          if (p++) {
-            int i = 0;
-            while (i < sizeof(m_model) - 1 && p[i] && p[i] != '\r' && p[i] != '\n') {
-              m_model[i] = p[i];
-              i++;
-            } 
-            m_model[i] = 0;
-          }
-          m_type = strstr(m_model, "5360") ? CELL_SIM5360 : CELL_SIM7600;
         }
-        p = strstr(m_buffer, "IMEI:");
-        if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
-        return true;
+        m_type = CELL_SIM7070;
+      } else {
+        p = strchr(p, '_');
+        if (p++) {
+          int i = 0;
+          while (i < sizeof(m_model) - 1 && p[i] && p[i] != '\r' && p[i] != '\n') {
+            m_model[i] = p[i];
+            i++;
+          } 
+          m_model[i] = 0;
+        }
+        m_type = strstr(m_model, "5360") ? CELL_SIM5360 : CELL_SIM7600;
       }
+      p = strstr(m_buffer, "IMEI:");
+      if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
+      return true;
     }
   }
   return false;
@@ -261,7 +261,7 @@ void CellSIMCOM::end()
 {
   setGPS(false);
   if (m_type == CELL_SIM7070) {
-      sendCommand("AT+CPOWD=1\r");
+    sendCommand("AT+CPOWD=1\r");
   } else {
     sendCommand("AT+CPOF\r");
   }
@@ -393,6 +393,16 @@ bool CellSIMCOM::setGPS(bool on)
   return false;
 }
 
+bool CellSIMCOM::getLocation(GPS_DATA** pgd)
+{
+  if (m_gps) {
+      if (pgd) *pgd = m_gps;
+      return m_gps->ts != 0;
+  } else {
+      return false;
+  }
+}
+
 String CellSIMCOM::getIP()
 {
   if (m_type == CELL_SIM7070) {
@@ -433,7 +443,7 @@ String CellSIMCOM::getIP()
 
 int CellSIMCOM::RSSI()
 {
-  if (sendCommand("AT+CSQ\r", 500)) {
+  if (sendCommand("AT+CSQ\r")) {
       char *p = strchr(m_buffer, ':');
       if (p) {
         int csq = atoi(p + 2);
@@ -457,6 +467,15 @@ String CellSIMCOM::getOperatorName()
       }
   }
   return "";
+}
+
+bool CellSIMCOM::check(unsigned int timeout)
+{
+  uint32_t t = millis();
+  do {
+      if (sendCommand("AT\r", 250)) return true;
+  } while (millis() - t < timeout);
+  return false;
 }
 
 bool CellSIMCOM::checkSIM(const char* pin)

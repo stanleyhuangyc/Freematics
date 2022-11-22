@@ -107,7 +107,6 @@ typedef enum {
 class CellSIMCOM
 {
 public:
-
     virtual bool begin(CFreematics* device);
     virtual void end();
     virtual bool setup(const char* apn, unsigned int timeout = 30000);
@@ -117,28 +116,12 @@ public:
     String getOperatorName();
     bool checkSIM(const char* pin = 0);
     virtual String queryIP(const char* host);
-    virtual bool getLocation(GPS_DATA** pgd)
-    {
-        if (m_gps) {
-            if (pgd) *pgd = m_gps;
-            return m_gps->ts != 0;
-        } else {
-            return false;
-        }
-    }
-    bool check(unsigned int timeout = 2000)
-    {
-        uint32_t t = millis();
-        do {
-            if (sendCommand("AT\r", 250)) return true;
-        } while (millis() - t < timeout);
-        return false;
-    }
+    virtual bool getLocation(GPS_DATA** pgd);
+    bool check(unsigned int timeout = 2000);
     char* getBuffer() { return m_buffer; }
     const char* deviceName() { return m_model; }
     char IMEI[16] = {0};
 protected:
-    // send command and check for expected response
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = 0);
     virtual void checkGPS();
     float parseDegree(const char* s);

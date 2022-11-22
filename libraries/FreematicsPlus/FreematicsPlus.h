@@ -142,7 +142,9 @@ class FreematicsESP32 : public CFreematics
 public:
   bool begin(bool useCoProc = true, bool useCellular = true);
   // start GPS
-  bool gpsBegin(int baudrate = 115200);
+  bool gpsBegin();
+  // start GPS
+  bool gpsBeginExt(int baudrate = 115200);
   // turn off GPS
   void gpsEnd(bool powerOff = true);
   // get parsed GPS data (returns the number of data parsed since last invoke)
@@ -165,7 +167,7 @@ public:
   // purge xBee UART buffer
   void xbPurge();
   // toggle xBee module power
-  void xbTogglePower();
+  void xbTogglePower(unsigned int duration = 500);
   // control internal buzzer (if present)
   void buzzer(int freq);
   // reset co-processor

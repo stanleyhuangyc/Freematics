@@ -89,7 +89,7 @@ public:
 	// purge xBee UART buffer
 	virtual void xbPurge() = 0;
 	// toggle xBee module power
-	virtual void xbTogglePower() = 0;
+	virtual void xbTogglePower(unsigned int duration = 500) = 0;
 };
 
 #endif
