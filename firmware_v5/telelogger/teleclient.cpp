@@ -251,18 +251,21 @@ bool TeleClientUDP::connect(bool quick)
 {
   byte event = login ? EVENT_RECONNECT : EVENT_LOGIN;
   bool success = false;
-  if (quick) {
 #if ENABLE_WIFI
-    if (wifi.connected())
-    {
-      return wifi.open(SERVER_HOST, SERVER_PORT);
-    }
-    else
+  if (wifi.connected())
+  {
+    if (quick) return wifi.open(SERVER_HOST, SERVER_PORT);
+  }
+  else
 #endif
-    {
+  {
+    cell.close();
+    if (quick) {
       return cell.open(0, 0);
     }
   }
+
+  packets = 0;
 
   // connect to telematics server
   for (byte attempts = 0; attempts < 3; attempts++) {
@@ -284,7 +287,8 @@ bool TeleClientUDP::connect(bool quick)
 #endif
     {
       if (!cell.open(SERVER_HOST, SERVER_PORT)) {
-        Serial.println("[CELL] Unable to connect");
+        if (!cell.check()) break;
+        Serial.println("[NET] Unable to connect");
         delay(3000);
         continue;
       }
@@ -299,9 +303,10 @@ bool TeleClientUDP::connect(bool quick)
       else
 #endif
       {
+        if (!cell.check()) break;
         cell.close();
       }
-      Serial.println("Server timeout");
+      Serial.println("[NET] Server timeout");
       continue;
     }
     success = true;
@@ -352,6 +357,11 @@ bool TeleClientUDP::transmit(const char* packetBuffer, unsigned int packetSize)
 #endif
 
   // transmit data via cellular
+  if (++packets >= 64) {
+    cell.close();
+    cell.open(0, 0);
+    packets = 0;
+  }
   Serial.print("[CELL] ");
   Serial.print(packetSize);
   Serial.println(" bytes being sent");
@@ -521,6 +531,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 
 bool TeleClientHTTP::connect(bool quick)
 {
+  cell.close();
   if (!quick) {
 #if ENABLE_WIFI
     if (!wifi.connected()) cell.init();
@@ -540,13 +551,14 @@ bool TeleClientHTTP::connect(bool quick)
     for (byte attempts = 0; !success && attempts < 3; attempts++) {
       success = cell.open(SERVER_HOST, SERVER_PORT);
       if (!success) {
+        if (!cell.check()) break;
         cell.close();
         cell.init();
       }
     }
   }
   if (!success) {
-    Serial.println("Error connecting to server");
+    Serial.println("[CELL] Unable to connect");
     return false;
   }
   if (quick) return true;

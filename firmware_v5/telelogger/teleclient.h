@@ -133,6 +133,7 @@ public:
     uint32_t lastSyncTime = 0;
     uint16_t feedid = 0;
     uint32_t startTime = 0;
+    uint8_t packets = 0;
     bool login = false;
 };
 

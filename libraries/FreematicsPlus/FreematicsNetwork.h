@@ -117,7 +117,7 @@ public:
     bool checkSIM(const char* pin = 0);
     virtual String queryIP(const char* host);
     virtual bool getLocation(GPS_DATA** pgd);
-    bool check(unsigned int timeout = 2000);
+    bool check(unsigned int timeout = 0);
     char* getBuffer() { return m_buffer; }
     const char* deviceName() { return m_model; }
     char IMEI[16] = {0};

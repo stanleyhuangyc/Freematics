@@ -699,7 +699,6 @@ char* CellUDP::checkIncoming(int* pbytes)
 
 void CellHTTP::init()
 {
-  close();
   if (m_type != CELL_SIM7070) {
     sendCommand("AT+CHTTPSSTOP\r");
     sendCommand("AT+CHTTPSSTART\r");
