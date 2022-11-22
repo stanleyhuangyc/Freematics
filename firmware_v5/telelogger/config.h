@@ -4,9 +4,9 @@
 /**************************************
 * Circular Buffer Configuration
 **************************************/
-#define BUFFER_SLOTS 32 /* max number of buffer */
+#define BUFFER_SLOTS 64 /* max number of buffer */
 #define BUFFER_LENGTH 128 /* bytes per slot */
-#define SERIALIZE_BUFFER_SIZE 1024 /* bytes */
+#define SERIALIZE_BUFFER_SIZE 2048 /* bytes */
 
 /**************************************
 * Configuration Definitions
@@ -136,7 +136,7 @@
 #define PIN_SENSOR1 34
 #define PIN_SENSOR2 26
 
-#define COOLING_DOWN_TEMP 65 /* celsius degrees */
+#define COOLING_DOWN_TEMP 75 /* celsius degrees */
 
 // enable(1)/disable(0) http server
 #define ENABLE_HTTPD 0

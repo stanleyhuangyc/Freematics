@@ -285,7 +285,7 @@ bool TeleClientUDP::connect(bool quick)
     {
       if (!cell.open(SERVER_HOST, SERVER_PORT)) {
         Serial.println("[CELL] Unable to connect");
-        delay(1000);
+        delay(3000);
         continue;
       }
     }
@@ -409,7 +409,7 @@ void TeleClientUDP::shutdown()
   if (login) {
     notify(EVENT_LOGOUT);
     login = false;
-    cell.close();
+    Serial.println("[NET] Logout");
   }
 #if ENABLE_WIFI
   wifi.end();
@@ -575,6 +575,7 @@ void TeleClientHTTP::shutdown()
   if (login) {
     notify(EVENT_LOGOUT);
     login = false;
+    Serial.println("[NET] Logout");
   }
 #if ENABLE_WIFI
   wifi.end();

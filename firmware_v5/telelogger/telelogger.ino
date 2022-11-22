@@ -925,8 +925,6 @@ void telemetry(void* inst)
     }
 #endif
 
-    teleClient.startTime = millis();
-
     for (;;) {
 
 #if ENABLE_WIFI

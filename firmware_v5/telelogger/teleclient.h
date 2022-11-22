@@ -121,6 +121,7 @@ public:
         txBytes = 0;
         rxBytes = 0;
         login = false;
+        startTime = millis();
     }
     virtual bool notify(byte event, const char* payload = 0) { return true; }
     virtual bool connect() { return true; }
