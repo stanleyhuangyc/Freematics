@@ -110,7 +110,7 @@ static void gps_soft_decode_task(void* inst)
         uint32_t start = getCycleCount();
         uint32_t duration;
         for (uint32_t i = 1; i <= 7; i++) {
-            //taskYIELD();
+            taskYIELD();
             duration = i * F_CPU / GPS_SOFT_BAUDRATE + F_CPU / GPS_SOFT_BAUDRATE / 3;
             while (getCycleCount() - start < duration);
             c = (c | readRxPin()) >> 1;
@@ -725,6 +725,7 @@ bool FreematicsESP32::xbBegin(unsigned long baudrate, int pinRx, int pinTx)
 #ifdef PIN_BEE_PWR
 	pinMode(PIN_BEE_PWR, OUTPUT);
 	digitalWrite(PIN_BEE_PWR, LOW);
+    xbTogglePower();
 #endif
     return true;
 }
@@ -753,20 +754,7 @@ void FreematicsESP32::xbWrite(const char* data, int len)
 
 int FreematicsESP32::xbRead(char* buffer, int bufsize, unsigned int timeout)
 {
-    int recv = 0;
-    uint32_t t = millis();
-    do {
-        uint8_t c;
-        int len = uart_read_bytes(BEE_UART_NUM, &c, 1, 0);
-        if (len == 1) {
-            if (c >= 0xA && c <= 0x7E) {
-                buffer[recv++] = c;
-            }
-        } else if (recv > 0) {
-            break;
-        }
-    } while (recv < bufsize && millis() - t < timeout);
-    return recv;
+    return uart_read_bytes(BEE_UART_NUM, buffer, bufsize, timeout / portTICK_RATE_MS);
 }
 
 int FreematicsESP32::xbReceive(char* buffer, int bufsize, unsigned int timeout, const char** expected, byte expectedCount)

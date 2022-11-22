@@ -167,7 +167,7 @@ public:
   // purge xBee UART buffer
   void xbPurge();
   // toggle xBee module power
-  void xbTogglePower(unsigned int duration = 500);
+  void xbTogglePower(unsigned int duration = 200);
   // control internal buzzer (if present)
   void buzzer(int freq);
   // reset co-processor

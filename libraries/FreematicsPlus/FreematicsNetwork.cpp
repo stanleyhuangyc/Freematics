@@ -212,14 +212,10 @@ char* WifiHTTP::receive(char* buffer, int bufsize, int* pbytes, unsigned int tim
 bool CellSIMCOM::begin(CFreematics* device)
 {
   m_device = device;
-  for (byte n = 0; n < 10; n++) {
-    bool on = check(0);
-    if (!on) {
-      device->xbTogglePower(n == 0 ? 2510 : 500);
-      delay(3000);
-      device->xbPurge();
-    }
-    if (!on && !check(5000)) continue;
+  for (byte n = 0; n < 30; n++) {
+    device->xbTogglePower(200);
+    device->xbPurge();
+    if (!check(2000)) continue;
     if (sendCommand("ATE0\r") && sendCommand("ATI\r")) {
       // retrieve module info
       //Serial.print(m_buffer);
@@ -260,10 +256,8 @@ bool CellSIMCOM::begin(CFreematics* device)
 void CellSIMCOM::end()
 {
   setGPS(false);
-  if (m_type == CELL_SIM7070) {
-    sendCommand("AT+CPOWD=1\r");
-  } else {
-    sendCommand("AT+CPOF\r");
+  if (!sendCommand(m_type == CELL_SIM7070 ? "AT+CPOWD=1\r" : "AT+CPOF\r")) {
+    if (m_device) m_device->xbTogglePower(2510);
   }
 }
 
@@ -493,7 +487,7 @@ String CellSIMCOM::queryIP(const char* host)
 {
   if (m_type == CELL_SIM7070) {
     sprintf(m_buffer, "AT+CDNSGIP=\"%s\",1,3000\r", host);
-    if (sendCommand(m_buffer, 5000, "+CDNSGIP:")) {
+    if (sendCommand(m_buffer, 10000, "+CDNSGIP:")) {
       char *p = strstr(m_buffer, host);
       if (p) {
         p = strstr(p, "\",\"");
@@ -507,7 +501,7 @@ String CellSIMCOM::queryIP(const char* host)
     }
   } else {
     sprintf(m_buffer, "AT+CDNSGIP=\"%s\"\r", host);
-    if (sendCommand(m_buffer, 5000)) {
+    if (sendCommand(m_buffer, 10000)) {
       char *p = strstr(m_buffer, host);
       if (p) {
         p = strstr(p, ",\"");
@@ -527,6 +521,7 @@ bool CellSIMCOM::sendCommand(const char* cmd, unsigned int timeout, const char* 
 {
   if (cmd) {
     m_device->xbWrite(cmd);
+    delay(50);
   }
   m_buffer[0] = 0;
   const char* answers[] = {"\r\nOK", "\r\nERROR"};
@@ -704,6 +699,7 @@ char* CellUDP::checkIncoming(int* pbytes)
 
 void CellHTTP::init()
 {
+  close();
   if (m_type != CELL_SIM7070) {
     sendCommand("AT+CHTTPSSTOP\r");
     sendCommand("AT+CHTTPSSTART\r");
