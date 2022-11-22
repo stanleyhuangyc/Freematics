@@ -764,9 +764,7 @@ bool initCell()
 {
   Serial.println("[CELL] Activating...");
   // power on network module
-  if (teleClient.cell.begin(&sys)) {
-    state.set(STATE_NET_READY);
-  } else {
+  if (!teleClient.cell.begin(&sys)) {
     Serial.println("[CELL] No supported module");
 #if ENABLE_OLED
     oled.println("No Cell Module");
@@ -787,60 +785,58 @@ bool initCell()
   }
   Serial.print("IMEI:");
   Serial.println(teleClient.cell.IMEI);
-  if (state.check(STATE_NET_READY) && !state.check(STATE_CELL_CONNECTED)) {
-    Serial.println("[CELL] Searching...");
-    if (teleClient.cell.setup(CELL_APN)) {
-      String op = teleClient.cell.getOperatorName();
-      if (op.length()) {
-        Serial.print("Operator:");
-        Serial.println(op);
+  Serial.println("[CELL] Searching...");
+  if (teleClient.cell.setup(CELL_APN)) {
+    String op = teleClient.cell.getOperatorName();
+    if (op.length()) {
+      Serial.print("Operator:");
+      Serial.println(op);
 #if ENABLE_OLED
-        oled.println(op);
+      oled.println(op);
 #endif
-      }
+    }
 
 #if GNSS == GNSS_CELLULAR
-      if (teleClient.cell.setGPS(true)) {
-        Serial.println("CELL GNSS:OK");
-      }
-#endif
-
-      String ip = teleClient.cell.getIP();
-      if (ip.length()) {
-        Serial.print("[CELL] IP:");
-        Serial.println(ip);
-#if ENABLE_OLED
-        oled.print("IP:");
-        oled.println(ip);
-#endif
-      }
-      state.set(STATE_CELL_CONNECTED);
-    } else {
-      char *p = strstr(teleClient.cell.getBuffer(), "+CPSI:");
-      if (p) {
-        char *q = strchr(p, '\r');
-        if (q) *q = 0;
-        Serial.print("[CELL] ");
-        Serial.println(p + 7);
-#if ENABLE_OLED
-        oled.println(p + 7);
-#endif
-      } else {
-        Serial.print(teleClient.cell.getBuffer());
-      }
-
-      for (int n = 0; n < 3; n++) {
-        rssi = teleClient.cell.RSSI();
-        if (rssi) {
-          Serial.print("RSSI:");
-          Serial.print(rssi);
-          Serial.println("dBm");
-        }
-        delay(1000);
-      }
+    if (teleClient.cell.setGPS(true)) {
+      Serial.println("CELL GNSS:OK");
     }
-    timeoutsNet = 0;
+#endif
+
+    String ip = teleClient.cell.getIP();
+    if (ip.length()) {
+      Serial.print("[CELL] IP:");
+      Serial.println(ip);
+#if ENABLE_OLED
+      oled.print("IP:");
+      oled.println(ip);
+#endif
+    }
+    state.set(STATE_CELL_CONNECTED);
+  } else {
+    char *p = strstr(teleClient.cell.getBuffer(), "+CPSI:");
+    if (p) {
+      char *q = strchr(p, '\r');
+      if (q) *q = 0;
+      Serial.print("[CELL] ");
+      Serial.println(p + 7);
+#if ENABLE_OLED
+      oled.println(p + 7);
+#endif
+    } else {
+      Serial.print(teleClient.cell.getBuffer());
+    }
+
+    for (int n = 0; n < 3; n++) {
+      rssi = teleClient.cell.RSSI();
+      if (rssi) {
+        Serial.print("RSSI:");
+        Serial.print(rssi);
+        Serial.println("dBm");
+      }
+      delay(1000);
+    }
   }
+  timeoutsNet = 0;
   return state.check(STATE_CELL_CONNECTED);
 }
 
@@ -857,15 +853,10 @@ void telemetry(void* inst)
 
   for (;;) {
     if (state.check(STATE_STANDBY)) {
-      if (state.check(STATE_NET_READY)) {
+      if (state.check(STATE_CELL_CONNECTED) || state.check(STATE_WIFI_CONNECTED)) {
         teleClient.shutdown();
       }
-#if ENABLE_WIFI
-      if (state.check(STATE_WIFI_CONNECTED)) {
-        teleClient.wifi.end();
-      }
-#endif
-      state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+      state.clear(STATE_NET_READY | STATE_CELL_CONNECTED | STATE_WIFI_CONNECTED);
       teleClient.reset();
       bufman.purge();
 
@@ -903,6 +894,7 @@ void telemetry(void* inst)
           }
         }
         teleClient.shutdown();
+        state.clear(STATE_CELL_CONNECTED | STATE_WIFI_CONNECTED);
       }
       continue;
     }
@@ -925,8 +917,7 @@ void telemetry(void* inst)
     }
 #endif
 
-    for (;;) {
-
+    while (state.check(STATE_WORKING)) {
 #if ENABLE_WIFI
       if (!state.check(STATE_WIFI_CONNECTED) && teleClient.wifi.connected()) {
         connErrors = 0;
@@ -956,6 +947,13 @@ void telemetry(void* inst)
         Serial.println("[CELL] In service");
       }
 
+      // get data from buffer
+      CBuffer* buffer = bufman.getNewest();
+      if (!buffer) {
+        delay(50);
+        continue;
+      }
+
       if (millis() - lastRssiTime > SIGNAL_CHECK_INTERVAL * 1000) {
 #if ENABLE_WIFI
         if (state.check(STATE_WIFI_CONNECTED))
@@ -981,14 +979,6 @@ void telemetry(void* inst)
 #endif
       }
 
-      // get data from buffer
-      CBuffer* buffer = bufman.getNewest();
-      if (!buffer) {
-        if (!state.check(STATE_WORKING)) break;
-        delay(50);
-        continue;
-      }
-
       buffer->state = BUFFER_STATE_LOCKED;
 #if SERVER_PROTOCOL == PROTOCOL_UDP
       store.header(devid);
@@ -1012,17 +1002,9 @@ void telemetry(void* inst)
         timeoutsNet++;
         connErrors++;
         printTimeoutStats();
-        if (!teleClient.cell.close()) {
-          if (!teleClient.cell.check()) {
-            Serial.println("[CELL] Not in service");
-            state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
-            break;
-          }
-        }
         if (connErrors < MAX_CONN_ERRORS_RECONNECT) {
-          if (!teleClient.connect(true)) {
-            delay(3000);
-          }
+          // quick reconnect
+          teleClient.connect(true);
         }
       }
 #ifdef PIN_LED
@@ -1037,13 +1019,18 @@ void telemetry(void* inst)
           break;
         }
       }
-      
+
       teleClient.inbound();
+
+      if (!teleClient.cell.check()) {
+        Serial.println("[CELL] Not in service");
+        state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+        break;
+      }
 
       if (syncInterval > 10000 && millis() - teleClient.lastSyncTime > syncInterval) {
         Serial.println("[NET] Poor connection");
         timeoutsNet++;
-        teleClient.cell.close();
         if (!teleClient.connect()) {
           connErrors++;
         }
