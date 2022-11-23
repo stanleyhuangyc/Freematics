@@ -1012,17 +1012,9 @@ void telemetry(void* inst)
 #endif
       store.purge();
 
-      if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-        if (!state.check(STATE_WIFI_CONNECTED)) {
-          teleClient.cell.end();
-          state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
-          break;
-        }
-      }
-
       teleClient.inbound();
 
-      if (!teleClient.cell.check(500)) {
+      if (!teleClient.cell.check(1000)) {
         Serial.println("[CELL] Not in service");
         state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
         break;
@@ -1033,6 +1025,14 @@ void telemetry(void* inst)
         timeoutsNet++;
         if (!teleClient.connect()) {
           connErrors++;
+        }
+      }
+
+      if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
+        if (!state.check(STATE_WIFI_CONNECTED)) {
+          teleClient.cell.end();
+          state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
+          break;
         }
       }
 
