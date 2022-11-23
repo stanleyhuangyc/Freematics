@@ -1022,7 +1022,7 @@ void telemetry(void* inst)
 
       teleClient.inbound();
 
-      if (!teleClient.cell.check()) {
+      if (!teleClient.cell.check(500)) {
         Serial.println("[CELL] Not in service");
         state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
         break;
