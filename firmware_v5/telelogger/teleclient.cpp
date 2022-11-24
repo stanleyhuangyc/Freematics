@@ -186,28 +186,22 @@ bool TeleClientUDP::notify(byte event, const char* payload)
     if (event == EVENT_ACK) return true; // no reply for ACK
     char *data = 0;
     // receive reply
-    uint32_t t = millis();
-    do {
 #if ENABLE_WIFI
-      if (wifi.connected())
-      {
-        data = cell.getBuffer();
-        int len = wifi.receive(data, RECV_BUF_SIZE - 1);
-        if (len > 0) {
-          data[len] = 0;
-          break;
-        }
+    if (wifi.connected())
+    {
+      data = cell.getBuffer();
+      int len = wifi.receive(data, RECV_BUF_SIZE - 1);
+      if (len > 0) {
+        data[len] = 0;
       }
-      else
+    }
+    else
 #endif
-      {
-        if ((data = cell.receive())) break;
-      }
-      // no reply yet
-      delay(100);
-    } while (millis() - t < DATA_RECEIVING_TIMEOUT);
+    {
+      data = cell.receive(); 
+    }
     if (!data) {
-      //Serial.println("Timeout");
+      Serial.println("[UDP] Timeout");
       continue;
     }
     // verify checksum
@@ -314,7 +308,7 @@ bool TeleClientUDP::connect(bool quick)
   }
   if (event == EVENT_LOGIN) startTime = millis();
   if (success) {
-    lastSyncTime = startTime;
+    lastSyncTime = millis();
   }
   return success;
 }

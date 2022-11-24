@@ -288,10 +288,12 @@ bool CellSIMCOM::setup(const char* apn, unsigned int timeout)
       if (!success) break;
 
       sendCommand("AT+CGNAPN\r");
+      /*
       if (apn && *apn) {
         sprintf(m_buffer, "AT+CNCFG=0,1,\"%s\"\r", apn);
         sendCommand(m_buffer);
       }
+      */
       sendCommand("AT+CNACT=0,1\r");
       sendCommand("AT+CNSMOD?\r");
       sendCommand("AT+CSCLK=0\r");
