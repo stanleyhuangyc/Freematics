@@ -11,6 +11,8 @@ The sketch collects following data.
 * Accelerometer and gyroscope data (from internal MEMS motion sensor)
 * Device temperature
 
+Collected data are stored in a circular buffer in ESP32's IRAM or PSRAM. When PSRAM is enabled, hours of data can be buffered in case of temporary network outage and transmitted afterwards.
+  
 Data Transmission
 -----------------
 
