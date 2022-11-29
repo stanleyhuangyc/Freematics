@@ -304,7 +304,7 @@ bool CellSIMCOM::setup(const char* apn, unsigned int timeout)
         m_device->xbWrite("AT+CPSI?\r");
         m_buffer[0] = 0;
         const char* answers[] = {"NO SERVICE", ",Online", ",Offline", ",Low Power Mode"};
-        int ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 500, answers, 4);
+        byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 500, answers, 4);
         if (ret == 2) {
           success = true;
           break;
@@ -918,7 +918,7 @@ bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
       m_device->xbWrite("AT+CPSI?\r");
       m_buffer[0] = 0;
       const char* answers[] = {"NO SERVICE", ",Online", ",Offline", ",Low Power Mode"};
-      int ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 500, answers, 4);
+      byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 500, answers, 4);
       if (ret == 2) {
         success = true;
         break;
