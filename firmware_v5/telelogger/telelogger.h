@@ -61,13 +61,10 @@ protected:
 
 class CStorageRAM: public CStorage {
 public:
-    bool init(unsigned int cacheSize)
+    void init(char* cache, unsigned int cacheSize)
     {
-      if (m_cacheSize != cacheSize) {
-        uninit();
-        m_cache = new char[m_cacheSize = cacheSize];
-      }
-      return true;
+        m_cacheSize = cacheSize;
+        m_cache = cache;
     }
     void uninit()
     {

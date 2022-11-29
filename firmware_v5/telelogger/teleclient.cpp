@@ -28,6 +28,13 @@ extern char isoTime[];
 
 CBuffer::CBuffer()
 {
+#if BOARD_HAS_PSRAM
+  data = (uint8_t*)heap_caps_malloc(BUFFER_LENGTH, MALLOC_CAP_SPIRAM);
+  types = (uint32_t*)heap_caps_malloc((BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(int)) + 15) / 16, MALLOC_CAP_SPIRAM);
+#else
+  data = (uint8_t*)malloc(BUFFER_LENGTH);
+  types = (uint32_t*)malloc((BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(int)) + 15) / 16);
+#endif
   purge();
 }
 
@@ -138,6 +145,76 @@ void CBuffer::serialize(CStorage& store)
   }
 }
 
+void CBufferManager::init()
+{
+  for (int n = 0; n < BUFFER_SLOTS; n++) {
+      buffers[n] = new CBuffer();
+  }
+}
+
+void CBufferManager::purge()
+{
+  for (int n = 0; n < BUFFER_SLOTS; n++) buffers[n]->purge();
+}
+
+CBuffer* CBufferManager::get(byte state)
+{
+    for (int n = 0; n < BUFFER_SLOTS; n++) {
+        if (buffers[n]->state == state) return buffers[n];
+    }
+    return 0;
+}
+
+CBuffer* CBufferManager::getOldest()
+{
+  uint32_t ts = 0xffffffff;
+  int m = -1;
+  for (int n = 0; n < BUFFER_SLOTS; n++) {
+      if (buffers[n]->state == BUFFER_STATE_FILLED && buffers[n]->timestamp < ts) {
+          m = n;
+          ts = buffers[n]->timestamp;
+      }
+  }
+  return m >= 0 ? buffers[m] : 0;
+}
+
+CBuffer* CBufferManager::getNewest()
+{
+  uint32_t ts = 0;
+  int m = -1;
+  for (int n = 0; n < BUFFER_SLOTS; n++) {
+      if (buffers[n]->state == BUFFER_STATE_FILLED && buffers[n]->timestamp > ts) {
+          m = n;
+          ts = buffers[n]->timestamp;
+      }
+  }
+  return m >= 0 ? buffers[m] : 0;
+}
+
+void CBufferManager::printStats()
+{
+  int bytes = 0;
+  int slots = 0;
+  int samples = 0;
+  for (int n = 0; n < BUFFER_SLOTS; n++) {
+      if (buffers[n]->state != BUFFER_STATE_FILLED) continue;
+      bytes += buffers[n]->offset;
+      samples += buffers[n]->count;
+      slots++;
+  }
+  if (slots) {
+      Serial.print("[BUF] ");
+      Serial.print(samples);
+      Serial.print(" samples | ");
+      Serial.print(bytes);
+      Serial.print(" bytes | ");
+      Serial.print(slots);
+      Serial.print('/');
+      Serial.println(BUFFER_SLOTS);
+  }
+}
+
+
 bool TeleClientUDP::verifyChecksum(char* data)
 {
   uint8_t sum = 0;
@@ -154,8 +231,9 @@ bool TeleClientUDP::verifyChecksum(char* data)
 bool TeleClientUDP::notify(byte event, const char* payload)
 {
   char buf[48];
+  char cache[128];
   CStorageRAM netbuf;
-  netbuf.init(128);
+  netbuf.init(cache, 128);
   netbuf.header(devid);
   netbuf.dispatch(buf, sprintf(buf, "EV=%X", (unsigned int)event));
   netbuf.dispatch(buf, sprintf(buf, "TS=%lu", millis()));

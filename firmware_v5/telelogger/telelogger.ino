@@ -575,9 +575,6 @@ void showStats()
 {
   uint32_t t = millis() - teleClient.startTime;
   char buf[32];
-#if ENABLE_BLE
-  int len = sprintf(buf, "T:%u P:%u B:%u", t, teleClient.txCount, teleClient.txBytes);
-#endif
   sprintf(buf, "%02u:%02u.%c ", t / 60000, (t % 60000) / 1000, (t % 1000) / 100 + '0');
   Serial.print("[NET] ");
   Serial.print(buf);
@@ -650,6 +647,7 @@ void process()
 
   CBuffer* buffer = bufman.get();
   if (!buffer) {
+    // dispose oldest data from the full buffer
     buffer = bufman.getOldest();
     if (!buffer) return;
     while (buffer->state == BUFFER_STATE_LOCKED) delay(1);
@@ -848,7 +846,14 @@ void telemetry(void* inst)
   uint32_t lastRssiTime = 0;
   uint8_t connErrors = 0;
   CStorageRAM store;
-  store.init(SERIALIZE_BUFFER_SIZE);
+  store.init(
+#if BOARD_HAS_PSRAM
+    (char*)heap_caps_malloc(SERIALIZE_BUFFER_SIZE, MALLOC_CAP_SPIRAM),
+#else
+    (char*)malloc(SERIALIZE_BUFFER_SIZE),
+#endif
+    SERIALIZE_BUFFER_SIZE
+  );
   teleClient.reset();
 
   for (;;) {
@@ -880,17 +885,16 @@ void telemetry(void* inst)
       if (state.check(STATE_STANDBY)) {
         // start ping
         Serial.println("[NET] Ping...");
-        bool success = false;
 #if ENABLE_WIFI
         teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
         if (teleClient.wifi.setup()) {
-          success = teleClient.ping();
+          teleClient.ping();
         }
         else
 #endif
         {
           if (initCell()) {
-            success = teleClient.ping();
+            teleClient.ping();
           }
         }
         teleClient.shutdown();
@@ -1122,48 +1126,11 @@ void showSysInfo()
   Serial.println("MB");
   Serial.print("IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
-  Serial.print("KB");
-
-#if 0
-  esp_spiram_init();
-  Serial.print(" PSRAM:");
-  Serial.print((esp_spiram_get_size() + esp_himem_get_phys_size()) >> 10);
-  Serial.print("KB");
-#if 0
-    Serial.println();
-    Serial.print("Writing PSRAM...");
-    int size = ESP.getPsramSize();
-    uint32_t *ptr = (uint32_t*)ps_malloc(size);
-    if (!ptr) {
-      Serial.print("unable to allocate ");
-      Serial.print(size);
-      Serial.println(" bytes");
-    } else {
-      uint32_t t = millis();
-      for (int i = 0; i < size / 4; i++) {
-        ptr[i] = 0xa5a5a5a5;
-      }
-      Serial.print("OK @");
-      Serial.print(size  / (millis() - t));
-      Serial.println("KB/s");
-    }
-    Serial.print("Verifying PSRAM...");
-    int errors = 0;
-    uint32_t t = millis();
-    for (int i = 0; i < size / 4; i++) {
-      if (ptr[i] != 0xa5a5a5a5) {
-        Serial.print("mismatch @ 0x");
-        Serial.println(i * 4, 16);
-        errors++;
-      }
-    }
-    if (errors == 0) {
-      Serial.print("OK @");
-      Serial.print(size  / (millis() - t));
-      Serial.println("KB/s");
-    }
-    free(ptr);
-#endif
+  Serial.println("KB");
+#if BOARD_HAS_PSRAM
+  Serial.print("PSRAM:");
+  Serial.print(esp_spiram_get_size() >> 20);
+  Serial.print("MB");
 #endif
   Serial.println();
 
@@ -1236,7 +1203,7 @@ void processBLE(int timeout)
     Serial.print("[BLE] ");
     Serial.print(cmd);
     if (!strcmp(cmd, "UPTIME") || !strcmp(cmd, "TICK")) {
-        n += snprintf(buf + n, bufsize - n, "%u", millis());
+        n += snprintf(buf + n, bufsize - n, "%lu", millis());
     } else if (!strcmp(cmd, "BATT")) {
         n += snprintf(buf + n, bufsize - n, "%.2f", (float)(analogRead(A0) * 42) / 4095);
     } else if (!strcmp(cmd, "RESET")) {
@@ -1327,101 +1294,110 @@ void processBLE(int timeout)
 
 void setup()
 {
-    delay(500);
-    
+  delay(500);
+  
 #if ENABLE_OLED
-    oled.begin();
-    oled.setFontSize(FONT_SIZE_SMALL);
+  oled.begin();
+  oled.setFontSize(FONT_SIZE_SMALL);
 #endif
-    // initialize USB serial
-    Serial.begin(115200);
+  // initialize USB serial
+  Serial.begin(115200);
 
-    // init LED pin
+  // init LED pin
 #ifdef PIN_LED
-    pinMode(PIN_LED, OUTPUT);
-    if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
+  pinMode(PIN_LED, OUTPUT);
+  if (ledMode == 0) digitalWrite(PIN_LED, HIGH);
 #endif
 
-    // generate unique device ID
-    genDeviceID(devid);
+  // generate unique device ID
+  genDeviceID(devid);
 
 #if CONFIG_MODE_TIMEOUT
-    configMode();
+  configMode();
 #endif
 
 #if LOG_EXT_SENSORS == 1
-    pinMode(PIN_SENSOR1, INPUT);
-    pinMode(PIN_SENSOR2, INPUT);
+  pinMode(PIN_SENSOR1, INPUT);
+  pinMode(PIN_SENSOR2, INPUT);
 #elif LOG_EXT_SENSORS == 2
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
-    adc1_config_channel_atten(ADC1_CHANNEL_1, ADC_ATTEN_DB_11);
+  adc1_config_width(ADC_WIDTH_BIT_12);
+  adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(ADC1_CHANNEL_1, ADC_ATTEN_DB_11);
 #endif
 
-    // show system information
-    showSysInfo();
+#if BOARD_HAS_PSRAM
+  esp_spiram_init();
+#endif
+  
+  // show system information
+  showSysInfo();
+
+  bufman.init();
+  
+  //Serial.print(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >> 10);
+  //Serial.println("KB");
 
 #if ENABLE_OBD
-    if (sys.begin()) {
-      Serial.print("TYPE:");
-      Serial.println(sys.devType);
-      obd.begin(sys.link);
-    }
+  if (sys.begin()) {
+    Serial.print("TYPE:");
+    Serial.println(sys.devType);
+    obd.begin(sys.link);
+  }
 #else
-    sys.begin(false, true);
+  sys.begin(false, true);
 #endif
 
 #if ENABLE_MEMS
-  if (!state.check(STATE_MEMS_READY)) do {
-    Serial.print("MEMS:");
-    mems = new ICM_42627;
-    byte ret = mems->begin(ENABLE_ORIENTATION);
+if (!state.check(STATE_MEMS_READY)) do {
+  Serial.print("MEMS:");
+  mems = new ICM_42627;
+  byte ret = mems->begin(ENABLE_ORIENTATION);
+  if (ret) {
+    state.set(STATE_MEMS_READY);
+    Serial.println("ICM-42627");
+  } else {
+    mems->end();
+    delete mems;
+    mems = new ICM_20948_I2C;
+    ret = mems->begin(ENABLE_ORIENTATION);
     if (ret) {
       state.set(STATE_MEMS_READY);
-      Serial.println("ICM-42627");
+      Serial.println("ICM-20948");
     } else {
-      mems->end();
-      delete mems;
-      mems = new ICM_20948_I2C;
-      ret = mems->begin(ENABLE_ORIENTATION);
-      if (ret) {
-        state.set(STATE_MEMS_READY);
-        Serial.println("ICM-20948");
-      } else {
-        Serial.println("NO");
-      }
+      Serial.println("NO");
     }
-  } while (0);
+  }
+} while (0);
 #endif
 
 #if ENABLE_HTTPD
-    IPAddress ip;
-    if (serverSetup(ip)) {
-      Serial.println("HTTPD:");
-      Serial.println(ip);
+  IPAddress ip;
+  if (serverSetup(ip)) {
+    Serial.println("HTTPD:");
+    Serial.println(ip);
 #if ENABLE_OLED
-      oled.println(ip);
+    oled.println(ip);
 #endif
-    } else {
-      Serial.println("HTTPD:NO");
-    }
+  } else {
+    Serial.println("HTTPD:NO");
+  }
 #endif
 
-    state.set(STATE_WORKING);
+  state.set(STATE_WORKING);
 
 #if ENABLE_BLE
-    // init BLE
-    ble_init();
+  // init BLE
+  ble_init();
 #endif
 
-    // initialize components
-    initialize();
+  // initialize components
+  initialize();
 
-    // initialize network and maintain connection
-    subtask.create(telemetry, "telemetry", 2, 4096);
+  // initialize network and maintain connection
+  subtask.create(telemetry, "telemetry", 2, 8192);
 
 #ifdef PIN_LED
-    digitalWrite(PIN_LED, LOW);
+  digitalWrite(PIN_LED, LOW);
 #endif
 }
 
