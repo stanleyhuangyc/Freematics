@@ -20,7 +20,7 @@
 #define TEMP_DIS_OFF						1<<5
 
 //GYRO_CONFIG0
-#define GYRO_ODR_1KHZ						6<0
+#define GYRO_ODR_1KHZ						6<<0
 #define GYRO_FS_SEL_250dps			3<<5
 
 //CONFIG0_REG
