@@ -211,6 +211,7 @@ char* WifiHTTP::receive(char* buffer, int bufsize, int* pbytes, unsigned int tim
 *******************************************************************************/
 bool CellSIMCOM::begin(CFreematics* device)
 {
+  if (!m_buffer) m_buffer = (char*)malloc(RECV_BUF_SIZE);
   m_device = device;
   for (byte n = 0; n < 30; n++) {
     device->xbTogglePower(200);
@@ -250,6 +251,7 @@ bool CellSIMCOM::begin(CFreematics* device)
       return true;
     }
   }
+  end();
   return false;
 }
 
@@ -304,7 +306,7 @@ bool CellSIMCOM::setup(const char* apn, unsigned int timeout)
         m_device->xbWrite("AT+CPSI?\r");
         m_buffer[0] = 0;
         const char* answers[] = {"NO SERVICE", ",Online", ",Offline", ",Low Power Mode"};
-        byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 500, answers, 4);
+        byte ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, 500, answers, 4);
         if (ret == 2) {
           success = true;
           break;
@@ -478,7 +480,7 @@ bool CellSIMCOM::checkSIM(const char* pin)
 {
   bool success;
   if (pin && *pin) {
-    snprintf(m_buffer, sizeof(m_buffer), "AT+CPIN=\"%s\"\r", pin);
+    snprintf(m_buffer, RECV_BUF_SIZE, "AT+CPIN=\"%s\"\r", pin);
     sendCommand(m_buffer);
   }
   for (byte n = 0; n < 20 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);
@@ -527,7 +529,7 @@ bool CellSIMCOM::sendCommand(const char* cmd, unsigned int timeout, const char* 
   }
   m_buffer[0] = 0;
   const char* answers[] = {"\r\nOK", "\r\nERROR"};
-  byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), timeout, expected ? &expected : answers, expected ? 1 : 2);
+  byte ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, timeout, expected ? &expected : answers, expected ? 1 : 2);
   return ret == 1;
 }
 
@@ -656,7 +658,7 @@ bool CellUDP::send(const char* data, unsigned int len)
     delay(10);
     m_device->xbWrite(data, len);
     const char* answers[] = {"\r\nERROR", "OK\r\n\r\n+CIPSEND:", "\r\nRECV FROM:"};
-    byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 1000, answers, 3);
+    byte ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, 1000, answers, 3);
     if (ret > 1) return true;
   }
   return false;
@@ -668,9 +670,13 @@ char* CellUDP::receive(int* pbytes, unsigned int timeout)
     if (!strstr(m_buffer, "+CADATAIND: 0")) {
       if (!sendCommand(0, timeout, "+CADATAIND: 0")) return 0;
     }
-    if (sendCommand("AT+CARECV=0,384\r", timeout, "+CARECV")) {
-      char *p = strchr(m_buffer, ',');
-      return p ? p + 1 : m_buffer;
+    if (sendCommand("AT+CARECV=0,384\r", timeout)) {
+      char *p = strstr(m_buffer, "+CARECV: ");
+      if (p) {
+        if (pbytes) *pbytes = atoi(p + 9);
+        p = strchr(m_buffer, ',');
+        return p ? p + 1 : m_buffer;
+      }
     }
   } else {
     char *data = checkIncoming(pbytes);
@@ -734,7 +740,7 @@ bool CellHTTP::open(const char* host, uint16_t port)
       }
     }
   } else {
-    memset(m_buffer, 0, sizeof(m_buffer));
+    memset(m_buffer, 0, RECV_BUF_SIZE);
     sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,%u\r", host, port, port == 443 ? 2: 1);
     if (sendCommand(m_buffer, 1000)) {
       if (sendCommand(0, HTTP_CONN_TIMEOUT, "+CHTTPSOPSE:")) {
@@ -772,7 +778,7 @@ bool CellHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const 
         sendCommand(payload);
       }
     }
-    snprintf(m_buffer, sizeof(m_buffer), "AT+SHREQ=\"%s\",%u\r", path, method == METHOD_GET ? 1 : 3);
+    snprintf(m_buffer, RECV_BUF_SIZE, "AT+SHREQ=\"%s\",%u\r", path, method == METHOD_GET ? 1 : 3);
     if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT)) {
       char *p;
       int len = 0;
@@ -783,7 +789,7 @@ bool CellHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const 
         }
       }
       if (len > 0) {
-        if (len > sizeof(m_buffer) - 16) len = sizeof(m_buffer) - 16;
+        if (len > RECV_BUF_SIZE - 16) len = RECV_BUF_SIZE - 16;
         sprintf(m_buffer, "AT+SHREAD=0,%u\r", len);
         if (sendCommand(m_buffer)) {
           m_state = HTTP_SENT;
@@ -862,7 +868,7 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
     */
     // TODO: implement for multiple chunks of data
     // only deals with first chunk now
-    sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", sizeof(m_buffer) - 36);
+    sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", RECV_BUF_SIZE - 36);
     if (sendCommand(m_buffer, timeout, legacy ? "\r\n+CHTTPSRECV: 0" : "\r\n+CHTTPSRECV:0")) {
       char *p = strstr(m_buffer, "\r\n+CHTTPSRECV: DATA");
       if (p) {
@@ -870,7 +876,7 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
           received = atoi(p + 1);
           char *q = strchr(p, '\n');
           payload = q ? (q + 1) : p;
-          if (m_buffer + sizeof(m_buffer) - payload > received) {
+          if (m_buffer + RECV_BUF_SIZE - payload > received) {
             payload[received] = 0;
           }
         }
@@ -918,7 +924,7 @@ bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
       m_device->xbWrite("AT+CPSI?\r");
       m_buffer[0] = 0;
       const char* answers[] = {"NO SERVICE", ",Online", ",Offline", ",Low Power Mode"};
-      byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 500, answers, 4);
+      byte ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, 500, answers, 4);
       if (ret == 2) {
         success = true;
         break;
@@ -1019,7 +1025,7 @@ bool UDPClientSIM7600::send(const char* data, unsigned int len)
   m_device->xbWrite(data, len);
 
   const char* answers[] = {"\r\nERROR", "OK\r\n\r\n+CIPSEND:", "\r\nRECV FROM:"};
-  byte ret = m_device->xbReceive(m_buffer, sizeof(m_buffer), 1000, answers, 3);
+  byte ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, 1000, answers, 3);
   if (ret > 1) return true;
   return false;
 }
@@ -1060,7 +1066,7 @@ bool HTTPClientSIM7600::open(const char* host, uint16_t port)
     return true;
   }
 
-  memset(m_buffer, 0, sizeof(m_buffer));
+  memset(m_buffer, 0, RECV_BUF_SIZE);
   sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,%u\r", host, port, port == 443 ? 2: 1);
   if (sendCommand(m_buffer, 1000)) {
     if (sendCommand(0, HTTP_CONN_TIMEOUT, "+CHTTPSOPSE:")) {
@@ -1138,7 +1144,7 @@ char* HTTPClientSIM7600::receive(int* pbytes, unsigned int timeout)
   */
   // TODO: implement for multiple chunks of data
   // only deals with first chunk now
-  sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", sizeof(m_buffer) - 36);
+  sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", RECV_BUF_SIZE - 36);
   if (sendCommand(m_buffer, timeout, legacy ? "\r\n+CHTTPSRECV: 0" : "\r\n+CHTTPSRECV:0")) {
     char *p = strstr(m_buffer, "\r\n+CHTTPSRECV: DATA");
     if (p) {
@@ -1146,7 +1152,7 @@ char* HTTPClientSIM7600::receive(int* pbytes, unsigned int timeout)
         received = atoi(p + 1);
         char *q = strchr(p, '\n');
         payload = q ? (q + 1) : p;
-        if (m_buffer + sizeof(m_buffer) - payload > received) {
+        if (m_buffer + RECV_BUF_SIZE - payload > received) {
           payload[received] = 0;
         }
       }
@@ -1446,7 +1452,7 @@ bool HTTPClientSIM7070::send(HTTP_METHOD method, const char* path, bool keepAliv
       sendCommand(payload);
     }
   }
-  snprintf(m_buffer, sizeof(m_buffer), "AT+SHREQ=\"%s\",%u\r", path, method == METHOD_GET ? 1 : 3);
+  snprintf(m_buffer, RECV_BUF_SIZE, "AT+SHREQ=\"%s\",%u\r", path, method == METHOD_GET ? 1 : 3);
   if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT)) {
     char *p;
     int len = 0;
@@ -1457,7 +1463,7 @@ bool HTTPClientSIM7070::send(HTTP_METHOD method, const char* path, bool keepAliv
       }
     }
     if (len > 0) {
-      if (len > sizeof(m_buffer) - 16) len = sizeof(m_buffer) - 16;
+      if (len > RECV_BUF_SIZE - 16) len = RECV_BUF_SIZE - 16;
       sprintf(m_buffer, "AT+SHREAD=0,%u\r", len);
       if (sendCommand(m_buffer)) {
         m_state = HTTP_SENT;

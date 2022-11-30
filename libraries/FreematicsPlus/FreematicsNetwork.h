@@ -125,7 +125,7 @@ protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = 0);
     virtual void checkGPS();
     float parseDegree(const char* s);
-    char m_buffer[RECV_BUF_SIZE] = {0};
+    char* m_buffer = 0;
     char m_model[12] = {0};
     CFreematics* m_device = 0;
     GPS_DATA* m_gps = 0;
