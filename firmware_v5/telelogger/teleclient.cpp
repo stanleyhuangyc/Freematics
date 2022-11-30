@@ -214,7 +214,6 @@ void CBufferManager::printStats()
   }
 }
 
-
 bool TeleClientUDP::verifyChecksum(char* data)
 {
   uint8_t sum = 0;
@@ -263,25 +262,27 @@ bool TeleClientUDP::notify(byte event, const char* payload)
     }
     if (event == EVENT_ACK) return true; // no reply for ACK
     char *data = 0;
+    int bytesRecv = 0;
     // receive reply
 #if ENABLE_WIFI
     if (wifi.connected())
     {
       data = cell.getBuffer();
-      int len = wifi.receive(data, RECV_BUF_SIZE - 1);
-      if (len > 0) {
-        data[len] = 0;
+      bytesRecv = wifi.receive(data, RECV_BUF_SIZE - 1);
+      if (bytesRecv > 0) {
+        data[bytesRecv] = 0;
       }
     }
     else
 #endif
     {
-      data = cell.receive(); 
+      data = cell.receive(&bytesRecv); 
     }
-    if (!data) {
+    if (!data || bytesRecv == 0) {
       Serial.println("[UDP] Timeout");
       continue;
     }
+    rxBytes += bytesRecv;
     // verify checksum
     if (!verifyChecksum(data)) {
       Serial.print("[UDP] Checksum mismatch:");
@@ -460,7 +461,7 @@ void TeleClientUDP::inbound()
     else
 #endif
     {
-      data = cell.receive(&len, 100);
+      data = cell.receive(&len, 50);
     }
     if (!data || len == 0) break;
     data[len] = 0;

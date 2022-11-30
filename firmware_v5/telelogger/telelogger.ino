@@ -1018,7 +1018,7 @@ void telemetry(void* inst)
 
       teleClient.inbound();
 
-      if (!teleClient.cell.check(1000)) {
+      if (state.check(STATE_CELL_CONNECTED) && !teleClient.cell.check(1000)) {
         Serial.println("[CELL] Not in service");
         state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
         break;
@@ -1033,7 +1033,14 @@ void telemetry(void* inst)
       }
 
       if (connErrors >= MAX_CONN_ERRORS_RECONNECT) {
-        if (!state.check(STATE_WIFI_CONNECTED)) {
+#if ENABLE_WIFI
+        if (state.check(STATE_WIFI_CONNECTED)) {
+          teleClient.wifi.end();
+          state.clear(STATE_NET_READY | STATE_WIFI_CONNECTED);
+          break;
+        }
+#endif
+        if (state.check(STATE_CELL_CONNECTED)) {
           teleClient.cell.end();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
           break;
@@ -1126,9 +1133,9 @@ void showSysInfo()
   Serial.println("MB");
   Serial.print("IRAM:");
   Serial.print(ESP.getHeapSize() >> 10);
-  Serial.println("KB");
+  Serial.print("KB");
 #if BOARD_HAS_PSRAM
-  Serial.print("PSRAM:");
+  Serial.print(" PSRAM:");
   Serial.print(esp_spiram_get_size() >> 20);
   Serial.print("MB");
 #endif
@@ -1139,7 +1146,7 @@ void showSysInfo()
     Serial.print("RTC:");
     Serial.println(rtc);
   }
-  
+
 #if ENABLE_OLED
   oled.clear();
   oled.print("CPU:");
@@ -1355,18 +1362,25 @@ if (!state.check(STATE_MEMS_READY)) do {
   if (ret) {
     state.set(STATE_MEMS_READY);
     Serial.println("ICM-42627");
-  } else {
-    mems->end();
-    delete mems;
-    mems = new ICM_20948_I2C;
-    ret = mems->begin(ENABLE_ORIENTATION);
-    if (ret) {
-      state.set(STATE_MEMS_READY);
-      Serial.println("ICM-20948");
-    } else {
-      Serial.println("NO");
-    }
+    break;
   }
+  delete mems;
+  mems = new ICM_20948_I2C;
+  ret = mems->begin(ENABLE_ORIENTATION);
+  if (ret) {
+    state.set(STATE_MEMS_READY);
+    Serial.println("ICM-20948");
+    break;
+  } 
+  delete mems;
+  mems = new MPU9250;
+  ret = mems->begin(ENABLE_ORIENTATION);
+  if (ret) {
+    state.set(STATE_MEMS_READY);
+    Serial.println("MPU-9250");
+    break;
+  } 
+  Serial.println("NO");
 } while (0);
 #endif
 

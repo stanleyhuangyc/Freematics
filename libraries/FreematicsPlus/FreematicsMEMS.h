@@ -244,7 +244,7 @@ class MEMS_I2C
 {
 public:
   MEMS_I2C() {};
-  virtual ~MEMS_I2C() {};
+  virtual ~MEMS_I2C() { uninitI2C(); };
   virtual byte begin(bool fusion = false) = 0;
   virtual void end() { uninitI2C(); }
   virtual bool read(float* acc, float* gyr = 0, float* mag = 0, float* temp = 0, ORIENTATION* ori = 0) = 0;

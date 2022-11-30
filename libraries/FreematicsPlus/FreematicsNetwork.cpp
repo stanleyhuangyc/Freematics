@@ -211,7 +211,7 @@ char* WifiHTTP::receive(char* buffer, int bufsize, int* pbytes, unsigned int tim
 *******************************************************************************/
 bool CellSIMCOM::begin(CFreematics* device)
 {
-  if (!m_buffer) m_buffer = (char*)malloc(RECV_BUF_SIZE);
+  getBuffer();
   m_device = device;
   for (byte n = 0; n < 30; n++) {
     device->xbTogglePower(200);
@@ -604,6 +604,12 @@ void CellSIMCOM::checkGPS()
       m_gps->ts = millis();
     } while (0);
   }
+}
+
+char* CellSIMCOM::getBuffer()
+{
+  if (!m_buffer) m_buffer = (char*)malloc(RECV_BUF_SIZE);
+  return m_buffer;
 }
 
 bool CellUDP::open(const char* host, uint16_t port)
