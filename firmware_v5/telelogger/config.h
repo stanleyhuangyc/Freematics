@@ -4,6 +4,15 @@
 #ifdef CONFIG_BOARD_HAS_PSRAM
 #define BOARD_HAS_PSRAM CONFIG_BOARD_HAS_PSRAM
 #endif
+#ifdef CONFIG_ENABLE_WIFI
+#define ENABLE_WIFI CONFIG_ENABLE_WIFI
+#endif
+#ifdef CONFIG_ENABLE_BLE
+#define ENABLE_BLE CONFIG_ENABLE_BLE
+#endif
+#ifdef CONFIG_ENABLE_HTTPD
+#define ENABLE_HTTPD CONFIG_ENABLE_HTTPD
+#endif
 
 /**************************************
 * Circular Buffer Configuration
@@ -50,10 +59,8 @@
 /**************************************
 * Networking configurations
 **************************************/
-#ifdef CONFIG_ENABLE_WIFI
-#define ENABLE_WIFI CONFIG_ENABLE_WIFI
-#endif
-#ifndef WIFI_SSID
+#ifndef ENABLE_WIFI
+#define ENABLE_WIFI 0
 // WiFi settings
 #define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "PASSWORD"
@@ -151,13 +158,13 @@
 #define COOLING_DOWN_TEMP 75 /* celsius degrees */
 
 // enable(1)/disable(0) http server
-#ifdef CONFIG_ENABLE_HTTPD
-#define ENABLE_HTTPD CONFIG_ENABLE_HTTPD
+#ifndef ENABLE_HTTPD
+#define ENABLE_HTTPD 0
 #endif
 
 // enable(1)/disable(0) BLE SPP server (for Freematics Controller App).
-#ifdef CONFIG_ENABLE_BLE
-#define ENABLE_BLE CONFIG_ENABLE_BLE
+#ifndef ENABLE_BLE
+#define ENABLE_BLE 0
 #endif
 
 
