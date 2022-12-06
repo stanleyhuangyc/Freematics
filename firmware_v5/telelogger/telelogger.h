@@ -35,7 +35,7 @@ public:
     }
     virtual void timestamp(uint32_t ts)
     {
-        log(0, ts);
+        log(PID_TIMESTAMP, ts);
     }
     virtual void purge() { m_samples = 0; }
     virtual uint16_t samples() { return m_samples; }

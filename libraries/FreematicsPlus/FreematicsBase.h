@@ -26,7 +26,8 @@
 #define PID_BATTERY_VOLTAGE 0x24
 #define PID_ORIENTATION 0x25
 
-// custom PIDs for calculated data
+// custom PIDs
+#define PID_TIMESTAMP 0
 #define PID_TRIP_DISTANCE 0x30
 #define PID_DATA_SIZE 0x80
 #define PID_CSQ 0x81
