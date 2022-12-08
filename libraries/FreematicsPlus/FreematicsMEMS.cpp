@@ -139,9 +139,9 @@ bool MEMS_I2C::initI2C(unsigned long clock)
   i2c_port_t i2c_master_port = I2C_NUM_0;
   i2c_config_t conf = {
     conf.mode = I2C_MODE_MASTER,
-    conf.sda_io_num = (gpio_num_t)21,
+    conf.sda_io_num = ((gpio_num_t)21),
     conf.sda_pullup_en = GPIO_PULLUP_ENABLE,
-    conf.scl_io_num = (gpio_num_t)22,
+    conf.scl_io_num = ((gpio_num_t)22),
     conf.scl_pullup_en = GPIO_PULLUP_ENABLE,
     conf.master.clk_speed = clock,
   };
