@@ -1332,10 +1332,6 @@ void setup()
   adc1_config_channel_atten(ADC1_CHANNEL_1, ADC_ATTEN_DB_11);
 #endif
 
-#if BOARD_HAS_PSRAM
-  esp_spiram_init();
-#endif
-  
   // show system information
   showSysInfo();
 

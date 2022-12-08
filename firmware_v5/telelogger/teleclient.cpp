@@ -26,14 +26,16 @@ extern char vin[];
 extern GPS_DATA* gd;
 extern char isoTime[];
 
+#define TYPES_LENGTH ((BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(int)) + 15) / 16)
+
 CBuffer::CBuffer()
 {
 #if BOARD_HAS_PSRAM
   data = (uint8_t*)heap_caps_malloc(BUFFER_LENGTH, MALLOC_CAP_SPIRAM);
-  types = (uint32_t*)heap_caps_malloc((BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(int)) + 15) / 16, MALLOC_CAP_SPIRAM);
+  types = (uint32_t*)heap_caps_malloc(TYPES_LENGTH, MALLOC_CAP_SPIRAM);
 #else
   data = (uint8_t*)malloc(BUFFER_LENGTH);
-  types = (uint32_t*)malloc((BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(int)) + 15) / 16);
+  types = (uint32_t*)malloc(TYPES_LENGTH);
 #endif
   purge();
 }
@@ -97,6 +99,7 @@ void CBuffer::purge()
   timestamp = 0;
   offset = 0;
   count = 0;
+  memset(types, 0, TYPES_LENGTH);
 }
 
 void CBuffer::setType(uint32_t dataType)
