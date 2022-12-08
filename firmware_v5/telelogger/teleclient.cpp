@@ -97,7 +97,6 @@ void CBuffer::purge()
   timestamp = 0;
   offset = 0;
   count = 0;
-  memset(types, 0, sizeof(types));
 }
 
 void CBuffer::setType(uint32_t dataType)
