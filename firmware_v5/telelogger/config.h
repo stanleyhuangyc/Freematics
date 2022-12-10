@@ -1,6 +1,18 @@
 #ifndef CONFIG_H_INCLUDED
 #define CONFIG_H_INCLUDED
 
+#ifdef CONFIG_ENABLE_OBD
+#define ENABLE_OBD CONFIG_ENABLE_OBD
+#endif
+#ifdef CONFIG_ENABLE_MEMS
+#define ENABLE_MEMS CONFIG_ENABLE_MEMS
+#endif
+#ifdef CONFIG_GNSS
+#define GNSS CONFIG_GNSS
+#endif
+#ifdef CONFIG_STORAGE
+#define STORAGE CONFIG_STORAGE
+#endif
 #ifdef CONFIG_BOARD_HAS_PSRAM
 #define BOARD_HAS_PSRAM CONFIG_BOARD_HAS_PSRAM
 #endif
@@ -12,6 +24,18 @@
 #endif
 #ifdef CONFIG_ENABLE_HTTPD
 #define ENABLE_HTTPD CONFIG_ENABLE_HTTPD
+#endif
+#ifdef CONFIG_SERVER_HOST
+#define SERVER_HOST CONFIG_SERVER_HOST
+#endif
+#ifdef CONFIG_SERVER_PORT
+#define SERVER_PORT CONFIG_SERVER_PORT
+#endif
+#ifdef CONFIG_SERVER_PROTOCOL
+#define SERVER_PROTOCOL CONFIG_SERVER_PROTOCOL
+#endif
+#ifdef CONFIG_CELL_APN
+#define CELL_APN CONFIG_CELL_APN
 #endif
 
 /**************************************
@@ -64,12 +88,15 @@
 // WiFi settings
 #define WIFI_SSID "FREEMATICS"
 #define WIFI_PASSWORD "PASSWORD"
+#endif 
+
+#ifndef SERVER_HOST
 // cellular network settings
-#define CELL_APN "hologram"
+#define CELL_APN ""
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PROTOCOL PROTOCOL_UDP
-#endif 
+#endif
 
 // SIM card setting
 #define SIM_CARD_PIN ""
@@ -122,7 +149,6 @@
 /**************************************
 * MEMS sensors
 **************************************/
-#define ENABLE_ORIENTATION 0
 #ifndef ENABLE_MEMS
 #define ENABLE_MEMS 1
 #endif

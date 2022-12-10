@@ -1354,7 +1354,7 @@ void setup()
 if (!state.check(STATE_MEMS_READY)) do {
   Serial.print("MEMS:");
   mems = new ICM_42627;
-  byte ret = mems->begin(ENABLE_ORIENTATION);
+  byte ret = mems->begin();
   if (ret) {
     state.set(STATE_MEMS_READY);
     Serial.println("ICM-42627");
@@ -1362,7 +1362,7 @@ if (!state.check(STATE_MEMS_READY)) do {
   }
   delete mems;
   mems = new ICM_20948_I2C;
-  ret = mems->begin(ENABLE_ORIENTATION);
+  ret = mems->begin();
   if (ret) {
     state.set(STATE_MEMS_READY);
     Serial.println("ICM-20948");
@@ -1370,7 +1370,7 @@ if (!state.check(STATE_MEMS_READY)) do {
   } 
   delete mems;
   mems = new MPU9250;
-  ret = mems->begin(ENABLE_ORIENTATION);
+  ret = mems->begin();
   if (ret) {
     state.set(STATE_MEMS_READY);
     Serial.println("MPU-9250");
