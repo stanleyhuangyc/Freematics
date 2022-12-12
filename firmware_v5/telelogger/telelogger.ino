@@ -301,7 +301,7 @@ bool processGPS(CBuffer* buffer)
   if (buffer) {
     //buffer->add(PID_GPS_DATE, gd->date);
     buffer->add(PID_GPS_TIME, gd->time);
-    if (gd->lat && gd->lng && gd->alt) {
+    if (gd->lat && gd->lng && gd->sat > 3) {
       buffer->add(PID_GPS_LATITUDE, gd->lat);
       buffer->add(PID_GPS_LONGITUDE, gd->lng);
       buffer->add(PID_GPS_ALTITUDE, gd->alt); /* m */
@@ -1214,7 +1214,9 @@ void processBLE(int timeout)
     } else if (!strcmp(cmd, "BATT")) {
         n += snprintf(buf + n, bufsize - n, "%.2f", (float)(analogRead(A0) * 42) / 4095);
     } else if (!strcmp(cmd, "RESET")) {
+#if STORAGE
         logger.end();
+#endif
         ESP.restart();
         // never reach here
     } else if (!strcmp(cmd, "OFF")) {
