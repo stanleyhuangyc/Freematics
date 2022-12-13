@@ -29,13 +29,17 @@ public:
     void purge();
     void serialize(CStorage& store);
     uint32_t timestamp;
-    int offset;
+    uint16_t  offset;
     uint16_t count;
     uint8_t state;
 private:
-    void setType(uint32_t dataType);
+    void setType(uint8_t dataType);
     uint8_t* data;
+#if HAS_LARGE_RAM
+    uint8_t* types;
+#else
     uint32_t* types;
+#endif
 };
 
 class CBufferManager

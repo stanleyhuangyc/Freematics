@@ -39,14 +39,16 @@
 /**************************************
 * Circular Buffer Configuration
 **************************************/
-#if BOARD_HAS_PSRAM
+#ifdef BOARD_HAS_PSRAM
 #define BUFFER_SLOTS 4096 /* max number of buffer */
 #define BUFFER_LENGTH 256 /* bytes per slot */
 #define SERIALIZE_BUFFER_SIZE 4096 /* bytes */
+#define HAS_LARGE_RAM 1
 #else
 #define BUFFER_SLOTS 32 /* max number of buffer */
 #define BUFFER_LENGTH 128 /* bytes per slot */
 #define SERIALIZE_BUFFER_SIZE 1024 /* bytes */
+#define HAS_LARGE_RAM 0
 #endif
 
 /**************************************

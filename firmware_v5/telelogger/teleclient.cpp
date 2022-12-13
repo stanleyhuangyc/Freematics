@@ -26,13 +26,17 @@ extern char vin[];
 extern GPS_DATA* gd;
 extern char isoTime[];
 
+#if HAS_LARGE_RAM
+#define TYPES_LENGTH (BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(uint16_t)))
+#else
 #define TYPES_LENGTH ((BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(uint16_t)) + 15) / 16)
+#endif
 
 CBuffer::CBuffer()
 {
-#if BOARD_HAS_PSRAM
+#if HAS_LARGE_RAM
   data = (uint8_t*)heap_caps_malloc(BUFFER_LENGTH, MALLOC_CAP_SPIRAM);
-  types = (uint32_t*)heap_caps_malloc(TYPES_LENGTH, MALLOC_CAP_SPIRAM);
+  types = (uint8_t*)heap_caps_malloc(TYPES_LENGTH, MALLOC_CAP_SPIRAM);
 #else
   data = (uint8_t*)malloc(BUFFER_LENGTH);
   types = (uint32_t*)malloc(TYPES_LENGTH);
@@ -102,18 +106,27 @@ void CBuffer::purge()
   memset(types, 0, TYPES_LENGTH);
 }
 
-void CBuffer::setType(uint32_t dataType)
+void CBuffer::setType(uint8_t dataType)
 {
-  types[count / 16] |= (dataType << ((count % 16) * 2));
+#if HAS_LARGE_RAM
+  types[count] = dataType;
+#else
+  types[count / 16] |= ((uint32_t)dataType << ((count % 16) * 2));
+#endif
 }
 
 void CBuffer::serialize(CStorage& store)
 {
-  int of = 0;
+  uint16_t of = 0;
   for (int n = 0; n < count; n++) {
     uint16_t pid = *(uint16_t*)(data + of);
     of += sizeof(uint16_t);
-    switch ((types[n / 16] >> ((n % 16) * 2)) & 0x3) {
+#if HAS_LARGE_RAM
+    switch (types[n])
+#else
+    switch ((types[n / 16] >> ((n % 16) * 2)) & 0x3)
+#endif
+    {
     case ELEMENT_INT:
       {
         int value = *(int*)(data + of);
