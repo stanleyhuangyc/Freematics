@@ -379,16 +379,20 @@ bool COBD::init(OBD_PROTOCOLS protocol, bool quick)
 	}
 
 	success = false;
-	for (byte n = 0; n < 2; n++) {
+	if (quick) {
 		int value;
-		if (readPID(PID_SPEED, value)) {
-			success = true;
-			break;
+		if (!readPID(PID_SPEED, value)) return false;
+	} else {
+		for (byte n = 0; n < 2; n++) {
+			int value;
+			if (readPID(PID_SPEED, value)) {
+				success = true;
+				break;
+			}
 		}
-	}
-
-	if (!success && quick) {
-		return false;
+		if (!success) {
+			return false;
+		}
 	}
 
 	// load pid map

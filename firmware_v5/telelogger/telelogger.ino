@@ -64,7 +64,6 @@ Task subtask;
 #if ENABLE_MEMS
 float accBias[3] = {0}; // calibrated reference accelerometer data
 float accSum[3] = {0};
-float temp = 0;
 float acc[3] = {0};
 float gyr[3] = {0};
 float mag[3] = {0};
@@ -304,8 +303,8 @@ bool processGPS(CBuffer* buffer)
     if (gd->lat && gd->lng && gd->sat > 3) {
       buffer->add(PID_GPS_LATITUDE, gd->lat);
       buffer->add(PID_GPS_LONGITUDE, gd->lng);
-      buffer->add(PID_GPS_ALTITUDE, gd->alt); /* m */
-      buffer->add(PID_GPS_SPEED, kph);
+      buffer->add(PID_GPS_ALTITUDE, (int)gd->alt); /* m */
+      buffer->add(PID_GPS_SPEED, (int)kph);
       buffer->add(PID_GPS_HEADING, gd->heading);
       buffer->add(PID_GPS_SAT_COUNT, gd->sat);
       buffer->add(PID_GPS_HDOP, gd->hdop);
@@ -364,7 +363,7 @@ void processMEMS(CBuffer* buffer)
   ORIENTATION ori;
   if (!mems->read(acc, gyr, mag, &temp, &ori)) return;
 #else
-  if (!mems->read(acc, gyr, mag, &temp)) return;
+  if (!mems->read(acc, gyr, mag, &deviceTemp)) return;
 #endif
 
   accSum[0] += acc[0];
@@ -393,10 +392,6 @@ void processMEMS(CBuffer* buffer)
       value[2] = ori.roll;
       buffer->add(PID_ORIENTATION, value);
 #endif
-      if (temp != deviceTemp) {
-        deviceTemp = temp;
-        buffer->add(PID_DEVICE_TEMP, (int)temp);
-      }
 #if 0
       // calculate motion
       float motion = 0;
@@ -699,10 +694,8 @@ void process()
 
   if (!state.check(STATE_MEMS_READY)) {
     deviceTemp = readChipTemperature();
-    buffer->add(PID_DEVICE_TEMP, deviceTemp);
   }
-
-
+  buffer->add(PID_DEVICE_TEMP, (int)deviceTemp);
 
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;

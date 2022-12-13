@@ -39,9 +39,15 @@ public:
     virtual void log(uint16_t pid, float values[], uint8_t num)
     {
         char buf[256];
-        byte n = snprintf(buf, sizeof(buf), "%X%c%.2f", pid, m_delimiter, values[0]);
-        for (byte m = 1; m < num; m++) {
-            n += snprintf(buf + n, sizeof(buf) - n, ";%.2f", values[m]);
+        byte n = snprintf(buf, sizeof(buf), "%X%c", pid, m_delimiter);
+        for (byte m = 0; m < num && n < sizeof(buf) - 3; m++) {
+            if (m > 0) buf[n++] = ';';
+            if (values[m] > -0.005 && values[m] < 0.005) {
+                buf[n++] = '0';
+                buf[n] = 0;
+            } else {
+                n += snprintf(buf + n, sizeof(buf) - n, "%.2f", values[m]);
+            }
         }
         dispatch(buf, n);
     }
@@ -110,7 +116,7 @@ public:
     }
     void tailer()
     {
-        //if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
+        if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
         m_cacheBytes += sprintf(m_cache + m_cacheBytes, "*%X", (unsigned int)checksum(m_cache, m_cacheBytes));
     }
     void untailer()
