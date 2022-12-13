@@ -32,10 +32,11 @@ CBuffer::CBuffer()
 {
 #if BOARD_HAS_PSRAM
   data = (uint8_t*)heap_caps_malloc(BUFFER_LENGTH, MALLOC_CAP_SPIRAM);
+  types = (uint32_t*)heap_caps_malloc(TYPES_LENGTH, MALLOC_CAP_SPIRAM);
 #else
   data = (uint8_t*)malloc(BUFFER_LENGTH);
-#endif
   types = (uint32_t*)malloc(TYPES_LENGTH);
+#endif
   purge();
 }
 
