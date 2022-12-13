@@ -9,29 +9,41 @@ class CStorage {
 public:
     virtual bool init() { return true; }
     virtual void uninit() {}
-    virtual void log(uint16_t pid, int value)
+    virtual void log(uint16_t pid, int32_t value)
     {
-        char buf[24];
+        char buf[32];
         byte len = sprintf(buf, "%X%c%d", pid, m_delimiter, value);
         dispatch(buf, len);
     }
     virtual void log(uint16_t pid, uint32_t value)
     {
-        char buf[24];
+        char buf[32];
         byte len = sprintf(buf, "%X%c%u", pid, m_delimiter, value);
         dispatch(buf, len);
     }
+    virtual void log(uint16_t pid, int32_t values[], uint8_t num)
+    {
+        char buf[256];
+        byte n = snprintf(buf, sizeof(buf), "%X%c%d", pid, m_delimiter, values[0]);
+        for (byte m = 1; m < num; m++) {
+            n += snprintf(buf + n, sizeof(buf) - n, ";%d", values[m]);
+        }
+        dispatch(buf, n);
+    }
     virtual void log(uint16_t pid, float value)
     {
-        char buf[24];
+        char buf[32];
         byte len = sprintf(buf, "%X%c%f", pid, m_delimiter, value);
         dispatch(buf, len);
     }
-    virtual void log(uint16_t pid, float value[])
+    virtual void log(uint16_t pid, float values[], uint8_t num)
     {
-        char buf[48];
-        byte len = sprintf(buf, "%X%c%.2f;%.2f;%.2f", pid, m_delimiter, value[0], value[1], value[2]);
-        dispatch(buf, len);
+        char buf[256];
+        byte n = snprintf(buf, sizeof(buf), "%X%c%.2f", pid, m_delimiter, values[0]);
+        for (byte m = 1; m < num; m++) {
+            n += snprintf(buf + n, sizeof(buf) - n, ";%.2f", values[m]);
+        }
+        dispatch(buf, n);
     }
     virtual void timestamp(uint32_t ts)
     {

@@ -378,7 +378,7 @@ void processMEMS(CBuffer* buffer)
       value[0] = accSum[0] / accCount - accBias[0];
       value[1] = accSum[1] / accCount - accBias[1];
       value[2] = accSum[2] / accCount - accBias[2];
-      buffer->add(PID_ACC, value);
+      buffer->add(PID_ACC, value, 3);
 /*
       Serial.print("[ACC] ");
       Serial.print(value[0]);
@@ -847,7 +847,7 @@ void telemetry(void* inst)
   uint8_t connErrors = 0;
   CStorageRAM store;
   store.init(
-#if BOARD_HAS_PSRAM
+#if HAS_LARGE_RAM
     (char*)heap_caps_malloc(SERIALIZE_BUFFER_SIZE, MALLOC_CAP_SPIRAM),
 #else
     (char*)malloc(SERIALIZE_BUFFER_SIZE),
@@ -991,7 +991,7 @@ void telemetry(void* inst)
       buffer->serialize(store);
       buffer->purge();
       store.tailer();
-      //Serial.println(store.buffer());
+      Serial.println(store.buffer());
 
       // start transmission
 #ifdef PIN_LED

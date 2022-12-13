@@ -13,19 +13,25 @@
 #define BUFFER_STATE_FILLED 2
 #define BUFFER_STATE_LOCKED 3
 
-#define ELEMENT_INT 0
-#define ELEMENT_UINT 1
+#define ELEMENT_UINT 0
+#define ELEMENT_INT 1
 #define ELEMENT_FLOAT 2
-#define ELEMENT_FLOATX3 3
+
+typedef struct {
+    uint16_t pid;
+    uint8_t type;
+    uint8_t count;
+} ELEMENT_HEAD;
 
 class CBuffer
 {
 public:
     CBuffer();
-    void add(uint16_t pid, int value);
     void add(uint16_t pid, uint32_t value);
+    void add(uint16_t pid, int32_t value);
+    void add(uint16_t pid, int32_t values[], uint8_t num);
     void add(uint16_t pid, float value);
-    void add(uint16_t pid, float value[]);
+    void add(uint16_t pid, float values[], uint8_t num);
     void purge();
     void serialize(CStorage& store);
     uint32_t timestamp;
@@ -33,13 +39,7 @@ public:
     uint16_t count;
     uint8_t state;
 private:
-    void setType(uint8_t dataType);
     uint8_t* data;
-#if HAS_LARGE_RAM
-    uint8_t* types;
-#else
-    uint32_t* types;
-#endif
 };
 
 class CBufferManager
