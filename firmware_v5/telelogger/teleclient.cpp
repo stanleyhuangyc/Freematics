@@ -26,7 +26,7 @@ extern char vin[];
 extern GPS_DATA* gd;
 extern char isoTime[];
 
-#define TYPES_LENGTH ((BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(int)) + 15) / 16)
+#define TYPES_LENGTH ((BUFFER_LENGTH / (sizeof(uint16_t) + sizeof(uint16_t)) + 15) / 16)
 
 CBuffer::CBuffer()
 {
@@ -525,7 +525,7 @@ bool TeleClientHTTP::notify(byte event, const char* payload)
 bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 {
 #if ENABLE_WIFI
-  if (wifi.connected() && wifi.state() != HTTP_CONNECTED || cell.state() != HTTP_CONNECTED) {
+  if ((wifi.connected() && wifi.state() != HTTP_CONNECTED) || cell.state() != HTTP_CONNECTED) {
 #else
   if (cell.state() != HTTP_CONNECTED) {
 #endif
