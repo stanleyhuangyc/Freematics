@@ -258,8 +258,14 @@ bool CellSIMCOM::begin(CFreematics* device)
 void CellSIMCOM::end()
 {
   setGPS(false);
-  if (!sendCommand(m_type == CELL_SIM7070 ? "AT+CPOWD=1\r" : "AT+CPOF\r")) {
-    if (m_device) m_device->xbTogglePower(2510);
+  if (m_type == CELL_SIM7070) {
+    if (!sendCommand("AT+CPOWD=1\r", 1000, "NORMAL POWER DOWN")) {
+      if (m_device) m_device->xbTogglePower(2510);
+    }
+  } else {
+    if (!sendCommand("AT+CPOF\r")) {
+      if (m_device) m_device->xbTogglePower(2510);
+    }
   }
 }
 
