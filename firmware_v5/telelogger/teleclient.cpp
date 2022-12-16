@@ -152,7 +152,10 @@ void CBufferManager::purge()
 CBuffer* CBufferManager::get(byte state)
 {
     for (int n = 0; n < BUFFER_SLOTS; n++) {
-        if (buffers[n]->state == state) return buffers[n];
+        if (buffers[n]->state == state) {
+          buffers[n]->state = BUFFER_STATE_LOCKED;
+          return buffers[n];
+        }
     }
     return 0;
 }
@@ -168,7 +171,7 @@ CBuffer* CBufferManager::getOldest()
       }
   }
   if (m >= 0) {
-    buffer[m]->state = BUFFER_STATE_LOCKED;
+    buffers[m]->state = BUFFER_STATE_LOCKED;
     return buffers[m];
   }
   return 0;
@@ -185,7 +188,7 @@ CBuffer* CBufferManager::getNewest()
       }
   }
   if (m >= 0) {
-    buffer[m]->state = BUFFER_STATE_LOCKED;
+    buffers[m]->state = BUFFER_STATE_LOCKED;
     return buffers[m];
   }
   return 0;
