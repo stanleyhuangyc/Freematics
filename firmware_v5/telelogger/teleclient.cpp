@@ -42,7 +42,7 @@ void CBuffer::add(uint16_t pid, uint32_t value)
     ELEMENT_HEAD hdr = {pid, ELEMENT_INT, 1};
     *(ELEMENT_HEAD*)(data + offset) = hdr;
     offset += sizeof(ELEMENT_HEAD);
-    *(uint*)(data + offset) = value;
+    *(uint32_t*)(data + offset) = value;
     offset += sizeof(value);
     count++;
   } else {
@@ -56,7 +56,7 @@ void CBuffer::add(uint16_t pid, int32_t value)
     ELEMENT_HEAD hdr = {pid, ELEMENT_INT, 1};
     *(ELEMENT_HEAD*)(data + offset) = hdr;
     offset += sizeof(ELEMENT_HEAD);
-    *(int*)(data + offset) = value;
+    *(int32_t*)(data + offset) = value;
     offset += sizeof(value);
     count++;
   } else {
