@@ -167,7 +167,11 @@ CBuffer* CBufferManager::getOldest()
           ts = buffers[n]->timestamp;
       }
   }
-  return m >= 0 ? buffers[m] : 0;
+  if (m >= 0) {
+    buffer[m]->state = BUFFER_STATE_LOCKED;
+    return buffers[m];
+  }
+  return 0;
 }
 
 CBuffer* CBufferManager::getNewest()
@@ -180,7 +184,11 @@ CBuffer* CBufferManager::getNewest()
           ts = buffers[n]->timestamp;
       }
   }
-  return m >= 0 ? buffers[m] : 0;
+  if (m >= 0) {
+    buffer[m]->state = BUFFER_STATE_LOCKED;
+    return buffers[m];
+  }
+  return 0;
 }
 
 void CBufferManager::printStats()
