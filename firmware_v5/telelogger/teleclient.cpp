@@ -93,7 +93,7 @@ void CBuffer::add(uint16_t pid, float value)
 }
 void CBuffer::add(uint16_t pid, float values[], uint8_t num)
 {
-  if (offset < BUFFER_LENGTH - sizeof(uint16_t) + sizeof(float) * num) {
+  if (offset < BUFFER_LENGTH - sizeof(uint16_t) - sizeof(float) * num) {
     ELEMENT_HEAD hdr = {pid, ELEMENT_FLOAT, num};
     *(ELEMENT_HEAD*)(data + offset) = hdr;
     offset += sizeof(ELEMENT_HEAD);
