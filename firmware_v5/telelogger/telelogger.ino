@@ -944,13 +944,6 @@ void telemetry(void* inst)
         Serial.println("[CELL] In service");
       }
 
-      // get data from buffer
-      CBuffer* buffer = bufman.getNewest();
-      if (!buffer) {
-        delay(50);
-        continue;
-      }
-
       if (millis() - lastRssiTime > SIGNAL_CHECK_INTERVAL * 1000) {
 #if ENABLE_WIFI
         if (state.check(STATE_WIFI_CONNECTED))
@@ -976,7 +969,12 @@ void telemetry(void* inst)
 #endif
       }
 
-      buffer->state = BUFFER_STATE_LOCKED;
+      // get data from buffer
+      CBuffer* buffer = bufman.getNewest();
+      if (!buffer) {
+        delay(50);
+        continue;
+      }
 #if SERVER_PROTOCOL == PROTOCOL_UDP
       store.header(devid);
 #endif
