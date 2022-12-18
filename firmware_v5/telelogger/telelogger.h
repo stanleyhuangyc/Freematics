@@ -9,51 +9,60 @@ class CStorage {
 public:
     virtual bool init() { return true; }
     virtual void uninit() {}
-    virtual void log(uint16_t pid, int32_t value)
+    virtual void log(uint16_t pid, uint8_t values[], uint8_t count)
     {
-        char buf[32];
-        byte len = sprintf(buf, "%X%c%d", pid, m_delimiter, value);
-        dispatch(buf, len);
+        char buf[256];
+        byte n = snprintf(buf, sizeof(buf), "%X%c%u", pid, m_delimiter, (unsigned int)values[0]);
+        for (byte m = 1; m < count; m++) {
+            n += snprintf(buf + n, sizeof(buf) - n, ";%u", (unsigned int)values[m]);
+        }
+        dispatch(buf, n);
     }
-    virtual void log(uint16_t pid, uint32_t value)
+    virtual void log(uint16_t pid, uint16_t values[], uint8_t count)
     {
-        char buf[32];
-        byte len = sprintf(buf, "%X%c%u", pid, m_delimiter, value);
-        dispatch(buf, len);
+        char buf[256];
+        byte n = snprintf(buf, sizeof(buf), "%X%c%u", pid, m_delimiter, (unsigned int)values[0]);
+        for (byte m = 1; m < count; m++) {
+            n += snprintf(buf + n, sizeof(buf) - n, ";%u", (unsigned int)values[m]);
+        }
+        dispatch(buf, n);
     }
-    virtual void log(uint16_t pid, int32_t values[], uint8_t num)
+    virtual void log(uint16_t pid, uint32_t values[], uint8_t count)
+    {
+        char buf[256];
+        byte n = snprintf(buf, sizeof(buf), "%X%c%u", pid, m_delimiter, values[0]);
+        for (byte m = 1; m < count; m++) {
+            n += snprintf(buf + n, sizeof(buf) - n, ";%u", values[m]);
+        }
+        dispatch(buf, n);
+    }
+    virtual void log(uint16_t pid, int32_t values[], uint8_t count)
     {
         char buf[256];
         byte n = snprintf(buf, sizeof(buf), "%X%c%d", pid, m_delimiter, values[0]);
-        for (byte m = 1; m < num; m++) {
+        for (byte m = 1; m < count; m++) {
             n += snprintf(buf + n, sizeof(buf) - n, ";%d", values[m]);
         }
         dispatch(buf, n);
     }
-    virtual void log(uint16_t pid, float value)
-    {
-        char buf[32];
-        byte len = sprintf(buf, "%X%c%f", pid, m_delimiter, value);
-        dispatch(buf, len);
-    }
-    virtual void log(uint16_t pid, float values[], uint8_t num)
+    virtual void log(uint16_t pid, float values[], uint8_t count)
     {
         char buf[256];
         byte n = snprintf(buf, sizeof(buf), "%X%c", pid, m_delimiter);
-        for (byte m = 0; m < num && n < sizeof(buf) - 3; m++) {
+        for (byte m = 0; m < count && n < sizeof(buf) - 3; m++) {
             if (m > 0) buf[n++] = ';';
             if (values[m] > -0.005 && values[m] < 0.005) {
                 buf[n++] = '0';
                 buf[n] = 0;
             } else {
-                n += snprintf(buf + n, sizeof(buf) - n, "%.2f", values[m]);
+                n += snprintf(buf + n, sizeof(buf) - n, "%f", values[m]);
             }
         }
         dispatch(buf, n);
     }
     virtual void timestamp(uint32_t ts)
     {
-        log(PID_TIMESTAMP, ts);
+        log(PID_TIMESTAMP, &ts, 1);
     }
     virtual void purge() { m_samples = 0; }
     virtual uint16_t samples() { return m_samples; }
@@ -116,7 +125,7 @@ public:
     }
     void tailer()
     {
-        //if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
+        if (m_cache[m_cacheBytes - 1] == ',') m_cacheBytes--;
         m_cacheBytes += sprintf(m_cache + m_cacheBytes, "*%X", (unsigned int)checksum(m_cache, m_cacheBytes));
     }
     void untailer()

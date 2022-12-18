@@ -36,70 +36,15 @@ CBuffer::CBuffer()
   purge();
 }
 
-void CBuffer::add(uint16_t pid, uint32_t value)
+void CBuffer::add(uint16_t pid, uint8_t type, void* values, int bytes, uint8_t count)
 {
-  if (offset < BUFFER_LENGTH - sizeof(ELEMENT_HEAD) - sizeof(value)) {
-    ELEMENT_HEAD hdr = {pid, ELEMENT_INT, 1};
+  if (offset < BUFFER_LENGTH - sizeof(ELEMENT_HEAD) - bytes) {
+    ELEMENT_HEAD hdr = {pid, type, count};
     *(ELEMENT_HEAD*)(data + offset) = hdr;
     offset += sizeof(ELEMENT_HEAD);
-    *(uint32_t*)(data + offset) = value;
-    offset += sizeof(value);
-    count++;
-  } else {
-    Serial.println("FULL");
-  }
-}
-
-void CBuffer::add(uint16_t pid, int32_t value)
-{
-  if (offset < BUFFER_LENGTH - sizeof(ELEMENT_HEAD) - sizeof(value)) {
-    ELEMENT_HEAD hdr = {pid, ELEMENT_INT, 1};
-    *(ELEMENT_HEAD*)(data + offset) = hdr;
-    offset += sizeof(ELEMENT_HEAD);
-    *(int32_t*)(data + offset) = value;
-    offset += sizeof(value);
-    count++;
-  } else {
-    Serial.println("FULL");
-  }
-}
-
-void CBuffer::add(uint16_t pid, int32_t values[], uint8_t num)
-{
-  if (offset < BUFFER_LENGTH - sizeof(ELEMENT_HEAD) - sizeof(int32_t) * num) {
-    ELEMENT_HEAD hdr = {pid, ELEMENT_INT, num};
-    *(ELEMENT_HEAD*)(data + offset) = hdr;
-    offset += sizeof(ELEMENT_HEAD);
-    memcpy(data + offset, values, sizeof(int32_t) * num);
-    offset += sizeof(int32_t) * num;
-    count += num;
-  } else {
-    Serial.println("FULL");
-  }
-}
-
-void CBuffer::add(uint16_t pid, float value)
-{
-  if (offset < BUFFER_LENGTH - sizeof(uint16_t) - sizeof(value)) {
-    ELEMENT_HEAD hdr = {pid, ELEMENT_FLOAT, 1};
-    *(ELEMENT_HEAD*)(data + offset) = hdr;
-    offset += sizeof(ELEMENT_HEAD);
-    *(float*)(data + offset) = value;
-    offset += sizeof(value);
-    count++;
-  } else {
-    Serial.println("FULL");
-  }
-}
-void CBuffer::add(uint16_t pid, float values[], uint8_t num)
-{
-  if (offset < BUFFER_LENGTH - sizeof(uint16_t) + sizeof(float) * num) {
-    ELEMENT_HEAD hdr = {pid, ELEMENT_FLOAT, num};
-    *(ELEMENT_HEAD*)(data + offset) = hdr;
-    offset += sizeof(ELEMENT_HEAD);
-    memcpy(data + offset, values, sizeof(float) * num);
-    offset += sizeof(float) * num;
-    count += num;
+    memcpy(data + offset, values, bytes);
+    offset += bytes;
+    total++;
   } else {
     Serial.println("FULL");
   }
@@ -110,29 +55,38 @@ void CBuffer::purge()
   state = BUFFER_STATE_EMPTY;
   timestamp = 0;
   offset = 0;
-  count = 0;
+  total = 0;
 }
 
 void CBuffer::serialize(CStorage& store)
 {
-  uint32_t of = 0;
-  for (int n = 0; n < count; n++) {
+  uint16_t of = 0;
+  for (int n = 0; n < total && of < offset; n++) {
     ELEMENT_HEAD* hdr = (ELEMENT_HEAD*)(data + of);
     of += sizeof(ELEMENT_HEAD);
     switch (hdr->type) {
-    case ELEMENT_INT:
-      store.log(hdr->pid, (int*)(data + of), hdr->count);
-      of += sizeof(int32_t) * hdr->count;
+    case ELEMENT_UINT8:
+      store.log(hdr->pid, (uint8_t*)(data + of), hdr->count);
+      of += (uint16_t)hdr->count * sizeof(uint8_t);
+      break;
+    case ELEMENT_UINT16:
+      store.log(hdr->pid, (uint16_t*)(data + of), hdr->count);
+      of += (uint16_t)hdr->count * sizeof(uint16_t);
+      break;
+    case ELEMENT_UINT32:
+      store.log(hdr->pid, (uint32_t*)(data + of), hdr->count);
+      of += (uint16_t)hdr->count * sizeof(uint32_t);
+      break;
+    case ELEMENT_INT32:
+      store.log(hdr->pid, (int32_t*)(data + of), hdr->count);
+      of += (uint16_t)hdr->count * sizeof(int32_t);
       break;
     case ELEMENT_FLOAT:
-      if (hdr->count == 1) {
-        store.log(hdr->pid, *(float*)(data + of));
-        of += sizeof(float);        
-      } else {
-        store.log(hdr->pid, (float*)(data + of), hdr->count);
-        of += sizeof(float) * hdr->count;
-      }
+      store.log(hdr->pid, (float*)(data + of), hdr->count);
+      of += (uint16_t)hdr->count * sizeof(float);
       break;
+    default:
+      return;
     }
   }
 }
@@ -202,7 +156,7 @@ void CBufferManager::printStats()
   for (int n = 0; n < BUFFER_SLOTS; n++) {
       if (buffers[n]->state != BUFFER_STATE_FILLED) continue;
       bytes += buffers[n]->offset;
-      samples += buffers[n]->count;
+      samples += buffers[n]->total;
       slots++;
   }
   if (slots) {
