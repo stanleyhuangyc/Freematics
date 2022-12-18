@@ -69,7 +69,7 @@ float gyr[3] = {0};
 float mag[3] = {0};
 uint8_t accCount = 0;
 #endif
-float deviceTemp = 0;
+int deviceTemp = 0;
 
 // live data
 int16_t rssi = 0;
@@ -163,14 +163,11 @@ void printTimeoutStats()
 #if LOG_EXT_SENSORS
 void processExtInputs(CBuffer* buffer)
 {
-  int pids[] = {PID_EXT_SENSOR1, PID_EXT_SENSOR2};
 #if LOG_EXT_SENSORS == 1
-  int pins[] = {PIN_SENSOR1, PIN_SENSOR2};
-  for (int i = 0; i < 2; i++) {
-    buffer->add(pids[i], digitalRead(pins[i]));
-  }
+  uint8_t levels[2] = {(uint8_t)digitalRead(PIN_SENSOR1), (uint8_t)digitalRead(PIN_SENSOR2)};
+  buffer->add(PID_EXT_SENSORS, ELEMENT_UINT8, levels, sizeof(levels), 2);
 #elif LOG_EXT_SENSORS == 2
-  int reading[] = {adc1_get_raw(ADC1_CHANNEL_0), adc1_get_raw(ADC1_CHANNEL_1)};
+  uint16_t reading[] = {adc1_get_raw(ADC1_CHANNEL_0), adc1_get_raw(ADC1_CHANNEL_1)};
   Serial.print("GPIO0:");
   Serial.print((float)reading[0] * 3.15 / 4095 - 0.01);
   Serial.print(" GPIO1:");
@@ -245,7 +242,7 @@ void processOBD(CBuffer* buffer)
     if (obd.readPID(pid, value)) {
         obdData[i].ts = millis();
         obdData[i].value = value;
-        buffer->add((uint16_t)pid | 0x100, value);
+        buffer->add((uint16_t)pid | 0x100, ELEMENT_INT32, &value, sizeof(value));
     } else {
         timeoutsOBD++;
         printTimeoutStats();
@@ -294,20 +291,20 @@ bool processGPS(CBuffer* buffer)
   lastGPSLat = gd->lat;
   lastGPSLng = gd->lng;
   
-  float kph = (float)((int)(gd->speed * 1.852f * 10)) / 10;
+  uint16_t kph = (uint16_t)(gd->speed * 1.852f);
   if (kph >= 2) lastMotionTime = millis();
 
   if (buffer) {
-    //buffer->add(PID_GPS_DATE, gd->date);
-    buffer->add(PID_GPS_TIME, gd->time);
+    buffer->add(PID_GPS_TIME, ELEMENT_UINT32, &gd->time, sizeof(uint32_t));
     if (gd->lat && gd->lng && gd->sat > 3) {
-      buffer->add(PID_GPS_LATITUDE, gd->lat);
-      buffer->add(PID_GPS_LONGITUDE, gd->lng);
-      buffer->add(PID_GPS_ALTITUDE, (int)gd->alt); /* m */
-      buffer->add(PID_GPS_SPEED, (int)kph);
-      buffer->add(PID_GPS_HEADING, gd->heading);
-      buffer->add(PID_GPS_SAT_COUNT, gd->sat);
-      buffer->add(PID_GPS_HDOP, gd->hdop);
+      buffer->add(PID_GPS_LATITUDE, ELEMENT_FLOAT, &gd->lat, sizeof(float));
+      buffer->add(PID_GPS_LONGITUDE, ELEMENT_FLOAT, &gd->lng, sizeof(float));
+      int alt = gd->alt;
+      buffer->add(PID_GPS_ALTITUDE, ELEMENT_INT32, &alt, sizeof(alt)); /* m */
+      buffer->add(PID_GPS_SPEED, ELEMENT_UINT16, &kph, sizeof(kph));
+      buffer->add(PID_GPS_HEADING, ELEMENT_UINT16, &gd->heading, sizeof(uint16_t));
+      buffer->add(PID_GPS_SAT_COUNT, ELEMENT_UINT8, &gd->sat, sizeof(uint8_t));
+      buffer->add(PID_GPS_HDOP, ELEMENT_UINT8, &gd->hdop, sizeof(uint8_t));
     }
   }
   
@@ -359,12 +356,14 @@ void processMEMS(CBuffer* buffer)
   if (!state.check(STATE_MEMS_READY)) return;
 
   // load and store accelerometer data
+  float temp;
 #if ENABLE_ORIENTATION
   ORIENTATION ori;
   if (!mems->read(acc, gyr, mag, &temp, &ori)) return;
 #else
-  if (!mems->read(acc, gyr, mag, &deviceTemp)) return;
+  if (!mems->read(acc, gyr, mag, &temp)) return;
 #endif
+  deviceTemp = (int)temp;
 
   accSum[0] += acc[0];
   accSum[1] += acc[1];
@@ -377,7 +376,7 @@ void processMEMS(CBuffer* buffer)
       value[0] = accSum[0] / accCount - accBias[0];
       value[1] = accSum[1] / accCount - accBias[1];
       value[2] = accSum[2] / accCount - accBias[2];
-      buffer->add(PID_ACC, value, 3);
+      buffer->add(PID_ACC, ELEMENT_FLOAT, value, sizeof(value), 3);
 /*
       Serial.print("[ACC] ");
       Serial.print(value[0]);
@@ -390,7 +389,7 @@ void processMEMS(CBuffer* buffer)
       value[0] = ori.yaw;
       value[1] = ori.pitch;
       value[2] = ori.roll;
-      buffer->add(PID_ORIENTATION, value);
+      buffer->add(PID_ORIENTATION, ELEMENT_FLOAT, value, sizeof(value), 3);
 #endif
 #if 0
       // calculate motion
@@ -666,11 +665,12 @@ void process()
     state.set(STATE_OBD_READY);
     Serial.println("[OBD] ECU ON");
   }
-#else
-  buffer->add(PID_DEVICE_HALL, readChipHallSensor() / 200);
 #endif
 
-  if (rssi != rssiLast) buffer->add(PID_CSQ, (int)(rssiLast = rssi));
+  if (rssi != rssiLast) {
+    int val = (rssiLast = rssi);
+    buffer->add(PID_CSQ, ELEMENT_INT32, &val, sizeof(val));
+  }
 #if ENABLE_OBD
   if (sys.devType > 12) {
     batteryVoltage = (float)(analogRead(A0) * 45) / 4095;
@@ -678,7 +678,8 @@ void process()
     batteryVoltage = obd.getVoltage();
   }
   if (batteryVoltage) {
-    buffer->add(PID_BATTERY_VOLTAGE, (int)(batteryVoltage * 100));
+    uint16_t v = batteryVoltage * 100;
+    buffer->add(PID_BATTERY_VOLTAGE, ELEMENT_UINT16, &v, sizeof(v));
   }
 #endif
 
@@ -695,7 +696,7 @@ void process()
   if (!state.check(STATE_MEMS_READY)) {
     deviceTemp = readChipTemperature();
   }
-  buffer->add(PID_DEVICE_TEMP, (int)deviceTemp);
+  buffer->add(PID_DEVICE_TEMP, ELEMENT_INT32, &deviceTemp, sizeof(deviceTemp));
 
   buffer->timestamp = millis();
   buffer->state = BUFFER_STATE_FILLED;
