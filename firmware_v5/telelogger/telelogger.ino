@@ -752,7 +752,7 @@ void process()
   } while (millis() - startTime < dataInterval);
 }
 
-bool initCell()
+bool initCell(bool quick = false)
 {
   Serial.println("[CELL] Activating...");
   // power on network module
@@ -763,6 +763,7 @@ bool initCell()
 #endif
     return false;
   }
+  if (quick) return true;
 #if ENABLE_OLED
     oled.print(teleClient.cell.deviceName());
     oled.println(" OK\r");
@@ -878,16 +879,19 @@ void telemetry(void* inst)
       } while (state.check(STATE_STANDBY) && millis() - t < 1000L * PING_BACK_INTERVAL);
       if (state.check(STATE_STANDBY)) {
         // start ping
-        Serial.println("[NET] Ping...");
 #if ENABLE_WIFI
+        Serial.print("[WIFI] Joining SSID:");
+        Serial.println(WIFI_SSID);
         teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
         if (teleClient.wifi.setup()) {
+          Serial.println("[WIFI] Ping...");
           teleClient.ping();
         }
         else
 #endif
         {
           if (initCell()) {
+            Serial.println("[CELL] Ping...");
             teleClient.ping();
           }
         }
@@ -899,35 +903,29 @@ void telemetry(void* inst)
     
 #if ENABLE_WIFI
     if (!state.check(STATE_WIFI_CONNECTED)) {
-      Serial.print("WIFI SSID:");
+      Serial.print("[WIFI] Joining SSID:");
       Serial.println(WIFI_SSID);
       teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
-      if (teleClient.wifi.setup()) {
-        String ip = teleClient.wifi.getIP();
-        if (ip.length()) {
-          Serial.print("WIFI IP:");
-          Serial.println(ip);
-        }
-        if (teleClient.connect()) {
-          state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
-        }
-      }
+      teleClient.wifi.setup();
+      initCell(true);
     }
 #endif
 
     while (state.check(STATE_WORKING)) {
 #if ENABLE_WIFI
       if (!state.check(STATE_WIFI_CONNECTED) && teleClient.wifi.connected()) {
+        String ip = teleClient.wifi.getIP();
+        if (ip.length()) {
+          Serial.print("[WIFI] IP:");
+          Serial.println(ip);
+        }
         connErrors = 0;
-        Serial.println("[WIFI] Connected");
-        // switch off cellular module when wifi connected
         if (teleClient.connect()) {
           state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
-          if (state.check(STATE_CELL_CONNECTED)) {
-            teleClient.cell.end();
-            state.clear(STATE_CELL_CONNECTED);
-            Serial.println("[CELL] Deactivated");
-          }
+          // switch off cellular module when wifi connected
+          teleClient.cell.end();
+          state.clear(STATE_CELL_CONNECTED);
+          Serial.println("[CELL] Deactivated");
         }
       } else if (state.check(STATE_WIFI_CONNECTED) && !teleClient.wifi.connected()) {
         Serial.println("[WIFI] Disconnected");

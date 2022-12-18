@@ -136,10 +136,10 @@ CBuffer* CBufferManager::getNewest()
   uint32_t ts = 0;
   int m = -1;
   for (int n = 0; n < BUFFER_SLOTS; n++) {
-      if (buffers[n]->state == BUFFER_STATE_FILLED && buffers[n]->timestamp > ts) {
-          m = n;
-          ts = buffers[n]->timestamp;
-      }
+    if (buffers[n]->state == BUFFER_STATE_FILLED && buffers[n]->timestamp > ts) {
+      m = n;
+      ts = buffers[n]->timestamp;
+    }
   }
   if (m >= 0) {
     buffers[m]->state = BUFFER_STATE_LOCKED;
@@ -154,20 +154,20 @@ void CBufferManager::printStats()
   int slots = 0;
   int samples = 0;
   for (int n = 0; n < BUFFER_SLOTS; n++) {
-      if (buffers[n]->state != BUFFER_STATE_FILLED) continue;
-      bytes += buffers[n]->offset;
-      samples += buffers[n]->total;
-      slots++;
+    if (buffers[n]->state != BUFFER_STATE_FILLED) continue;
+    bytes += buffers[n]->offset;
+    samples += buffers[n]->total;
+    slots++;
   }
   if (slots) {
-      Serial.print("[BUF] ");
-      Serial.print(samples);
-      Serial.print(" samples | ");
-      Serial.print(bytes);
-      Serial.print(" bytes | ");
-      Serial.print(slots);
-      Serial.print('/');
-      Serial.println(BUFFER_SLOTS);
+    Serial.print("[BUF] ");
+    Serial.print(samples);
+    Serial.print(" samples | ");
+    Serial.print(bytes);
+    Serial.print(" bytes | ");
+    Serial.print(slots);
+    Serial.print('/');
+    Serial.println(BUFFER_SLOTS);
   }
 }
 
@@ -249,7 +249,8 @@ bool TeleClientUDP::notify(byte event, const char* payload)
     char pattern[16];
     sprintf(pattern, "EV=%u", event);
     if (!strstr(data, pattern)) {
-      Serial.println("[UDP] Invalid reply");
+      Serial.print("[UDP] Invalid reply: ");
+      Serial.println(data);
       continue;
     }
     if (event == EVENT_LOGIN) {
@@ -352,7 +353,7 @@ bool TeleClientUDP::connect(bool quick)
 bool TeleClientUDP::ping()
 {
   bool success = false;
-  for (byte n = 0; n < 2 && !success; n++) {
+  for (byte n = 0; n < 3 && !success; n++) {
 #if ENABLE_WIFI
     if (wifi.connected())
     {
@@ -363,7 +364,20 @@ bool TeleClientUDP::ping()
     {
       success = cell.open(SERVER_HOST, SERVER_PORT);
     }
-    if (success) success = notify(EVENT_PING);
+    if (success) {
+      if ((success = notify(EVENT_PING))) break;
+#if ENABLE_WIFI
+      if (wifi.connected())
+      {
+        wifi.close();
+      }
+      else
+#endif
+      {
+        cell.close();
+      }
+      delay(1000);
+    }
   }
   if (success) lastSyncTime = millis();
   return success;
@@ -452,8 +466,11 @@ void TeleClientUDP::shutdown()
     Serial.println("[NET] Logout");
   }
 #if ENABLE_WIFI
-  wifi.end();
-  Serial.println("[WIFI] Deactivated");
+  if (wifi.connected()) {
+    wifi.end();
+    Serial.println("[WIFI] Deactivated");
+    return;
+  }
 #endif
   cell.end();
   Serial.println("[CELL] Deactivated");
@@ -561,18 +578,22 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
 
 bool TeleClientHTTP::connect(bool quick)
 {
-  cell.close();
   if (!quick) {
 #if ENABLE_WIFI
     if (!wifi.connected()) cell.init();
 #else
     cell.init();
 #endif
+  } else {
+#if ENABLE_WIFI
+    if (!wifi.connected()) cell.close();
+#else
+    cell.close();
+#endif
   }
 
   // connect to HTTP server
   bool success = false;
-
 
 #if ENABLE_WIFI
   if (wifi.connected()) success = wifi.open(SERVER_HOST, SERVER_PORT);
@@ -620,8 +641,11 @@ void TeleClientHTTP::shutdown()
     Serial.println("[NET] Logout");
   }
 #if ENABLE_WIFI
-  wifi.end();
-  Serial.println("[WIFI] Deactivated");
+  if (wifi.connected()) {
+    wifi.end();
+    Serial.println("[WIFI] Deactivated");
+    return;
+  }
 #endif
   cell.close();
   cell.end();
