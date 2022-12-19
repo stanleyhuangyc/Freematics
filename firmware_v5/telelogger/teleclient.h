@@ -45,11 +45,14 @@ class CBufferManager
 public:
     void init();
     void purge();
-    CBuffer* get(byte state = BUFFER_STATE_EMPTY);
+    void free(CBuffer* slot);
+    CBuffer* getFree();
     CBuffer* getOldest();
     CBuffer* getNewest();
     void printStats();
-    CBuffer* buffers[BUFFER_SLOTS];
+private:
+    CBuffer* slots[BUFFER_SLOTS];
+    CBuffer* last = 0;
 };
 
 class TeleClient

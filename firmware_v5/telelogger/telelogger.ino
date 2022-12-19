@@ -639,15 +639,7 @@ void process()
 {
   uint32_t startTime = millis();
 
-  CBuffer* buffer = bufman.get();
-  if (!buffer) {
-    // dispose oldest data from the full buffer
-    buffer = bufman.getOldest();
-    if (!buffer) return;
-    while (buffer->state == BUFFER_STATE_LOCKED) delay(1);
-    buffer->purge();
-  }
-
+  CBuffer* buffer = bufman.getFree();
   buffer->state = BUFFER_STATE_FILLING;
 
 #if ENABLE_OBD
@@ -979,7 +971,7 @@ void telemetry(void* inst)
 #endif
       store.timestamp(buffer->timestamp);
       buffer->serialize(store);
-      buffer->purge();
+      bufman.free(buffer);
       store.tailer();
       Serial.println(store.buffer());
 
@@ -1219,7 +1211,7 @@ void processBLE(int timeout)
         n += snprintf(buf + n, bufsize - n, "%u", state.check(STATE_STANDBY) ? 0 : 1);
 #if ENABLE_MEMS
     } else if (!strcmp(cmd, "TEMP")) {
-        n += snprintf(buf + n, bufsize - n, "%d", (int)temp);
+        n += snprintf(buf + n, bufsize - n, "%d", (int)deviceTemp);
     } else if (!strcmp(cmd, "ACC")) {
         n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", acc[0], acc[1], acc[2]);
     } else if (!strcmp(cmd, "GYRO")) {

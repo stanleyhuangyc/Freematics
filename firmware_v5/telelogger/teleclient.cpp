@@ -94,24 +94,37 @@ void CBuffer::serialize(CStorage& store)
 void CBufferManager::init()
 {
   for (int n = 0; n < BUFFER_SLOTS; n++) {
-      buffers[n] = new CBuffer();
+      slots[n] = new CBuffer();
   }
 }
 
 void CBufferManager::purge()
 {
-  for (int n = 0; n < BUFFER_SLOTS; n++) buffers[n]->purge();
+  for (int n = 0; n < BUFFER_SLOTS; n++) slots[n]->purge();
 }
 
-CBuffer* CBufferManager::get(byte state)
+CBuffer* CBufferManager::getFree()
 {
-    for (int n = 0; n < BUFFER_SLOTS; n++) {
-        if (buffers[n]->state == state) {
-          buffers[n]->state = BUFFER_STATE_LOCKED;
-          return buffers[n];
-        }
+  if (last) {
+    CBuffer* slot = last;
+    last = 0;
+    if (slot->state == BUFFER_STATE_EMPTY) return slot;
+  }
+  uint32_t ts = 0xffffffff;
+  int m = 0;
+  // search for free slot, if none, mark the oldest one
+  for (int n = 0; n < BUFFER_SLOTS; n++) {
+    if (slots[n]->state == BUFFER_STATE_EMPTY) {
+      return slots[n];
+    } else if (slots[n]->state == BUFFER_STATE_FILLED && slots[n]->timestamp < ts) {
+        m = n;
+        ts = slots[n]->timestamp;
     }
-    return 0;
+  }
+  // dispose oldest data when buffer is full
+  while (slots[m]->state == BUFFER_STATE_LOCKED) delay(1);
+  slots[m]->purge();
+  return slots[m];
 }
 
 CBuffer* CBufferManager::getOldest()
@@ -119,14 +132,14 @@ CBuffer* CBufferManager::getOldest()
   uint32_t ts = 0xffffffff;
   int m = -1;
   for (int n = 0; n < BUFFER_SLOTS; n++) {
-      if (buffers[n]->state == BUFFER_STATE_FILLED && buffers[n]->timestamp < ts) {
-          m = n;
-          ts = buffers[n]->timestamp;
-      }
+    if (slots[n]->state == BUFFER_STATE_FILLED && slots[n]->timestamp < ts) {
+        m = n;
+        ts = slots[n]->timestamp;
+    }
   }
   if (m >= 0) {
-    buffers[m]->state = BUFFER_STATE_LOCKED;
-    return buffers[m];
+    slots[m]->state = BUFFER_STATE_LOCKED;
+    return slots[m];
   }
   return 0;
 }
@@ -136,28 +149,34 @@ CBuffer* CBufferManager::getNewest()
   uint32_t ts = 0;
   int m = -1;
   for (int n = 0; n < BUFFER_SLOTS; n++) {
-    if (buffers[n]->state == BUFFER_STATE_FILLED && buffers[n]->timestamp > ts) {
+    if (slots[n]->state == BUFFER_STATE_FILLED && slots[n]->timestamp > ts) {
       m = n;
-      ts = buffers[n]->timestamp;
+      ts = slots[n]->timestamp;
     }
   }
   if (m >= 0) {
-    buffers[m]->state = BUFFER_STATE_LOCKED;
-    return buffers[m];
+    slots[m]->state = BUFFER_STATE_LOCKED;
+    return slots[m];
   }
   return 0;
+}
+
+void CBufferManager::free(CBuffer* slot)
+{
+  slot->purge();
+  last = slot;  
 }
 
 void CBufferManager::printStats()
 {
   int bytes = 0;
-  int slots = 0;
+  int count = 0;
   int samples = 0;
   for (int n = 0; n < BUFFER_SLOTS; n++) {
-    if (buffers[n]->state != BUFFER_STATE_FILLED) continue;
-    bytes += buffers[n]->offset;
-    samples += buffers[n]->total;
-    slots++;
+    if (slots[n]->state != BUFFER_STATE_FILLED) continue;
+    bytes += slots[n]->offset;
+    samples += slots[n]->total;
+    count++;
   }
   if (slots) {
     Serial.print("[BUF] ");
@@ -165,7 +184,7 @@ void CBufferManager::printStats()
     Serial.print(" samples | ");
     Serial.print(bytes);
     Serial.print(" bytes | ");
-    Serial.print(slots);
+    Serial.print(count);
     Serial.print('/');
     Serial.println(BUFFER_SLOTS);
   }

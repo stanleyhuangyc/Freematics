@@ -111,13 +111,13 @@ static const uint8_t char_prop_read_notify = ESP_GATT_CHAR_PROP_BIT_READ|ESP_GAT
 static const uint8_t char_prop_read_write = ESP_GATT_CHAR_PROP_BIT_WRITE_NR|ESP_GATT_CHAR_PROP_BIT_WRITE;
 
 ///SPP Service - data receive characteristic, read&write without response
-static const uint16_t spp_data_receive_uuid = ESP_GATT_UUID_SPP_DATA_RECEIVE;
-static const uint8_t  spp_data_receive_val[20] = {0x00};
+//static const uint16_t spp_data_receive_uuid = ESP_GATT_UUID_SPP_DATA_RECEIVE;
+//static const uint8_t  spp_data_receive_val[20] = {0x00};
 
 ///SPP Service - data notify characteristic, notify&read
-static const uint16_t spp_data_notify_uuid = ESP_GATT_UUID_SPP_DATA_NOTIFY;
-static const uint8_t  spp_data_notify_val[20] = {0x00};
-static const uint8_t  spp_data_notify_ccc[2] = {0x00, 0x00};
+//static const uint16_t spp_data_notify_uuid = ESP_GATT_UUID_SPP_DATA_NOTIFY;
+//static const uint8_t  spp_data_notify_val[20] = {0x00};
+//static const uint8_t  spp_data_notify_ccc[2] = {0x00, 0x00};
 
 ///SPP Service - command characteristic, read&write without response
 static const uint16_t spp_command_uuid = ESP_GATT_UUID_SPP_COMMAND_RECEIVE;
