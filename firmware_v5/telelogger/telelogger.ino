@@ -18,9 +18,9 @@
 #include <FreematicsPlus.h>
 #include <httpd.h>
 #include "config.h"
-#include "telelogger.h"
-#include "telemesh.h"
+#include "telestore.h"
 #include "teleclient.h"
+#include "telemesh.h"
 #if BOARD_HAS_PSRAM
 #include "esp32/himem.h"
 #endif
@@ -172,9 +172,7 @@ void processExtInputs(CBuffer* buffer)
   Serial.print((float)reading[0] * 3.15 / 4095 - 0.01);
   Serial.print(" GPIO1:");
   Serial.println((float)reading[1] * 3.15 / 4095 - 0.01);
-  for (int i = 0; i < 2; i++) {
-    buffer->add(pids[i], reading[i]);
-  }
+  buffer->add(PID_EXT_SENSORS, ELEMENT_UINT16, reading, sizeof(reading), 2);
 #endif
 }
 #endif
@@ -291,7 +289,7 @@ bool processGPS(CBuffer* buffer)
   lastGPSLat = gd->lat;
   lastGPSLng = gd->lng;
   
-  uint16_t kph = (uint16_t)(gd->speed * 1.852f);
+  float kph = gd->speed * 1.852f;
   if (kph >= 2) lastMotionTime = millis();
 
   if (buffer) {
@@ -299,9 +297,8 @@ bool processGPS(CBuffer* buffer)
     if (gd->lat && gd->lng && gd->sat > 3) {
       buffer->add(PID_GPS_LATITUDE, ELEMENT_FLOAT, &gd->lat, sizeof(float));
       buffer->add(PID_GPS_LONGITUDE, ELEMENT_FLOAT, &gd->lng, sizeof(float));
-      int alt = gd->alt;
-      buffer->add(PID_GPS_ALTITUDE, ELEMENT_INT32, &alt, sizeof(alt)); /* m */
-      buffer->add(PID_GPS_SPEED, ELEMENT_UINT16, &kph, sizeof(kph));
+      buffer->add(PID_GPS_ALTITUDE, ELEMENT_FLOAT_D1, &gd->alt, sizeof(float)); /* m */
+      buffer->add(PID_GPS_SPEED, ELEMENT_FLOAT_D1, &kph, sizeof(kph));
       buffer->add(PID_GPS_HEADING, ELEMENT_UINT16, &gd->heading, sizeof(uint16_t));
       buffer->add(PID_GPS_SAT_COUNT, ELEMENT_UINT8, &gd->sat, sizeof(uint8_t));
       buffer->add(PID_GPS_HDOP, ELEMENT_UINT8, &gd->hdop, sizeof(uint8_t));
@@ -376,7 +373,7 @@ void processMEMS(CBuffer* buffer)
       value[0] = accSum[0] / accCount - accBias[0];
       value[1] = accSum[1] / accCount - accBias[1];
       value[2] = accSum[2] / accCount - accBias[2];
-      buffer->add(PID_ACC, ELEMENT_FLOAT, value, sizeof(value), 3);
+      buffer->add(PID_ACC, ELEMENT_FLOAT_D2, value, sizeof(value), 3);
 /*
       Serial.print("[ACC] ");
       Serial.print(value[0]);
@@ -389,7 +386,7 @@ void processMEMS(CBuffer* buffer)
       value[0] = ori.yaw;
       value[1] = ori.pitch;
       value[2] = ori.roll;
-      buffer->add(PID_ORIENTATION, ELEMENT_FLOAT, value, sizeof(value), 3);
+      buffer->add(PID_ORIENTATION, ELEMENT_FLOAT_D2, value, sizeof(value), 3);
 #endif
 #if 0
       // calculate motion

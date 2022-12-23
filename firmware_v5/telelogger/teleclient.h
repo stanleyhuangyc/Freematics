@@ -18,6 +18,8 @@
 #define ELEMENT_UINT32 2
 #define ELEMENT_INT32 3
 #define ELEMENT_FLOAT 4
+#define ELEMENT_FLOAT_D1 5 /* floating-point data with 1 decimal place*/
+#define ELEMENT_FLOAT_D2 6 /* floating-point data with 2 decimal places*/
 
 typedef struct {
     uint16_t pid;

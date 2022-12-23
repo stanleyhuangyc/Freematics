@@ -16,7 +16,7 @@
 ******************************************************************************/
 
 #include <FreematicsPlus.h>
-#include "telelogger.h"
+#include "telestore.h"
 #include "telemesh.h"
 #include "teleclient.h"
 
@@ -83,6 +83,14 @@ void CBuffer::serialize(CStorage& store)
       break;
     case ELEMENT_FLOAT:
       store.log(hdr->pid, (float*)(data + of), hdr->count);
+      of += (uint16_t)hdr->count * sizeof(float);
+      break;
+    case ELEMENT_FLOAT_D1:
+      store.log(hdr->pid, (float*)(data + of), hdr->count, "%.1f");
+      of += (uint16_t)hdr->count * sizeof(float);
+      break;
+    case ELEMENT_FLOAT_D2:
+      store.log(hdr->pid, (float*)(data + of), hdr->count, "%.2f");
       of += (uint16_t)hdr->count * sizeof(float);
       break;
     default:
