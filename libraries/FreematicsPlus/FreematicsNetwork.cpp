@@ -344,6 +344,11 @@ bool CellSIMCOM::setup(const char* apn, unsigned int timeout)
         if (!success) break;
       }
 
+      if (apn && *apn) {
+        sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
+        sendCommand(m_buffer);
+      }
+
       sendCommand("AT+CSOCKSETPN=1\r");
       sendCommand("AT+CIPMODE=0\r");
       sendCommand("AT+NETOPEN\r");
