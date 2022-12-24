@@ -40,12 +40,10 @@
 #ifndef HAVE_CONFIG
 // enable(1)/disable(0) OBD-II reading
 #define USE_OBD 1
-// GNSS option: 0:disable 1:external 2:SIM5360/7600 3:SIM7070
-#define USE_GNSS 1
+// GNSS option: 0:disable 1:internal 2:external 3:SIM5360/7600 4:SIM7070
+#define USE_GNSS 2
 // enable(1)/disable(0) MEMS motion sensor
 #define USE_MEMS 1
-// enable(1)/disable(0) quaternion calculation to get orientation
-#define ENABLE_ORIENTATION 0
 #endif
 
 // enable(1)/disable(0) BLE SPP server (for Freematics Controller App).
