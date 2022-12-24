@@ -770,7 +770,6 @@ void setup()
             Serial.println("ICM-42627");
             break;
         }
-        mems->end();
         delete mems;
         mems = new ICM_20948_I2C;
         ret = mems->begin();
