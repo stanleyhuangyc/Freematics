@@ -418,17 +418,13 @@ void initDisplay()
     lcd.print("CPU:");
     lcd.print(ESP.getCpuFreqMHz());
     lcd.print("MHz ");
-    lcd.print(getFlashSize() >> 10);
+    lcd.print(ESP.getFlashChipSize() >> 20);
     lcd.println("MB FLASH");
 }
 #endif
 
 void setup()
 {
-    // init LED pin
-    pinMode(PIN_LED, OUTPUT);
-    pinMode(PIN_LED, HIGH);
-
 #ifdef ARDUINO_ESP32C3_DEV
     Wire.begin(4, 5);
 #else
@@ -445,7 +441,7 @@ void setup()
     Serial.print("ESP32 ");
     Serial.print(ESP.getCpuFreqMHz());
     Serial.print("MHz ");
-    Serial.print(getFlashSize() >> 10);
+    Serial.print(ESP.getFlashChipSize() >> 20);
     Serial.println("MB Flash");
 
     sys.begin(false, false);
@@ -499,7 +495,7 @@ void setup()
 #endif
 
     Serial.print("GPS...");
-    if (sys.gpsBegin(GPS_SERIAL_BAUDRATE)) {
+    if (sys.gpsBeginExt(GPS_SERIAL_BAUDRATE)) {
         logger.setState(STATE_GPS_FOUND);
         lcd.println("GPS Receiver OK");
         Serial.println("OK");
@@ -559,8 +555,6 @@ void setup()
     delay(3000);
     lcd.clear();
 #endif
-
-    pinMode(PIN_LED, LOW);
     startTime = millis();
 }
 
