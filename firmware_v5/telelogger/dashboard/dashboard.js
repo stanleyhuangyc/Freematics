@@ -83,14 +83,13 @@ function processInput(data)
 			document.getElementById("wifi").innerHTML = imgTick + " IP:" + ret;
 		}
 		if (ret = checkData(con, "IMEI:")) {
-			document.getElementById("cell").innerHTML = "SIM Card " + imgTick;
 			document.getElementById("imei").innerText = "IMEI:" + ret;
 		}
 		if (ret = checkData(con, "CELL:")) {
 			document.getElementById("cellinfo").innerHTML = ret == "NO" ? imgCross : (imgTick + " " + ret);
 		}
 		if ((ret = checkData(con, "NO SIM CARD")) != null) {
-			document.getElementById("cell").innerHTML = imgCross + " NO SIM CARD";
+			document.getElementById("imei").innerHTML = "| NO SIM CARD";
 		}
 		if (ret = checkData(con, "Operator:")) {
 			document.getElementById("imei").innerText = "| " + ret;
