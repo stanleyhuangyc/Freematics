@@ -30,7 +30,7 @@ typedef struct {
 class CBuffer
 {
 public:
-    CBuffer();
+    CBuffer(uint8_t* mem);
     void add(uint16_t pid, uint8_t type, void* values, int bytes, uint8_t count = 1);
     void purge();
     void serialize(CStorage& store);
@@ -39,7 +39,7 @@ public:
     uint8_t total;
     uint8_t state;
 private:
-    uint8_t* data;
+    uint8_t* m_data;
 };
 
 class CBufferManager
@@ -55,6 +55,7 @@ public:
 private:
     CBuffer* slots[BUFFER_SLOTS];
     CBuffer* last = 0;
+    uint32_t total = 0;
 };
 
 class TeleClient
