@@ -530,6 +530,9 @@ bool FreematicsESP32::gpsBeginExt(int baudrate)
         // turn on GPS power
         if (m_pinGPSPower) digitalWrite(m_pinGPSPower, HIGH);
         delay(100);
+        // send u-blox M10 specific setup commands
+        const uint8_t packet1[] = {0xB5, 0x62, 0x06, 0x8A, 0x10, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x21, 0x30, 0x65, 0x00, 0x01, 0x00, 0x21, 0x30, 0x65, 0x00, 0x10, 0x07};
+        gpsSendCommand(packet1, sizeof(packet1));
         // start decoding task
         taskGPS.create(gps_decode_task, "GPS", 1);
     } else {
@@ -554,7 +557,7 @@ bool FreematicsESP32::gpsBeginExt(int baudrate)
     for (int i = 0; i < 10; i++) {
 #ifndef ARDUINO_ESP32C3_DEV
         if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
-            // switch M8030 GNSS to 38400bps
+            // switch GNSS to 38400bps
             const uint8_t packet1[] = {0x0, 0x0, 0xB5, 0x62, 0x06, 0x0, 0x14, 0x0, 0x01, 0x0, 0x0, 0x0, 0xD0, 0x08, 0x0, 0x0, 0x0, 0x96, 0x0, 0x0, 0x7, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x93, 0x90};
             const uint8_t packet2[] = {0xB5, 0x62, 0x06, 0x0, 0x1, 0x0, 0x1, 0x8, 0x22};
             const uint8_t packet3[] = {0xB5, 0x62, 0x06, 0x41, 0x0C, 0x0, 0x0, 0x0, 0x03, 0x1F, 0x8B, 0x81, 0x1E, 0x68, 0xFF, 0x76, 0xFF, 0xFF, 0x7A, 0x02};
@@ -571,7 +574,7 @@ bool FreematicsESP32::gpsBeginExt(int baudrate)
             // data is coming in
             return true;
         }
-        Serial.print('.');
+        //Serial.print('.');
     }
     // turn off GNSS power if no data in
     gpsEnd();
@@ -690,12 +693,15 @@ int FreematicsESP32::gpsGetNMEA(char* buffer, int bufsize)
     }
 }
 
-void FreematicsESP32::gpsSendCommand(const char* string, int len)
+void FreematicsESP32::gpsSendCommand(const uint8_t* cmd, int len)
 {
-#if !GPS_SOFT_SERIAL
-    if (taskGPS.running())
-        uart_write_bytes(gpsUARTNum, string, len);
-#endif
+    if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
+        for (int n = 0; n < len; n++) {
+            softSerialTx(38400, cmd[n]);
+        }
+    } else {
+        uart_write_bytes(gpsUARTNum, cmd, len);
+    }
 }
 
 bool FreematicsESP32::xbBegin(unsigned long baudrate, int pinRx, int pinTx)
@@ -881,6 +887,9 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
 
     pinMode(PIN_BEE_PWR, OUTPUT);
     digitalWrite(PIN_BEE_PWR, LOW);
+
+    // set wifi max power
+    esp_wifi_set_max_tx_power(80);
 
     // set watchdog timeout to 600 seconds
     esp_task_wdt_init(600, 0);

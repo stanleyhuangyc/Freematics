@@ -152,7 +152,7 @@ public:
   // get buffered NMEA data
   int gpsGetNMEA(char* buffer, int bufsize);
   // send command string to GPS
-  void gpsSendCommand(const char* string, int len);
+  void gpsSendCommand(const uint8_t* cmd, int len);
   // start xBee UART communication
   bool xbBegin(unsigned long baudrate = BEE_BAUDRATE, int pinRx = PIN_BEE_UART_RXD, int pinTx = PIN_BEE_UART_TXD);
   void xbEnd();
