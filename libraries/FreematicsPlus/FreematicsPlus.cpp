@@ -696,9 +696,11 @@ int FreematicsESP32::gpsGetNMEA(char* buffer, int bufsize)
 void FreematicsESP32::gpsSendCommand(const uint8_t* cmd, int len)
 {
     if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
+ #ifndef ARDUINO_ESP32C3_DEV
         for (int n = 0; n < len; n++) {
             softSerialTx(38400, cmd[n]);
         }
+#endif
     } else {
         uart_write_bytes(gpsUARTNum, cmd, len);
     }
