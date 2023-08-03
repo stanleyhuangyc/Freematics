@@ -25,6 +25,8 @@
 #include "esp32/himem.h"
 #endif
 #include "driver/adc.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 #if ENABLE_OLED
 #include "FreematicsOLED.h"
 #endif
@@ -71,7 +73,17 @@ uint8_t accCount = 0;
 #endif
 int deviceTemp = 0;
 
+// config data
+char apn[32] = CELL_APN;
+#if ENABLE_WIFI
+char wifiSSID[32] = WIFI_SSID;
+char wifiPassword[32] = WIFI_PASSWORD;
+#endif
+nvs_handle_t nvs;
+
 // live data
+String netop;
+String ip;
 int16_t rssi = 0;
 int16_t rssiLast = 0;
 char vin[18] = {0};
@@ -95,9 +107,6 @@ int32_t dataInterval = 1000;
 int fileid = 0;
 uint16_t lastSizeKB = 0;
 #endif
-
-uint32_t lastCmdToken = 0;
-String serialCommand;
 
 byte ledMode = 0;
 
@@ -621,7 +630,7 @@ bool waitMotion(long timeout)
         Serial.println(motion);
         return true;
       }
-    } while ((long)(millis() - t) < timeout || timeout == -1);
+    } while (state.check(STATE_STANDBY) && ((long)(millis() - t) < timeout || timeout == -1));
     return false;
   }
 #endif
@@ -768,11 +777,15 @@ bool initCell(bool quick = false)
   Serial.print("IMEI:");
   Serial.println(teleClient.cell.IMEI);
   Serial.println("[CELL] Searching...");
-  if (teleClient.cell.setup(CELL_APN)) {
-    String op = teleClient.cell.getOperatorName();
-    if (op.length()) {
+  if (*apn) {
+    Serial.print("APN:");
+    Serial.println(apn);
+  }
+  if (teleClient.cell.setup(apn)) {
+    netop = teleClient.cell.getOperatorName();
+    if (netop.length()) {
       Serial.print("Operator:");
-      Serial.println(op);
+      Serial.println(netop);
 #if ENABLE_OLED
       oled.println(op);
 #endif
@@ -784,7 +797,7 @@ bool initCell(bool quick = false)
     }
 #endif
 
-    String ip = teleClient.cell.getIP();
+    ip = teleClient.cell.getIP();
     if (ip.length()) {
       Serial.print("[CELL] IP:");
       Serial.println(ip);
@@ -844,6 +857,9 @@ void telemetry(void* inst)
     if (state.check(STATE_STANDBY)) {
       if (state.check(STATE_CELL_CONNECTED) || state.check(STATE_WIFI_CONNECTED)) {
         teleClient.shutdown();
+        netop = "";
+        ip = "";
+        rssi = 0;
       }
       state.clear(STATE_NET_READY | STATE_CELL_CONNECTED | STATE_WIFI_CONNECTED);
       teleClient.reset();
@@ -870,8 +886,8 @@ void telemetry(void* inst)
         // start ping
 #if ENABLE_WIFI
         Serial.print("[WIFI] Joining SSID:");
-        Serial.println(WIFI_SSID);
-        teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
+        Serial.println(wifiSSID);
+        teleClient.wifi.begin(wifiSSID, wifiPassword);
         if (teleClient.wifi.setup()) {
           Serial.println("[WIFI] Ping...");
           teleClient.ping();
@@ -893,8 +909,8 @@ void telemetry(void* inst)
 #if ENABLE_WIFI
     if (!state.check(STATE_WIFI_CONNECTED)) {
       Serial.print("[WIFI] Joining SSID:");
-      Serial.println(WIFI_SSID);
-      teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
+      Serial.println(wifiSSID);
+      teleClient.wifi.begin(wifiSSID, wifiPassword);
       teleClient.wifi.setup();
       initCell(true);
     }
@@ -903,7 +919,7 @@ void telemetry(void* inst)
     while (state.check(STATE_WORKING)) {
 #if ENABLE_WIFI
       if (!state.check(STATE_WIFI_CONNECTED) && teleClient.wifi.connected()) {
-        String ip = teleClient.wifi.getIP();
+        ip = teleClient.wifi.getIP();
         if (ip.length()) {
           Serial.print("[WIFI] IP:");
           Serial.println(ip);
@@ -952,7 +968,7 @@ void telemetry(void* inst)
 
 #if ENABLE_WIFI
         if (!state.check(STATE_WIFI_CONNECTED)) {
-          teleClient.wifi.begin(WIFI_SSID, WIFI_PASSWORD);
+          teleClient.wifi.begin(wifiSSID, wifiPassword);
         }
 #endif
       }
@@ -1067,8 +1083,7 @@ void standby()
 #else
   delay(5000);
 #endif
-  Serial.println("Wakeup");
-
+  Serial.println("WAKEUP");
   sys.resetLink();
 #if RESET_AFTER_WAKEUP
 #if ENABLE_MEMS
@@ -1143,147 +1158,181 @@ void showSysInfo()
 #endif
 }
 
-#if CONFIG_MODE_TIMEOUT
-void configMode()
+void loadConfig()
 {
-  uint32_t t = millis();
-
-  do {
-    if (Serial.available()) {
-      // enter config mode
-      Serial.println("#CONFIG MODE#");
-      Serial1.begin(LINK_UART_BAUDRATE, SERIAL_8N1, PIN_LINK_UART_RX, PIN_LINK_UART_TX);
-      do {
-        if (Serial.available()) {
-          Serial1.write(Serial.read());
-          t = millis();
-        }
-        if (Serial1.available()) {
-          Serial.write(Serial1.read());
-          t = millis();
-        }
-      } while (millis() - t < CONFIG_MODE_TIMEOUT);
-      Serial.println("#RESET#");
-      delay(100);
-      ESP.restart();
-    }
-  } while (millis() - t < CONFIG_MODE_TIMEOUT);
-}
+  size_t len;
+  len = sizeof(apn);
+  nvs_get_str(nvs, "CELL_APN", apn, &len);
+#if ENABLE_WIFI
+  len = sizeof(wifiSSID);
+  nvs_get_str(nvs, "WIFI_SSID", wifiSSID, &len);
+  len = sizeof(wifiPassword);
+  nvs_get_str(nvs, "WIFI_PWD", wifiPassword, &len);
 #endif
+}
 
 void processBLE(int timeout)
 {
 #if ENABLE_BLE
-    static byte echo = 0;
-    char* cmd;
-    if (!(cmd = ble_recv_command(timeout))) {
-        return;
-    }
+  static byte echo = 0;
+  char* cmd;
+  if (!(cmd = ble_recv_command(timeout))) {
+    return;
+  }
 
-    char *p = strchr(cmd, '\r');
-    if (p) *p = 0;
-    char buf[48];
-    int bufsize = sizeof(buf);
-    int n = 0;
-    if (echo) n += snprintf(buf + n, bufsize - n, "%s\r", cmd);
-    Serial.print("[BLE] ");
-    Serial.print(cmd);
-    if (!strcmp(cmd, "UPTIME") || !strcmp(cmd, "TICK")) {
-        n += snprintf(buf + n, bufsize - n, "%lu", millis());
-    } else if (!strcmp(cmd, "BATT")) {
-        n += snprintf(buf + n, bufsize - n, "%.2f", (float)(analogRead(A0) * 42) / 4095);
-    } else if (!strcmp(cmd, "RESET")) {
+  char *p = strchr(cmd, '\r');
+  if (p) *p = 0;
+  char buf[48];
+  int bufsize = sizeof(buf);
+  int n = 0;
+  if (echo) n += snprintf(buf + n, bufsize - n, "%s\r", cmd);
+  Serial.print("[BLE] ");
+  Serial.print(cmd);
+  if (!strcmp(cmd, "UPTIME") || !strcmp(cmd, "TICK")) {
+    n += snprintf(buf + n, bufsize - n, "%lu", millis());
+  } else if (!strcmp(cmd, "BATT")) {
+    n += snprintf(buf + n, bufsize - n, "%.2f", (float)(analogRead(A0) * 42) / 4095);
+  } else if (!strcmp(cmd, "RESET")) {
 #if STORAGE
-        logger.end();
+    logger.end();
 #endif
-        ESP.restart();
-        // never reach here
-    } else if (!strcmp(cmd, "OFF")) {
-        state.set(STATE_STANDBY);
-        n += snprintf(buf + n, bufsize - n, "OK");
-    } else if (!strcmp(cmd, "ON")) {
-        state.clear(STATE_STANDBY);
-        n += snprintf(buf + n, bufsize - n, "OK");
-    } else if (!strcmp(cmd, "ON?")) {
-        n += snprintf(buf + n, bufsize - n, "%u", state.check(STATE_STANDBY) ? 0 : 1);
+    ESP.restart();
+    // never reach here
+  } else if (!strcmp(cmd, "OFF")) {
+    state.set(STATE_STANDBY);
+    state.clear(STATE_WORKING);
+    n += snprintf(buf + n, bufsize - n, "OK");
+  } else if (!strcmp(cmd, "ON")) {
+    state.clear(STATE_STANDBY);
+    n += snprintf(buf + n, bufsize - n, "OK");
+  } else if (!strcmp(cmd, "ON?")) {
+    n += snprintf(buf + n, bufsize - n, "%u", state.check(STATE_STANDBY) ? 0 : 1);
+  } else if (!strcmp(cmd, "APN?")) {
+    n += snprintf(buf + n, bufsize - n, "%s", *apn ? apn : "DEFAULT");
+  } else if (!strncmp(cmd, "APN=", 4)) {
+    n += snprintf(buf + n, bufsize - n, nvs_set_str(nvs, "CELL_APN", strcmp(cmd + 4, "DEFAULT") ? cmd + 4 : "") == ESP_OK ? "OK" : "ERR");
+    loadConfig();
+  } else if (!strcmp(cmd, "NET_OP")) {
+    if (state.check(STATE_WIFI_CONNECTED)) {
+#if ENABLE_WIFI
+      n += snprintf(buf + n, bufsize - n, "%s", wifiSSID);
+#endif
+    } else {   
+      n += snprintf(buf + n, bufsize - n, "%s", netop.length() ? netop.c_str() : "-");
+    }
+  } else if (!strcmp(cmd, "NET_IP")) {
+    n += snprintf(buf + n, bufsize - n, "%s", ip.length() ? ip.c_str() : "-");
+  } else if (!strcmp(cmd, "NET_PACKET")) {
+      n += snprintf(buf + n, bufsize - n, "%u", teleClient.txCount);
+  } else if (!strcmp(cmd, "NET_DATA")) {
+      n += snprintf(buf + n, bufsize - n, "%u", teleClient.txBytes);
+  } else if (!strcmp(cmd, "RSSI")) {
+    n += snprintf(buf + n, bufsize - n, "%d", rssi);
+#if ENABLE_WIFI
+  } else if (!strcmp(cmd, "SSID?")) {
+    n += snprintf(buf + n, bufsize - n, "%s", wifiSSID);
+  } else if (!strncmp(cmd, "SSID=", 5)) {
+    n += snprintf(buf + n, bufsize - n, nvs_set_str(nvs, "WIFI_SSID", cmd + 5) == ESP_OK ? "OK" : "ERR");
+    loadConfig();
+  } else if (!strcmp(cmd, "WPWD?")) {
+    n += snprintf(buf + n, bufsize - n, "%s", wifiPassword);
+  } else if (!strncmp(cmd, "WPWD=", 5)) {
+    n += snprintf(buf + n, bufsize - n, nvs_set_str(nvs, "WIFI_PWD", cmd + 5) == ESP_OK ? "OK" : "ERR");
+    loadConfig();
+#else
+  } else if (!strcmp(cmd, "SSID?") || !strcmp(cmd, "WPWD?")) {
+    n += snprintf(buf + n, bufsize - n, "-");
+#endif
 #if ENABLE_MEMS
-    } else if (!strcmp(cmd, "TEMP")) {
-        n += snprintf(buf + n, bufsize - n, "%d", (int)deviceTemp);
-    } else if (!strcmp(cmd, "ACC")) {
-        n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", acc[0], acc[1], acc[2]);
-    } else if (!strcmp(cmd, "GYRO")) {
-        n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", gyr[0], gyr[1], gyr[2]);
-    } else if (!strcmp(cmd, "GF")) {
-        n += snprintf(buf + n, bufsize - n, "%f", (float)sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
+  } else if (!strcmp(cmd, "TEMP")) {
+    n += snprintf(buf + n, bufsize - n, "%d", (int)deviceTemp);
+  } else if (!strcmp(cmd, "ACC")) {
+    n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", acc[0], acc[1], acc[2]);
+  } else if (!strcmp(cmd, "GYRO")) {
+    n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", gyr[0], gyr[1], gyr[2]);
+  } else if (!strcmp(cmd, "GF")) {
+    n += snprintf(buf + n, bufsize - n, "%f", (float)sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
 #endif
-    } else if (!strcmp(cmd, "RSSI")) {
-        n += snprintf(buf + n, bufsize - n, "%d", rssi);
-    } else if (!strcmp(cmd, "ATE0")) {
-        echo = 0;
-        n += snprintf(buf + n, bufsize - n, "OK");
-    } else if (!strcmp(cmd, "ATE1")) {
-        echo = 1;
-        n += snprintf(buf + n, bufsize - n, "OK");
-    } else if (!strcmp(cmd, "FS")) {
-        n += snprintf(buf + n, bufsize - n, "%u",
+  } else if (!strcmp(cmd, "ATE0")) {
+    echo = 0;
+    n += snprintf(buf + n, bufsize - n, "OK");
+  } else if (!strcmp(cmd, "ATE1")) {
+    echo = 1;
+    n += snprintf(buf + n, bufsize - n, "OK");
+  } else if (!strcmp(cmd, "FS")) {
+    n += snprintf(buf + n, bufsize - n, "%u",
 #if STORAGE == STORAGE_NONE
-          0
+    0
 #else
-          logger.size()
+    logger.size()
 #endif
-        );
-    } else if (!memcmp(cmd, "01", 2)) {
-        byte pid = hex2uint8(cmd + 2);
-        for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
-            if (obdData[i].pid == pid) {
-                n += snprintf(buf + n, bufsize - n, "%d", obdData[i].value);
-                pid = 0;
-                break;
-            }
-        }
-        if (pid) {
-            int value;
-            if (obd.readPID(pid, value)) {
-                n += snprintf(buf + n, bufsize - n, "%d", value);
-            } else {
-                n += snprintf(buf + n, bufsize - n, "N/A");
-            }
-        }
-    } else if (!strcmp(cmd, "VIN")) {
-        n += snprintf(buf + n, bufsize - n, "%s", vin[0] ? vin : "N/A");
-    } else if (!strcmp(cmd, "LAT") && gd) {
-        n += snprintf(buf + n, bufsize - n, "%f", gd->lat);
-    } else if (!strcmp(cmd, "LNG") && gd) {
-        n += snprintf(buf + n, bufsize - n, "%f", gd->lng);
-    } else if (!strcmp(cmd, "ALT") && gd) {
-        n += snprintf(buf + n, bufsize - n, "%d", (int)gd->alt);
-    } else if (!strcmp(cmd, "SAT") && gd) {
-        n += snprintf(buf + n, bufsize - n, "%u", (unsigned int)gd->sat);
-    } else if (!strcmp(cmd, "SPD") && gd) {
-        n += snprintf(buf + n, bufsize - n, "%d", (int)(gd->speed * 1852 / 1000));
-    } else if (!strcmp(cmd, "CRS") && gd) {
-        n += snprintf(buf + n, bufsize - n, "%u", (unsigned int)gd->heading);
-    } else {
-        n += snprintf(buf + n, bufsize - n, "ERROR");
+      );
+  } else if (!memcmp(cmd, "01", 2)) {
+    byte pid = hex2uint8(cmd + 2);
+    for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
+      if (obdData[i].pid == pid) {
+        n += snprintf(buf + n, bufsize - n, "%d", obdData[i].value);
+        pid = 0;
+        break;
+      }
     }
-    Serial.print(" -> ");
-    Serial.println((p = strchr(buf, '\r')) ? p + 1 : buf);
-    if (n < bufsize - 1) {
-        buf[n++] = '\r';
-    } else {
-        n = bufsize - 1;
+    if (pid) {
+      int value;
+      if (obd.readPID(pid, value)) {
+        n += snprintf(buf + n, bufsize - n, "%d", value);
+      } else {
+        n += snprintf(buf + n, bufsize - n, "N/A");
+      }
     }
-    buf[n] = 0;
-    ble_send_response(buf, n, cmd);
+  } else if (!strcmp(cmd, "VIN")) {
+    n += snprintf(buf + n, bufsize - n, "%s", vin[0] ? vin : "N/A");
+  } else if (!strcmp(cmd, "LAT") && gd) {
+    n += snprintf(buf + n, bufsize - n, "%f", gd->lat);
+  } else if (!strcmp(cmd, "LNG") && gd) {
+    n += snprintf(buf + n, bufsize - n, "%f", gd->lng);
+  } else if (!strcmp(cmd, "ALT") && gd) {
+    n += snprintf(buf + n, bufsize - n, "%d", (int)gd->alt);
+  } else if (!strcmp(cmd, "SAT") && gd) {
+    n += snprintf(buf + n, bufsize - n, "%u", (unsigned int)gd->sat);
+  } else if (!strcmp(cmd, "SPD") && gd) {
+    n += snprintf(buf + n, bufsize - n, "%d", (int)(gd->speed * 1852 / 1000));
+  } else if (!strcmp(cmd, "CRS") && gd) {
+    n += snprintf(buf + n, bufsize - n, "%u", (unsigned int)gd->heading);
+  } else {
+    n += snprintf(buf + n, bufsize - n, "ERROR");
+  }
+  Serial.print(" -> ");
+  Serial.println((p = strchr(buf, '\r')) ? p + 1 : buf);
+  if (n < bufsize - 1) {
+    buf[n++] = '\r';
+  } else {
+    n = bufsize - 1;
+  }
+  buf[n] = 0;
+  ble_send_response(buf, n, cmd);
 #else
-    if (timeout) delay(timeout);
+  if (timeout) delay(timeout);
 #endif
 }
 
 void setup()
 {
   delay(500);
-  
+
+  // Initialize NVS
+  esp_err_t err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    // NVS partition was truncated and needs to be erased
+    // Retry nvs_flash_init
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    err = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK( err );
+  err = nvs_open("storage", NVS_READWRITE, &nvs);
+  if (err == ESP_OK) {
+    loadConfig();
+  }
+
 #if ENABLE_OLED
   oled.begin();
   oled.setFontSize(FONT_SIZE_SMALL);
@@ -1378,7 +1427,7 @@ if (!state.check(STATE_MEMS_READY)) do {
 
 #if ENABLE_BLE
   // init BLE
-  ble_init();
+  ble_init("FreematicsPlus");
 #endif
 
   // initialize components

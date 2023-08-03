@@ -43,13 +43,13 @@ static const uint16_t spp_service_uuid = 0xABF0;
 #define ESP_GATT_UUID_SPP_HEARTBEAT         0xABF5
 #endif
 
-static const uint8_t spp_adv_data[23] = {
+static uint8_t spp_adv_data[23] = {
     /* Flags */
     0x02,0x01,0x06,
     /* Complete List of 16-bit Service Class UUIDs */
     0x03,0x03,0xF0,0xAB,
     /* Complete Local Name in advertising */
-    0x0F,0x09, 'F', 'r', 'e', 'e', 'm', 'a', 't', 'i', 'c', 's', 'P', 'l', 'u', 's',
+    0x0F,0x09, 'F', 'r', 'e', 'e', 'm', 'a', 't', 'i', 'c', 's', 'P', 'l', 'u', 's'
 };
 
 static uint16_t spp_mtu_size = 23;
@@ -392,20 +392,12 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
     } while (0);
 }
 
-void ble_init()
+void ble_init(const char* adv_name)
 {
     esp_err_t ret;
     //esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
-#if 0
-    // Initialize NVS
-    ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK( ret );
-#endif
+    if (adv_name) strncpy(spp_adv_data + 9, adv_name, 14);
 
     if(!btStarted() && !btStart()){
       ESP_LOGE(GATTS_TABLE_TAG, "%s BT init failed\n", __func__);

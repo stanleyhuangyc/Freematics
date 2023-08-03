@@ -46,6 +46,21 @@ uint32_t fileid = 0;
 char vin[18] = {0};
 int16_t batteryVoltage = 0;
 
+// acceleration data series
+#define MAX_ACC_COUNT 600
+
+typedef struct {
+    uint16_t ts;
+    float acc[3];
+} ACC_SERIES;
+
+ACC_SERIES accs[MAX_ACC_COUNT] = {0};
+uint32_t accStartTs = 0;
+uint16_t accCur = 0;
+float accSum[3] = {0};
+float accSumPrev[3] = {0};
+float accSpeed = 0;
+
 typedef struct {
   byte pid;
   byte tier;
@@ -67,7 +82,7 @@ PID_POLLING_INFO obdData[]= {
 #if USE_MEMS
 float acc[3] = {0};
 float gyr[3] = {0};
-float mag[3] = {0};
+float motion = 0;
 float accBias[3];
 float temp = 0;
 ORIENTATION ori = {0};
@@ -368,8 +383,8 @@ public:
             calibrateMEMS();
             while (checkState(STATE_STANDBY)) {
                 // calculate relative movement
-                float motion = 0;
                 unsigned int n = 0;
+                motion = 0;
                 for (uint32_t t = millis(); millis() - t < 1000; n++) {
                     mems->read(acc, 0, 0, &temp);
                     for (byte i = 0; i < 3; i++) {
@@ -384,7 +399,8 @@ public:
 #endif
                 }
                 // check movement
-                if (motion / n >= WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+                motion /= n;
+                if (motion >= WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
                     Serial.print("Motion:");
                     Serial.println(motion / n);
                     break;
@@ -652,7 +668,9 @@ void processBLE(int timeout)
     } else if (!strcmp(cmd, "GYRO")) {
         n += snprintf(buf + n, bufsize - n, "%.1f/%.1f/%.1f", gyr[0], gyr[1], gyr[2]);
     } else if (!strcmp(cmd, "GF")) {
-        n += snprintf(buf + n, bufsize - n, "%f", (float)sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
+        n += snprintf(buf + n, bufsize - n, "%.1f", (float)sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]));
+    } else if (!strcmp(cmd, "SPD")) {
+        n += snprintf(buf + n, bufsize - n, "%d", (int)accSpeed);
 #endif
     } else if (!strcmp(cmd, "ATE0")) {
         echo = 0;
@@ -758,8 +776,6 @@ void setup()
     sys.begin(false, USE_GNSS >= 3);
 #endif
 
-    //initMesh();
-
 #if USE_MEMS
     if (!logger.checkState(STATE_MEMS_READY)) do {
         Serial.print("MEMS:");
@@ -828,11 +844,96 @@ void setup()
 #endif
 #endif
 
+    calibrateMEMS();
+
 #ifdef PIN_LED
     pinMode(PIN_LED, LOW);
 #endif
 
     logger.init();
+}
+
+#define STATIONARY_DATASET 30
+
+bool processAccs()
+{
+    float msum = 0;
+    int mcount = 0;
+    accSum[0] = 0;
+    accSum[1] = 0;
+    accSum[2] = 0;
+    for (int i = 0; i < accCur; i++) {
+        float a = (accs[i + 1].ts - accs[i].ts) * 3.6 * 9.8 / 2 / 1000;
+        accSum[0] += (accs[i].acc[0] + accs[i + 1].acc[0]) * a;
+        accSum[1] += (accs[i].acc[1] + accs[i + 1].acc[1]) * a;
+        accSum[2] += (accs[i].acc[2] + accs[i + 1].acc[2]) * a;
+        float m = accs[i].acc[0] * accs[i].acc[0] + accs[i].acc[1] * accs[i].acc[1] + accs[i].acc[2] * accs[i].acc[2];
+        if (m > WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+            mcount = 0;
+            msum = 0;
+        } else {
+            msum += m;
+            mcount++;            
+        }
+        if (mcount == STATIONARY_DATASET) {
+            m = msum / mcount;
+            Serial.print("Motion:");
+            Serial.println(m);
+            if (m < WAKEUP_MOTION_THRESHOLD * WAKEUP_MOTION_THRESHOLD) {
+                // stationary
+                return true;
+            }
+        }
+    }
+    /*
+    Serial.print("SUM:");
+    Serial.print(accSum[0], 4);
+    Serial.print(' ');
+    Serial.print(accSum[1], 4);
+    Serial.print(' ');
+    Serial.println(accSum[2], 4);
+    */
+    return false;
+}
+
+void motionEstimate()
+{
+    if (accCur >= MAX_ACC_COUNT) {
+        accCur = 0;
+        accSumPrev[0] = accSum[0];
+        accSumPrev[1] = accSum[1];
+        accSumPrev[2] = accSum[2];
+    }
+    if (accCur == 0) {
+        accStartTs = millis();
+    }
+    for (byte i = 0; i < 3; i++) {
+        float m = acc[i] - accBias[i];
+        Serial.print(m, 1);
+        Serial.print(' ');
+        accs[accCur].acc[i] = m;
+    }
+    accs[accCur].ts = millis() - accStartTs;
+    if (processAccs()) {
+        accCur = 0;
+        accSpeed = 0;
+        Serial.println("STATIONARY");
+        accCur = 0;
+        accSumPrev[0] = 0;
+        accSumPrev[1] = 0;
+        accSumPrev[2] = 0;
+    } else {
+        accSum[0] += accSumPrev[0];
+        accSum[1] += accSumPrev[1];
+        accSum[2] += accSumPrev[2];
+        accSpeed = sqrt(accSum[0] * accSum[0] + accSum[1] * accSum[1] + accSum[2] * accSum[2]);
+        accCur++;
+    }
+    store.log(PID_ACC_SPEED, (int)accSpeed);
+    Serial.print((int)accCur);
+    Serial.print(' ');
+    Serial.print(accSpeed, 1);
+    Serial.println("kph");
 }
 
 void loop()
@@ -931,10 +1032,11 @@ void loop()
         store.log(PID_ORIENTATION, (int16_t)(ori.yaw * 100), (int16_t)(ori.pitch * 100), (int16_t)(ori.roll * 100));
       }
 #else
-      updated = mems->read(acc, gyr, mag, &temp);
+      updated = mems->read(acc, gyr, 0, &temp);
       if (updated) {
         store.log(PID_ACC, (int16_t)(acc[0] * 100), (int16_t)(acc[1] * 100), (int16_t)(acc[2] * 100));
         store.log(PID_GYRO, (int16_t)(gyr[0] * 100), (int16_t)(gyr[1] * 100), (int16_t)(gyr[2] * 100));
+        motionEstimate();
       }
 #endif
     }

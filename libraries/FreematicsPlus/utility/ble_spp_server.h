@@ -46,7 +46,7 @@ enum{
     SPP_IDX_NB,
 };
 
-void ble_init();
+void ble_init(const char* adv_name);
 void ble_send(int spp_index, void* data, int len);
 char* ble_recv_command(int timeout);
 void ble_send_response(void* data, int len, char* ptr_to_free);
