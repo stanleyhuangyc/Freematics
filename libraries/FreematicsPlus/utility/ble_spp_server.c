@@ -397,7 +397,7 @@ void ble_init(const char* adv_name)
     esp_err_t ret;
     //esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
-    if (adv_name) strncpy(spp_adv_data + 9, adv_name, 14);
+    if (adv_name) strncpy((char*)spp_adv_data + 9, adv_name, 13);
 
     if(!btStarted() && !btStart()){
       ESP_LOGE(GATTS_TABLE_TAG, "%s BT init failed\n", __func__);
