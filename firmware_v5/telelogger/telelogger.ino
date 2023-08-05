@@ -584,7 +584,10 @@ void showStats()
   Serial.print(teleClient.txBytes >> 10);
   Serial.print(" KB | In: ");
   Serial.print(teleClient.rxBytes);
-  Serial.print(" bytes");
+  Serial.print(" bytes | ");
+  Serial.print((unsigned int)((uint64_t)(teleClient.txBytes + teleClient.rxBytes) * 3600 / (millis() - teleClient.startTime)));
+  Serial.print(" KB/hour");
+
   Serial.println();
 #if ENABLE_OLED
   oled.setCursor(0, 2);
@@ -1226,6 +1229,8 @@ void processBLE(int timeout)
       n += snprintf(buf + n, bufsize - n, "%u", teleClient.txCount);
   } else if (!strcmp(cmd, "NET_DATA")) {
       n += snprintf(buf + n, bufsize - n, "%u", teleClient.txBytes);
+  } else if (!strcmp(cmd, "NET_RATE")) {
+      n += snprintf(buf + n, bufsize - n, "%u", teleClient.startTime ? (unsigned int)((uint64_t)(teleClient.txBytes + teleClient.rxBytes) * 3600 / (millis() - teleClient.startTime)) : 0);
   } else if (!strcmp(cmd, "RSSI")) {
     n += snprintf(buf + n, bufsize - n, "%d", rssi);
 #if ENABLE_WIFI
