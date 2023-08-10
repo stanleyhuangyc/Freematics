@@ -52,6 +52,9 @@ bool ClientWIFI::begin(const char* ssid, const char* password)
 {
   //listAPs();
   WiFi.begin(ssid, password);
+#ifndef ARDUINO_ESP32C3_DEV
+  WiFi.setTxPower(WIFI_POWER_8_5dBm); 
+#endif
   return true;
 }
 
@@ -247,7 +250,7 @@ bool CellSIMCOM::begin(CFreematics* device)
         m_type = strstr(m_model, "5360") ? CELL_SIM5360 : CELL_SIM7600;
       }
       p = strstr(m_buffer, "IMEI:");
-      if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
+      if (p) strncpy(IMEI, p[5] == ' ' ? p + 6 : p + 5, sizeof(IMEI) - 1);
       return true;
     }
   }
@@ -1202,7 +1205,7 @@ bool ClientSIM7070::begin(CFreematics* device)
         // retrieve module info
         //Serial.print(m_buffer);
         char *p = strstr(m_buffer, "IMEI:");
-        if (p) strncpy(IMEI, p + 6, sizeof(IMEI) - 1);
+        if (p) strncpy(IMEI, p + 5, sizeof(IMEI) - 1);
         p = strstr(m_buffer, "QCN:");
         if (p) {
           char *q = strchr(p += 4, '_');
