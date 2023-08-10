@@ -737,7 +737,16 @@ bool CellHTTP::open(const char* host, uint16_t port)
     sendCommand("AT+CNACT=0,1\r");
     sendCommand("AT+CACID=0\r");
 
-    sprintf(m_buffer, "AT+SHCONF=\"URL\",\"http://%s:%u\"\r", host, port);
+    bool useSSL = (port == 443);
+    if (useSSL) {
+      sendCommand("AT+SHSSL=1,\"\"\r");
+      sendCommand("AT+CSSLCFG=\"ignorertctime\",1,1\r");    
+      sendCommand("AT+CSSLCFG=\"SSLVERSION\",1,3\r");
+      sprintf(m_buffer, "AT+CSSLCFG=\"sni\",1,\"%s\"\r", host);
+      sendCommand(m_buffer);
+    }
+
+    sprintf(m_buffer, "AT+SHCONF=\"URL\",\"%s://%s:%u\"\r", useSSL ? "https" : "http", host, port);
     if (!sendCommand(m_buffer)) {
       return false;
     }
