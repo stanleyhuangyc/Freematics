@@ -300,7 +300,8 @@ bool CellSIMCOM::setup(const char* apn, unsigned int timeout)
 
       sendCommand("AT+CGNAPN\r");
       if (apn && *apn) {
-        sprintf(m_buffer, "AT+CNCFG=0,1,\"%s\"\r", apn);
+        sprintf(m_buffer, "AT+CNCFG=0,0,\"%s\"\r", apn);
+        //sprintf(m_buffer, "AT+CNCFG=0,0,\"%s\",\"APN_USERNAME\",\"APN_PASSWORD\",3\r", apn);
         sendCommand(m_buffer);
       }
       sendCommand("AT+CNACT=0,1\r");
@@ -333,8 +334,6 @@ bool CellSIMCOM::setup(const char* apn, unsigned int timeout)
       } while (!success && millis() - t < timeout);
       if (!success) break;
       
-      //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
-
       if (m_type == CELL_SIM7600) {
         success = false;
         do {
@@ -350,6 +349,7 @@ bool CellSIMCOM::setup(const char* apn, unsigned int timeout)
       if (apn && *apn) {
         sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
         sendCommand(m_buffer);
+        //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
       }
 
       sendCommand("AT+CSOCKSETPN=1\r");

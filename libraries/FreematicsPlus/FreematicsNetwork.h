@@ -21,7 +21,7 @@
 #define XBEE_BAUDRATE 115200
 #define HTTP_CONN_TIMEOUT 5000
 
-#define RECV_BUF_SIZE 384
+#define RECV_BUF_SIZE 512
 
 typedef enum {
   METHOD_GET = 0,
