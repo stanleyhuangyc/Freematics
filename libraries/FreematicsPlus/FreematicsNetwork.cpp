@@ -537,7 +537,7 @@ bool CellSIMCOM::sendCommand(const char* cmd, unsigned int timeout, const char* 
 {
   if (cmd) {
     m_device->xbWrite(cmd);
-    delay(50);
+    delay(10);
   }
   m_buffer[0] = 0;
   const char* answers[] = {"\r\nOK", "\r\nERROR"};
@@ -800,8 +800,8 @@ bool CellHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const 
 {
   if (m_type == CELL_SIM7070) {
     if (method == METHOD_POST) {
-      sprintf(m_buffer, "AT+SHBOD=%u,100\r", payloadSize);
-      if (sendCommand(m_buffer, 100, "\r\n>")) {
+      sprintf(m_buffer, "AT+SHBOD=%u,1000\r", payloadSize);
+      if (sendCommand(m_buffer, 1000, "\r\n>")) {
         sendCommand(payload);
       }
     }
