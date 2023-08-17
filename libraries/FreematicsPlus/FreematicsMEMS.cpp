@@ -139,8 +139,13 @@ bool MEMS_I2C::initI2C(unsigned long clock)
   i2c_port_t i2c_master_port = I2C_NUM_0;
   i2c_config_t conf = {
     .mode = I2C_MODE_MASTER,
+#ifdef ARDUINO_ESP32C3_DEV
+    .sda_io_num = 4,
+    .scl_io_num = 5,
+#else
     .sda_io_num = 21,
     .scl_io_num = 22,
+#endif
     .sda_pullup_en = GPIO_PULLUP_ENABLE,
     .scl_pullup_en = GPIO_PULLUP_ENABLE,
   };
