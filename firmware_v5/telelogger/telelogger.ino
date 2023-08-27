@@ -169,6 +169,15 @@ void printTimeoutStats()
   Serial.println(timeoutsNet);
 }
 
+void beep(int duration)
+{
+    // turn on buzzer at 2000Hz frequency 
+    sys.buzzer(2000);
+    delay(duration);
+    // turn off buzzer
+    sys.buzzer(0);
+}
+
 #if LOG_EXT_SENSORS
 void processExtInputs(CBuffer* buffer)
 {
@@ -466,12 +475,6 @@ void printTime()
 *******************************************************************************/
 void initialize()
 {
-    // turn on buzzer at 2000Hz frequency 
-  sys.buzzer(2000);
-  delay(100);
-  // turn off buzzer
-  sys.buzzer(0);
-
   // dump buffer data
   bufman.purge();
 
@@ -908,7 +911,7 @@ void telemetry(void* inst)
       }
       continue;
     }
-    
+
 #if ENABLE_WIFI
     if (!state.check(STATE_WIFI_CONNECTED)) {
       Serial.print("[WIFI] Joining SSID:");
@@ -930,10 +933,13 @@ void telemetry(void* inst)
         connErrors = 0;
         if (teleClient.connect()) {
           state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
+          beep(50);
           // switch off cellular module when wifi connected
-          teleClient.cell.end();
-          state.clear(STATE_CELL_CONNECTED);
-          Serial.println("[CELL] Deactivated");
+          if (state.check(STATE_CELL_CONNECTED)) {
+            teleClient.cell.end();
+            state.clear(STATE_CELL_CONNECTED);
+            Serial.println("[CELL] Deactivated");
+          }
         }
       } else if (state.check(STATE_WIFI_CONNECTED) && !teleClient.wifi.connected()) {
         Serial.println("[WIFI] Disconnected");
@@ -945,10 +951,12 @@ void telemetry(void* inst)
         if (!initCell() || !teleClient.connect()) {
           teleClient.cell.end();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
-          delay(15000);
+          delay(10000);
           break;
         }
         Serial.println("[CELL] In service");
+        state.set(STATE_NET_READY);
+        beep(50);
       }
 
       if (millis() - lastRssiTime > SIGNAL_CHECK_INTERVAL * 1000) {
@@ -989,6 +997,7 @@ void telemetry(void* inst)
       buffer->serialize(store);
       bufman.free(buffer);
       store.tailer();
+      Serial.print("[DAT] ");
       Serial.println(store.buffer());
 
       // start transmission
@@ -1404,13 +1413,15 @@ if (!state.check(STATE_MEMS_READY)) do {
     break;
   } 
   delete mems;
+  /*
   mems = new MPU9250;
   ret = mems->begin();
   if (ret) {
     state.set(STATE_MEMS_READY);
     Serial.println("MPU-9250");
     break;
-  } 
+  }
+  */
   Serial.println("NO");
 } while (0);
 #endif
