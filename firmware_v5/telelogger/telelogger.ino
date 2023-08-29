@@ -135,7 +135,7 @@ protected:
 #if ENABLE_MEMS
     processMEMS(0);
 #endif
-    delay(5);
+    processBLE(0);
   }
 };
 
@@ -264,7 +264,6 @@ void processOBD(CBuffer* buffer)
         printTimeoutStats();
         break;
     }
-    processBLE(0);
     if (tier > 1) break;
   }
   int kph = obdData[0].value;
@@ -827,14 +826,11 @@ bool initCell(bool quick = false)
       Serial.print(teleClient.cell.getBuffer());
     }
 
-    for (int n = 0; n < 3; n++) {
-      rssi = teleClient.cell.RSSI();
-      if (rssi) {
-        Serial.print("RSSI:");
-        Serial.print(rssi);
-        Serial.println("dBm");
-      }
-      delay(1000);
+    rssi = teleClient.cell.RSSI();
+    if (rssi) {
+      Serial.print("RSSI:");
+      Serial.print(rssi);
+      Serial.println("dBm");
     }
   }
   timeoutsNet = 0;
@@ -951,7 +947,6 @@ void telemetry(void* inst)
         if (!initCell() || !teleClient.connect()) {
           teleClient.cell.end();
           state.clear(STATE_NET_READY | STATE_CELL_CONNECTED);
-          delay(10000);
           break;
         }
         Serial.println("[CELL] In service");
