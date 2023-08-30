@@ -825,13 +825,6 @@ bool initCell(bool quick = false)
     } else {
       Serial.print(teleClient.cell.getBuffer());
     }
-
-    rssi = teleClient.cell.RSSI();
-    if (rssi) {
-      Serial.print("RSSI:");
-      Serial.print(rssi);
-      Serial.println("dBm");
-    }
   }
   timeoutsNet = 0;
   return state.check(STATE_CELL_CONNECTED);
@@ -866,19 +859,6 @@ void telemetry(void* inst)
       state.clear(STATE_NET_READY | STATE_CELL_CONNECTED | STATE_WIFI_CONNECTED);
       teleClient.reset();
       bufman.purge();
-
-#if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
-      if (state.check(STATE_GPS_READY)) {
-        Serial.println("[GPS] OFF");
-#if GNSS_ALWAYS_ON
-        sys.gpsEnd(false);
-#else
-        sys.gpsEnd(true);
-#endif
-        state.clear(STATE_GPS_READY);
-      }
-      gd = 0;
-#endif
 
       uint32_t t = millis();
       do {
@@ -1071,6 +1051,16 @@ void standby()
     logger.end();
   }
 #endif
+
+#if !GNSS_ALWAYS_ON && (GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL)
+  if (state.check(STATE_GPS_READY)) {
+    Serial.println("[GPS] OFF");
+    sys.gpsEnd(true);
+    state.clear(STATE_GPS_READY);
+    gd = 0;
+  }
+#endif
+
   state.clear(STATE_WORKING | STATE_OBD_READY | STATE_STORAGE_READY);
   // this will put co-processor into sleep mode
 #if ENABLE_OLED
