@@ -309,7 +309,7 @@ bool processGPS(CBuffer* buffer)
   float kph = gd->speed * 1.852f;
   if (kph >= 2) lastMotionTime = millis();
 
-  if (buffer) {
+  if (buffer && gd->sat >= 3) {
     buffer->add(PID_GPS_TIME, ELEMENT_UINT32, &gd->time, sizeof(uint32_t));
     if (gd->lat && gd->lng) {
       buffer->add(PID_GPS_LATITUDE, ELEMENT_FLOAT, &gd->lat, sizeof(float));
@@ -1084,7 +1084,7 @@ void standby()
   sys.resetLink();
 #if RESET_AFTER_WAKEUP
 #if ENABLE_MEMS
-  mems->end();  
+  if (mems) mems->end();  
 #endif
   ESP.restart();
 #endif  
@@ -1214,8 +1214,11 @@ void processBLE(int timeout)
 #if ENABLE_WIFI
       n += snprintf(buf + n, bufsize - n, "%s", wifiSSID);
 #endif
-    } else {   
-      n += snprintf(buf + n, bufsize - n, "%s", netop.length() ? netop.c_str() : "-");
+    } else {
+      snprintf(buf + n, bufsize - n, "%s", netop.length() ? netop.c_str() : "-");
+      char *p = strchr(buf + n, ' ');
+      if (p) *p = 0;
+      n += strlen(buf + n);
     }
   } else if (!strcmp(cmd, "NET_IP")) {
     n += snprintf(buf + n, bufsize - n, "%s", ip.length() ? ip.c_str() : "-");
@@ -1407,6 +1410,7 @@ if (!state.check(STATE_MEMS_READY)) do {
     break;
   }
   */
+  mems = 0;
   Serial.println("NO");
 } while (0);
 #endif
