@@ -309,17 +309,15 @@ bool processGPS(CBuffer* buffer)
   float kph = gd->speed * 1.852f;
   if (kph >= 2) lastMotionTime = millis();
 
-  if (buffer && gd->sat >= 3) {
+  if (buffer) {
     buffer->add(PID_GPS_TIME, ELEMENT_UINT32, &gd->time, sizeof(uint32_t));
-    if (gd->lat && gd->lng) {
-      buffer->add(PID_GPS_LATITUDE, ELEMENT_FLOAT, &gd->lat, sizeof(float));
-      buffer->add(PID_GPS_LONGITUDE, ELEMENT_FLOAT, &gd->lng, sizeof(float));
-      buffer->add(PID_GPS_ALTITUDE, ELEMENT_FLOAT_D1, &gd->alt, sizeof(float)); /* m */
-      buffer->add(PID_GPS_SPEED, ELEMENT_FLOAT_D1, &kph, sizeof(kph));
-      buffer->add(PID_GPS_HEADING, ELEMENT_UINT16, &gd->heading, sizeof(uint16_t));
-      buffer->add(PID_GPS_SAT_COUNT, ELEMENT_UINT8, &gd->sat, sizeof(uint8_t));
-      buffer->add(PID_GPS_HDOP, ELEMENT_UINT8, &gd->hdop, sizeof(uint8_t));
-    }
+    buffer->add(PID_GPS_LATITUDE, ELEMENT_FLOAT, &gd->lat, sizeof(float));
+    buffer->add(PID_GPS_LONGITUDE, ELEMENT_FLOAT, &gd->lng, sizeof(float));
+    buffer->add(PID_GPS_ALTITUDE, ELEMENT_FLOAT_D1, &gd->alt, sizeof(float)); /* m */
+    buffer->add(PID_GPS_SPEED, ELEMENT_FLOAT_D1, &kph, sizeof(kph));
+    buffer->add(PID_GPS_HEADING, ELEMENT_UINT16, &gd->heading, sizeof(uint16_t));
+    if (gd->sat) buffer->add(PID_GPS_SAT_COUNT, ELEMENT_UINT8, &gd->sat, sizeof(uint8_t));
+    buffer->add(PID_GPS_HDOP, ELEMENT_UINT8, &gd->hdop, sizeof(uint8_t));
   }
   
   // generate ISO time string
@@ -338,10 +336,10 @@ bool processGPS(CBuffer* buffer)
   Serial.print(' ');
   Serial.print((int)kph);
   Serial.print("km/h");
-  if (gd->sat) {
-    Serial.print(" SATS:");
-    Serial.print(gd->sat);
-  }
+  Serial.print(" SATS:");
+  Serial.print(gd->sat);
+  Serial.print(" HDOP:");
+  Serial.print(gd->hdop);
   Serial.print(" Course:");
   Serial.print(gd->heading);
 
@@ -588,7 +586,7 @@ void showStats()
   Serial.print(teleClient.rxBytes);
   Serial.print(" bytes | ");
   Serial.print((unsigned int)((uint64_t)(teleClient.txBytes + teleClient.rxBytes) * 3600 / (millis() - teleClient.startTime)));
-  Serial.print(" KB/hour");
+  Serial.print(" KB/h");
 
   Serial.println();
 #if ENABLE_OLED
