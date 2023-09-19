@@ -565,8 +565,12 @@ bool FreematicsESP32::gpsBeginExt(int baudrate)
         delay(200);
         gps.stats(&s2, 0);
         if (s1 != s2) {
-            // apply GNSS settings
-            for (int i = 0; i < sizeof(gpsSettings); i++) softSerialTx(GPS_SOFT_BAUDRATE, gpsSettings[i]);
+#ifndef ARDUINO_ESP32C3_DEV
+            if (m_flags & FLAG_GNSS_SOFT_SERIAL) {
+                // apply GNSS settings
+                for (int i = 0; i < sizeof(gpsSettings); i++) softSerialTx(GPS_SOFT_BAUDRATE, gpsSettings[i]);
+            }
+#endif
             return true;
         }
     }
