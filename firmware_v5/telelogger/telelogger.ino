@@ -1156,8 +1156,10 @@ void showSysInfo()
 void loadConfig()
 {
   size_t len;
-  len = sizeof(apn);
-  nvs_get_str(nvs, "CELL_APN", apn, &len);
+  if (!*apn) {
+    len = sizeof(apn);
+    nvs_get_str(nvs, "CELL_APN", apn, &len);
+  }
 #if ENABLE_WIFI
   len = sizeof(wifiSSID);
   nvs_get_str(nvs, "WIFI_SSID", wifiSSID, &len);
