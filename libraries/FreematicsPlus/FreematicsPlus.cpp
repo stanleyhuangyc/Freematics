@@ -41,8 +41,8 @@ static int pinGPSRx = PIN_GPS_UART_RXD;
 static int pinGPSTx = PIN_GPS_UART_TXD;
 static Task taskGPS;
 static GPS_DATA gpsData = {0};
-// u-blox M10 commands for disabling RMC and NAV_PVT and enabling GGA at 5Hz rate
-static const uint8_t gpsSettings[] = {0xB5, 0x62, 0x06, 0x8A, 0x13, 0x00, 0x01, 0x01, 0x00, 0x00, 0x07, 0x00, 0x91, 0x20, 0x00, 0xAC, 0x00, 0x91, 0x20, 0x00, 0xBB, 0x00, 0x91, 0x20, 0x02, 0x28, 0x1C};
+// u-blox M10 commands for setting GGA to 5Hz, RMC to 1Hz and disabling NAV_PVT
+static const uint8_t gpsSettings[] = {0xB5, 0x62, 0x06, 0x8A, 0x13, 0x00, 0x01, 0x01, 0x00, 0x00, 0xBB, 0x00, 0x91, 0x20, 0x02, 0xAC, 0x00, 0x91, 0x20, 0x0A, 0x07, 0x00, 0x91, 0x20, 0x00, 0x32, 0x74};
 
 #ifndef ARDUINO_ESP32C3_DEV
 
@@ -135,7 +135,7 @@ static void gps_decode_task(void* inst)
         uint8_t c = 0;
         int len = uart_read_bytes(gpsUARTNum, &c, 1, 60000 / portTICK_RATE_MS);
         if (len != 1) continue;
-        Serial.print((char)c);
+        //Serial.print((char)c);
         if (gps.encode(c)) {
             gpsHasDecodedData = true;
         }
