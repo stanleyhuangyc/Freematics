@@ -109,7 +109,7 @@ class CellSIMCOM
 public:
     virtual bool begin(CFreematics* device);
     virtual void end();
-    virtual bool setup(const char* apn, unsigned int timeout = 30000);
+    virtual bool setup(const char* apn, const char* username = 0, const char* password = 0, unsigned int timeout = 30000);
     virtual bool setGPS(bool on);
     virtual String getIP();
     int RSSI();
