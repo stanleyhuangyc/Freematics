@@ -213,22 +213,20 @@ class DataLogger
 public:
     void init()
     {
-#if USE_GNSS == 1 || USE_GNSS == 2
+#if USE_GNSS == 1
         if (!checkState(STATE_GPS_FOUND)) {
             Serial.print("GNSS:");
-#if USE_GNSS == 1
-            if (sys.gpsBegin()) {
-#else
             if (sys.gpsBeginExt(GPS_SERIAL_BAUDRATE)) {
-#endif
                 setState(STATE_GPS_FOUND);
-                Serial.println("OK");
-                //waitGPS();
+                Serial.println("OK(E)");
+            } else if (sys.gpsBegin()) {
+                setState(STATE_GPS_FOUND);
+                Serial.println("OK(I)");
             } else {
                 Serial.println("NO");
             }
         }
-#elif USE_GNSS >= 3
+#elif USE_GNSS > 1
       if (!checkState(STATE_GPS_FOUND)) {
         Serial.print("CELL GNSS:");
         if (cellInit()) {
@@ -303,7 +301,7 @@ public:
         setState(STATE_GPS_READY);
     }
 #endif
-#if USE_GNSS == 1 || USE_GNSS == 2
+#if USE_GNSS == 1
     void processGPSData()
     {
         // issue the command to get parsed GPS data
@@ -330,7 +328,7 @@ public:
           }
         }
     }
-#elif USE_GNSS >= 3
+#elif USE_GNSS > 1
     void processCellGPS()
     {
         /*
@@ -347,13 +345,13 @@ public:
     void standby()
     {
         store.close();
-#if USE_GNSS == 1 || USE_GNSS == 2
+#if USE_GNSS == 1
         if (checkState(STATE_GPS_READY)) {
             Serial.print("GNSS:");
             sys.gpsEnd(); // turn off GPS power
             Serial.println("OFF");
         }
-#elif USE_GNSS >= 3
+#elif USE_GNSS > 1
         Serial.print("GNSS:");
         cellUninit();
         Serial.println("OFF");
@@ -400,14 +398,14 @@ public:
         //ESP.restart();
         clearState(STATE_STANDBY);
     }
-#if USE_GNSS >= 3
+#if USE_GNSS > 1
     bool cellSendCommand(const char* cmd, char* buf, int bufsize, const char* expected = "\r\nOK", unsigned int timeout = 1000)
     {
         if (cmd) sys.xbWrite(cmd);
         memset(buf, 0, bufsize);
         return sys.xbReceive(buf, bufsize, timeout, &expected, 1) != 0;
     }
-#if USE_GNSS == 4
+#if USE_GNSS == 3
     bool cellInit()
     {
         char buf[320];
@@ -749,13 +747,13 @@ void setup()
 #endif
 
 #if USE_OBD
-    if (sys.begin(true, USE_GNSS >= 3)) {
+    if (sys.begin(true, USE_GNSS > 1)) {
         Serial.print("TYPE:");
         Serial.println(sys.devType);
         obd.begin(sys.link);
     }
 #else
-    sys.begin(false, USE_GNSS >= 3);
+    sys.begin(false, USE_GNSS > 1);
 #endif
 
     //initMesh();
@@ -861,11 +859,11 @@ void loop()
 
     uint32_t ts = millis();
 
-#if USE_GNSS == 1 || USE_GNSS == 2
+#if USE_GNSS == 1
     if (logger.checkState(STATE_GPS_FOUND)) {
         logger.processGPSData();
     }
-#elif USE_GNSS >= 3
+#elif USE_GNSS > 1
     if (logger.checkState(STATE_CELL_GPS_FOUND)) {
       logger.processCellGPS();
     }
@@ -904,7 +902,7 @@ void loop()
             Serial.println(pidErrors);
             break;
         }
-#if USE_GNSS == 1 || USE_GNSS == 2
+#if USE_GNSS == 1
         if (logger.checkState(STATE_GPS_FOUND)) {
             logger.processGPSData();
         }

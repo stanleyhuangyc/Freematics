@@ -305,7 +305,6 @@ int handlerLogDelete(UrlHandlerParam* param)
 UrlHandler urlHandlerList[]={
     {"api/live", handlerLiveData},
     {"api/info", handlerInfo},
-    {"api/control", handlerControl},
 #if STORAGE != STORAGE_NONE
     {"api/list", handlerLogList},
     {"api/data", handlerLogData},

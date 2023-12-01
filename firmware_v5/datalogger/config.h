@@ -40,8 +40,8 @@
 #ifndef HAVE_CONFIG
 // enable(1)/disable(0) OBD-II reading
 #define USE_OBD 1
-// GNSS option: 0:disable 1:internal 2:external 3:SIM5360/7600 4:SIM7070
-#define USE_GNSS 2
+// GNSS option: 0:disable 1:standalone 2:SIM5360/7600 3:SIM7070
+#define USE_GNSS 1
 // enable(1)/disable(0) MEMS motion sensor
 #define USE_MEMS 1
 #endif
@@ -52,6 +52,6 @@
 // GPS parameters
 #define GPS_SERIAL_BAUDRATE 115200L
 // motion detection
-#define WAKEUP_MOTION_THRESHOLD 0.03 /* G */
+#define WAKEUP_MOTION_THRESHOLD 0.3 /* G */
 // minimum loop time
-#define MIN_LOOP_TIME 100 /* ms */ 
+#define MIN_LOOP_TIME 100 /* ms */

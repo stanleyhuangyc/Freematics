@@ -282,7 +282,7 @@ bool processGPS(CBuffer* buffer)
     lastGPSLat = 0;
     lastGPSLng = 0;
   }
-#if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
+#if GNSS == GNSS_STANDALONE
   if (state.check(STATE_GPS_READY)) {
     // read parsed GPS data
     if (!sys.gpsGetData(&gd)) {
@@ -295,7 +295,8 @@ bool processGPS(CBuffer* buffer)
     }
 #endif
 
-  if (!gd || lastGPStime == gd->time || gd->date == 0 || (gd->lng == 0 && gd->lat == 0)) return false;
+
+  if (!gd || lastGPStime == gd->time || (gd->lng == 0 && gd->lat == 0)) return false;
 
   if ((lastGPSLat || lastGPSLng) && (abs(gd->lat - lastGPSLat) > 0.001 || abs(gd->lng - lastGPSLng > 0.001))) {
     // invalid coordinates data
@@ -481,20 +482,15 @@ void initialize()
   }
 #endif
 
-#if GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL
+#if GNSS == GNSS_STANDALONE
   // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-#if GNSS == GNSS_EXTERNAL
-    if (sys.gpsBeginExt())
-#else
-    if (sys.gpsBegin())
-#endif
-    {
+    if (sys.gpsBeginExt()) {
       state.set(STATE_GPS_READY);
-      Serial.println("GNSS:OK");
-#if ENABLE_OLED
-      oled.println("GNSS OK");
-#endif
+      Serial.println("GNSS:OK(E)");
+    } else if (sys.gpsBegin()) {
+      state.set(STATE_GPS_READY);
+      Serial.println("GNSS:OK(I)");
     } else {
       Serial.println("GNSS:NO");
     }
@@ -1050,7 +1046,7 @@ void standby()
   }
 #endif
 
-#if !GNSS_ALWAYS_ON && (GNSS == GNSS_INTERNAL || GNSS == GNSS_EXTERNAL)
+#if !GNSS_ALWAYS_ON && GNSS == GNSS_STANDALONE
   if (state.check(STATE_GPS_READY)) {
     Serial.println("[GPS] OFF");
     sys.gpsEnd(true);

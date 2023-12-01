@@ -40,12 +40,12 @@
 * Circular Buffer Configuration
 **************************************/
 #ifdef BOARD_HAS_PSRAM
-#define BUFFER_SLOTS 1024 /* max number of buffer */
+#define BUFFER_SLOTS 1024 /* max number of buffer slots */
 #define BUFFER_LENGTH 384 /* bytes per slot */
 #define SERIALIZE_BUFFER_SIZE 4096 /* bytes */
 #define HAS_LARGE_RAM 1
 #else
-#define BUFFER_SLOTS 32 /* max number of buffer */
+#define BUFFER_SLOTS 32 /* max number of buffer slots */
 #define BUFFER_LENGTH 256 /* bytes per slot */
 #define SERIALIZE_BUFFER_SIZE 1024 /* bytes */
 #define HAS_LARGE_RAM 0
@@ -59,9 +59,8 @@
 #define STORAGE_SD 2
 
 #define GNSS_NONE 0
-#define GNSS_INTERNAL 1
-#define GNSS_EXTERNAL 2
-#define GNSS_CELLULAR 3
+#define GNSS_STANDALONE 1
+#define GNSS_CELLULAR 2
 
 #define PROTOCOL_UDP 1
 #define PROTOCOL_HTTP 2
@@ -133,7 +132,7 @@
 // expected maximum server sync signal interval
 #define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
 // data interval settings
-#define STATIONARY_TIME_TABLE {30, 60, 180} /* seconds */
+#define STATIONARY_TIME_TABLE {10, 60, 180} /* seconds */
 #define DATA_INTERVAL_TABLE {1000, 2000, 5000} /* ms */
 #define PING_BACK_INTERVAL 900 /* seconds */
 #define SIGNAL_CHECK_INTERVAL 10 /* seconds */
@@ -150,7 +149,7 @@
 * MEMS sensors
 **************************************/
 #ifndef ENABLE_MEMS
-#define ENABLE_MEMS 1
+#define ENABLE_MEMS 0
 #endif
 
 /**************************************
@@ -158,7 +157,7 @@
 **************************************/
 #ifndef GNSS
 // change the following line to change GNSS setting
-#define GNSS GNSS_INTERNAL
+#define GNSS GNSS_STANDALONE
 #endif
 // keeping GNSS power on during standby 
 #define GNSS_ALWAYS_ON 0
@@ -167,7 +166,7 @@
 * Standby/wakeup
 **************************************/
 // motion threshold for waking up
-#define MOTION_THRESHOLD 0.4f /* moving vehicle motion threshold in G */
+#define MOTION_THRESHOLD 0.4f /* vehicle motion threshold in G */
 // engine jumpstart voltage for waking up (when MEMS unavailable) 
 #define JUMPSTART_VOLTAGE 14 /* V */
 // reset device after waking up
@@ -176,8 +175,6 @@
 /**************************************
 * Additional features
 **************************************/
-#define CONFIG_MODE_TIMEOUT 0
-
 #define PIN_SENSOR1 34
 #define PIN_SENSOR2 26
 

@@ -3,10 +3,9 @@
 <target board="esp32 esp32c3" monitor_baudrate="115200" compiler_opts="-DHAVE_CONFIG">
   <define name="GNSS Mode">
     <option name="Disabled" const="USE_GNSS=0"/>
-    <option name="Internal GNSS" const="USE_GNSS=1"/>
-    <option name="External GNSS" const="USE_GNSS=2" default="true"/>
-    <option name="SIM7600 GNSS" const="USE_GNSS=3"/>
-    <option name="SIM7070 GNSS" const="USE_GNSS=4"/>
+    <option name="Standalone GNSS" const="USE_GNSS=1" default="true"/>
+    <option name="SIM7600 GNSS" const="USE_GNSS=2"/>
+    <option name="SIM7070 GNSS" const="USE_GNSS=3"/>
   </define>
   <define name="Enable OBD-II" type="bool" const="USE_OBD" default="true"/>
   <define name="Enable Motion Sensor" type="bool" const="USE_MEMS" default="true"/>
