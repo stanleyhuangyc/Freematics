@@ -149,7 +149,7 @@
 * MEMS sensors
 **************************************/
 #ifndef ENABLE_MEMS
-#define ENABLE_MEMS 0
+#define ENABLE_MEMS 1
 #endif
 
 /**************************************
