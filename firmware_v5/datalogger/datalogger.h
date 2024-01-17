@@ -67,7 +67,7 @@ public:
         m_dataCount = 0;
         return 0;
     }
-    void write(const char* buf, byte len)
+    virtual void write(const char* buf, byte len)
     {
         if (m_next) m_next->write(buf, len);
         m_file.write((uint8_t*)buf, len);

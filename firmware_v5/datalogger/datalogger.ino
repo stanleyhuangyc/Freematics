@@ -85,7 +85,7 @@ WiFiServer nmeaServer(NMEA_TCP_PORT);
 WiFiClient nmeaClient;
 #endif
 
-class DataOutputter : public FileLogger
+class SerialDataOutput : public FileLogger
 {
     void write(const char* buf, byte len)
     {
@@ -98,7 +98,7 @@ class DataOutputter : public FileLogger
 COBD obd;
 
 #if STORAGE == STORAGE_SD
-SDLogger store(new DataOutputter);
+SDLogger store(new SerialDataOutput);
 #elif STORAGE == STORAGE_SPIFFS
 SPIFFSLogger store(new DataOutputter);
 #else
