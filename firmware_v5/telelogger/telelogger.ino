@@ -74,7 +74,7 @@ uint8_t accCount = 0;
 int deviceTemp = 0;
 
 // config data
-char apn[32] = CELL_APN;
+char apn[32];
 #if ENABLE_WIFI
 char wifiSSID[32] = WIFI_SSID;
 char wifiPassword[32] = WIFI_PASSWORD;
@@ -271,9 +271,24 @@ void processOBD(CBuffer* buffer)
 }
 #endif
 
+bool initGPS()
+{
+  // start GNSS receiver
+  if (sys.gpsBeginExt()) {
+    Serial.println("GNSS:OK(E)");
+  } else if (sys.gpsBegin()) {
+    Serial.println("GNSS:OK(I)");
+  } else {
+    Serial.println("GNSS:NO");
+    return false;
+  }
+  return true;
+}
+
 bool processGPS(CBuffer* buffer)
 {
   static uint32_t lastGPStime = 0;
+  static uint32_t lastGPStick = 0;
   static float lastGPSLat = 0;
   static float lastGPSLng = 0;
 
@@ -296,7 +311,18 @@ bool processGPS(CBuffer* buffer)
 #endif
 
 
-  if (!gd || lastGPStime == gd->time || (gd->lng == 0 && gd->lat == 0)) return false;
+  if (!gd || lastGPStime == gd->time || (gd->lng == 0 && gd->lat == 0)) {
+#if GNSS_RESET_TIMEOUT
+    if (millis() - lastGPStick > GNSS_RESET_TIMEOUT * 1000) {
+      sys.gpsEnd();
+      delay(50);
+      initGPS();
+      lastGPStick = millis();
+    }
+#endif
+    return false;
+  }
+  lastGPStick = millis();
 
   if ((lastGPSLat || lastGPSLng) && (abs(gd->lat - lastGPSLat) > 0.001 || abs(gd->lng - lastGPSLng > 0.001))) {
     // invalid coordinates data
@@ -306,7 +332,7 @@ bool processGPS(CBuffer* buffer)
   }
   lastGPSLat = gd->lat;
   lastGPSLng = gd->lng;
-  
+
   float kph = gd->speed * 1.852f;
   if (kph >= 2) lastMotionTime = millis();
 
@@ -483,16 +509,9 @@ void initialize()
 #endif
 
 #if GNSS == GNSS_STANDALONE
-  // start GPS receiver
   if (!state.check(STATE_GPS_READY)) {
-    if (sys.gpsBeginExt()) {
+    if (initGPS()) {
       state.set(STATE_GPS_READY);
-      Serial.println("GNSS:OK(E)");
-    } else if (sys.gpsBegin()) {
-      state.set(STATE_GPS_READY);
-      Serial.println("GNSS:OK(I)");
-    } else {
-      Serial.println("GNSS:NO");
     }
   }
 #endif
@@ -1152,10 +1171,13 @@ void showSysInfo()
 void loadConfig()
 {
   size_t len;
-  if (!*apn) {
-    len = sizeof(apn);
-    nvs_get_str(nvs, "CELL_APN", apn, &len);
+  len = sizeof(apn);
+  apn[0] = 0;
+  nvs_get_str(nvs, "CELL_APN", apn, &len);
+  if (!apn[0]) {
+    strcpy(apn, CELL_APN);
   }
+
 #if ENABLE_WIFI
   len = sizeof(wifiSSID);
   nvs_get_str(nvs, "WIFI_SSID", wifiSSID, &len);

@@ -161,6 +161,8 @@
 #endif
 // keeping GNSS power on during standby 
 #define GNSS_ALWAYS_ON 0
+// GNSS reset timeout while no signal
+#define GNSS_RESET_TIMEOUT 300 /* seconds */
 
 /**************************************
 * Standby/wakeup
