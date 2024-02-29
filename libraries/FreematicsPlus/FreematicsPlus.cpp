@@ -499,7 +499,7 @@ void FreematicsESP32::gpsEnd(bool powerOff)
 
 bool FreematicsESP32::gpsBeginExt(int baudrate)
 {
-    if (devType <= 13) {
+    if (devType > 0 && devType <= 13) {
 #ifdef ARDUINO_ESP32C3_DEV
         pinGPSRx = 18;
         pinGPSTx = 19;
@@ -526,6 +526,7 @@ bool FreematicsESP32::gpsBeginExt(int baudrate)
             .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
             .rx_flow_ctrl_thresh = 122,
         };
+        
         // configure UART parameters
         uart_param_config(gpsUARTNum, &uart_config);
         // set UART pins
@@ -884,16 +885,6 @@ void FreematicsESP32::resetLink()
 
 bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
 {
-    if (link) return false;
-
-#ifdef PIN_LINK_RESET
-    pinMode(PIN_LINK_RESET, OUTPUT);
-    digitalWrite(PIN_LINK_RESET, HIGH);
-#endif
-
-    pinMode(PIN_BEE_PWR, OUTPUT);
-    digitalWrite(PIN_BEE_PWR, LOW);
-
     // set wifi max power
     esp_wifi_set_max_tx_power(80);
 
@@ -910,6 +901,11 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
 #endif
 
     if (useCoProc) do {
+        if (link) return false;
+#ifdef PIN_LINK_RESET
+        pinMode(PIN_LINK_RESET, OUTPUT);
+        digitalWrite(PIN_LINK_RESET, HIGH);
+#endif
         CLink_UART *linkUART = new CLink_UART;
 #if 0
         linkUART->begin(115200);
@@ -956,14 +952,13 @@ bool FreematicsESP32::begin(bool useCoProc, bool useCellular)
             pinRx = 32;
             pinTx = 33;
         } else if ((devType == 11 && !(m_flags & FLAG_USE_UART_LINK)) || devType == 12 || devType == 0) {
-#ifdef ARDUINO_ESP32C3_DEV
-            pinRx = 18;
-            pinTx = 19;
-#else
-            pinRx = 16;
-            pinTx = 17;
+#ifndef ARDUINO_ESP32C3_DEV
+            //pinRx = 16;
+            //pinTx = 17;
 #endif
         }
+        pinMode(PIN_BEE_PWR, OUTPUT);
+        digitalWrite(PIN_BEE_PWR, LOW);
         xbBegin(XBEE_BAUDRATE, pinRx, pinTx);
         m_flags |= FLAG_USE_CELL;
         if (useCoProc) {
