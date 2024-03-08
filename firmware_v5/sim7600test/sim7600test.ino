@@ -66,7 +66,7 @@ bool init_net()
       Serial.println("N/A");
     }
 
-    int signal = net.getSignal();
+    int signal = net.RSSI();
     if (signal) {
       Serial.print("RSSI:");
       Serial.print(signal);
