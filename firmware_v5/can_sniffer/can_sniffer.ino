@@ -32,7 +32,7 @@ void setup()
   obd.sniff(false);
 
   // start on 11-bit/500Kbps CAN bus
-  while (!obd.init(PROTO_CAN_11B_500K));
+  while (!obd.init(PROTO_ISO15765_11B_500K));
   
   // we are interested in CAN messages with header 7E*
   obd.setHeaderFilter(0x7E0);
