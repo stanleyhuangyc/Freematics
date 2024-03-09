@@ -85,8 +85,8 @@
 #ifndef ENABLE_WIFI
 #define ENABLE_WIFI 1
 // WiFi settings
-#define WIFI_SSID "-"
-#define WIFI_PASSWORD "PASSWORD"
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
 #endif 
 
 #ifndef SERVER_HOST
