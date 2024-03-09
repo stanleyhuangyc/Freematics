@@ -104,7 +104,7 @@ const char* contentTypeTable[]={
 	"application/json",
 };
 
-char* defaultPages[]={"index.htm","index.html","default.htm","main.xul"};
+char* defaultPages[]={"index.html"};
 
 ////////////////////////////////////////////////////////////////////////////
 // API callsc
