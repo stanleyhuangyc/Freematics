@@ -83,9 +83,9 @@
 * Networking configurations
 **************************************/
 #ifndef ENABLE_WIFI
-#define ENABLE_WIFI 0
+#define ENABLE_WIFI 1
 // WiFi settings
-#define WIFI_SSID "FREEMATICS"
+#define WIFI_SSID "-"
 #define WIFI_PASSWORD "PASSWORD"
 #endif 
 
@@ -189,7 +189,7 @@
 
 // enable(1)/disable(0) BLE SPP server (for Freematics Controller App).
 #ifndef ENABLE_BLE
-#define ENABLE_BLE 0
+#define ENABLE_BLE 1
 #endif
 
 

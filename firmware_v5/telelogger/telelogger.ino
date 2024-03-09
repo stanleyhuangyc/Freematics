@@ -880,9 +880,11 @@ void telemetry(void* inst)
       if (state.check(STATE_STANDBY)) {
         // start ping
 #if ENABLE_WIFI
-        Serial.print("[WIFI] Joining SSID:");
-        Serial.println(wifiSSID);
-        teleClient.wifi.begin(wifiSSID, wifiPassword);
+        if (wifiSSID[0]) { 
+          Serial.print("[WIFI] Joining SSID:");
+          Serial.println(wifiSSID);
+          teleClient.wifi.begin(wifiSSID, wifiPassword);
+        }
         if (teleClient.wifi.setup()) {
           Serial.println("[WIFI] Ping...");
           teleClient.ping();
@@ -902,37 +904,38 @@ void telemetry(void* inst)
     }
 
 #if ENABLE_WIFI
-    if (!state.check(STATE_WIFI_CONNECTED)) {
+    if (wifiSSID[0] && !state.check(STATE_WIFI_CONNECTED)) {
       Serial.print("[WIFI] Joining SSID:");
       Serial.println(wifiSSID);
       teleClient.wifi.begin(wifiSSID, wifiPassword);
       teleClient.wifi.setup();
-      initCell(true);
     }
 #endif
 
     while (state.check(STATE_WORKING)) {
 #if ENABLE_WIFI
-      if (!state.check(STATE_WIFI_CONNECTED) && teleClient.wifi.connected()) {
-        ip = teleClient.wifi.getIP();
-        if (ip.length()) {
-          Serial.print("[WIFI] IP:");
-          Serial.println(ip);
-        }
-        connErrors = 0;
-        if (teleClient.connect()) {
-          state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
-          beep(50);
-          // switch off cellular module when wifi connected
-          if (state.check(STATE_CELL_CONNECTED)) {
-            teleClient.cell.end();
-            state.clear(STATE_CELL_CONNECTED);
-            Serial.println("[CELL] Deactivated");
+      if (wifiSSID[0]) {
+        if (!state.check(STATE_WIFI_CONNECTED) && teleClient.wifi.connected()) {
+          ip = teleClient.wifi.getIP();
+          if (ip.length()) {
+            Serial.print("[WIFI] IP:");
+            Serial.println(ip);
           }
+          connErrors = 0;
+          if (teleClient.connect()) {
+            state.set(STATE_WIFI_CONNECTED | STATE_NET_READY);
+            beep(50);
+            // switch off cellular module when wifi connected
+            if (state.check(STATE_CELL_CONNECTED)) {
+              teleClient.cell.end();
+              state.clear(STATE_CELL_CONNECTED);
+              Serial.println("[CELL] Deactivated");
+            }
+          }
+        } else if (state.check(STATE_WIFI_CONNECTED) && !teleClient.wifi.connected()) {
+          Serial.println("[WIFI] Disconnected");
+          state.clear(STATE_WIFI_CONNECTED);
         }
-      } else if (state.check(STATE_WIFI_CONNECTED) && !teleClient.wifi.connected()) {
-        Serial.println("[WIFI] Disconnected");
-        state.clear(STATE_WIFI_CONNECTED);
       }
 #endif
       if (!state.check(STATE_WIFI_CONNECTED) && !state.check(STATE_CELL_CONNECTED)) {
@@ -966,7 +969,7 @@ void telemetry(void* inst)
         lastRssiTime = millis();
 
 #if ENABLE_WIFI
-        if (!state.check(STATE_WIFI_CONNECTED)) {
+        if (wifiSSID[0] && !state.check(STATE_WIFI_CONNECTED)) {
           teleClient.wifi.begin(wifiSSID, wifiPassword);
         }
 #endif
@@ -1230,7 +1233,7 @@ void processBLE(int timeout)
   } else if (!strcmp(cmd, "NET_OP")) {
     if (state.check(STATE_WIFI_CONNECTED)) {
 #if ENABLE_WIFI
-      n += snprintf(buf + n, bufsize - n, "%s", wifiSSID);
+      n += snprintf(buf + n, bufsize - n, "%s", wifiSSID[0] ? wifiSSID : "-");
 #endif
     } else {
       snprintf(buf + n, bufsize - n, "%s", netop.length() ? netop.c_str() : "-");
@@ -1250,14 +1253,16 @@ void processBLE(int timeout)
     n += snprintf(buf + n, bufsize - n, "%d", rssi);
 #if ENABLE_WIFI
   } else if (!strcmp(cmd, "SSID?")) {
-    n += snprintf(buf + n, bufsize - n, "%s", wifiSSID);
+    n += snprintf(buf + n, bufsize - n, "%s", wifiSSID[0] ? wifiSSID : "-");
   } else if (!strncmp(cmd, "SSID=", 5)) {
-    n += snprintf(buf + n, bufsize - n, nvs_set_str(nvs, "WIFI_SSID", cmd + 5) == ESP_OK ? "OK" : "ERR");
+    const char* p = cmd + 5;
+    n += snprintf(buf + n, bufsize - n, nvs_set_str(nvs, "WIFI_SSID", strcmp(p, "-") ? p : "") == ESP_OK ? "OK" : "ERR");
     loadConfig();
   } else if (!strcmp(cmd, "WPWD?")) {
-    n += snprintf(buf + n, bufsize - n, "%s", wifiPassword);
+    n += snprintf(buf + n, bufsize - n, "%s", wifiPassword[0] ? wifiPassword : "-");
   } else if (!strncmp(cmd, "WPWD=", 5)) {
-    n += snprintf(buf + n, bufsize - n, nvs_set_str(nvs, "WIFI_PWD", cmd + 5) == ESP_OK ? "OK" : "ERR");
+    const char* p = cmd + 5;
+    n += snprintf(buf + n, bufsize - n, nvs_set_str(nvs, "WIFI_PWD", strcmp(p, "-") ? p : "") == ESP_OK ? "OK" : "ERR");
     loadConfig();
 #else
   } else if (!strcmp(cmd, "SSID?") || !strcmp(cmd, "WPWD?")) {
