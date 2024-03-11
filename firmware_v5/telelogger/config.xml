@@ -29,6 +29,6 @@
     <option name="HTTP" const="SERVER_PROTOCOL=PROTOCOL_HTTP"/>
     <option name="HTTPS" const="SERVER_PROTOCOL=PROTOCOL_HTTPS"/>
   </define>
-  <define name="Enable PSRAM" type="bool" const="CONFIG_BOARD_HAS_PSRAM"/>
+  <define name="Enable PSRAM" type="bool" const="BOARD_HAS_PSRAM"/>
 </target>
 </config>

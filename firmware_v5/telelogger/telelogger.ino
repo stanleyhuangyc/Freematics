@@ -852,7 +852,7 @@ void telemetry(void* inst)
   uint8_t connErrors = 0;
   CStorageRAM store;
   store.init(
-#if HAS_LARGE_RAM
+#if BOARD_HAS_PSRAM
     (char*)heap_caps_malloc(SERIALIZE_BUFFER_SIZE, MALLOC_CAP_SPIRAM),
 #else
     (char*)malloc(SERIALIZE_BUFFER_SIZE),
@@ -1142,9 +1142,11 @@ void showSysInfo()
   Serial.print(ESP.getHeapSize() >> 10);
   Serial.print("KB");
 #if BOARD_HAS_PSRAM
-  Serial.print(" PSRAM:");
-  Serial.print(esp_spiram_get_size() >> 20);
-  Serial.print("MB");
+  if (psramInit()) {
+    Serial.print(" PSRAM:");
+    Serial.print(esp_spiram_get_size() >> 20);
+    Serial.print("MB");
+  }
 #endif
   Serial.println();
 

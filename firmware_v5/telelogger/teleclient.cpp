@@ -101,7 +101,7 @@ void CBufferManager::init()
   total = BUFFER_SLOTS;
   for (int n = 0; n < BUFFER_SLOTS; n++) {
     void* mem;
-#if HAS_LARGE_RAM
+#if BOARD_HAS_PSRAM
     mem = heap_caps_malloc(BUFFER_LENGTH, MALLOC_CAP_SPIRAM);
 #else
     mem = malloc(BUFFER_LENGTH);
