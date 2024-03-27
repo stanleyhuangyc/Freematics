@@ -324,7 +324,7 @@ bool processGPS(CBuffer* buffer)
   }
   lastGPStick = millis();
 
-  if ((lastGPSLat || lastGPSLng) && (abs(gd->lat - lastGPSLat) > 0.001 || abs(gd->lng - lastGPSLng > 0.001))) {
+  if ((lastGPSLat || lastGPSLng) && (abs(gd->lat - lastGPSLat) > 0.001 || abs(gd->lng - lastGPSLng) > 0.001)) {
     // invalid coordinates data
     lastGPSLat = 0;
     lastGPSLng = 0;
