@@ -404,13 +404,12 @@ bool COBD::init(OBD_PROTOCOLS protocol, bool quick)
 		if (!link->receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
 			break;
 		}
-		memset(pidmap + i * 4, 0, 4);
 		for (char *p = buffer; (p = strstr(p, "41 ")); ) {
 			p += 3;
 			if (hex2uint8(p) == pid) {
 				p += 2;
 				for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
-					pidmap[i * 4 + n] |= hex2uint8(p + n * 3 + 1);
+					pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 				}
 				success = true;
 			}
