@@ -404,6 +404,7 @@ bool COBD::init(OBD_PROTOCOLS protocol, bool quick)
 		if (!link->receive(buffer, sizeof(buffer), OBD_TIMEOUT_LONG) || checkErrorMessage(buffer)) {
 			break;
 		}
+		memset(pidmap + i * 4, 0, 4);
 		for (char *p = buffer; (p = strstr(p, "41 ")); ) {
 			p += 3;
 			if (hex2uint8(p) == pid) {
