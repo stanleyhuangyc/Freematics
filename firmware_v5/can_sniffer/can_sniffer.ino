@@ -37,12 +37,13 @@ void setup()
   
   // send a CAN message (clearing DTC)
   Serial.println("Sending a CAN message...");
-  obd.setHeaderID(0x7E0);
+  obd.setCANID(0x7E0);
   obd.setHeaderMask(0xFFFFFF);
   obd.setHeaderFilter(0x7E8);
   byte msg[] = {0x14, 0xFF, 0x00};
   char buf[128];
   if (obd.sendCANMessage(msg, sizeof(msg), buf, sizeof(buf))) {
+    // print the ECU response to the message
     Serial.println(buf);
   }
 
