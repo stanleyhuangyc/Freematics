@@ -533,3 +533,25 @@ int COBD::receiveData(byte* buf, int len)
 	}
 	return bytes;
 }
+
+void COBD::setCANID(uint16_t id)
+{
+	if (link) {
+		char buf[32];
+		sprintf(buf, "ATSH %X\r", id);
+		link->sendCommand(buf, buf, sizeof(buf), 1000);
+	}
+}
+
+int COBD::sendCANMessage(byte msg[], int len, char* buf, int bufsize)
+{
+	if (!link) return 0;
+	char cmd[258];
+	if (len * 2 >= sizeof(cmd) - 1) len = sizeof(cmd) / 2 - 2; 
+	for (int n = 0; n < len; n++) {
+		sprintf(cmd + n * 2, "%02X", msg[n]); 
+	}
+	cmd[len * 2] = '\r';
+	cmd[len * 2 + 1] = 0;
+	return link->sendCommand(cmd, buf, bufsize, 100);
+}

@@ -22,6 +22,7 @@ void setup()
 {
   // USB serial
   Serial.begin(115200);
+  Serial.println("CAN Sniffing Demo");
 
   // initialize co-processor link
   while (!sys.begin());
@@ -32,8 +33,19 @@ void setup()
   obd.sniff(false);
 
   // start on 11-bit/500Kbps CAN bus
-  while (!obd.init(PROTO_ISO15765_11B_500K));
+  while (!obd.init(PROTO_ISO15765_11B_500K)) Serial.print('.');
   
+  // send a CAN message (clearing DTC)
+  Serial.println("Sending a CAN message...");
+  obd.setHeaderID(0x7E0);
+  obd.setHeaderMask(0xFFFFFF);
+  obd.setHeaderFilter(0x7E8);
+  byte msg[] = {0x14, 0xFF, 0x00};
+  char buf[128];
+  if (obd.sendCANMessage(msg, sizeof(msg), buf, sizeof(buf))) {
+    Serial.println(buf);
+  }
+
   // we are interested in CAN messages with header 7E*
   obd.setHeaderFilter(0x7E0);
   obd.setHeaderMask(0xFFFFFFF0);
@@ -45,9 +57,9 @@ void setup()
 
 void loop()
 {
-  byte buf[128];
+  byte data[128];
   // load one received CAN message into buffer
-  int bytes = obd.receiveData(buf, sizeof(buf));
+  int bytes = obd.receiveData(data, sizeof(data));
   if (bytes > 0) {
     // print timestamp
     Serial.print('[');
@@ -55,7 +67,7 @@ void loop()
     Serial.print("] ");
     // print received CAN message
     for (int n = 0; n < bytes; n++) {
-      byte d = buf[n];
+      byte d = data[n];
       if (d < 0x10) Serial.print('0');
       Serial.print(d, HEX);
       Serial.print(' ');

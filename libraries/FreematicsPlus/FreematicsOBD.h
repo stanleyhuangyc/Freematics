@@ -59,6 +59,10 @@ public:
 	void setHeaderMask(uint32_t bitmask);
 	// receive sniffed data
 	int receiveData(byte* buf, int len);
+	// set CAN ID for sending message
+	void setCANID(uint16_t id);
+	// send CAN message
+	int sendCANMessage(byte msg[], int len, char* buf, int bufsize);
 	// set current PID mode
 	byte dataMode = 1;
 	// occurrence of errors
