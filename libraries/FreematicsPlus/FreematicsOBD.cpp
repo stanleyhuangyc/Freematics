@@ -272,8 +272,13 @@ char* COBD::getResponse(byte& pid, char* buffer, byte bufsize)
 void COBD::enterLowPowerMode()
 {
   	char buf[32];
-	if (link) link->sendCommand("ATLP\r", buf, sizeof(buf), 1000);
+	if (link) {
+		reset();
+		delay(1000);	
+		link->sendCommand("ATLP\r", buf, sizeof(buf), 1000);
+	}
 }
+
 
 void COBD::leaveLowPowerMode()
 {
