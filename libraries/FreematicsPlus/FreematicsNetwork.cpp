@@ -855,7 +855,7 @@ bool CellHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const 
 char* CellHTTP::receive(int* pbytes, unsigned int timeout)
 {
   if (m_type == CELL_SIM7070) {
-    if (!sendCommand(0, timeout, "+SHREAD:")) {
+    if (!strstr(m_buffer, "+SHREAD:") && !sendCommand(0, timeout, "+SHREAD:")) {
       return 0;
     }
     m_state = HTTP_CONNECTED;
@@ -879,7 +879,7 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
     bool keepalive;
 
     // wait for RECV EVENT
-    if (!sendCommand(0, timeout, "RECV EVENT")) {
+    if (!strstr(m_buffer, "RECV EVENT") && !sendCommand(0, timeout, "RECV EVENT")) {
       checkGPS();
       return 0;
     }
@@ -914,6 +914,8 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
           }
         }
       }
+    } else {
+      Serial.println("NO DATA");
     }
     if (received == 0) {
       m_state = HTTP_ERROR;
