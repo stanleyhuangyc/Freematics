@@ -1094,8 +1094,6 @@ bool HTTPClientSIM7600::open(const char* host, uint16_t port)
 {
   if (!host) {
     close();
-    sendCommand("AT+CHTTPSSTOP\r");
-    sendCommand("AT+CHTTPSSTART\r");
     return true;
   }
 
