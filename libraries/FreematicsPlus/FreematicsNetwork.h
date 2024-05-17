@@ -123,6 +123,7 @@ public:
     char IMEI[16] = {0};
 protected:
     bool sendCommand(const char* cmd, unsigned int timeout = 1000, const char* expected = 0);
+    virtual void inbound();
     virtual void checkGPS();
     float parseDegree(const char* s);
     char* m_buffer = 0;
@@ -130,6 +131,7 @@ protected:
     CFreematics* m_device = 0;
     GPS_DATA* m_gps = 0;
     CELL_TYPE m_type = CELL_SIM7600;
+    int m_incoming = 0;
 };
 
 class CellUDP : public CellSIMCOM
@@ -140,7 +142,6 @@ public:
     bool send(const char* data, unsigned int len);
     char* receive(int* pbytes = 0, unsigned int timeout = 5000);
 protected:
-    char* checkIncoming(int* pbytes);
     String udpIP;
     uint16_t udpPort = 0;
 };

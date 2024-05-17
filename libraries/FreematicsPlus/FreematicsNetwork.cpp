@@ -548,6 +548,7 @@ bool CellSIMCOM::sendCommand(const char* cmd, unsigned int timeout, const char* 
   m_buffer[0] = 0;
   const char* answers[] = {"\r\nOK", "\r\nERROR"};
   byte ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, timeout, expected ? &expected : answers, expected ? 1 : 2);
+  inbound();
   return ret == 1;
 }
 
@@ -599,9 +600,18 @@ void CellSIMCOM::checkGPS()
       m_gps->heading = atoi(++p);
       m_gps->ts = millis();
     } while (0);
+  }
+}
+
+void CellSIMCOM::inbound()
+{
+  if (m_type == CELL_SIM7070) {
+    if (strstr(m_buffer, "+CADATAIND: 0") || strstr(m_buffer, "+SHREAD:")) {
+      m_incoming = 1;
+    }
   } else {
     char *p;
-    if ((p = strstr(m_buffer, "+CGPSINFO:"))) do {
+    if (m_gps && (p = strstr(m_buffer, "+CGPSINFO:"))) do {
       if (!(p = strchr(p, ':'))) break;
       if (*(++p) == ',') break;
       m_gps->lat = parseDegree(p);
@@ -623,6 +633,11 @@ void CellSIMCOM::checkGPS()
       m_gps->heading = atoi(++p);
       m_gps->ts = millis();
     } while (0);
+
+    if (strstr(m_buffer, "+IPD") || strstr(m_buffer, "RECV EVENT")) {
+      Serial.println("[CELL] Incoming data");
+      m_incoming = 1;
+    }
   }
 }
 
@@ -693,9 +708,9 @@ bool CellUDP::send(const char* data, unsigned int len)
 char* CellUDP::receive(int* pbytes, unsigned int timeout)
 {
   if (m_type == CELL_SIM7070) {
-    if (!strstr(m_buffer, "+CADATAIND: 0")) {
-      if (!sendCommand(0, timeout, "+CADATAIND: 0")) return 0;
-    }
+    if (!m_incoming && timeout) sendCommand(0, timeout, "+CADATAIND: 0");
+    if (!m_incoming) return 0;
+    m_incoming = 0;
     if (sendCommand("AT+CARECV=0,384\r", timeout)) {
       char *p = strstr(m_buffer, "+CARECV: ");
       if (p) {
@@ -705,30 +720,23 @@ char* CellUDP::receive(int* pbytes, unsigned int timeout)
       }
     }
   } else {
-    char *data = checkIncoming(pbytes);
-    if (data) return data;
-    if (sendCommand(0, timeout, "+IPD")) {
-      return checkIncoming(pbytes);
+    if (!m_incoming && timeout) sendCommand(0, timeout, "+IPD");
+    if (m_incoming) {
+      m_incoming = 0;
+      char *p = strstr(m_buffer, "+IPD");
+      if (p) {
+        *p = '-'; // mark this datagram as checked
+        int len = atoi(p + 4);
+        if (pbytes) *pbytes = len;
+        p = strchr(p, '\n');
+        if (p) {
+          if (strlen(++p) > len) *(p + len) = 0;
+          return p;
+        }
+      }
     }
   }  
   return 0;
-}
-
-char* CellUDP::checkIncoming(int* pbytes)
-{
-  checkGPS();
-  char *p = strstr(m_buffer, "+IPD");
-	if (p) {
-    *p = '-'; // mark this datagram as checked
-    int len = atoi(p + 4);
-    if (pbytes) *pbytes = len;
-    p = strchr(p, '\n');
-    if (p) {
-      if (strlen(++p) > len) *(p + len) = 0;
-      return p;
-    }
-  }
-	return 0;
 }
 
 void CellHTTP::init()
@@ -781,11 +789,9 @@ bool CellHTTP::open(const char* host, uint16_t port)
       if (sendCommand(0, HTTP_CONN_TIMEOUT, "+CHTTPSOPSE:")) {
         m_state = HTTP_CONNECTED;
         m_host = host;
-        checkGPS();
         return true;
       }
     }
-    checkGPS();
   }
   Serial.println(m_buffer);
   m_state = HTTP_ERROR;
@@ -857,9 +863,10 @@ bool CellHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const 
 char* CellHTTP::receive(int* pbytes, unsigned int timeout)
 {
   if (m_type == CELL_SIM7070) {
-    if (!strstr(m_buffer, "+SHREAD:") && !sendCommand(0, timeout, "+SHREAD:")) {
-      return 0;
-    }
+    if (!m_incoming && timeout) sendCommand(0, timeout, "+SHREAD:");
+    if (!m_incoming) return 0;
+
+    m_incoming = 0;
     m_state = HTTP_CONNECTED;
 
     char *p = strstr(m_buffer, "+SHREAD:");
@@ -878,27 +885,22 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
     char* payload = 0;
     bool keepalive;
 
-    // wait for RECV EVENT
-    if (!strstr(m_buffer, "RECV EVENT")) {
-      sendCommand(0, timeout, "RECV EVENT");
-      checkGPS();
-    }
+    if (!m_incoming && timeout) sendCommand(0, timeout, "RECV EVENT");
+    if (!m_incoming) return 0;
+    m_incoming = 0;
+
+    // to be compatible with SIM5360 
     bool legacy = false;
     char *p = strstr(m_buffer, "RECV EVENT");
-    if (p) {
-      if (*(p - 1) == ' ')
-        legacy = true;
-      else if (*(p - 1) != ':')
-        return 0;
-    }
+    if (p && *(p - 1) == ' ') legacy = true;
 
     /*
       +CHTTPSRECV:XX\r\n
-      [XX bytes from server]\r\n
-      +CHTTPSRECV: 0\r\n
+      [payload]\r\n
+      +CHTTPSRECV:0\r\n
     */
     // TODO: implement for multiple chunks of data
-    // only deals with first chunk now
+    // only process first chunk now
     sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", RECV_BUF_SIZE - 36);
     if (sendCommand(m_buffer, timeout, legacy ? "\r\n+CHTTPSRECV: 0" : "\r\n+CHTTPSRECV:0")) {
       char *p = strstr(m_buffer, "\r\n+CHTTPSRECV: DATA");
@@ -912,8 +914,6 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
           }
         }
       }
-    } else {
-      Serial.println("NO DATA");
     }
     if (received == 0) {
       m_state = HTTP_ERROR;
