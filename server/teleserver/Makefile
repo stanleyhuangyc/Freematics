@@ -1,10 +1,12 @@
+# Can track MAX 16 devices simultaneously
+MAX_CHANNELS ?= 16
 CC=gcc
 CFLAGS=-O3 -Wunused-result
 HEADERS = httpint.h httpapi.h
 TARGET = teleserver
 OBJS += teleserver.o udpserver.o teletrips.o telebroker.o data2kml.o processpil.o httpd/httppil.o httpd/httpd.o cJSON/cJSON.o cJSON/cJSON_Utils.o libb64/cdecode.o libb64/cencode.o jsonconfig.o
 
-CFLAGS+=-DMAX_CHANNELS=16
+CFLAGS+=-DMAX_CHANNELS=$(MAX_CHANNELS)
 CFLAGS+=-Ihttpd -Ilibb64 -IcJSON
 LDFLAGS = -lm
 
