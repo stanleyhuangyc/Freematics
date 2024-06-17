@@ -875,6 +875,7 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
       if (pbytes) *pbytes = bytes;
       p = strchr(p, '\n');
       if (p++) {
+        *(p + bytes) = 0;
         return p;
       }
     }
