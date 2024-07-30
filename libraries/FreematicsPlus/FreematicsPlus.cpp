@@ -276,7 +276,8 @@ int CLink_UART::receive(char* buffer, int bufsize, unsigned int timeout)
 		if (len == 0) continue;
 		buffer[n + len] = 0;
 		if (strstr(buffer + n, "\r>")) {
-			n += len;
+			n = n + len - 1;
+			buffer[n] = 0;
 			break;
 		}
 		n += len;

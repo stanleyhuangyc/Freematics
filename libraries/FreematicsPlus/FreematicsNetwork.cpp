@@ -548,6 +548,7 @@ bool CellSIMCOM::sendCommand(const char* cmd, unsigned int timeout, const char* 
   m_buffer[0] = 0;
   const char* answers[] = {"\r\nOK", "\r\nERROR"};
   byte ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, timeout, expected ? &expected : answers, expected ? 1 : 2);
+  inbound();
   return ret == 1;
 }
 
@@ -570,10 +571,11 @@ float CellSIMCOM::parseDegree(const char* s)
 
 void CellSIMCOM::checkGPS()
 {
+  if (!m_gps) return;
   // check and parse GPS data
-  char *p;
   if (m_type == CELL_SIM7070) {
-    if (m_gps && sendCommand("AT+CGNSINF\r", 100, "+CGNSINF:")) do {
+    if (sendCommand("AT+CGNSINF\r", 100, "+CGNSINF:")) do {
+      char *p;
       if (!(p = strchr(m_buffer, ':'))) break;
       p += 2;
       if (strncmp(p, "1,1,", 4)) break;
@@ -598,7 +600,17 @@ void CellSIMCOM::checkGPS()
       m_gps->heading = atoi(++p);
       m_gps->ts = millis();
     } while (0);
+  }
+}
+
+void CellSIMCOM::inbound()
+{
+  if (m_type == CELL_SIM7070) {
+    if (strstr(m_buffer, "+CADATAIND: 0") || strstr(m_buffer, "+SHREAD:")) {
+      m_incoming = 1;
+    }
   } else {
+    char *p;
     if (m_gps && (p = strstr(m_buffer, "+CGPSINFO:"))) do {
       if (!(p = strchr(p, ':'))) break;
       if (*(++p) == ',') break;
@@ -621,6 +633,11 @@ void CellSIMCOM::checkGPS()
       m_gps->heading = atoi(++p);
       m_gps->ts = millis();
     } while (0);
+
+    if (strstr(m_buffer, "+IPD") || strstr(m_buffer, "RECV EVENT")) {
+      Serial.println("[CELL] Incoming data");
+      m_incoming = 1;
+    }
   }
 }
 
@@ -691,9 +708,9 @@ bool CellUDP::send(const char* data, unsigned int len)
 char* CellUDP::receive(int* pbytes, unsigned int timeout)
 {
   if (m_type == CELL_SIM7070) {
-    if (!strstr(m_buffer, "+CADATAIND: 0")) {
-      if (!sendCommand(0, timeout, "+CADATAIND: 0")) return 0;
-    }
+    if (!m_incoming && timeout) sendCommand(0, timeout, "+CADATAIND: 0");
+    if (!m_incoming) return 0;
+    m_incoming = 0;
     if (sendCommand("AT+CARECV=0,384\r", timeout)) {
       char *p = strstr(m_buffer, "+CARECV: ");
       if (p) {
@@ -703,30 +720,23 @@ char* CellUDP::receive(int* pbytes, unsigned int timeout)
       }
     }
   } else {
-    char *data = checkIncoming(pbytes);
-    if (data) return data;
-    if (sendCommand(0, timeout, "+IPD")) {
-      return checkIncoming(pbytes);
+    if (!m_incoming && timeout) sendCommand(0, timeout, "+IPD");
+    if (m_incoming) {
+      m_incoming = 0;
+      char *p = strstr(m_buffer, "+IPD");
+      if (p) {
+        *p = '-'; // mark this datagram as checked
+        int len = atoi(p + 4);
+        if (pbytes) *pbytes = len;
+        p = strchr(p, '\n');
+        if (p) {
+          if (strlen(++p) > len) *(p + len) = 0;
+          return p;
+        }
+      }
     }
   }  
   return 0;
-}
-
-char* CellUDP::checkIncoming(int* pbytes)
-{
-  checkGPS();
-  char *p = strstr(m_buffer, "+IPD");
-	if (p) {
-    *p = '-'; // mark this datagram as checked
-    int len = atoi(p + 4);
-    if (pbytes) *pbytes = len;
-    p = strchr(p, '\n');
-    if (p) {
-      if (strlen(++p) > len) *(p + len) = 0;
-      return p;
-    }
-  }
-	return 0;
 }
 
 void CellHTTP::init()
@@ -779,11 +789,9 @@ bool CellHTTP::open(const char* host, uint16_t port)
       if (sendCommand(0, HTTP_CONN_TIMEOUT, "+CHTTPSOPSE:")) {
         m_state = HTTP_CONNECTED;
         m_host = host;
-        checkGPS();
         return true;
       }
     }
-    checkGPS();
   }
   Serial.println(m_buffer);
   m_state = HTTP_ERROR;
@@ -855,9 +863,10 @@ bool CellHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const 
 char* CellHTTP::receive(int* pbytes, unsigned int timeout)
 {
   if (m_type == CELL_SIM7070) {
-    if (!sendCommand(0, timeout, "+SHREAD:")) {
-      return 0;
-    }
+    if (!m_incoming && timeout) sendCommand(0, timeout, "+SHREAD:");
+    if (!m_incoming) return 0;
+
+    m_incoming = 0;
     m_state = HTTP_CONNECTED;
 
     char *p = strstr(m_buffer, "+SHREAD:");
@@ -866,11 +875,10 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
       if (pbytes) *pbytes = bytes;
       p = strchr(p, '\n');
       if (p++) {
-        checkGPS();
+        *(p + bytes) = 0;
         return p;
       }
     }
-    checkGPS();
     return 0;
   } else {
     // start receiving
@@ -878,29 +886,22 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
     char* payload = 0;
     bool keepalive;
 
-    // wait for RECV EVENT
-    if (!sendCommand(0, timeout, "RECV EVENT")) {
-      checkGPS();
-      return 0;
-    }
+    if (!m_incoming && timeout) sendCommand(0, timeout, "RECV EVENT");
+    if (!m_incoming) return 0;
+    m_incoming = 0;
+
+    // to be compatible with SIM5360 
     bool legacy = false;
     char *p = strstr(m_buffer, "RECV EVENT");
-    if (p) {
-      if (*(p - 1) == ' ')
-        legacy = true;
-      else if (*(p - 1) != ':')
-        return 0;
-    }
-    
-    checkGPS();
+    if (p && *(p - 1) == ' ') legacy = true;
 
     /*
       +CHTTPSRECV:XX\r\n
-      [XX bytes from server]\r\n
-      +CHTTPSRECV: 0\r\n
+      [payload]\r\n
+      +CHTTPSRECV:0\r\n
     */
     // TODO: implement for multiple chunks of data
-    // only deals with first chunk now
+    // only process first chunk now
     sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", RECV_BUF_SIZE - 36);
     if (sendCommand(m_buffer, timeout, legacy ? "\r\n+CHTTPSRECV: 0" : "\r\n+CHTTPSRECV:0")) {
       char *p = strstr(m_buffer, "\r\n+CHTTPSRECV: DATA");
@@ -932,599 +933,4 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
     if (pbytes) *pbytes = received;
     return payload;
   }
-}
-
-/*************************************************************************************************
-  SIM7600
-*************************************************************************************************/
-
-void ClientSIM7600::end()
-{
-  setGPS(false);
-  sendCommand("AT+CPOF\r");
-  delay(1000);
-}
-
-bool ClientSIM7600::setup(const char* apn, unsigned int timeout)
-{
-  uint32_t t = millis();
-  bool success = false;
-  //sendCommand("AT+CNMP=13\r"); // GSM only
-  //sendCommand("AT+CNMP=14\r"); // WCDMA only
-  //sendCommand("AT+CNMP=38\r"); // LTE only
-  do {
-    do {
-      m_device->xbWrite("AT+CPSI?\r");
-      m_buffer[0] = 0;
-      const char* answers[] = {"NO SERVICE", ",Online", ",Offline", ",Low Power Mode"};
-      int ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, 500, answers, 4);
-      if (ret == 2) {
-        success = true;
-        break;
-      }
-      if (ret == -1 || ret == 4) break;
-      delay(500);
-    } while (millis() - t < timeout);
-    if (!success) break;
-
-    do {
-      delay(100);
-      if (sendCommand("AT+CREG?\r", 1000, "+CREG: 0,")) {
-        char *p = strstr(m_buffer, "+CREG: 0,");
-        success = (p && (*(p + 9) == '1' || *(p + 9) == '5'));
-      }
-    } while (!success && millis() - t < timeout);
-    if (!success) break;
-
-    success = false;
-    do {
-      delay(100);
-      if (sendCommand("AT+CGREG?\r",1000, "+CGREG: 0,")) {
-        char *p = strstr(m_buffer, "+CGREG: 0,");
-        success = (p && (*(p + 10) == '1' || *(p + 10) == '5'));
-      }
-    } while (!success && millis() - t < timeout);
-    if (!success) break;
-
-    if (apn && *apn) {
-      sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
-      sendCommand(m_buffer);
-    }
-    if (!success) break;
-
-    //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
-
-    sendCommand("AT+CSOCKSETPN=1\r");
-    sendCommand("AT+CIPMODE=0\r");
-    sendCommand("AT+NETOPEN\r");
-  } while(0);
-  return success;
-}
-
-bool ClientSIM7600::setGPS(bool on)
-{
-  if (on) {
-    sendCommand("AT+CVAUXV=61\r");
-    sendCommand("AT+CVAUXS=1\r");
-    for (byte n = 0; n < 3; n++) {
-      if ((sendCommand("AT+CGPS=1,1\r") && sendCommand("AT+CGPSINFO=1\r")) || sendCommand("AT+CGPS?\r", 100, "+CGPS: 1")) {
-        if (!m_gps) {
-          m_gps = new GPS_DATA;
-          memset(m_gps, 0, sizeof(GPS_DATA));
-        }
-        return true;
-      }
-      sendCommand("AT+CGPS=0\r", 100);
-    }
-  } else if (m_gps) {
-    //sendCommand("AT+CVAUXS=0\r", 100);
-    sendCommand("AT+CGPS=0\r", 100);
-    delete m_gps;
-    m_gps = 0;
-    return true;
-  }
-  return false;
-}
-
-bool UDPClientSIM7600::open(const char* host, uint16_t port)
-{
-  if (host) {
-    udpIP = queryIP(host);
-    if (!udpIP.length()) {
-      udpIP = host;
-    }
-    udpPort = port;
-  }
-  if (!udpIP.length()) return false;
-  sprintf(m_buffer, "AT+CIPOPEN=0,\"UDP\",\"%s\",%u,8000\r", udpIP.c_str(), udpPort);
-  if (!sendCommand(m_buffer, 3000)) {
-    close();
-    Serial.println(m_buffer);
-    return false;
-  }
-  return true;
-}
-
-bool UDPClientSIM7600::close()
-{
-  return sendCommand("AT+CIPCLOSE=0\r");
-}
-
-bool UDPClientSIM7600::send(const char* data, unsigned int len)
-{
-  int n = sprintf(m_buffer, "AT+CIPSEND=0,%u,\"%s\",%u\r", len, udpIP.c_str(), udpPort);
-  m_device->xbWrite(m_buffer, n);
-  delay(10);
-  m_device->xbWrite(data, len);
-
-  const char* answers[] = {"\r\nERROR", "OK\r\n\r\n+CIPSEND:", "\r\nRECV FROM:"};
-  byte ret = m_device->xbReceive(m_buffer, RECV_BUF_SIZE, 1000, answers, 3);
-  if (ret > 1) return true;
-  return false;
-}
-
-char* UDPClientSIM7600::receive(int* pbytes, unsigned int timeout)
-{
-	char *data = checkIncoming(pbytes);
-	if (data) return data;
-  if (sendCommand(0, timeout, "+IPD")) {
-		return checkIncoming(pbytes);
-  }
-  return 0;
-}
-
-char* UDPClientSIM7600::checkIncoming(int* pbytes)
-{
-  checkGPS();
-  char *p = strstr(m_buffer, "+IPD");
-	if (p) {
-    *p = '-'; // mark this datagram as checked
-    int len = atoi(p + 4);
-    if (pbytes) *pbytes = len;
-    p = strchr(p, '\n');
-    if (p) {
-      if (strlen(++p) > len) *(p + len) = 0;
-      return p;
-    }
-  }
-	return 0;
-}
-
-bool HTTPClientSIM7600::open(const char* host, uint16_t port)
-{
-  if (!host) {
-    close();
-    sendCommand("AT+CHTTPSSTOP\r");
-    sendCommand("AT+CHTTPSSTART\r");
-    return true;
-  }
-
-  memset(m_buffer, 0, RECV_BUF_SIZE);
-  sprintf(m_buffer, "AT+CHTTPSOPSE=\"%s\",%u,%u\r", host, port, port == 443 ? 2: 1);
-  if (sendCommand(m_buffer, 1000)) {
-    if (sendCommand(0, HTTP_CONN_TIMEOUT, "+CHTTPSOPSE:")) {
-      m_state = HTTP_CONNECTED;
-      m_host = host;
-      checkGPS();
-      return true;
-    }
-  }
-  checkGPS();
-  Serial.println(m_buffer);
-  m_state = HTTP_ERROR;
-  return false;
-}
-
-bool HTTPClientSIM7600::close()
-{
-  m_state = HTTP_DISCONNECTED;
-  return sendCommand("AT+CHTTPSCLSE\r", 1000, "+CHTTPSCLSE:");
-}
-
-bool HTTPClientSIM7600::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
-{
-  String header = genHeader(method, path, keepAlive, payload, payloadSize);
-  int len = header.length();
-  sprintf(m_buffer, "AT+CHTTPSSEND=%u\r", len + payloadSize);
-  if (!sendCommand(m_buffer, 100, ">")) {
-    m_state = HTTP_DISCONNECTED;
-    return false;
-  }
-  // send HTTP header
-  m_device->xbWrite(header.c_str());
-  // send POST payload if any
-  if (payload) m_device->xbWrite(payload, payloadSize);
-  if (sendCommand(0, 200, "+CHTTPSSEND:")) {
-    m_state = HTTP_SENT;
-    return true;
-  }
-  //Serial.println(m_buffer);
-  m_state = HTTP_ERROR;
-  return false;
-}
-
-char* HTTPClientSIM7600::receive(int* pbytes, unsigned int timeout)
-{
-  // start receiving
-  int received = 0;
-  char* payload = 0;
-
-  // wait for +CHTTPS:RECV EVENT
-  if (!sendCommand(0, timeout, "RECV EVENT")) {
-    checkGPS();
-    return 0;
-  }
-  
-  bool legacy = false;
-  char *p = strstr(m_buffer, "RECV EVENT");
-  if (p) {
-    if (*(p - 1) == ' ')
-      legacy = true;
-    else if (*(p - 1) != ':')
-      return 0;
-  }
-  // FIXME
-  if (strstr(m_buffer, " 200 ")) {
-    m_code = 200;
-  }
-
-  checkGPS();
-
-  /*
-    +CHTTPSRECV: DATA,XX\r\n
-    [XX bytes from server]\r\n
-    +CHTTPSRECV:0\r\n
-  */
-  // TODO: implement for multiple chunks of data
-  // only deals with first chunk now
-  sprintf(m_buffer, "AT+CHTTPSRECV=%u\r", RECV_BUF_SIZE - 36);
-  if (sendCommand(m_buffer, timeout, legacy ? "\r\n+CHTTPSRECV: 0" : "\r\n+CHTTPSRECV:0")) {
-    char *p = strstr(m_buffer, "\r\n+CHTTPSRECV: DATA");
-    if (p) {
-      if ((p = strchr(p, ','))) {
-        received = atoi(p + 1);
-        char *q = strchr(p, '\n');
-        payload = q ? (q + 1) : p;
-        if (m_buffer + RECV_BUF_SIZE - payload > received) {
-          payload[received] = 0;
-        }
-      }
-    }
-  }
-  if (received == 0) {
-    m_state = HTTP_ERROR;
-    return 0;
-  } else {
-    m_state = HTTP_CONNECTED;
-    if (pbytes) *pbytes = received;
-    return payload;
-  }
-}
-
-/*************************************************************************************************
-  SIM7070
-*************************************************************************************************/
-
-bool ClientSIM7070::begin(CFreematics* device)
-{
-  m_type = CELL_SIM7070;
-  m_device = device;
-  for (byte n = 0; n < 3; n++) {
-    // try turning on module
-    device->xbTogglePower();
-    // discard any stale data
-    device->xbPurge();
-    delay(3000);
-    for (byte m = 0; m < 5; m++) {
-      if (sendCommand("AT\r") && sendCommand("ATE0\r") && sendCommand("AT+SIMCOMATI\r")) {
-        // retrieve module info
-        //Serial.print(m_buffer);
-        char *p = strstr(m_buffer, "IMEI:");
-        if (p) strncpy(IMEI, p + 5, sizeof(IMEI) - 1);
-        p = strstr(m_buffer, "QCN:");
-        if (p) {
-          char *q = strchr(p += 4, '_');
-          if (q) {
-            int l = q - p;
-            if (l >= sizeof(m_model)) l = sizeof(m_model) - 1;
-            memcpy(m_model, p, l);
-            m_model[l] = 0;
-          }
-        }
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-void ClientSIM7070::end()
-{
-  setGPS(false);
-  sendCommand("AT+CPOWD=1\r");
-  delay(1000);
-}
-
-bool ClientSIM7070::setup(const char* apn, unsigned int timeout)
-{
-  uint32_t t = millis();
-  bool success = false;
-  do {
-    do {
-      success = false;
-      sendCommand("AT+CFUN=1\r");
-      do {
-        delay(500);
-        if (sendCommand("AT+CGREG?\r",1000, "+CGREG: 0,")) {
-          char *p = strstr(m_buffer, "+CGREG: 0,");
-          if (p) {
-            char ret = *(p + 10);
-            success = ret == '1' || ret == '5';
-          }
-        }
-      } while (!success && millis() - t < timeout);
-      if (!success) break;
-      success = sendCommand("AT+CGACT?\r", 1000, "+CGACT: 1,");
-      break;
-    } while (millis() - t < timeout);
-    if (!success) break;
-
-    /*
-    if (apn && *apn) {
-      sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
-      sendCommand(m_buffer);
-    }
-    if (!success) break;
-    */
-
-    //sendCommand("AT+CSOCKAUTH=1,1,\"APN_PASSWORD\",\"APN_USERNAME\"\r");
-
-    //sendCommand("AT+CSOCKSETPN=1\r");
-    //sendCommand("AT+CIPMODE=0\r");
-    //sendCommand("AT+NETOPEN\r");
-
-    sendCommand("AT+CGNAPN\r");
-    sprintf(m_buffer, "AT+CNCFG=0,1,\"%s\"\r", apn);
-    sendCommand(m_buffer);
-    sendCommand("AT+CNACT=0,1\r");
-    sendCommand("AT+CNSMOD?\r");
-    sendCommand("AT+CSCLK=0\r");
-  } while(0);
-  return success;
-}
-
-bool ClientSIM7070::setGPS(bool on)
-{
-  if (on) {
-      sendCommand("AT+CGNSPWR=1\r");
-      sendCommand("AT+CGNSMOD=1,1,0,0,0\r");
-      if (sendCommand("AT+CGNSINF\r", 1000, "+CGNSINF:")) {
-        if (!m_gps) {
-          m_gps = new GPS_DATA;
-          memset(m_gps, 0, sizeof(GPS_DATA));
-        }
-        return true;
-      }
-    return false;
-  } else {
-    sendCommand("AT+CGNSPWR=0\r");
-    if (m_gps) {
-      GPS_DATA *g = m_gps;
-      m_gps = 0;
-      delete g;
-    }
-    return true;
-  }
-}
-
-void ClientSIM7070::checkGPS()
-{
-  // check and parse GPS data
-  char *p;
-  if (m_gps && sendCommand("AT+CGNSINF\r", 100, "+CGNSINF:")) do {
-    if (!(p = strchr(m_buffer, ':'))) break;
-    p += 2;
-    if (strncmp(p, "1,1,", 4)) break;
-    p += 4;
-    m_gps->time = atol(p + 8) * 100 + atoi(p + 15);
-    *(p + 8) = 0;
-    int day = atoi(p + 6);
-    *(p + 6) = 0;
-    int month = atoi(p + 4);
-    *(p + 4) = 0;
-    int year = atoi(p + 2);
-    m_gps->date = year + month * 100 + day * 10000;
-    if (!(p = strchr(p + 9, ','))) break;
-    m_gps->lat = atof(++p);
-    if (!(p = strchr(p, ','))) break;
-    m_gps->lng = atof(++p);
-    if (!(p = strchr(p, ','))) break;
-    m_gps->alt = atof(++p);
-    if (!(p = strchr(p, ','))) break;
-    m_gps->speed = atof(++p) * 1000 / 1852;
-    if (!(p = strchr(p, ','))) break;
-    m_gps->heading = atoi(++p);
-    m_gps->ts = millis();
-  } while (0);
-}
-
-String ClientSIM7070::getIP()
-{
-  sendCommand("AT+CNACT=0,1\r");
-  for (int i = 0; i < 30; i++) {
-    delay(500);
-    if (sendCommand("AT+CNACT?\r", 1000)) {
-      char *ip = strstr(m_buffer, "+CNACT:");
-      if (ip) {
-        ip = strchr(ip, '\"');
-        if (ip++ && *ip != '0') {
-          char *q = strchr(ip, '\"');
-          if (q) *q = 0;
-          return ip;
-        }
-      }
-    }
-  }
-  return "";
-}
-
-String ClientSIM7070::queryIP(const char* host)
-{
-  sprintf(m_buffer, "AT+CDNSGIP=\"%s\",1,3000\r", host);
-  if (sendCommand(m_buffer, 5000, "+CDNSGIP:")) {
-    char *p = strstr(m_buffer, host);
-    if (p) {
-      p = strstr(p, "\",\"");
-      if (p) {
-        char *ip = p + 3;
-        p = strchr(ip, '\"');
-        if (p) *p = 0;
-        return ip;
-      }
-    }
-  }
-  return "";
-}
-
-bool UDPClientSIM7070::open(const char* host, uint16_t port)
-{
-  /*
-  if (host) {
-    udpIP = queryIP(host);
-    if (!udpIP.length()) {
-      udpIP = host;
-    }
-    udpPort = port;
-  }
-  */
-  close();
-  sendCommand("AT+CNACT=0,1\r");
-  sendCommand("AT+CACID=0\r");
-  sprintf(m_buffer, "AT+CAOPEN=0,0,\"UDP\",\"%s\",%u\r", host, port);
-  if (!sendCommand(m_buffer, 5000)) {
-    close();
-    Serial.println(m_buffer);
-    return false;
-  }
-  return true;
-}
-
-bool UDPClientSIM7070::close()
-{
-  sendCommand("AT+CACLOSE=0\r");
-  return sendCommand("AT+CNACT=0,0\r");
-}
-
-bool UDPClientSIM7070::send(const char* data, unsigned int len)
-{
-  sendCommand("AT+CASTATE?\r");
-  sprintf(m_buffer, "AT+CASEND=0,%u\r", len);
-  sendCommand(m_buffer, 100, "\r\n>");
-  if (sendCommand(data, 1000)) return true;
-  return false;
-}
-
-char* UDPClientSIM7070::receive(int* pbytes, unsigned int timeout)
-{
-  if (!strstr(m_buffer, "+CADATAIND: 0")) {
-    if (!sendCommand(0, timeout, "+CADATAIND: 0")) return 0;
-  }
-  if (sendCommand("AT+CARECV=0,384\r", timeout, "+CARECV")) {
-    char *p = strchr(m_buffer, ',');
-    return p ? p + 1 : m_buffer;
-  }
-  return 0;
-}
-
-bool HTTPClientSIM7070::open(const char* host, uint16_t port)
-{
-  if (!host) {
-    //close();
-    return true;
-  }
-
-  sendCommand("AT+CNACT=0,1\r");
-  sendCommand("AT+CACID=0\r");
-
-  sprintf(m_buffer, "AT+SHCONF=\"URL\",\"http://%s:%u\"\r", host, port);
-  if (!sendCommand(m_buffer)) {
-    return false;
-  }
-  sendCommand("AT+SHCONF=\"HEADERLEN\",256\r");
-  sendCommand("AT+SHCONF=\"BODYLEN\",1024\r");
-  sendCommand("AT+SHCONN\r", HTTP_CONN_TIMEOUT);
-  if (sendCommand("AT+SHSTATE?\r")) {
-    if (strstr(m_buffer, "+SHSTATE: 1")) {
-      m_state = HTTP_CONNECTED;
-      m_host = host;
-      sendCommand("AT+SHCHEAD\r");
-      sendCommand("AT+SHAHEAD=\"User-Agent\",\"curl/7.47.0\"\r"); 
-      sendCommand("AT+SHAHEAD=\"Cache-control\",\"no-cache\"\r");
-      sendCommand("AT+SHAHEAD=\"Connection\",\"keep-alive\"\r");
-      sendCommand("AT+SHAHEAD=\"Accept\",\"*/*\"\r");
-      m_state = HTTP_CONNECTED;
-      return true;
-    }
-  }
-  m_state = HTTP_ERROR;
-  return false;
-}
-
-bool HTTPClientSIM7070::close()
-{
-  //sendCommand("AT+CNACT=0,0\r");
-  m_state = HTTP_DISCONNECTED;
-  return sendCommand("AT+SHDISC\r");
-}
-
-bool HTTPClientSIM7070::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
-{
-  if (method == METHOD_POST) {
-    sprintf(m_buffer, "AT+SHBOD=%u,100\r", payloadSize);
-    if (sendCommand(m_buffer, 100, "\r\n>")) {
-      sendCommand(payload);
-    }
-  }
-  snprintf(m_buffer, RECV_BUF_SIZE, "AT+SHREQ=\"%s\",%u\r", path, method == METHOD_GET ? 1 : 3);
-  if (sendCommand(m_buffer, HTTP_CONN_TIMEOUT)) {
-    char *p;
-    int len = 0;
-    if (strstr(m_buffer, "+SHREQ:") || sendCommand(0, HTTP_CONN_TIMEOUT, "+SHREQ:")) {
-      if ((p = strstr(m_buffer, "+SHREQ:")) && (p = strchr(p, ','))) {
-        m_code = atoi(++p);
-        if ((p = strchr(p, ','))) len = atoi(++p);
-      }
-    }
-    if (len > 0) {
-      if (len > RECV_BUF_SIZE - 16) len = RECV_BUF_SIZE - 16;
-      sprintf(m_buffer, "AT+SHREAD=0,%u\r", len);
-      if (sendCommand(m_buffer)) {
-        m_state = HTTP_SENT;
-        return true;
-      }
-    }
-  }
-  m_state = HTTP_ERROR;
-  return false;
-}
-
-char* HTTPClientSIM7070::receive(int* pbytes, unsigned int timeout)
-{
-  if (!sendCommand(0, timeout, "+SHREAD:")) {
-    return 0;
-  }
-  m_state = HTTP_CONNECTED;
-
-  char *p = strstr(m_buffer, "+SHREAD:");
-  if (p) {
-    int bytes = atoi(p += 9);
-    if (pbytes) *pbytes = bytes;
-    p = strchr(p, '\n');
-    if (p++) {
-      checkGPS();
-      return p;
-    }
-  }
-  checkGPS();
-  return 0;
 }

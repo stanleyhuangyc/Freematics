@@ -19,10 +19,9 @@
     <option name="Analog Input" const="LOG_EXT_SENSORS=2"/>
   </define>
   <define name="Cellular Network APN" const="CELL_APN" type="string" default=""/>
-  <define name="WiFi Network" const="ENABLE_WIFI" type="bool"/>
-  <define name="WiFi SSID" const="WIFI_SSID" type="string" default="SSID" dep="ENABLE_WIFI"/>
-  <define name="WiFi Password" const="WIFI_PASSWORD" type="string" default="PASSWORD" dep="ENABLE_WIFI"/>
-  <define name="WiFi AP &amp; HTTP Server" const="ENABLE_HTTPD" type="bool"/>
+  <define name="WiFi Network" const="ENABLE_WIFI" default="true" type="bool"/>
+  <define name="WiFi SSID" const="WIFI_SSID" type="string" dep="ENABLE_WIFI"/>
+  <define name="WiFi Password" const="WIFI_PASSWORD" type="string" dep="ENABLE_WIFI"/>
   <define name="Server Host" const="SERVER_HOST" type="string" default="hub.freematics.com"/>
   <define name="Server Port (0 for auto)" const="SERVER_PORT" type="number" default="0"/>
   <define name="Transport Protocol">
@@ -30,6 +29,6 @@
     <option name="HTTP" const="SERVER_PROTOCOL=PROTOCOL_HTTP"/>
     <option name="HTTPS" const="SERVER_PROTOCOL=PROTOCOL_HTTPS"/>
   </define>
-  <define name="Enable PSRAM" type="bool" const="CONFIG_BOARD_HAS_PSRAM"/>
+  <define name="Enable PSRAM" type="bool" const="BOARD_HAS_PSRAM"/>
 </target>
 </config>

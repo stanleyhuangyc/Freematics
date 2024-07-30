@@ -272,8 +272,13 @@ char* COBD::getResponse(byte& pid, char* buffer, byte bufsize)
 void COBD::enterLowPowerMode()
 {
   	char buf[32];
-	if (link) link->sendCommand("ATLP\r", buf, sizeof(buf), 1000);
+	if (link) {
+		reset();
+		delay(1000);	
+		link->sendCommand("ATLP\r", buf, sizeof(buf), 1000);
+	}
 }
+
 
 void COBD::leaveLowPowerMode()
 {
@@ -409,7 +414,7 @@ bool COBD::init(OBD_PROTOCOLS protocol, bool quick)
 			if (hex2uint8(p) == pid) {
 				p += 2;
 				for (byte n = 0; n < 4 && *(p + n * 3) == ' '; n++) {
-					pidmap[i * 4 + n] |= hex2uint8(p + n * 3 + 1);
+					pidmap[i * 4 + n] = hex2uint8(p + n * 3 + 1);
 				}
 				success = true;
 			}
@@ -532,4 +537,26 @@ int COBD::receiveData(byte* buf, int len)
 		}
 	}
 	return bytes;
+}
+
+void COBD::setCANID(uint16_t id)
+{
+	if (link) {
+		char buf[32];
+		sprintf(buf, "ATSH %X\r", id);
+		link->sendCommand(buf, buf, sizeof(buf), 1000);
+	}
+}
+
+int COBD::sendCANMessage(byte msg[], int len, char* buf, int bufsize)
+{
+	if (!link) return 0;
+	char cmd[258];
+	if (len * 2 >= sizeof(cmd) - 1) len = sizeof(cmd) / 2 - 2; 
+	for (int n = 0; n < len; n++) {
+		sprintf(cmd + n * 2, "%02X", msg[n]); 
+	}
+	cmd[len * 2] = '\r';
+	cmd[len * 2 + 1] = 0;
+	return link->sendCommand(cmd, buf, bufsize, 100);
 }

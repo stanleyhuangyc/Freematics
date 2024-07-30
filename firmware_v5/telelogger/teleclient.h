@@ -53,7 +53,7 @@ public:
     CBuffer* getNewest();
     void printStats();
 private:
-    CBuffer* slots[BUFFER_SLOTS];
+    CBuffer** slots = 0;
     CBuffer* last = 0;
     uint32_t total = 0;
 };

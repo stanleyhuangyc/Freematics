@@ -13,8 +13,8 @@
 #ifdef CONFIG_STORAGE
 #define STORAGE CONFIG_STORAGE
 #endif
-#if CONFIG_BOARD_HAS_PSRAM
-#define BOARD_HAS_PSRAM CONFIG_BOARD_HAS_PSRAM
+#ifdef CONFIG_BOARD_HAS_PSRAM
+#define BOARD_HAS_PSRAM 1
 #endif
 #ifdef CONFIG_ENABLE_WIFI
 #define ENABLE_WIFI CONFIG_ENABLE_WIFI
@@ -39,16 +39,14 @@
 /**************************************
 * Circular Buffer Configuration
 **************************************/
-#ifdef BOARD_HAS_PSRAM
+#if BOARD_HAS_PSRAM
 #define BUFFER_SLOTS 1024 /* max number of buffer slots */
 #define BUFFER_LENGTH 384 /* bytes per slot */
 #define SERIALIZE_BUFFER_SIZE 4096 /* bytes */
-#define HAS_LARGE_RAM 1
 #else
 #define BUFFER_SLOTS 32 /* max number of buffer slots */
 #define BUFFER_LENGTH 256 /* bytes per slot */
 #define SERIALIZE_BUFFER_SIZE 1024 /* bytes */
-#define HAS_LARGE_RAM 0
 #endif
 
 /**************************************
@@ -83,10 +81,10 @@
 * Networking configurations
 **************************************/
 #ifndef ENABLE_WIFI
-#define ENABLE_WIFI 0
+#define ENABLE_WIFI 1
 // WiFi settings
-#define WIFI_SSID "FREEMATICS"
-#define WIFI_PASSWORD "PASSWORD"
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
 #endif 
 
 #ifndef SERVER_HOST
@@ -189,7 +187,7 @@
 
 // enable(1)/disable(0) BLE SPP server (for Freematics Controller App).
 #ifndef ENABLE_BLE
-#define ENABLE_BLE 0
+#define ENABLE_BLE 1
 #endif
 
 
