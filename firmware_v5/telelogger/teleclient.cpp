@@ -17,7 +17,6 @@
 
 #include <FreematicsPlus.h>
 #include "telestore.h"
-#include "telemesh.h"
 #include "teleclient.h"
 #include "config.h"
 
@@ -579,7 +578,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   len += packetSize;
 #endif
   if (!success) {
-    Serial.println("Connection closed");
+    Serial.println("[HTTP] Connection closed");
     return false;
   } else {
     txBytes += len;
@@ -597,11 +596,11 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   else
 #endif
   {
-    content = cell.receive(&recvBytes);
+    content = cell.receive(&recvBytes, HTTP_CONN_TIMEOUT);
   }
   if (!content) {
     // close connection on receiving timeout
-    Serial.println("No HTTP response");
+    Serial.println("[HTTP] No response");
     return false;
   }
   Serial.print("[HTTP] ");

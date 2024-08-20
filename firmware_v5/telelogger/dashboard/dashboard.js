@@ -91,6 +91,9 @@ function processInput(data)
 		if ((ret = checkData(con, "NO SIM CARD")) != null) {
 			document.getElementById("imei").innerHTML = "| NO SIM CARD";
 		}
+		if ((ret = checkData(con, "+CGREG:")) != null) {
+			document.getElementById("imei").innerHTML = "| STATE:" + ret;
+		}
 		if (ret = checkData(con, "Operator:")) {
 			document.getElementById("imei").innerText = "| " + ret;
 		}
@@ -111,7 +114,7 @@ function processInput(data)
 	if (ret = checkData(con, "[FILE]")) {
 		document.getElementById("file").innerText = ret;
 	}
-	if (ret = checkData(con, "[GPS]")) {
+	if (ret = checkData(con, "[GNSS]")) {
 		document.getElementById("gps").innerText = ret;
 	}
 	if (ret = checkData(con, "[WIFI]")) {

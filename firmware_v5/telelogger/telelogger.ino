@@ -20,7 +20,6 @@
 #include "config.h"
 #include "telestore.h"
 #include "teleclient.h"
-#include "telemesh.h"
 #if BOARD_HAS_PSRAM
 #include "esp32/himem.h"
 #endif
@@ -37,10 +36,11 @@
 #define STATE_GPS_READY 0x4
 #define STATE_MEMS_READY 0x8
 #define STATE_NET_READY 0x10
-#define STATE_CELL_CONNECTED 0x20
-#define STATE_WIFI_CONNECTED 0x40
-#define STATE_WORKING 0x80
-#define STATE_STANDBY 0x100
+#define STATE_GPS_ONLINE 0x20
+#define STATE_CELL_CONNECTED 0x40
+#define STATE_WIFI_CONNECTED 0x80
+#define STATE_WORKING 0x100
+#define STATE_STANDBY 0x200
 
 typedef struct {
   byte pid;
@@ -288,7 +288,6 @@ bool initGPS()
 bool processGPS(CBuffer* buffer)
 {
   static uint32_t lastGPStime = 0;
-  static uint32_t lastGPStick = 0;
   static float lastGPSLat = 0;
   static float lastGPSLng = 0;
 
@@ -309,21 +308,25 @@ bool processGPS(CBuffer* buffer)
       return false;
     }
 #endif
-
-
-  if (!gd || lastGPStime == gd->time || (gd->lng == 0 && gd->lat == 0)) {
-#if GNSS_RESET_TIMEOUT
-    if (millis() - lastGPStick > GNSS_RESET_TIMEOUT * 1000) {
-      sys.gpsEnd();
-      delay(50);
-      initGPS();
-      lastGPStick = millis();
+  if (!gd || lastGPStime == gd->time) return false;
+  if (gd->date) {
+    // generate ISO time string
+    char *p = isoTime + sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u",
+        (unsigned int)(gd->date % 100) + 2000, (unsigned int)(gd->date / 100) % 100, (unsigned int)(gd->date / 10000),
+        (unsigned int)(gd->time / 1000000), (unsigned int)(gd->time % 1000000) / 10000, (unsigned int)(gd->time % 10000) / 100);
+    unsigned char tenth = (gd->time % 100) / 10;
+    if (tenth) p += sprintf(p, ".%c00", '0' + tenth);
+    *p = 'Z';
+    *(p + 1) = 0;
+  }
+  if (gd->lng == 0 && gd->lat == 0) {
+    // coordinates not ready
+    if (gd->date) {
+      Serial.print("[GNSS] ");
+      Serial.println(isoTime);
     }
-#endif
     return false;
   }
-  lastGPStick = millis();
-
   if ((lastGPSLat || lastGPSLng) && (abs(gd->lat - lastGPSLat) > 0.001 || abs(gd->lng - lastGPSLng) > 0.001)) {
     // invalid coordinates data
     lastGPSLat = 0;
@@ -347,16 +350,7 @@ bool processGPS(CBuffer* buffer)
     if (gd->hdop) buffer->add(PID_GPS_HDOP, ELEMENT_UINT8, &gd->hdop, sizeof(uint8_t));
   }
   
-  // generate ISO time string
-  char *p = isoTime + sprintf(isoTime, "%04u-%02u-%02uT%02u:%02u:%02u",
-      (unsigned int)(gd->date % 100) + 2000, (unsigned int)(gd->date / 100) % 100, (unsigned int)(gd->date / 10000),
-      (unsigned int)(gd->time / 1000000), (unsigned int)(gd->time % 1000000) / 10000, (unsigned int)(gd->time % 10000) / 100);
-  unsigned char tenth = (gd->time % 100) / 10;
-  if (tenth) p += sprintf(p, ".%c00", '0' + tenth);
-  *p = 'Z';
-  *(p + 1) = 0;
-
-  Serial.print("[GPS] ");
+  Serial.print("[GNSS] ");
   Serial.print(gd->lat, 6);
   Serial.print(' ');
   Serial.print(gd->lng, 6);
@@ -661,6 +655,7 @@ bool waitMotion(long timeout)
 *******************************************************************************/
 void process()
 {
+  static uint32_t lastGPStick = 0;
   uint32_t startTime = millis();
 
   CBuffer* buffer = bufman.getFree();
@@ -707,7 +702,21 @@ void process()
   processMEMS(buffer);
 #endif
 
-  processGPS(buffer);
+  bool success = processGPS(buffer);
+#if GNSS_RESET_TIMEOUT
+  if (success) {
+    lastGPStick = millis();
+    state.set(STATE_GPS_ONLINE);
+  } else {
+    if (millis() - lastGPStick > GNSS_RESET_TIMEOUT * 1000) {
+      sys.gpsEnd();
+      state.clear(STATE_GPS_ONLINE | STATE_GPS_READY);
+      delay(20);
+      if (initGPS()) state.set(STATE_GPS_READY);
+      lastGPStick = millis();
+    }
+  }
+#endif
 
   if (!state.check(STATE_MEMS_READY)) {
     deviceTemp = readChipTemperature();
@@ -1072,7 +1081,7 @@ void standby()
   if (state.check(STATE_GPS_READY)) {
     Serial.println("[GPS] OFF");
     sys.gpsEnd(true);
-    state.clear(STATE_GPS_READY);
+    state.clear(STATE_GPS_READY | STATE_GPS_ONLINE);
     gd = 0;
   }
 #endif
