@@ -42,6 +42,8 @@ void initMesh();
 uint32_t startTime = 0;
 uint32_t pidErrors = 0;
 uint32_t fileid = 0;
+uint32_t lastOBDCheckTime = 0;
+uint32_t lastStatsTime = 0;
 // live data
 char vin[18] = {0};
 int16_t batteryVoltage = 0;
@@ -835,8 +837,28 @@ void setup()
 
 void loop()
 {
+    processBLE(0);
+
+    // if file not opened, create a new file
+    if (logger.checkState(STATE_STORE_READY) && !logger.checkState(STATE_FILE_READY)) {
+      fileid = store.open();
+      if (fileid) {
+        logger.setState(STATE_FILE_READY);
+      }
+    }
+
+#if USE_GNSS == 1
+    if (logger.checkState(STATE_GPS_FOUND)) {
+        logger.processGPSData();
+    }
+#elif USE_GNSS > 1
+    if (logger.checkState(STATE_CELL_GPS_FOUND)) {
+      logger.processCellGPS();
+    }
+#endif
+
 #if USE_OBD
-    if (!logger.checkState(STATE_OBD_READY) || logger.checkState(STATE_STANDBY)) {
+    if (logger.checkState(STATE_STANDBY)) {
         logger.standby();
         Serial.print("OBD:");
         if (!obd.init()) {
@@ -849,66 +871,66 @@ void loop()
     }
 #endif
 
-    // if file not opened, create a new file
-    if (logger.checkState(STATE_STORE_READY) && !logger.checkState(STATE_FILE_READY)) {
-      fileid = store.open();
-      if (fileid) {
-        logger.setState(STATE_FILE_READY);
-      }
-    }
-
-    uint32_t ts = millis();
-
-#if USE_GNSS == 1
-    if (logger.checkState(STATE_GPS_FOUND)) {
-        logger.processGPSData();
-    }
-#elif USE_GNSS > 1
-    if (logger.checkState(STATE_CELL_GPS_FOUND)) {
-      logger.processCellGPS();
-    }
-#endif
-
-    // poll and log OBD data
-    store.setTimestamp(ts);
 #if USE_OBD
-    static int idx[2] = {0, 0};
-    int tier = 1;
-    for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
-        if (obdData[i].tier > tier) {
-            // reset previous tier index
-            idx[tier - 2] = 0;
-            // keep new tier number
-            tier = obdData[i].tier;
-            // move up current tier index
-            i += idx[tier - 2]++;
-            // check if into next tier
-            if (obdData[i].tier != tier) {
-                idx[tier - 2]= 0;
-                i--;
-                continue;
+    if (logger.checkState(STATE_OBD_READY)) {
+        // poll and log OBD data
+        store.setTimestamp(millis());
+        static int idx[2] = {0, 0};
+        int tier = 1;
+        for (byte i = 0; i < sizeof(obdData) / sizeof(obdData[0]); i++) {
+            if (obdData[i].tier > tier) {
+                // reset previous tier index
+                idx[tier - 2] = 0;
+                // keep new tier number
+                tier = obdData[i].tier;
+                // move up current tier index
+                i += idx[tier - 2]++;
+                // check if into next tier
+                if (obdData[i].tier != tier) {
+                    idx[tier - 2]= 0;
+                    i--;
+                    continue;
+                }
             }
-        }
-        byte pid = obdData[i].pid;
-        if (!obd.isValidPID(pid)) continue;
-        if (obd.readPID(pid, obdData[i].value)) {
-            obdData[i].ts = millis();
-            store.log((uint16_t)pid | 0x100, obdData[i].value);
-        } else {
-            pidErrors++;
-            Serial.print("PID ");
-            Serial.print((int)pid | 0x100, HEX);
-            Serial.print(" Error #");
-            Serial.println(pidErrors);
-            break;
-        }
+            byte pid = obdData[i].pid;
+            if (!obd.isValidPID(pid)) continue;
+            if (obd.readPID(pid, obdData[i].value)) {
+                obdData[i].ts = millis();
+                store.log((uint16_t)pid | 0x100, obdData[i].value);
+            } else {
+                pidErrors++;
+                Serial.print("PID ");
+                Serial.print((int)pid | 0x100, HEX);
+                Serial.print(" Error #");
+                Serial.println(pidErrors);
+                break;
+            }
 #if USE_GNSS == 1
-        if (logger.checkState(STATE_GPS_FOUND)) {
-            logger.processGPSData();
-        }
+            if (logger.checkState(STATE_GPS_FOUND)) {
+                logger.processGPSData();
+            }
 #endif
-        processBLE(0);
-        if (tier > 1) break;
+            processBLE(0);
+            if (tier > 1) break;
+        }
+
+        // log battery voltage (from voltmeter), data in 0.01v
+        batteryVoltage = obd.getVoltage() * 100;
+        store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
+
+        if (obd.errors >= 3) {
+            logger.clearState(STATE_OBD_READY);
+            logger.setState(STATE_STANDBY);
+        }
+    } else if (millis() - lastOBDCheckTime >= OBD_RETRY_INTERVAL) {
+        Serial.print("OBD:");
+        if (obd.init()) {
+            logger.setState(STATE_OBD_READY);
+            Serial.println("OK");
+        } else {
+            Serial.println("NO");
+        }
+        lastOBDCheckTime = millis();
     }
 #endif
 
@@ -938,20 +960,11 @@ void loop()
     }
 #endif
 
-#if USE_OBD
-    if (logger.checkState(STATE_OBD_READY)) {
-        // log battery voltage (from voltmeter), data in 0.01v
-        batteryVoltage = obd.getVoltage() * 100;
-        store.log(PID_BATTERY_VOLTAGE, batteryVoltage);
-    }
-    if (obd.errors >= 3) {
-        logger.clearState(STATE_OBD_READY);
-        return;
-    }
-#endif
-
 #if !ENABLE_SERIAL_OUT
-    showStats();
+    if (millis() - lastStatsTime >= STATS_INTERVAL) {
+        showStats();
+        lastStatsTime = millis();
+    }
 #endif
 
 #if ENABLE_HTTPD
@@ -979,20 +992,6 @@ void loop()
             }
             if (bytes > 0) sys.gpsSendCommand(buf, bytes);
         }
-#if ENABLE_HTTPD
-        serverProcess(1);
-#else
-        delay(1);
+    } while (0);
 #endif
-    } while (millis() - ts < MIN_LOOP_TIME);
-#else
-    ts = millis() - ts;
-#if ENABLE_HTTPD
-    serverProcess(ts < MIN_LOOP_TIME ? (MIN_LOOP_TIME - ts) : 0);
-#else
-    if (ts < MIN_LOOP_TIME) delay(MIN_LOOP_TIME - ts);
-#endif
-#endif
-
-    processBLE(0);
 }
