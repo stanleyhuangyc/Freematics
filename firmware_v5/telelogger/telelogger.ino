@@ -362,10 +362,7 @@ bool processGPS(CBuffer* buffer)
   Serial.print(" HDOP:");
   Serial.print(gd->hdop);
   Serial.print(" Course:");
-  Serial.print(gd->heading);
-
-  Serial.print(' ');
-  Serial.println(isoTime);
+  Serial.println(gd->heading);
   //Serial.println(gd->errors);
   lastGPStime = gd->time;
   return true;
