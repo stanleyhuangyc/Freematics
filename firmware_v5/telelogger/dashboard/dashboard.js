@@ -68,7 +68,16 @@ function processInput(data)
 			document.getElementById("sd_size").innerHTML = "NO CARD";
 		}
 		if (ret = checkData(con, "GNSS:")) {
-			document.getElementById("gps").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
+			var h;
+			if (ret.indexOf("NO") >= 0)
+				h = imgCross;
+			else if (ret.indexOf("(E)") >= 0)
+				h = imgTick + " External";
+			else if (ret.indexOf("(I)") >= 0)
+				h = imgTick + " Internal";
+			else
+				h = imgTick;
+			document.getElementById("gps").innerHTML = h;
 		}
 		if (ret = checkData(con, "OBD:")) {
 			document.getElementById("obd").innerHTML = ret.indexOf("NO") >= 0 ? imgCross : imgTick;
@@ -103,6 +112,9 @@ function processInput(data)
 		if (ret = checkData(con, "LOGIN")) {
 			document.getElementById("server").innerText = "Connecting to server" + ret;
 		}
+	}
+	if (ret = checkData(con, "[OBD]")) {
+		document.getElementById("obd").innerText = ret;
 	}
 	if (ret = checkData(con, "[NET]")) {
 		document.getElementById("server").innerText = ret;
