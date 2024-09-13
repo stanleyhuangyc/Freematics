@@ -597,7 +597,7 @@ void showStats()
   Serial.println();
 #if ENABLE_OLED
   oled.setCursor(0, 2);
-  oled.println(timestr);
+  oled.println(buf);
   oled.setCursor(0, 5);
   oled.printInt(teleClient.txCount, 2);
   oled.setCursor(80, 5);
