@@ -90,6 +90,8 @@
 #ifndef SERVER_HOST
 // cellular network settings
 #define CELL_APN ""
+#define APN_USERNAME NULL
+#define APN_PASSWORD NULL
 // Freematics Hub server settings
 #define SERVER_HOST "hub.freematics.com"
 #define SERVER_PROTOCOL PROTOCOL_UDP

@@ -805,7 +805,7 @@ bool initCell(bool quick = false)
     Serial.print("APN:");
     Serial.println(apn);
   }
-  if (teleClient.cell.setup(apn)) {
+  if (teleClient.cell.setup(apn, APN_USERNAME, APN_PASSWORD)) {
     netop = teleClient.cell.getOperatorName();
     if (netop.length()) {
       Serial.print("Operator:");
