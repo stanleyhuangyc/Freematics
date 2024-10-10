@@ -922,7 +922,7 @@ void loop()
             logger.clearState(STATE_OBD_READY);
             logger.setState(STATE_STANDBY);
         }
-    } else if (millis() - lastOBDCheckTime >= OBD_RETRY_INTERVAL) {
+    } else if (millis() - lastOBDCheckTime >= MAX_OBD_RETRY_INTERVAL) {
         Serial.print("OBD:");
         if (obd.init()) {
             logger.setState(STATE_OBD_READY);

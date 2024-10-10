@@ -53,3 +53,6 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 // motion detection
 #define WAKEUP_MOTION_THRESHOLD 0.3 /* G */
+
+#define STATS_INTERVAL 1000 /* ms */
+#define MAX_OBD_RETRY_INTERVAL 10 /* ms */
