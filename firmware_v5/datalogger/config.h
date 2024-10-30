@@ -13,6 +13,8 @@
 #ifndef HAVE_CONFIG
 // enable(1)/disable(0) serial data output
 #define ENABLE_SERIAL_OUT 0
+// interval for show stats when serial is disabled
+#define STATS_INTERVAL 10000 /* ms */
 // specify storage type
 #define STORAGE STORAGE_SD
 #endif
@@ -53,3 +55,9 @@
 #define GPS_SERIAL_BAUDRATE 115200L
 // motion detection
 #define WAKEUP_MOTION_THRESHOLD 0.3 /* G */
+
+/**************************************
+* OBD-II configurations
+**************************************/
+// interval to retry OBD state check
+#define OBD_RETRY_INTERVAL 10000 /* ms */
