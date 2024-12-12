@@ -296,19 +296,22 @@ var TRIPS = {
 		this.xhr.open('GET', url, true);
 		this.xhr.send(null);
 	},
-	loadChart: function(pids)
-	{
-		var offset = this.startTimeEpoc - this.startDeviceTick;
-		var names = [];
-		this.series = [];
-		for (var i = 0; i < pids.length; i++) {
-			var series = transport.getJSON(serverURL + "data?devid=" + USER.devid + "&tripid=" + this.tripID + "&offset=" + offset + "&pid=" + pids[i]);
-			if (series) {
-				this.series.push(series);
-				names.push(PID.getName(pids[i]));
-			}
-		}		
-		chart = ShowChart("chart", names, this.series);	
+	loadChart: function(pids) {
+	    var offset = this.startTimeEpoc - this.startDeviceTick;
+	    var names = [];
+	    this.series = [];
+	    for (var i = 0; i < pids.length; i++) {
+	        var series = transport.getJSON(serverURL + "data?devid=" + USER.devid + "&tripid=" + this.tripID + "&offset=" + offset + "&pid=" + pids[i]);
+	        if (series) {
+	            // Ordina la serie in base al timestamp
+	            series.sort(function(a, b) {
+	                return a[0] - b[0]; // Ordina in base al primo elemento (timestamp)
+	            });
+	            this.series.push(series);
+	            names.push(PID.getName(pids[i]));
+	        }
+	    }       
+	    chart = ShowChart("chart", names, this.series);    
 	},
 	list: function ()
 	{
