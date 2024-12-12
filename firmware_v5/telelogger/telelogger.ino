@@ -629,7 +629,7 @@ bool waitMotion(long timeout)
         float m = (acc[i] - accBias[i]);
         motion += m * m;
       }
-#if ENABLE_HTTTPD
+#if ENABLE_HTTPD
       serverProcess(100);
 #endif
       processBLE(100);
