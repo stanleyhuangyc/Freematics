@@ -1076,7 +1076,7 @@ void standby()
 
 #if !GNSS_ALWAYS_ON && GNSS == GNSS_STANDALONE
   if (state.check(STATE_GPS_READY)) {
-    Serial.println("[GPS] OFF");
+    Serial.println("[GNSS] OFF");
     sys.gpsEnd(true);
     state.clear(STATE_GPS_READY | STATE_GPS_ONLINE);
     gd = 0;
