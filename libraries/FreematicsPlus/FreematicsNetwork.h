@@ -100,8 +100,9 @@ private:
 
 typedef enum {
     CELL_SIM7600 = 0,
-    CELL_SIM7070 = 1,
-    CELL_SIM5360 = 2
+    CELL_SIM7670 = 1,
+    CELL_SIM7070 = 2,
+    CELL_SIM5360 = 3
 } CELL_TYPE;
 
 class CellSIMCOM

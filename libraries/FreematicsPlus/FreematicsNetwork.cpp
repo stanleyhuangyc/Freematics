@@ -238,16 +238,18 @@ bool CellSIMCOM::begin(CFreematics* device)
         }
         m_type = CELL_SIM7070;
       } else {
-        p = strchr(p, '_');
-        if (p++) {
-          int i = 0;
-          while (i < sizeof(m_model) - 1 && p[i] && p[i] != '\r' && p[i] != '\n') {
+        p += 7;
+        char *q = strchr(p, '_');
+        if (q) p = q + 1;
+        for (int i = 0; i < sizeof(m_model) - 1 && p[i] && p[i] != '\r' && p[i] != '\n'; i++) {
             m_model[i] = p[i];
-            i++;
-          } 
-          m_model[i] = 0;
-        }
-        m_type = strstr(m_model, "5360") ? CELL_SIM5360 : CELL_SIM7600;
+        } 
+        if (strstr(m_model, "5360"))
+          m_type = CELL_SIM5360;
+        else if (strstr(m_model, "7670"))
+          m_type = CELL_SIM7670;
+        else
+          m_type = CELL_SIM7600;
       }
       p = strstr(m_buffer, "IMEI:");
       if (p) strncpy(IMEI, p[5] == ' ' ? p + 6 : p + 5, sizeof(IMEI) - 1);
@@ -337,6 +339,7 @@ bool CellSIMCOM::setup(const char* apn, const char* username, const char* passwo
       } while (!success && millis() - t < timeout);
       if (!success) break;
       
+      /*
       if (m_type == CELL_SIM7600) {
         success = false;
         do {
@@ -348,6 +351,7 @@ bool CellSIMCOM::setup(const char* apn, const char* username, const char* passwo
         } while (!success && millis() - t < timeout);
         if (!success) break;
       }
+      */
 
       if (apn && *apn) {
         sprintf(m_buffer, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r", apn);
