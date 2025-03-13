@@ -334,7 +334,7 @@ bool CellSIMCOM::setup(const char* apn, const char* username, const char* passwo
         delay(100);
         if (sendCommand("AT+CREG?\r", 1000, "+CREG: 0,")) {
           char *p = strstr(m_buffer, "+CREG: 0,");
-          success = (p && (*(p + 9) == '1' || *(p + 9) == '5'));
+          success = (p && (*(p + 9) == '1' || *(p + 9) == '5') || *(p + 9) == '6');
         }
       } while (!success && millis() - t < timeout);
       if (!success) break;
