@@ -61,11 +61,8 @@
 #define GNSS_CELLULAR 2
 
 #define PROTOCOL_UDP 1
-#define PROTOCOL_HTTP 2
-#define PROTOCOL_HTTPS 3
-
-#define PROTOCOL_METHOD_GET 0
-#define PROTOCOL_METHOD_POST 1
+#define PROTOCOL_HTTPS_GET 2
+#define PROTOCOL_HTTPS_POST 3
 
 /**************************************
 * OBD-II configurations
@@ -101,16 +98,14 @@
 #define APN_PASSWORD NULL
 
 // HTTPS settings
-#define SERVER_METHOD PROTOCOL_METHOD_POST
 #define SERVER_PATH "/hub/api"
+//#define SERVER_PATH "https://hub.freematics.com/hub/api" /* full URL required for SIM7670 */
 
 #if !SERVER_PORT
 #undef SERVER_PORT
 #if SERVER_PROTOCOL == PROTOCOL_UDP
 #define SERVER_PORT 8081
-#elif SERVER_PROTOCOL == PROTOCOL_HTTP
-#define SERVER_PORT 80
-#elif SERVER_PROTOCOL == PROTOCOL_HTTPS
+#else
 #define SERVER_PORT 443
 #endif
 #endif

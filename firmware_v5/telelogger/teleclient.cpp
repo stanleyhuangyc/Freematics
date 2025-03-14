@@ -551,7 +551,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   char url[256];
   bool success = false;
   int len;
-#if SERVER_METHOD == PROTOCOL_METHOD_GET
+#if SERVER_PROTOCOL == PROTOCOL_HTTPS_GET
   if (gd && gd->ts) {
     len = snprintf(url, sizeof(url), "%s/push?id=%s&timestamp=%s&lat=%f&lon=%f&altitude=%d&speed=%f&heading=%d",
       SERVER_PATH, devid, isoTime,
