@@ -99,7 +99,6 @@
 
 // HTTPS settings
 #define SERVER_PATH "/hub/api"
-//#define SERVER_PATH "https://hub.freematics.com/hub/api" /* full URL required for SIM7670 */
 
 #if !SERVER_PORT
 #undef SERVER_PORT

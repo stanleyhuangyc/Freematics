@@ -10,15 +10,13 @@ on
 #include "FreematicsBase.h"
 #include "FreematicsNetwork.h"
 
-String HTTPClient::genHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+String HTTPClient::genHeader(HTTP_METHOD method, const char* path, const char* payload, int payloadSize)
 {
   String header;
   // generate a simplest HTTP header
   header = method == METHOD_GET ? "GET " : "POST ";
   header += path;
-  header += " HTTP/1.1\r\nConnection: ";
-  header += keepAlive ? "keep-alive" : "close";
-  header += "\r\nHost: ";
+  header += " HTTP/1.1\r\nConnection: keep-alive\r\nHost: ";
   header += m_host;
   if (method != METHOD_GET) {
     header += "\r\nContent-length: ";
@@ -147,9 +145,9 @@ void WifiHTTP::close()
   m_state = HTTP_DISCONNECTED;
 }
 
-bool WifiHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+bool WifiHTTP::send(HTTP_METHOD method, const char* path, const char* payload, int payloadSize)
 {
-  String header = genHeader(method, path, keepAlive, payload, payloadSize);
+  String header = genHeader(method, path, payload, payloadSize);
   int len = header.length();
   if (client.write(header.c_str(), len) != len) {
     m_state = HTTP_DISCONNECTED;
@@ -184,11 +182,8 @@ char* WifiHTTP::receive(char* buffer, int bufsize, int* pbytes, unsigned int tim
       if (++contentBytes == contentLen) break;
     } else if (strstr(buffer, "\r\n\r\n")) {
       // parse HTTP header
-      char *p = strstr(buffer, "/1.1 ");
-      if (!p) p = strstr(buffer, "/1.0 ");
-      if (p) {
-        if (p) m_code = atoi(p + 5);
-      }
+      char *p = strstr(buffer, "HTTP/1.");
+      if (p) m_code = atoi(p + 9);
       keepAlive = strstr(buffer, ": close\r\n") == 0;
       p = strstr(buffer, "Content-Length: ");
       if (!p) p = strstr(buffer, "Content-length: ");
@@ -830,7 +825,7 @@ bool CellHTTP::close()
   }
 }
 
-bool CellHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize)
+bool CellHTTP::send(HTTP_METHOD method, const char* host, uint16_t port, const char* path, const char* payload, int payloadSize)
 {
   if (m_type == CELL_SIM7070) {
     if (method == METHOD_POST) {
@@ -859,22 +854,20 @@ bool CellHTTP::send(HTTP_METHOD method, const char* path, bool keepAlive, const 
       }
     }
   } else if (m_type == CELL_SIM7670) {
-    sprintf(m_buffer, "AT+HTTPPARA=\"URL\",\"%s\"\r", path);
+    sprintf(m_buffer, "AT+HTTPPARA=\"URL\",\"https://%s:%u%s\"\r", host, port, path);
     if (sendCommand(m_buffer, 1000)) {
       if (payload) {
         sprintf(m_buffer, "AT+HTTPDATA=%u,1000\r", payloadSize);
         sendCommand(m_buffer, 1000, "DOWNLOAD\r");
         m_device->xbWrite(payload, payloadSize);
-        m_device->xbWrite("\r", 1);
         sendCommand("AT+HTTPACTION=1\r");
       } else {
         sendCommand("AT+HTTPACTION=0\r");
       }
-      
     }
     return true;
   } else {
-    String header = genHeader(method, path, keepAlive, payload, payloadSize);
+    String header = genHeader(method, path, payload, payloadSize);
     int len = header.length();
     sprintf(m_buffer, "AT+CHTTPSSEND=%u\r", len + payloadSize);
     if (!sendCommand(m_buffer, 100, ">")) {
@@ -915,7 +908,10 @@ char* CellHTTP::receive(int* pbytes, unsigned int timeout)
       }
     }
   } else if (m_type == CELL_SIM7670) {
-    sendCommand("AT+HTTPHEAD\r", timeout, "+HTTPHEAD:");
+    if (sendCommand("AT+HTTPHEAD\r", timeout, "+HTTPHEAD:")) {
+      char *p = strstr(m_buffer, "HTTP/1.");
+      if (p) m_code = atoi(p + 9);
+    }
     sprintf(m_buffer, "AT+HTTPREAD=0,%u\r", RECV_BUF_SIZE - 32);
     sendCommand(m_buffer);
     char *p = strstr(m_buffer, "+HTTPREAD:");

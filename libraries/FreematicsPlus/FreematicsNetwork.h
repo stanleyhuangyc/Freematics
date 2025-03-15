@@ -52,7 +52,7 @@ public:
     HTTP_STATES state() { return m_state; }
     uint16_t code() { return m_code; }
 protected:
-    String genHeader(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload, int payloadSize);
+    String genHeader(HTTP_METHOD method, const char* path, const char* payload, int payloadSize);
     HTTP_STATES m_state = HTTP_DISCONNECTED;
     uint16_t m_code = 0;
     String m_host;
@@ -92,7 +92,7 @@ class WifiHTTP : public HTTPClient, public ClientWIFI
 public:
     bool open(const char* host = 0, uint16_t port = 0);
     void close();
-    bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    bool send(HTTP_METHOD method, const char* path, const char* payload = 0, int payloadSize = 0);
     char* receive(char* buffer, int bufsize, int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 private:
     WiFiClient client;
@@ -153,7 +153,7 @@ public:
     void init();
     bool open(const char* host = 0, uint16_t port = 0);
     bool close();
-    bool send(HTTP_METHOD method, const char* path, bool keepAlive, const char* payload = 0, int payloadSize = 0);
+    bool send(HTTP_METHOD method, const char* host, uint16_t port, const char* path, const char* payload = 0, int payloadSize = 0);
     char* receive(int* pbytes = 0, unsigned int timeout = HTTP_CONN_TIMEOUT);
 };
 
