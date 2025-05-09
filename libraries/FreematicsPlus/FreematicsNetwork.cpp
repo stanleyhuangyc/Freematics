@@ -267,6 +267,10 @@ void CellSIMCOM::end()
       if (m_device) m_device->xbTogglePower(2510);
     }
   }
+  uint32_t t = millis();
+  do {
+      if (!sendCommand("AT\r", 250)) break;
+  } while (millis() - t < 1500);
 }
 
 bool CellSIMCOM::setup(const char* apn, const char* username, const char* password, unsigned int timeout)
