@@ -261,16 +261,16 @@ void CellSIMCOM::end()
   if (m_type == CELL_SIM7070) {
     if (!sendCommand("AT+CPOWD=1\r", 1000, "NORMAL POWER DOWN")) {
       if (m_device) m_device->xbTogglePower(2510);
+    } else {
+      delay(1500);
     }
   } else {
     if (!sendCommand("AT+CPOF\r")) {
       if (m_device) m_device->xbTogglePower(2510);
+    } else {
+      delay(1500);
     }
   }
-  uint32_t t = millis();
-  do {
-      if (!sendCommand("AT\r", 250)) break;
-  } while (millis() - t < 1500);
 }
 
 bool CellSIMCOM::setup(const char* apn, const char* username, const char* password, unsigned int timeout)
@@ -447,7 +447,7 @@ String CellSIMCOM::getIP()
         }
       }
     }
-  } else {
+  } else if (m_type != CELL_SIM7670) {
     uint32_t t = millis();
     do {
       if (sendCommand("AT+IPADDR\r", 3000, "\r\nOK\r\n")) {
@@ -499,7 +499,7 @@ bool CellSIMCOM::check(unsigned int timeout)
 {
   uint32_t t = millis();
   do {
-      if (sendCommand("AT\r", 250)) return true;
+      if (sendCommand("AT\rAT\r", 250)) return true;
   } while (millis() - t < timeout);
   return false;
 }
