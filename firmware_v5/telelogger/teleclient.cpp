@@ -549,6 +549,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   }
 
   char path[256];
+  char url[256];
   bool success = false;
   int len;
 #if SERVER_PROTOCOL == PROTOCOL_HTTPS_GET
@@ -661,10 +662,13 @@ bool TeleClientHTTP::connect(bool quick)
     Serial.print(SERVER_PORT);
     Serial.println(")...");
     // log in or reconnect to Freematics Hub
-    if (notify(EVENT_LOGIN)) {
-      lastSyncTime = millis();
-      login = true;
+    if (!notify(EVENT_LOGIN)) {
+      Serial.println("[NET] Login failed");
+      return false;
     }
+    Serial.println("[NET] Login successful");
+    lastSyncTime = millis();
+    login = true;
   }
   return true;
 }

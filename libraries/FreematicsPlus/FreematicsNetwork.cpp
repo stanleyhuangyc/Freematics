@@ -129,19 +129,36 @@ void WifiUDP::close()
 bool WifiHTTP::open(const char* host, uint16_t port)
 {
   if (!host) return true;
-  if (client.connect(host, port)) {
-    m_state = HTTP_CONNECTED;
-    m_host = host;
-    return true;
+
+  m_useSSL = (port == 443);
+  if (m_useSSL) {
+    // HTTPS
+    secureClient.setInsecure();
+    if (secureClient.connect(host, port)) {
+      m_state = HTTP_CONNECTED;
+      m_host = host;
+      return true;
+    }
   } else {
-    m_state = HTTP_ERROR;
-    return false;
+    // HTTP
+    if (client.connect(host, port)) {
+      m_state = HTTP_CONNECTED;
+      m_host = host;
+      return true;
+    }
   }
+
+  m_state = HTTP_ERROR;
+  return false;
 }
 
 void WifiHTTP::close()
 {
-  client.stop();
+  if (m_useSSL) {
+    secureClient.stop();
+  } else {
+    client.stop();
+  }
   m_state = HTTP_DISCONNECTED;
 }
 
@@ -149,12 +166,14 @@ bool WifiHTTP::send(HTTP_METHOD method, const char* path, const char* payload, i
 {
   String header = genHeader(method, path, payload, payloadSize);
   int len = header.length();
-  if (client.write(header.c_str(), len) != len) {
+  WiFiClient* activeClient = m_useSSL ? (WiFiClient*)&secureClient : &client;
+
+  if (activeClient->write(header.c_str(), len) != len) {
     m_state = HTTP_DISCONNECTED;
     return false;
   }
   if (payloadSize) {
-    if (client.write(payload, payloadSize) != payloadSize) {
+    if (activeClient->write(payload, payloadSize) != payloadSize) {
       m_state = HTTP_ERROR;
       return false;
     }
@@ -170,13 +189,14 @@ char* WifiHTTP::receive(char* buffer, int bufsize, int* pbytes, unsigned int tim
   int contentLen = 0;
   char* content = 0;
   bool keepAlive = true;
+  WiFiClient* activeClient = m_useSSL ? (WiFiClient*)&secureClient : &client;
 
   for (uint32_t t = millis(); millis() - t < timeout && bytes < bufsize; ) {
-    if (!client.available()) {
+    if (!activeClient->available()) {
       delay(1);
       continue;
     }
-    buffer[bytes++] = client.read();
+    buffer[bytes++] = activeClient->read();
     buffer[bytes] = 0;
     if (content) {
       if (++contentBytes == contentLen) break;
