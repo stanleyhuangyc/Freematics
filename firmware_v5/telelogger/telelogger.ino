@@ -936,6 +936,8 @@ void telemetry(void* inst)
               teleClient.cell.end();
               state.clear(STATE_CELL_CONNECTED);
               Serial.println("[CELL] Deactivated");
+              // avoid turning on/off cellular module too frequently to avoid operator banning
+              delay(60000);
             }
           }
         } else if (state.check(STATE_WIFI_CONNECTED) && !teleClient.wifi.connected()) {

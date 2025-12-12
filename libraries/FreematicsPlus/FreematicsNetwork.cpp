@@ -447,7 +447,7 @@ String CellSIMCOM::getIP()
         }
       }
     }
-  } else if (m_type != CELL_SIM7670) {
+  } else {
     uint32_t t = millis();
     do {
       if (sendCommand("AT+IPADDR\r", 3000, "\r\nOK\r\n")) {
@@ -461,6 +461,7 @@ String CellSIMCOM::getIP()
           }
         }
       }
+      if (m_type == CELL_SIM7670) break;
       delay(500);
     } while (millis() - t < 15000);
   } 
@@ -512,6 +513,11 @@ bool CellSIMCOM::checkSIM(const char* pin)
     sendCommand(m_buffer);
   }
   for (byte n = 0; n < 20 && !(success = sendCommand("AT+CPIN?\r", 500, ": READY")); n++);
+  if (!success) {
+    // avoid SIM card lockout
+    sendCommand("AT+RPMPARAM=0\r");
+    success = sendCommand("AT+CPIN?\r", 500, ": READY")
+  }
   return success;  
 }
 
