@@ -516,7 +516,7 @@ bool CellSIMCOM::checkSIM(const char* pin)
   if (!success) {
     // avoid SIM card lockout
     sendCommand("AT+RPMPARAM=0\r");
-    success = sendCommand("AT+CPIN?\r", 500, ": READY")
+    success = sendCommand("AT+CPIN?\r", 500, ": READY");
   }
   return success;  
 }
