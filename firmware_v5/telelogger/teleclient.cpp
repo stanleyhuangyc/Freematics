@@ -549,6 +549,7 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   }
 
   char path[256];
+  char url[256];
   bool success = false;
   int len;
 #if SERVER_PROTOCOL == PROTOCOL_HTTPS_GET
@@ -559,7 +560,20 @@ bool TeleClientHTTP::transmit(const char* packetBuffer, unsigned int packetSize)
   } else {
     len = snprintf(url, sizeof(url), "%s/push?id=%s", SERVER_PATH, devid);
   }
+
+#if ENABLE_WIFI
+  if (wifi.connected()) {
+    Serial.print("[WIFI] ");
+    Serial.println(url);
+    success = wifi.send(METHOD_GET, url);
+  }
+else
+#else
+  Serial.print("[CELL] ");
+  Serial.println(url);
   success = cell.send(METHOD_GET, SERVER_HOST, SERVER_PORT, url);
+#endif
+
 #else
   len = snprintf(path, sizeof(path), "%s/post/%s", SERVER_PATH, devid);
 #if ENABLE_WIFI
@@ -654,6 +668,12 @@ bool TeleClientHTTP::connect(bool quick)
     return false;
   }
   if (quick) return true;
+
+  if (SERVER_HOST != "hub.freematics.com") {
+    Serial.println("[NET] Skipping notify call - assuming OsmAnd protocol");
+    return true;
+  }
+
   if (!login) {
     Serial.print("LOGIN(");
     Serial.print(SERVER_HOST);
@@ -661,10 +681,13 @@ bool TeleClientHTTP::connect(bool quick)
     Serial.print(SERVER_PORT);
     Serial.println(")...");
     // log in or reconnect to Freematics Hub
-    if (notify(EVENT_LOGIN)) {
-      lastSyncTime = millis();
-      login = true;
+    if (!notify(EVENT_LOGIN)) {
+      Serial.println("[NET] Login failed");
+      return false;
     }
+    Serial.println("[NET] Login successful");
+    lastSyncTime = millis();
+    login = true;
   }
   return true;
 }
