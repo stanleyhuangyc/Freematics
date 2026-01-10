@@ -1,5 +1,6 @@
 {
   "name": "FreematicsPlus",
+  "version": "1.1",
   "description": "A cost-effective Arduino programmable vehicle telemetry device in form of OBD dongle with optional BLE or cellular network support.",
   "keywords": "obd, freematics, telematics",
   "authors":
