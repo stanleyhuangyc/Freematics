@@ -101,7 +101,7 @@ uint32_t timeoutsNet = 0;
 uint32_t lastStatsTime = 0;
 
 int32_t syncInterval = SERVER_SYNC_INTERVAL * 1000;
-int32_t dataInterval = 1000;
+int32_t dataInterval = 1;
 
 #if STORAGE != STORAGE_NONE
 int fileid = 0;
@@ -258,7 +258,15 @@ void processOBD(CBuffer* buffer)
     if (obd.readPID(pid, value)) {
         obdData[i].ts = millis();
         obdData[i].value = value;
-        buffer->add((uint16_t)pid | 0x100, ELEMENT_INT32, &value, sizeof(value));
+        int outValue = value;
+#if RPM_IGNITION_INDICATOR
+        // Encode ignition state into RPM: a responding ECU means ignition is ON,
+        // even during engine auto-stop (RPM truly 0). Remap that 0 to 1 so that
+        // rpm >= 1 always indicates ignition ON, distinct from the ignition-OFF
+        // marker (RPM 0) emitted when the ECU stops responding.
+        if (pid == PID_RPM && outValue == 0) outValue = 1;
+#endif
+        buffer->add((uint16_t)pid | 0x100, ELEMENT_INT32, &outValue, sizeof(outValue));
     } else {
         timeoutsOBD++;
         printTimeoutStats();
@@ -665,14 +673,38 @@ void process()
     if (obd.errors >= MAX_OBD_ERRORS) {
       if (!obd.init()) {
         Serial.println("[OBD] ECU OFF");
+#if RPM_IGNITION_INDICATOR
+        // Keep working a few more cycles so an ignition-off (RPM 0) report is
+        // built and transmitted before going to standby.
+        state.clear(STATE_OBD_READY);
+#else
         state.clear(STATE_OBD_READY | STATE_WORKING);
         return;
+#endif
       }
     }
   } else if (obd.init(PROTO_AUTO, true)) {
     state.set(STATE_OBD_READY);
     Serial.println("[OBD] ECU ON");
   }
+#if RPM_IGNITION_INDICATOR
+  static int ignitionOffReports = 0;
+  if (!state.check(STATE_OBD_READY)) {
+    if (ignitionOffReports >= IGNITION_OFF_REPORTS) {
+      // Enough ignition-off reports sent; let the device enter standby.
+      Serial.println("[OBD] Ignition off, entering standby");
+      state.clear(STATE_WORKING);
+      return;
+    }
+    // ECU not responding: ignition is OFF. Emit RPM 0 as an explicit ignition-off
+    // marker so the server sees rpm == 0 rather than just an absence of data.
+    int rpmOff = 0;
+    buffer->add((uint16_t)PID_RPM | 0x100, ELEMENT_INT32, &rpmOff, sizeof(rpmOff));
+    ignitionOffReports++;
+  } else {
+    ignitionOffReports = 0;
+  }
+#endif
 #endif
 
   if (rssi != rssiLast) {
@@ -769,9 +801,9 @@ void process()
   dataInterval = dataIntervals[0];
 #endif
   do {
-    long t = dataInterval - (millis() - startTime);
+    long t = dataInterval * 1000 - (millis() - startTime);
     processBLE(t > 0 ? t : 0);
-  } while (millis() - startTime < dataInterval);
+  } while (millis() - startTime < dataInterval * 1000);
 }
 
 bool initCell(bool quick = false)
