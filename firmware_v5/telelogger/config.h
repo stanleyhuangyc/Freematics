@@ -74,6 +74,18 @@
 // maximum consecutive OBD access errors before entering standby
 #define MAX_OBD_ERRORS 3
 
+// Encode ignition state into the RPM PID (0x10C) so it can be used as a reliable
+// ignition indicator (e.g. by Traccar via "rpm > 0"):
+//   1 = engine auto-stop (ECU alive, RPM 0) is reported as RPM 1, and ignition
+//       OFF (ECU not responding) is reported as RPM 0. rpm >= 1 means ON.
+//   0 = original behavior (raw RPM only; nothing sent when ECU is off).
+#define RPM_IGNITION_INDICATOR 0
+
+// When RPM_IGNITION_INDICATOR is enabled, the number of ignition-off (RPM 0)
+// reports to transmit after the ECU stops responding before the device enters
+// standby. Ensures the server is promptly notified that the ignition is off.
+#define IGNITION_OFF_REPORTS 3
+
 /**************************************
 * Networking configurations
 **************************************/
@@ -117,18 +129,33 @@
 #define WIFI_AP_SSID "TELELOGGER"
 #define WIFI_AP_PASSWORD "PASSWORD"
 
+// Controls how long (in seconds) the vehicle must be motionless before stepping down
+// to a slower data rate. Each value pairs with the corresponding DATA_INTERVAL_TABLE
+// entry. Once all thresholds are exceeded, the device enters standby mode.
+// Example: {60, 600, 1800} = stay at tier-1 rate for 60s, tier-2 for 10min, tier-3
+// for 30min, then standby.
+#define STATIONARY_TIME_TABLE {10, 60, 180} /* seconds */
+
+// Sets the data transmission interval for each motion tier, paired with
+// STATIONARY_TIME_TABLE. Tier 1 (moving), tier 2 (recently stopped), tier 3 (parked).
+// Example: {15, 60, 300} = every 15s while moving, every 60s when briefly
+// stopped, every 5min when parked with engine on.
+#define DATA_INTERVAL_TABLE {1, 2, 5} /* seconds */
+
+// While in standby (engine off, OBD unavailable), the device wakes periodically,
+// transmits one position packet, then returns to sleep. This controls that interval.
+// Increase to reduce data usage during long parking periods.
+#define PING_BACK_INTERVAL 900 /* seconds */
+
 // maximum consecutive communication errors before resetting network
 #define MAX_CONN_ERRORS_RECONNECT 5
-// maximum allowed connecting time
+// maximum allowed connected time
 #define MAX_CONN_TIME 10000 /* ms */
 // data receiving timeout
 #define DATA_RECEIVING_TIMEOUT 5000 /* ms */
 // expected maximum server sync signal interval
 #define SERVER_SYNC_INTERVAL 120 /* seconds, 0 to disable */
-// data interval settings
-#define STATIONARY_TIME_TABLE {10, 60, 180} /* seconds */
-#define DATA_INTERVAL_TABLE {1000, 2000, 5000} /* ms */
-#define PING_BACK_INTERVAL 900 /* seconds */
+// how often to check signal strength
 #define SIGNAL_CHECK_INTERVAL 10 /* seconds */
 
 /**************************************
